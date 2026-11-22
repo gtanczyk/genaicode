@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, expect, it } from 'vitest';
+import { afterAll, expect, it, vi } from 'vitest';
 import { topicShares } from './shares.js';
 import type { SessionInfo } from './types.js';
 import { partsSince } from './window.js';
@@ -167,4 +167,45 @@ it('estimates from the lifetime where no file says, and keeps a session whose st
   expect(parts.get(noFile)?.part).toBeCloseTo(6 / 14, 5);
   expect(parts.get(gone)?.part).toBeCloseTo(6 / 14, 5);
   expect(parts.get(unknown)).toEqual({ part: 1 });
+});
+
+it('reads a long Codex rollout once, then only what it gained', async () => {
+  const env = { GENAICODE_HOME: join(dir, 'home') };
+  const filler = { timestamp: at(20), type: 'response_item', payload: { text: 'x'.repeat(1_000) } };
+  const lines = [counted(20, 5_000, 0, 0), ...Array.from({ length: 1_200 }, () => filler), counted(1, 5_100, 0, 0)];
+  const long = session('codex', 'long', { startedAt: now - 30 * day, path: file('long.jsonl', lines) });
+  expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 100 / 5_100, tokens: 100 });
+  expect(readdirSync(join(dir, 'home', 'cache', 'rollouts'))).toHaveLength(1);
+  // Two reports in one minute, the period starting between them: only the second is in it.
+  const close = session('codex', 'close', {
+    path: file('close.jsonl', [
+      { ...counted(0, 100_000, 0, 0), timestamp: '2026-11-22T08:00:10Z' },
+      { ...counted(0, 100_100, 0, 0), timestamp: '2026-11-22T08:00:40Z' },
+    ]),
+  });
+  expect((await partsSince([close], Date.parse('2026-11-22T08:00:30Z'), { env })).get(close)?.tokens).toBe(100);
+  // A line longer than any report (a tool's output) is passed over, whole or not.
+  const wide = session('codex', 'wide', {
+    path: file('wide.jsonl', [counted(1, 10, 0, 0), { text: 'token_count'.repeat(200_000) }, counted(1, 30, 0, 0)]),
+  });
+  expect((await partsSince([wide], since, { env })).get(wide)?.tokens).toBe(30);
+  // The last line had no end yet: it is read again, not counted twice.
+  appendFileSync(long.path!, `\n${JSON.stringify(counted(0, 5_400, 0, 0))}\n`);
+  expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 400 / 5_400, tokens: 400 });
+  expect((await partsSince([long], now - 12 * 3_600_000, { env })).get(long)?.tokens).toBe(300);
+  // A later run starts from what the earlier one kept: the rollout's start is not read again.
+  vi.resetModules();
+  const later = await import('./window.js');
+  const kept = join(dir, 'home', 'cache', 'rollouts', readdirSync(join(dir, 'home', 'cache', 'rollouts'))[0]!);
+  // Marked, to see that it is what the later run goes on from.
+  writeFileSync(kept, readFileSync(kept, 'utf8').replace('"total":5000', '"total":6000'));
+  expect((await later.partsSince([long], 0, { env })).get(long)?.tokens).toBe(6_400);
+  // Another file under the same name is read from its start.
+  writeFileSync(
+    long.path!,
+    [counted(1, 50, 0, 0), ...Array.from({ length: 1_200 }, () => filler)]
+      .map((line) => JSON.stringify(line))
+      .join('\n'),
+  );
+  expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 1, tokens: 50 });
 });

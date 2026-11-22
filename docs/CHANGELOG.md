@@ -23,6 +23,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- The start screen's topic shares no longer read a long Codex rollout from its start every time: what was read is kept under `~/.genaicode/cache/rollouts`, and a later look reads only what the rollout gained (a 2 GB thread took about 9 s per look). `partsSince(sessions, since, { env })` says where home is (#270)
 - `genaicode ui`: "Its work in the last 7 days went to" counts only what each session did in those days. A long session touched once in the period no longer counts with its whole life (read from Codex rollouts and Claude Code transcripts, estimated from the lifetime elsewhere). `topicShares` takes these parts from the new `partsSince()` (#268)
 - `genaicode ui`: the agent, model and approval controls in the prompt box have an outline, so they read as controls. A note Codex sends about a hook timeout it clamps no longer shows as an error in the conversation (it is a `stderr` event) (#263)
 - Sessions a program started in a temporary directory or in a `.genaicode/worktrees` worktree, and Antigravity command-line runs outside any project, no longer show in session listings or topics (`sessions --automated` lists them) (#256)
