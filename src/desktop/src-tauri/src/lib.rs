@@ -15,7 +15,7 @@ mod update;
 
 use std::{
     env, fs,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex},
@@ -36,6 +36,9 @@ const CHECK_UPDATES: &str = "check-updates";
 const TRAY: &str = "tower";
 const SHOW: &str = "show";
 const QUIT: &str = "quit";
+const RELAUNCH: &str = "relaunch";
+/// What `genaicode ui` prints when its page asks for the relaunch that installs an update.
+const RELAUNCH_LINE: &str = "Relaunch to update";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
 const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
 
@@ -43,7 +46,7 @@ const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
 /// shell stops it, and why it cannot outlive the app even when the app is killed.
 struct Server {
     child: Child,
-    _stdin: Option<ChildStdin>,
+    stdin: Option<ChildStdin>,
 }
 
 #[derive(Default)]
@@ -57,6 +60,8 @@ struct Shell {
     watcher: Option<Server>,
     /// What it last said waits: the menu bar's items point into it.
     waiting: Vec<tower::Waiting>,
+    limits: Vec<tower::Limit>,
+    topics: Vec<tower::Topic>,
     /// The app is on its way out: nothing is started again.
     quitting: bool,
 }
@@ -179,11 +184,7 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 /// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
 /// them running. Kill it only if it has not exited within `STOP_GRACE`.
 fn stop(shell: &mut Shell) {
-    let Some(Server {
-        mut child,
-        _stdin: stdin,
-    }) = shell.server.take()
-    else {
+    let Some(Server { mut child, stdin }) = shell.server.take() else {
         return;
     };
     drop(stdin);
@@ -232,10 +233,7 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("Could not start genaicode: {error}"))?;
     let stderr = child.stderr.take().ok_or("genaicode has no stderr")?;
     let stdin = child.stdin.take();
-    shell.server = Some(Server {
-        child,
-        _stdin: stdin,
-    });
+    shell.server = Some(Server { child, stdin });
     drop(shell);
 
     let app = app.clone();
@@ -259,7 +257,12 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
                     {
                         let _ = window.navigate(url);
                     }
+                    // A chat that starts after an update was downloaded hears of it now.
+                    update_ready(&handle);
                 });
+            } else if opened && line == RELAUNCH_LINE {
+                // The page's "Relaunch to update": only an update this app downloaded installs.
+                update::relaunch(&app);
             } else if !opened {
                 said.push(line);
                 if said.len() > 12 {
@@ -309,6 +312,32 @@ fn show(app: &AppHandle) {
     }
 }
 
+/// An update is downloaded, or stopped being so: tell the chat's page, which then offers
+/// "Relaunch to update", and put the same into the menu bar.
+pub(crate) fn update_ready(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let state = handle.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        if let (Some(version), Some(stdin)) = (
+            update::ready(),
+            shell
+                .server
+                .as_mut()
+                .and_then(|server| server.stdin.as_mut()),
+        ) {
+            let _ = writeln!(stdin, "update-ready {version}");
+            let _ = stdin.flush();
+        }
+        if let (Some(tray), Ok(menu)) = (
+            handle.tray_by_id(TRAY),
+            tower_menu(&handle, &shell.waiting, &shell.limits, &shell.topics),
+        ) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    });
+}
+
 /// The menu bar's menu: what waits, then the app's own items.
 fn tower_menu(
     app: &AppHandle,
@@ -318,6 +347,11 @@ fn tower_menu(
 ) -> tauri::Result<Menu<Wry>> {
     let none = None::<&str>;
     let menu = Menu::new(app)?;
+    if let Some(version) = update::ready() {
+        let label = format!("Relaunch to Update ({version})");
+        menu.append(&MenuItem::with_id(app, RELAUNCH, label, true, none)?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
     // The quota comes first: it decides which agent gets the next task.
     let quota = tower::quota(limits);
     for line in &quota {
@@ -370,10 +404,12 @@ fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
         let state = handle.state::<ShellState>();
         let Ok(mut shell) = state.lock() else { return };
         shell.waiting = snapshot.sessions;
+        shell.limits = snapshot.limits;
+        shell.topics = snapshot.topics;
         let Some(tray) = handle.tray_by_id(TRAY) else {
             return;
         };
-        if let Ok(menu) = tower_menu(&handle, &shell.waiting, &snapshot.limits, &snapshot.topics) {
+        if let Ok(menu) = tower_menu(&handle, &shell.waiting, &shell.limits, &shell.topics) {
             let _ = tray.set_menu(Some(menu));
         }
         let count = tower::count(&shell.waiting);
@@ -417,10 +453,7 @@ fn watch(app: &AppHandle) {
             command.spawn().ok().and_then(|mut child| {
                 let stdout = child.stdout.take();
                 let stdin = child.stdin.take();
-                shell.watcher = Some(Server {
-                    child,
-                    _stdin: stdin,
-                });
+                shell.watcher = Some(Server { child, stdin });
                 stdout
             })
         };
@@ -476,6 +509,8 @@ fn answer(app: &AppHandle, ask: &str, allow: bool) {
 fn on_menu(app: &AppHandle, id: &str) {
     if id == SHOW || id.starts_with("open:") {
         show(app);
+    } else if id == RELAUNCH {
+        update::relaunch(app);
     } else if id == CHECK_UPDATES {
         update::check(app, true);
     } else if id == QUIT {

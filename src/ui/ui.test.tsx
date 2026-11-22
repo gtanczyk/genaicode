@@ -1233,6 +1233,47 @@ describe('web UI server', () => {
     rmSync(empty, { recursive: true, force: true });
   });
 
+  it('offers the relaunch its host app announced on stdin, and passes the click back', async () => {
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+    const relaunch = (with_ = headers) => fetch(new URL('/api/relaunch', url), { method: 'POST', headers: with_ });
+    // Nothing was announced: there is nothing to ask for.
+    expect((await relaunch()).status).toBe(404);
+    const events = await fetch(new URL('/api/events', url), { headers });
+    const reader = events.body!.getReader();
+    let seen = '';
+    const read = async (wanted: string) => {
+      while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+    };
+    await read('event: config');
+    expect(seen).not.toContain('"update"');
+    stdin.write('something else\nupdate-ready 9.9.9; rm -rf\nupdate-ready 9.9.9\n');
+    await read('"update":"9.9.9"');
+    expect((await relaunch({ 'x-genaicode-token': 'wrong' })).status).toBe(403);
+    expect(errors).not.toContain('Relaunch to update');
+    expect((await relaunch()).status).toBe(200);
+    expect(errors).toContain('Relaunch to update\n');
+    await reader.cancel();
+    stdin.end();
+    expect(await done).toBe(0);
+  });
+
   it('stops when stdin ends with exitWithStdin', async () => {
     const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
     let errors = '';

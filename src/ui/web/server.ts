@@ -73,6 +73,21 @@ export interface WebUiOptions {
   files?: ProjectFiles;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
+  /** The app that started the server and shows its page (the desktop app), when there is one. */
+  hostApp?: HostApp;
+}
+
+/**
+ * What a host app tells the page and takes from it. Today one thing: a newer version of the app
+ * is downloaded, and the page's "Relaunch to update" asks the app to install it.
+ */
+export interface HostApp {
+  /** The version that waits for a relaunch, once there is one. */
+  update(): string | undefined;
+  /** Calls `listener` when `update()` changes. Returns the way to stop. */
+  subscribe(listener: () => void): () => void;
+  /** The person asked for the relaunch. */
+  relaunch(): void;
 }
 
 /**
@@ -274,6 +289,22 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }, 40);
   };
   const unsubscribe = controller.subscribe(broadcast);
+  const configEvent = () => {
+    const update = options.hostApp?.update();
+    const config = {
+      cwd: options.title.cwd,
+      project: options.title.project !== false,
+      sessions: !!options.sessions,
+      uploads: !!options.uploads,
+      files: !!options.files,
+      ...(update ? { update } : {}),
+    };
+    return `event: config\ndata: ${JSON.stringify(config)}\n\n`;
+  };
+  const unsubscribeHost = options.hostApp?.subscribe(() => {
+    const data = configEvent();
+    for (const stream of streams) stream.write(data);
+  });
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     if (!allowedHost(req.headers.host)) return send(res, 403, 'text/plain', 'Forbidden host');
@@ -389,9 +420,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         connection: 'keep-alive',
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
-      res.write(
-        `event: config\ndata: ${JSON.stringify({ cwd: options.title.cwd, project: options.title.project !== false, sessions: !!options.sessions, uploads: !!options.uploads, files: !!options.files })}\n\n`,
-      );
+      res.write(configEvent());
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
@@ -523,6 +552,15 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const changed = await options.archive(request.sessions, request.archived);
       return send(res, 200, 'application/json', JSON.stringify({ changed }));
     }
+    if (req.method === 'POST' && url.pathname === '/api/relaunch') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      // Only what the host itself announced can be asked for.
+      if (!options.hostApp?.update()) return send(res, 404, 'application/json', '{"ok":false}');
+      options.hostApp.relaunch();
+      return send(res, 200, 'application/json', '{"ok":true}');
+    }
     if (req.method === 'POST' && url.pathname === '/api/command') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
@@ -586,6 +624,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       new Promise((resolve) => {
         lifetime.abort();
         unsubscribe();
+        unsubscribeHost?.();
         if (pending) clearTimeout(pending);
         for (const stream of streams) stream.end();
         streams.clear();

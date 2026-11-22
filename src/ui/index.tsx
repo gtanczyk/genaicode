@@ -27,7 +27,7 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
-import { startWebUi, type WebAsset, type WebUi } from './web/server.js';
+import { startWebUi, type HostApp, type WebAsset, type WebUi } from './web/server.js';
 import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
@@ -60,6 +60,8 @@ export interface WebRunOptions extends UiRunOptions {
   port?: number;
   /** The link's access token. Default: a random one. */
   token?: string;
+  /** The app that shows the page under `exitWithStdin`. */
+  hostApp?: HostApp;
   open?: boolean;
   /** Browser bundle. Default: `web-client.js` next to this module. */
   clientScript?: string;
@@ -168,7 +170,44 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
   return found ? { port: page.port, token: page.token } : null;
 }
 
+/** What the host app wrote to stdin to say that version `version` of it waits for a relaunch. */
+const UPDATE_READY = /^update-ready ([0-9A-Za-z.+-]{1,40})$/;
+/** What the host app reads from stderr when the page asks for that relaunch. */
+export const RELAUNCH_LINE = 'Relaunch to update';
+
+/**
+ * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
+ * says `update-ready <version>` on stdin once it has downloaded a newer version of itself; the
+ * page then offers "Relaunch to update", and a click prints `RELAUNCH_LINE` on stderr.
+ */
+function hostApp(options: WebRunOptions): HostApp {
+  let version: string | undefined;
+  let rest = '';
+  const listeners = new Set<() => void>();
+  options.stdin.on('data', (chunk: Buffer | string) => {
+    const lines = (rest + chunk.toString()).split('\n');
+    rest = (lines.pop() ?? '').slice(-200);
+    for (const line of lines) {
+      const found = UPDATE_READY.exec(line.trim())?.[1];
+      if (!found || found === version) continue;
+      version = found;
+      for (const listener of listeners) listener();
+    }
+  });
+  return {
+    update: () => version,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+  };
+}
+
 export async function runWeb(options: WebRunOptions): Promise<number> {
+  // Before anything waits: what the app says while the welcome page shows is kept for the chat.
+  if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
+    options = { ...options, hostApp: hostApp(options) };
   const welcomed = await welcome(options);
   if (welcomed === null) return 0;
   // The chat answers on the link the welcome page had, which the browser already shows.
@@ -267,6 +306,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       host: options.host,
       port: options.port,
       token: options.token,
+      hostApp: options.hostApp,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async (query) => {
