@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.52.1 — 2026-11-22
+
 ### Fixed
 
 - Desktop app: it looks for a newer version every half hour, not every six hours, so a release shows as **Relaunch to update** soon after it comes out (#292)
