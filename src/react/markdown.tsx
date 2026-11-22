@@ -17,6 +17,20 @@ function link(href: string, label: ReactNode, key: number) {
   );
 }
 
+/** The path without the place in the file that follows it: `:12`, `:12:3` or `#L12-L20`. */
+function withoutPosition(path: string): string {
+  const anchor = path.lastIndexOf('#L');
+  if (anchor > 0 && /^\d/.test(path.slice(anchor + 2))) return path.slice(0, anchor);
+  let end = path.length;
+  for (let part = 0; part < 2; part++) {
+    let at = end;
+    while (at > 0 && path[at - 1] >= '0' && path[at - 1] <= '9') at--;
+    if (at === end || at < 2 || path[at - 1] !== ':') break;
+    end = at - 1;
+  }
+  return path.slice(0, end);
+}
+
 /** `links` is false inside a link label, so no <a> ends up inside another. */
 function inline(text: string, links = true): ReactNode[] {
   const out: ReactNode[] = [];
@@ -36,7 +50,7 @@ function inline(text: string, links = true): ReactNode[] {
     } else if (match[8]) {
       // A link to a file on disk, as agents write them: the label, and the path for the host to open.
       const label = inline(token.slice(1, token.indexOf(']')), false);
-      const path = match[9].replace(/(?::\d+(?::\d+)?|#L\d+\S*)$/, '');
+      const path = withoutPosition(match[9]);
       out.push(
         links ? (
           <button key={key++} type="button" className="gc-file-link" data-gc-file={path} title={path}>
