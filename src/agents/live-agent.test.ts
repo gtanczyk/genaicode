@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { codexLive } from './drivers/codex-live.js';
 import { museLive } from './drivers/muse-live.js';
-import { uuidv7 } from './live-agent.js';
-import type { AgentEvent, AgentRun } from './types.js';
+import { decideApproval, questionAnswers, reportReply, uuidv7 } from './live-agent.js';
+import type { AgentEvent, AgentRun, ApprovalRequest } from './types.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-live-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -453,5 +453,71 @@ describe('uuidv7', () => {
     const b = uuidv7(2_000);
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(a < b).toBe(true);
+  });
+});
+
+describe('questions', () => {
+  const request: ApprovalRequest = {
+    id: 'q',
+    kind: 'question',
+    questions: [
+      { id: 'one', question: 'One?', options: [{ label: 'A' }, { label: 'B' }] },
+      { id: 'many', question: 'Many?', options: [{ label: 'A' }, { label: 'B' }], multiple: true },
+      { id: 'key', question: 'Key?', options: [], freeText: true, secret: true },
+    ],
+  };
+  const open = new AbortController().signal;
+
+  it('keeps only answers to the questions asked', () => {
+    expect(questionAnswers(request, { one: ['A', 'B'], many: ['A', 'B', 'own', 'more'], key: 'k', x: ['y'] })).toEqual({
+      one: ['A'],
+      many: ['A', 'B', 'own'],
+      key: ['k'],
+    });
+    expect(questionAnswers(request, { one: [1, '', ' '], many: null })).toEqual({});
+    expect(questionAnswers(request, 'A')).toEqual({});
+  });
+
+  it('asks onQuestion even under auto-approve, and declines without one or under deny', async () => {
+    const onQuestion = () => ({ one: ['B'] });
+    const auto = { approval: 'auto-approve' as const };
+    expect(await decideApproval({ onQuestion, permissions: auto }, request, open)).toEqual({
+      decision: 'approve',
+      answers: { one: ['B'] },
+      automatic: false,
+    });
+    expect(await decideApproval({ onApproval: () => 'approve', permissions: auto }, request, open)).toEqual({
+      decision: 'deny',
+      automatic: true,
+    });
+    expect(await decideApproval({ onQuestion, permissions: { approval: 'deny' } }, request, open)).toEqual({
+      decision: 'deny',
+      automatic: true,
+    });
+    expect(await decideApproval({ onQuestion: () => undefined }, request, open)).toEqual({
+      decision: 'deny',
+      automatic: false,
+    });
+  });
+
+  it('reports the answers without the secret ones', async () => {
+    const events: AgentEvent[] = [];
+    const outcome = await reportReply(
+      (event) => events.push(event),
+      request,
+      open,
+      async () => ({
+        decision: 'approve',
+        answers: { one: ['A'], key: ['hunter2'] },
+        automatic: false,
+      }),
+    );
+    expect(outcome.answers).toEqual({ one: ['A'], key: ['hunter2'] });
+    expect(events.at(-1)).toEqual({
+      type: 'approval-resolved',
+      id: 'q',
+      decision: 'approve',
+      answers: { one: ['A'], key: ['••••'] },
+    });
   });
 });

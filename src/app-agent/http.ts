@@ -4,6 +4,7 @@ import { artifactResponse } from '../agents/artifacts.js';
 import { AppAgentError, type AppAgent } from './app-agent.js';
 import type { AppAgentMode } from './state.js';
 import { safeJson } from './json.js';
+import { parseQuestionAnswers } from '../agents/question-answers.js';
 import { handleMcpMessage } from './mcp.js';
 
 export interface AppAgentHandlerOptions {
@@ -38,7 +39,8 @@ const MAX_BODY = 256 * 1024;
  * - `GET  /state`, `GET /events` (server-sent `AppAgentState` snapshots)
  * - `POST /send {text}`, `/stop`, `/reset`, `/config {agent?, mode?}`, `/view {path}`
  * - `POST /actions/:id {decision: 'approve' | 'reject' | 'dismiss'}`, `GET /actions/:id/changes`
- * - `POST /approvals/:id {decision: 'approve' | 'deny'}`: the agent CLI's own permission prompts
+ * - `POST /approvals/:id {decision: 'approve' | 'deny'}`: the agent CLI's own permission prompts;
+ *   `{answers: {[questionId]: string[]}}` answers a question it asked (`kind: 'question'`)
  * - `GET  /artifacts/:id`: what the agent published, with headers that sandbox it
  * - `POST /mcp`: the agent's MCP endpoint (bearer `agent.mcpToken`; browser requests refused)
  *
@@ -136,11 +138,18 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
         default: {
           const approval = /^\/approvals\/([^/]+)$/.exec(route);
           if (approval) {
+            const id = decodeURIComponent(approval[1]!);
+            if (field('answers') !== undefined) {
+              const answers = parseQuestionAnswers(field('answers'));
+              if (!answers) return json(res, 400, { error: 'answers must map question ids to lists of strings' });
+              agent.answer(id, answers);
+              break;
+            }
             const answer = field('decision');
             if (answer !== 'approve' && answer !== 'deny') {
               return json(res, 400, { error: 'decision must be approve or deny' });
             }
-            agent.approve(decodeURIComponent(approval[1]!), answer);
+            agent.approve(id, answer);
             break;
           }
           const action = /^\/actions\/([^/]+)$/.exec(route);

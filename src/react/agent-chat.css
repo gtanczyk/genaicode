@@ -560,6 +560,78 @@
   padding: 8px 12px;
   font-size: 0.87em;
 }
+.gc-approval.gc-question {
+  border-color: var(--_accent);
+  background: var(--_panel);
+}
+.gc-question-item {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gc-question-item legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.gc-question-header {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--_border);
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--_muted);
+}
+.gc-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gc-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--_border);
+  background: var(--_panel);
+  color: inherit;
+  font: inherit;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.gc-option:hover:not(:disabled),
+.gc-option.gc-on {
+  border-color: var(--_accent);
+}
+.gc-option.gc-on {
+  box-shadow: inset 0 0 0 1px var(--_accent);
+}
+.gc-option:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.gc-option-label {
+  font-weight: 500;
+}
+.gc-option-description {
+  font-size: 0.87em;
+  color: var(--_muted);
+}
+.gc-question-own {
+  border: 1px solid var(--_border);
+  background: var(--_panel);
+  color: inherit;
+  font: inherit;
+  border-radius: 8px;
+  padding: 7px 12px;
+}
 .gc-error {
   background: var(--_error-soft);
   color: var(--_error);

@@ -867,7 +867,8 @@ const run = claude().run({
 });
 ```
 
-- `request.kind` is `command`, `file-change` or `other`; `summary` is one line to show;
+- `request.kind` is `command`, `file-change` or `other` (`question` goes to `onQuestion`, see
+  [Questions](#questions)); `summary` is one line to show;
   `detail` is the vendor's whole request (the command with its working directory, the tool
   input, the requested permissions). Show `detail` before asking for a decision.
 - `request.scope` says what approving grants. `once` (or absent): this one call. `turn`: the
@@ -878,6 +879,38 @@ const run = claude().run({
 - No handler, a handler that throws, and an aborted signal all deny. Nothing is approved
   automatically unless `permissions.approval` says so (see [Permissions](#permissions)).
   `approval-request` and `approval-resolved` events record each question.
+
+### Questions
+
+An agent can also ask the person to choose: Claude Code's `AskUserQuestion`, Codex's
+`request_user_input`. On drivers with `capabilities.questions` (`claude`, `codexLive`) such a
+request has `kind: 'question'` and `questions`, and goes to `onQuestion`, never to `onApproval`:
+
+```ts
+const run = claude().run({
+  prompt: 'Add a database to the app',
+  cwd: '/work/repo',
+  permissions: { approval: 'auto-approve' },
+  onQuestion: async (request) => {
+    // request.questions: [{ id, question, header?, options: [{ label, description? }], multiple?, freeText?, secret? }]
+    const answers = await showCard(request.questions); // your UI
+    return answers; // { [question.id]: ['Postgres'] }, or undefined to skip
+  },
+});
+```
+
+- The answer is the chosen option labels, or typed text where `freeText` is set, per question
+  id. Answers to questions that were not asked are dropped, and a question without `multiple`
+  keeps one. Returning undefined, a missing handler and an aborted `signal` leave the question
+  unanswered: the agent is told so and goes on.
+- `auto-approve` does not answer questions, and `deny` declines them without asking.
+- `approval-resolved` carries the `answers`, with those of `secret` questions masked.
+- Claude Code asks through its permission prompts, so `claude()` needs `onApproval` or
+  `permissions.approval` beside `onQuestion`. Codex offers `request_user_input` in its Plan mode
+  only, unless its experimental `default_mode_request_user_input` feature is on.
+- In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
+  it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
+  the options, and `genaicode chat` asks in the terminal.
 
 Per agent:
 

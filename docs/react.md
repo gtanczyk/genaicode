@@ -76,6 +76,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `state`                                                                        | `SessionState`, or null before there is a session                                                                           |
 | `onSend(text)`, `onStop()`                                                     | Enter or Send; Stop or Esc. No `onStop`, no Stop button                                                                     |
 | `onApprove(id, decision)`                                                      | answers `state.approvals`; without it they show as waiting                                                                  |
+| `onAnswer(id, answers)`                                                        | answers an agent's question (a card with its options); Skip calls `onApprove(id, 'deny')`. Pass `session.answer`            |
 | `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests                   |
 | `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                               |
 | `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                            |

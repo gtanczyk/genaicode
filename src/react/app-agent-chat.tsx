@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision, Artifact } from '../agents/types.js';
+import type { ApprovalDecision, Artifact, QuestionAnswers } from '../agents/types.js';
 import {
   APP_NOTE,
   userText,
@@ -29,6 +29,8 @@ export interface AppAgentClient {
   view(path: string): void;
   decide(id: string, decision: 'approve' | 'reject' | 'dismiss'): void;
   approve(id: string, decision: ApprovalDecision): void;
+  /** Answer a question the agent asked (a request of `kind: 'question'`). */
+  answer(id: string, answers: QuestionAnswers): void;
   changes(id: string): Promise<TreeChanges>;
   /** Where the handler serves a published artifact. Without it artifact cards have no preview. */
   artifactUrl?(artifact: Artifact): string;
@@ -118,6 +120,7 @@ export function useAppAgent(basePath = '/api/agent', options: AppAgentClientOpti
       view: (path) => call('/view', { path }),
       decide: (id, decision) => call(`/actions/${encodeURIComponent(id)}`, { decision }),
       approve: (id, decision) => call(`/approvals/${encodeURIComponent(id)}`, { decision }),
+      answer: (id, answers) => call(`/approvals/${encodeURIComponent(id)}`, { answers }),
       changes,
       artifactUrl: (artifact) => `${base}/artifacts/${artifact.id}?v=${artifact.version}`,
     }),
@@ -229,6 +232,7 @@ function AppAgentView(props: AppAgentChatProps & { client: AppAgentClient }) {
       onSend={client.send}
       onStop={client.stop}
       onApprove={client.approve}
+      onAnswer={client.answer}
       foldSteps={props.foldSteps}
       artifactUrl={client.artifactUrl}
       renderArtifact={props.renderArtifact}

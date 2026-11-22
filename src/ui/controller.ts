@@ -9,7 +9,14 @@ import { isWithin } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
-import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
+import type {
+  AgentBudget,
+  AgentTask,
+  ApprovalDecision,
+  CodingAgent,
+  McpServer,
+  QuestionAnswers,
+} from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
 export interface AgentChoice {
@@ -110,6 +117,8 @@ export interface ChatController {
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
   approve(id: string, decision: ApprovalDecision): boolean;
+  /** Answer a pending question of the agent (`AgentSession.answer`). */
+  answer(id: string, answers: QuestionAnswers): boolean;
   decideTower(id: string, decision: TowerDecision): Promise<boolean>;
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
@@ -595,7 +604,9 @@ export function createChatController(options: ChatOptions): ChatController {
           }
           autoApprove = command.on ?? !autoApprove;
           // What is waiting now gets the same answer as what comes next.
-          if (autoApprove) for (const approval of session.get().approvals) session.approve(approval.id, 'approve');
+          if (autoApprove)
+            for (const approval of session.get().approvals)
+              if (approval.kind !== 'question') session.approve(approval.id, 'approve');
           notice(
             autoApprove
               ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
@@ -614,6 +625,7 @@ export function createChatController(options: ChatOptions): ChatController {
     stop: stopAll,
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
+    answer: (id, answers) => session.answer(id, answers),
     decideTower: (id, decision) => inbox?.decide(session, id, decision) ?? Promise.resolve(false),
     selectAgent,
     continueSession,

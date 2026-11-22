@@ -579,6 +579,7 @@ export function pack(options: PackOptions): Pack {
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
 
         const onApproval = task.onApproval;
+        const onQuestion = task.onQuestion;
         // Only inside a repository the lead named, never `/` or the home folder as a whole.
         const readOnly =
           options.readOnlyCommands !== 'ask' &&
@@ -597,6 +598,9 @@ export function pack(options: PackOptions): Pack {
                     ? 'approve'
                     : onApproval(packApproval(id, agent.name, request), signal),
               }
+            : {}),
+          ...(onQuestion
+            ? { onQuestion: (request, signal) => onQuestion(packApproval(id, agent.name, request), signal) }
             : {}),
         });
         sub.run = run;
