@@ -866,6 +866,60 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('picks an option past nine by its number and Enter', async () => {
+    const got: unknown[] = [];
+    const options = Array.from({ length: 12 }, (_, index) => ({ label: `opt${index + 1}` }));
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(
+            await task.onQuestion!({
+              id: 'q1',
+              kind: 'question',
+              questions: [
+                { id: 'one', question: 'Pick one', options },
+                { id: 'many', question: 'Pick some', options, multiple: true },
+              ],
+            }),
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    expect(app.lastFrame()).toContain('12 opt12');
+    for (const char of '11') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('asks (1/2)');
+    app.stdin.write('\r');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Pick some');
+    for (const text of ['10', '\r', '2', '\r']) {
+      for (const char of text) app.stdin.write(char);
+      await tick();
+    }
+    expect(app.lastFrame()).toContain('[x] opt10');
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ one: ['opt11'], many: ['opt10', 'opt2'] }]);
+    app.unmount();
+    chat.close();
+  });
+
   it('switches to shell mode on ! like Claude Code, and back', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });

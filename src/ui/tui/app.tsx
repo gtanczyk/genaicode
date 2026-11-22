@@ -185,8 +185,12 @@ export function ChatApp({
     // Not while composing a shell command: its letters must not answer the approval.
     const plain = !key.ctrl && !key.meta && !shell;
     if (asked && question && plain) {
-      const option = !draft && /^[1-9]$/.test(input) ? question.options[Number(input) - 1] : undefined;
+      // Up to nine options a digit picks at once; with more, the number is typed and Enter picks it.
+      const many = question.options.length > 9;
+      const number = many ? (key.return && /^\d+$/.test(draft.trim()) ? draft.trim() : '') : !draft ? input : '';
+      const option = /^[1-9]\d*$/.test(number) ? question.options[Number(number) - 1] : undefined;
       if (option) {
+        if (many) edit('', 0, false);
         if (!question.multiple) return answerQuestion([option.label]);
         const had = partial[question.id] ?? [];
         const next = had.includes(option.label) ? had.filter((item) => item !== option.label) : [...had, option.label];
@@ -361,7 +365,9 @@ export function ChatApp({
               </Text>
             ))}
             <Text color="gray">
-              {question.options.length ? (question.multiple ? 'numbers toggle, Enter sends' : 'a number chooses') : ''}
+              {question.options.length
+                ? `${question.options.length > 9 ? 'a number + Enter' : 'a number'} ${question.multiple ? 'toggles, Enter sends' : 'chooses'}`
+                : ''}
               {question.freeText ? `${question.options.length ? ' · ' : ''}type an answer and press Enter` : ''} ·{' '}
               <Text color="red" bold>
                 {question.freeText ? 'Enter' : 'n'}
