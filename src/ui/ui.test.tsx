@@ -293,6 +293,22 @@ describe('chat controller', () => {
     chat.submit('/effort default');
     expect(chat.get().session.effort).toBeUndefined();
     chat.close();
+    // An agent whose session keeps its effort: only a fresh session takes another.
+    const fixed = {
+      ...echoAgent('fixed'),
+      capabilities: { resume: true, effort: ['low', 'high'], effortAtStart: true },
+    };
+    const kept = createChatController({ agents: [fixed], cwd: '/w', env });
+    kept.submit('/effort low');
+    kept.submit('hi');
+    await kept.session.idle();
+    kept.submit('/effort high');
+    expect(kept.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringMatching(/\/new/) });
+    expect(kept.get().session.effort).toBe('low');
+    kept.submit('/new');
+    kept.submit('/effort high');
+    expect(kept.get().session.effort).toBe('high');
+    kept.close();
   });
 
   it('toggles the bark', () => {

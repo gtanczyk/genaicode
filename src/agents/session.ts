@@ -889,6 +889,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             ? `${agent.name} has no effort "${effort}". It takes: ${levels.join(', ')}.`
             : `${agent.name} takes no effort setting.`,
         );
+      // Such an agent would refuse every next prompt of the session it already has.
+      if (agent.capabilities.effortAtStart && state.sessionId !== undefined && effort !== state.effort)
+        throw new Error(`${agent.name} keeps the effort its session started with. /new starts a fresh one.`);
       set({ effort });
     },
     setBudget(budget) {

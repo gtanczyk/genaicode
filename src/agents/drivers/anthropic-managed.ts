@@ -338,6 +338,7 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
       resume: true,
       files: true,
       effort: EFFORTS,
+      effortAtStart: true,
       budget: ['usd'],
       permissions: { approval: ['ask', 'auto-approve', 'deny'] },
     },

@@ -242,6 +242,8 @@ export interface AgentFailure {
 export interface AgentCapabilities {
   /** Effort values the agent CLI accepts. Empty or absent: effort is not configurable. */
   effort?: readonly string[];
+  /** A session keeps the effort it started with: a resumed one refuses another. */
+  effortAtStart?: boolean;
   /** Honors `AgentTask.maxTurns`. */
   maxTurns?: boolean;
   /** Reports token usage. */
