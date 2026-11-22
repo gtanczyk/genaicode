@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- Desktop app: it has no project folder any more. It works where your agents work: no folder question at start, no Project menu, and its chat is about the sessions of every project. `genaicode ui --sessions --no-project` gives the same page in a browser (#PRNUM)
+- Desktop app: it has no project folder any more. It works where your agents work: no folder question at start, no Project menu, and its chat is about the sessions of every project. `genaicode ui --sessions --no-project` gives the same page in a browser (#281)
 
 ## 2.49.2 — 2026-11-22
 
