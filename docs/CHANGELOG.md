@@ -10,9 +10,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- Desktop app for Linux: each release carries an AppImage (it updates itself) and a `.deb` for x86_64. The panel icon with the waiting sessions works where the desktop shows status icons; the package installs `genaicode-desktop` and leaves the `genaicode` command and the system's Node.js alone
-- Desktop app for Intel Macs: a second `.dmg`, beside the one for Apple silicon
-- Desktop app from Homebrew: `brew install --cask gtanczyk/genaicode/genaicode`. Each release also carries its downloads under names without the version, so `releases/latest/download/Genaicode-macos-arm64.dmg` is always the newest
+- Desktop app for Linux: each release carries an AppImage (it updates itself) and a `.deb` for x86_64. The panel icon with the waiting sessions works where the desktop shows status icons; the package installs `genaicode-desktop` and leaves the `genaicode` command and the system's Node.js alone (#284)
+- Desktop app for Intel Macs: a second `.dmg`, beside the one for Apple silicon (#284)
+- Desktop app from Homebrew: `brew install --cask gtanczyk/genaicode/genaicode`. Each release also carries its downloads under names without the version, so `releases/latest/download/Genaicode-macos-arm64.dmg` is always the newest (#284)
 
 ## 2.49.2 — 2026-11-22
 
