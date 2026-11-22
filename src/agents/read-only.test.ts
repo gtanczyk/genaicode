@@ -78,6 +78,8 @@ describe('isReadOnlyCommand', () => {
       'cd - && ls',
       'cd && ls',
       'git grep -nO./helper needle',
+      'git log --help',
+      'diff -r a b',
       'rg -f/tmp/patterns input',
       'grep -f../x foo',
       '',

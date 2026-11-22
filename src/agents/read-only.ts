@@ -28,7 +28,6 @@ const READERS = new Set([
   'true',
   'nl',
   'cut',
-  'diff',
   'cd',
 ]);
 
@@ -162,6 +161,8 @@ const RISKY_LONG = [
   'dereference-recursive',
   'exec',
   'delete',
+  // `git log --help` runs the configured man viewer.
+  'help',
 ];
 
 function riskyOption(arg: string): boolean {
