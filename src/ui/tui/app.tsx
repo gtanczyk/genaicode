@@ -40,6 +40,12 @@ export function splitTranscript(view: ChatView): { done: StaticItem[]; live: Ses
 }
 
 /** Visible slice of the draft around the cursor, for one terminal row. */
+/** A draft that is one of the chat's /commands, as opposed to text that starts with a slash. */
+function isCommand(draft: string): boolean {
+  const name = /^\/\S+/.exec(draft.trim())?.[0];
+  return !!name && SLASH_COMMANDS.some((command) => command.name === name);
+}
+
 export function draftViewport(draft: string, cursor: number, width: number) {
   const chars = [...draft.replace(/\n/g, '⏎')];
   const room = Math.max(1, width);
@@ -191,8 +197,9 @@ export function ChatApp({
         });
       }
       // Enter: what was typed is the answer (where the agent takes one), else the options picked so far.
-      if (key.return && !draft.startsWith('/')) {
-        const typed = question.freeText ? draft.trim() : '';
+      // Only a known /command runs as one: `/work/repo` is an answer, and `//x` answers `/x`.
+      if (key.return && !isCommand(draft)) {
+        const typed = question.freeText ? (draft.startsWith('//') ? draft.slice(1) : draft).trim() : '';
         const chosen = question.multiple ? (partial[question.id] ?? []) : [];
         if (typed || chosen.length) {
           edit('', 0, false);
@@ -271,7 +278,7 @@ export function ChatApp({
   const { done, live, pending } = splitTranscript(view);
   const current = live.find((turn) => !turn.result);
   // A secret answer never shows as typed: the composer draws one dot per character.
-  const shownDraft = question?.secret && !draft.startsWith('/') ? '•'.repeat([...draft].length) : draft;
+  const shownDraft = question?.secret && !isCommand(draft) ? '•'.repeat([...draft].length) : draft;
   const viewport = draftViewport(shownDraft, cursor, width - 6);
   const spinner = SPINNER[Math.floor(now / 120) % SPINNER.length];
   const queued = view.session.queued;

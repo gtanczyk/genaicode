@@ -796,9 +796,9 @@ describe('terminal UI', () => {
     app.stdin.write('\r');
     await expect.poll(() => got).toEqual([{ color: ['Blue'], sizes: ['M'] }]);
 
-    // A typed answer, then one choice for the second question.
+    // A typed answer (a path is an answer, not a command), then one choice for the second question.
     await tick();
-    for (const char of 'Green') app.stdin.write(char);
+    for (const char of '/work/green') app.stdin.write(char);
     await tick();
     app.stdin.write('\r');
     await tick();
@@ -807,7 +807,7 @@ describe('terminal UI', () => {
     await tick();
     app.stdin.write('\r');
     await expect.poll(() => got.length).toBe(2);
-    expect(got[1]).toEqual({ color: ['Green'], sizes: ['S'] });
+    expect(got[1]).toEqual({ color: ['/work/green'], sizes: ['S'] });
 
     // The first question takes typed text, so an empty Enter skips; the second one skips on `n`.
     await tick();
