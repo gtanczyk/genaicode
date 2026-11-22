@@ -1274,6 +1274,27 @@ describe('web UI server', () => {
     expect(await done).toBe(0);
   });
 
+  it('stops when stdin ended while it was still starting', async () => {
+    const stdin = new PassThrough();
+    stdin.end();
+    stdin.resume();
+    await until(() => stdin.readableEnded);
+    const done = runWeb({
+      agents: [echoAgent()],
+      cwd: '/w',
+      env,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: () => true } as unknown as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    expect(await done).toBe(0);
+  });
+
   it('stops when stdin ends with exitWithStdin', async () => {
     const stdin = new PassThrough() as unknown as NodeJS.ReadStream;
     let errors = '';

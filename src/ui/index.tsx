@@ -161,6 +161,8 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
     const stop = () => settle(false);
     options.signal?.addEventListener('abort', stop, { once: true });
     if (watchEnd) {
+      // The host app's listener reads stdin from the start: its end may already be past.
+      if (options.stdin.readableEnded) return stop();
       options.stdin.once('end', stop);
       options.stdin.resume();
     }
@@ -259,6 +261,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (terminal) options.stdin.once('data', onData);
     else if (watchEnd) {
+      // The host app's listener reads stdin from the start: its end may already be past.
+      if (options.stdin.readableEnded) return onAbort();
       // Read (and drop) whatever arrives, so the end of the stream is noticed.
       options.stdin.once('end', onAbort);
       options.stdin.resume();

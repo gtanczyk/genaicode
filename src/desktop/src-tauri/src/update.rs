@@ -168,11 +168,13 @@ pub fn relaunch(app: &AppHandle) {
     };
     let app = app.clone();
     // Off the main thread: replacing the app takes a moment.
-    std::thread::spawn(move || match update.install(bytes) {
+    std::thread::spawn(move || match update.install(&bytes) {
         Ok(()) => app.restart(),
         Err(error) => {
-            // The next look downloads it again.
-            crate::update_ready(&app);
+            // It still waits: the page and the menu bar keep offering it, and it can be tried again.
+            if let Ok(mut ready) = READY.lock() {
+                *ready = Some((update, bytes));
+            }
             say(
                 &app,
                 MessageDialogKind::Error,
