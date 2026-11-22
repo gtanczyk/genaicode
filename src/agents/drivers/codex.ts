@@ -267,7 +267,7 @@ export function createCodexParser(): AgentOutputParser {
           if (paths.length) events.push({ type: 'file-change', paths });
         } else if (itemType === 'error') {
           const message = stringField(item, 'message');
-          if (message) events.push({ type: 'error', message });
+          if (message) events.push(codexProblem(message));
         }
       } else if (type === 'turn.completed') {
         outcome = { ok: true };
@@ -294,7 +294,7 @@ export function createCodexParser(): AgentOutputParser {
         events.push({ type: 'error', message });
       } else if (type === 'error') {
         const message = stringField(value, 'message');
-        if (message) events.push({ type: 'error', message });
+        if (message) events.push(codexProblem(message));
       }
       return events;
     },
@@ -316,4 +316,14 @@ function mcpResultText(result: unknown): string | undefined {
 
 function mcpName(item: Record<string, unknown>): string {
   return [stringField(item, 'server'), stringField(item, 'tool')].filter(Boolean).join('/') || 'mcp';
+}
+
+/**
+ * What Codex reports as an error, as an event. A note about its own configuration (a hook timeout
+ * it clamps) stops no turn, so it is `stderr`, not an error in the conversation.
+ */
+export function codexProblem(message: string): AgentEvent {
+  return /^\s*(warning:\s*)?clamping\b.*\bhook timeout\b/i.test(message)
+    ? { type: 'stderr', text: message }
+    : { type: 'error', message };
 }

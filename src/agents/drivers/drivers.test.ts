@@ -242,6 +242,19 @@ describe('codex driver', () => {
     ]);
     expect(parser.outcome?.()).toEqual({ ok: false, error: 'quota' });
   });
+
+  it('keeps a note about its own hook timeout out of the errors', () => {
+    const note = 'clamping SessionEnd hook timeout to 3s in ~/.codex/hooks.json';
+    expect(
+      feed(createCodexParser(), [
+        { type: 'error', message: note },
+        { type: 'error', message: 'stream disconnected' },
+      ]),
+    ).toEqual([
+      { type: 'stderr', text: note },
+      { type: 'error', message: 'stream disconnected' },
+    ]);
+  });
 });
 
 describe('muse driver', () => {

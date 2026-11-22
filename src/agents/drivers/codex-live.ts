@@ -6,7 +6,7 @@ import type { AgentEvent, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import type { AgentTask } from '../types.js';
-import { CODEX_SANDBOX, withCodexMcp, type CodexSandbox } from './codex.js';
+import { CODEX_SANDBOX, codexProblem, withCodexMcp, type CodexSandbox } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -265,7 +265,7 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
       return codexRateLimits(params.rateLimits);
     case 'error': {
       const message = stringField(params.error, 'message') ?? stringField(params, 'message');
-      return message ? [{ type: 'error', message }] : [];
+      return message ? [codexProblem(message)] : [];
     }
     default:
       return [];
