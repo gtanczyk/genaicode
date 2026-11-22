@@ -105,16 +105,18 @@ export function QuestionCard({
           ) : null}
         </fieldset>
       ))}
-      {onAnswer ? (
+      {onAnswer || onApprove ? (
         <div className="gc-buttons">
-          <button
-            type="button"
-            className="gc-btn gc-primary"
-            disabled={!complete}
-            onClick={() => onAnswer(request.id, answers())}
-          >
-            Send {questions.length > 1 ? 'answers' : 'answer'}
-          </button>
+          {onAnswer ? (
+            <button
+              type="button"
+              className="gc-btn gc-primary"
+              disabled={!complete}
+              onClick={() => onAnswer(request.id, answers())}
+            >
+              Send {questions.length > 1 ? 'answers' : 'answer'}
+            </button>
+          ) : null}
           {onApprove ? (
             <button
               type="button"

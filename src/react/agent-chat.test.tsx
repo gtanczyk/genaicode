@@ -573,10 +573,14 @@ describe('AgentChat', () => {
     click(button('Send answers')!);
     expect(onAnswer).toHaveBeenLastCalledWith('q-1', { color: ['Red'], sizes: ['L'] });
 
-    // Without onAnswer the options are there, disabled.
+    // Without onAnswer the options are there, disabled, and Skip still declines.
     render({ state: asking(), onApprove });
-    expect($('.gc-question .gc-waiting')?.textContent).toBe('Waiting for an answer…');
     expect($<HTMLFieldSetElement>('.gc-question fieldset').disabled).toBe(true);
+    expect(button('Send answer')).toBeUndefined();
+    click(button('Skip')!);
+    expect(onApprove).toHaveBeenLastCalledWith('q-1', 'deny');
+    render({ state: asking(), onApprove: undefined });
+    expect($('.gc-question .gc-waiting')?.textContent).toBe('Waiting for an answer…');
 
     // Answered, skipped, and left open by a turn that ended.
     const done = (extra: object) => {

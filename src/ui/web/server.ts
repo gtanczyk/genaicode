@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
+import { parseQuestionAnswers } from '../../agents/question-answers.js';
 import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
@@ -233,16 +234,8 @@ export function parseCommand(value: unknown): WebCommand | undefined {
     }
     case 'answer': {
       const id = text('id', 200);
-      const given = command.answers;
-      if (id === undefined || typeof given !== 'object' || given === null || Array.isArray(given)) return undefined;
-      const entries = Object.entries(given as Record<string, unknown>);
-      if (entries.length > 8) return undefined;
-      const answers: Record<string, string[]> = {};
-      for (const [key, value] of entries) {
-        if (key.length > 500 || !Array.isArray(value) || value.length > 21) return undefined;
-        if (!value.every((item) => typeof item === 'string' && item.length <= 10_000)) return undefined;
-        answers[key] = value as string[];
-      }
+      const answers = parseQuestionAnswers(command.answers);
+      if (id === undefined || !answers) return undefined;
       return { type: 'answer', id, answers };
     }
     case 'continue': {

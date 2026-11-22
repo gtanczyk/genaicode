@@ -355,6 +355,7 @@ describe('AppAgentChat', () => {
       view: vi.fn(),
       decide: vi.fn(),
       approve: vi.fn(),
+      answer: vi.fn(),
       changes: vi.fn(),
     };
     act(() => root.render(<AppAgentChat client={client} />));

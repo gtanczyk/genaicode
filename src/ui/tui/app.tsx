@@ -270,7 +270,9 @@ export function ChatApp({
 
   const { done, live, pending } = splitTranscript(view);
   const current = live.find((turn) => !turn.result);
-  const viewport = draftViewport(draft, cursor, width - 6);
+  // A secret answer never shows as typed: the composer draws one dot per character.
+  const shownDraft = question?.secret && !draft.startsWith('/') ? '•'.repeat([...draft].length) : draft;
+  const viewport = draftViewport(shownDraft, cursor, width - 6);
   const spinner = SPINNER[Math.floor(now / 120) % SPINNER.length];
   const queued = view.session.queued;
 

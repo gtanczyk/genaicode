@@ -824,6 +824,48 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('masks the answer to a secret question while it is typed', async () => {
+    const got: unknown[] = [];
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(
+            await task.onQuestion!({
+              id: 'q1',
+              kind: 'question',
+              questions: [{ id: 'token', question: 'Paste the token', options: [], freeText: true, secret: true }],
+            }),
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    for (const char of 's3cret') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('••••••');
+    expect(app.lastFrame()).not.toContain('s3cret');
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ token: ['s3cret'] }]);
+    app.unmount();
+    chat.close();
+  });
+
   it('switches to shell mode on ! like Claude Code, and back', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
