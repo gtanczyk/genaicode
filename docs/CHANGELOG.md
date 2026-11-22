@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- `genaicode chat`, `ui` and `tower` run Codex without its plugins too (`features.plugins=false`): a plugin from a remote marketplace started an MCP server that `codex mcp list` does not name, so it could not be switched off alone. The plugins' skills go with them; `--agent-mcp` keeps both. The same holds for `onlyTaskMcpServers` of the `codex` and `codexLive` drivers (#PRNUM)
+
 ### Internal
 
 - Desktop app (macOS): one title line. The window's buttons sit in the header of the page instead of in a title bar above it; the header moves the window and zooms it on a double click (#271, #272)
