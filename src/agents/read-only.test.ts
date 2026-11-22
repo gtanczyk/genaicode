@@ -77,6 +77,9 @@ describe('isReadOnlyCommand', () => {
       'cd -- && cat secret.txt',
       'cd - && ls',
       'cd && ls',
+      'git grep -nO./helper needle',
+      'rg -f/tmp/patterns input',
+      'grep -f../x foo',
       '',
     ])
       expect(ro(command), command).toBe(false);

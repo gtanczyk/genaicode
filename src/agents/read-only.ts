@@ -194,7 +194,7 @@ function readerCommand(words: string[], base: string, env: NodeJS.ProcessEnv): b
     if (
       rest.some((arg) =>
         ['--output', '--ext-diff', '--textconv', '--filters', '-O', '--open-files-in-pager'].some(
-          (bad) => arg === bad || arg.startsWith(`${bad}=`) || (bad === '-O' && arg.startsWith('-O')),
+          (bad) => arg === bad || arg.startsWith(`${bad}=`) || (bad === '-O' && /^-[^-]*O/.test(arg)),
         ),
       )
     )
@@ -244,6 +244,8 @@ function within(target: string, root: string): boolean {
 
 /** A path argument that reaches outside `root` (or under `~`), symlinks followed. */
 function outside(word: string, base: string, root: string): boolean {
+  // A short option with its value attached (`-f/etc/x`, `-C..`): too many forms to parse.
+  if (/^-[^-]/.test(word) && /[/~]|\.\./.test(word)) return true;
   for (const value of new Set([word, word.slice(word.indexOf('=') + 1)])) {
     if (!value) continue;
     if (value.startsWith('~')) return true;
