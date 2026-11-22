@@ -18,8 +18,7 @@ export function cask({ version, arm64, x86_64 }) {
   sha256 arm:   "${arm64}",
          intel: "${x86_64}"
 
-  url "https://github.com/gtanczyk/genaicode/releases/download/v#{version}/genaicode-#{version}-macos-#{arch}.dmg",
-      verified: "github.com/gtanczyk/genaicode/"
+  url "https://github.com/gtanczyk/genaicode/releases/download/v#{version}/genaicode-#{version}-macos-#{arch}.dmg"
   name "Genaicode"
   desc "Desktop app for the coding agents you already have"
   homepage "https://grzegorz.tanczyk.pl/genaicode/"
@@ -31,7 +30,8 @@ export function cask({ version, arm64, x86_64 }) {
 
   # The app offers its own updates and installs them when told to.
   auto_updates true
-  depends_on macos: ">= :ventura"
+  # Homebrew reads a bare release as "this one or newer". The app itself needs 13.5.
+  depends_on macos: :ventura
 
   app "Genaicode.app"
 
