@@ -12,7 +12,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - `genaicode ui`, `chat` and the desktop app: when Claude Code or Codex asks you to choose (`AskUserQuestion`, `request_user_input`), the question shows as a card with its options, a field for an answer of your own, and Skip. In the terminal a number chooses and Enter sends. Before, Claude's question was a plain Approve / Deny request and came back unanswered (#300)
 - `task.onQuestion` answers an agent's questions (requests of `kind: 'question'` with `questions`); `capabilities.questions` on `claude()`. `AgentSession.answer()`, `<AgentChat onAnswer>`, `claudeApprovalTool({ onQuestion })`; app agents answer through `POST /approvals/:id {answers}` and `<AppAgentChat>` shows the card. `auto-approve` does not answer questions (#300)
-- `ask_user`: agents without a question tool of their own (Codex outside Plan mode, Antigravity, Gemini, Muse...) can ask you to choose too. `genaicode chat`, `ui` and the desktop app give them this MCP tool, and its questions show as the same cards. `startQuestionChannel()` + `createAgentSession({ questions })` for your own sessions (#PRNUM)
+- `ask_user`: agents without a question tool of their own (Codex outside Plan mode, Antigravity, Gemini, Muse...) can ask you to choose too. `genaicode chat`, `ui` and the desktop app give them this MCP tool, and its questions show as the same cards. `startQuestionChannel()` + `createAgentSession({ questions })` for your own sessions (#302)
 
 ## 2.52.2 — 2026-11-22
 
