@@ -79,6 +79,13 @@ it('weighs a Codex thread whose counter started over by the tokens of the period
     path: file('r.jsonl', [counted(20, 1_000, 0, 0), counted(3, 100, 0, 0)]),
   });
   const fresh = session('codex', 'f', { startedAt: now - day, usage: { inputTokens: 100, outputTokens: 0 } });
+  // Both counters inside the period, in a thread that began there: read all the same.
+  const both = session('codex', 'b', {
+    startedAt: now - 3 * day,
+    usage: { inputTokens: 100, outputTokens: 0 },
+    path: file('b.jsonl', [counted(3, 1_000, 0, 0), counted(2, 100, 0, 0)]),
+  });
+  expect((await partsSince([both], since)).get(both)).toEqual({ part: 1, tokens: 1_100 });
   // A new counter already past the old one: its first report equals its own latest call.
   const first = counted(3, 2_000, 0, 0);
   const call = { input_tokens: 2_000, cached_input_tokens: 0, output_tokens: 0 };

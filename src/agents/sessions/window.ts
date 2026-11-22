@@ -133,9 +133,10 @@ export async function partsSince(
 ): Promise<Map<SessionInfo, WorkWithin>> {
   const parts = new Map<SessionInfo, WorkWithin>();
   const older = sessions.filter((session) => {
+    // A Codex rollout is read either way: its counter can start over, and the session's own figure is the last one.
+    if (session.source === 'codex' && session.path) return true;
     // Started in the window: all of it is there.
-    if (session.startedAt !== undefined && session.startedAt >= since) return false;
-    return true;
+    return !(session.startedAt !== undefined && session.startedAt >= since);
   });
   let next = 0;
   const work = async () => {
