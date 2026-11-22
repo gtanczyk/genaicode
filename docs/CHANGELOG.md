@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- `genaicode chat`, `ui` and `tower` run Codex without its plugins too (`features.plugins=false`): a plugin from a remote marketplace started an MCP server that `codex mcp list` does not name, so it could not be switched off alone. The plugins' skills go with them; `--agent-mcp` keeps both. The same holds for `onlyTaskMcpServers` of the `codex` and `codexLive` drivers (#PRNUM)
+- `genaicode chat`, `ui` and `tower` run Codex without its plugins too (`features.plugins=false`): a plugin from a remote marketplace started an MCP server that `codex mcp list` does not name, so it could not be switched off alone. The plugins' skills go with them; `--agent-mcp` keeps both. The same holds for `onlyTaskMcpServers` of the `codex` and `codexLive` drivers (#273)
 
 ### Internal
 
