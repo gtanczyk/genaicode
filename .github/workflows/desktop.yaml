@@ -1,6 +1,7 @@
 name: Desktop app
 
-# Builds the macOS app (ad-hoc signed, not notarized) whenever the shell or its build changes.
+# Builds the app whenever the shell or its build changes: on macOS for both kinds of Mac (ad-hoc
+# signed, not notarized), on Linux as an AppImage and a .deb, started once on a virtual screen.
 # On push to any branch: pull_request runs do not start for PRs opened by the Claude app here.
 on:
   push:
@@ -16,7 +17,12 @@ concurrency:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Apple silicon and Intel: each builds on its own kind of Mac, so the runtime is native.
+        os: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -56,4 +62,44 @@ jobs:
         with:
           name: genaicode-macos-${{ runner.arch }}
           path: genaicode-macos.zip
+          retention-days: 14
+
+  linux:
+    # The oldest Ubuntu on offer: what is built there runs on newer systems, not the other way round.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/desktop/src-tauri/target
+          key: desktop-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/desktop/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-${{ runner.os }}-${{ runner.arch }}-
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev libfuse2 xvfb dbus-x11
+      - run: npm ci
+      - run: npm run desktop:prepare
+      - name: Test the shell
+        working-directory: src/desktop/src-tauri
+        run: cargo test
+      - name: Build the app
+        working-directory: src/desktop
+        run: npx tauri build --bundles deb,appimage
+      - name: Check what the package carries and that it starts
+        run: bash src/desktop/scripts/check-linux.sh src/desktop/src-tauri/target/release/bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: genaicode-linux-${{ runner.arch }}
+          path: |
+            src/desktop/src-tauri/target/release/bundle/deb/*.deb
+            src/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
           retention-days: 14

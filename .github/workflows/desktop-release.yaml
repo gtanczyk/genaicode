@@ -1,7 +1,12 @@
 name: Desktop app release
 
-# Builds the macOS app signed with the Developer ID certificate, has Apple notarize it and adds the
-# .dmg to the GitHub Release of that version. Two doors:
+# Builds the desktop app of a released version and adds it to that version's GitHub Release:
+#   macOS   signed with the Developer ID certificate and notarized by Apple, a .dmg for Apple
+#           silicon and one for Intel
+#   Linux   an AppImage and a .deb (x86_64)
+# with `latest.json` and the signed archives running apps update from, a copy of each download
+# under a name without the version (`releases/latest/download/Genaicode-macos-arm64.dmg`), and the
+# Homebrew cask in gtanczyk/homebrew-genaicode. Two doors:
 #   - "Publish to npm" finished: the app of the version it released
 #   - Run workflow in Actions, for a version that already has a v* tag
 # Secrets of the `apple` environment (limited to the default branch), never in the code:
@@ -12,9 +17,11 @@ name: Desktop app release
 #   APPLE_API_KEY_P8             the key itself, the text of AuthKey_<id>.p8
 #   TAURI_SIGNING_PRIVATE_KEY    the key that signs the app's own updates (`npx tauri signer generate`);
 #                                its public half is `plugins.updater.pubkey` in tauri.conf.json.
-#                                Without it the release gets the .dmg only, and no app learns of it.
+#                                Without it the release gets the downloads only, and no app learns of it.
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   the password of that key, when it has one
-# Without APPLE_CERTIFICATE the run stops before building: the plain build is desktop.yaml's.
+#   HOMEBREW_TAP_TOKEN           a token that may write the contents of gtanczyk/homebrew-genaicode
+#                                (fine-grained, that repository only). Without it the cask stays as it is.
+# Without APPLE_CERTIFICATE the macOS jobs stop before building: the plain build is desktop.yaml's.
 on:
   workflow_run:
     workflows: ['Publish to npm']
@@ -33,42 +40,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  macos:
+  # Which version: always a v* tag of this repository that is on the default branch.
+  plan:
     # Only a release this repository made itself: never a run that a fork's pull request started.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event != 'pull_request' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
-    runs-on: macos-latest
-    # The Apple secrets live in this environment, which only the default branch may use.
-    environment: apple
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     steps:
-      - name: Signing is set up
-        id: signing
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-        run: |
-          if [ -z "$APPLE_CERTIFICATE" ]; then
-            echo "::notice::No APPLE_CERTIFICATE secret: nothing to sign with, no desktop release."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/checkout@v4
-        if: steps.signing.outputs.ready == 'true'
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
-        if: steps.signing.outputs.ready == 'true'
         with:
           node-version: 22
-      # What gets built and signed is always a v* tag of this repository: the version asked for by
-      # hand, the one the triggering publish released, else the default branch's.
-      - name: Check out the released version
-        if: steps.signing.outputs.ready == 'true'
+      # The version asked for by hand, the one the triggering publish released, else the default branch's.
+      - name: Find the released version
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,7 +77,7 @@ jobs:
               echo "::error::The publish run names no commit."
               exit 1
             fi
-            # Read as data: nothing of that commit runs before its tag is checked out.
+            # Read as data: nothing of that commit runs here.
             version="$(git show "$PUBLISHED:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")"
           fi
           if [ -z "$version" ]; then
@@ -98,8 +92,7 @@ jobs:
             echo "::error::Tag v$version is not on $DEFAULT_BRANCH."
             exit 1
           fi
-          git checkout --detach "refs/tags/v$version"
-          if [ "$(node -p "require('./package.json').version")" != "$version" ]; then
+          if [ "$(git show "refs/tags/v$version:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")" != "$version" ]; then
             echo "::error::Tag v$version holds another version in package.json."
             exit 1
           fi
@@ -107,9 +100,50 @@ jobs:
           if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::No GitHub Release v$version: the .dmg stays a run artifact."
+            echo "::notice::No GitHub Release v$version: the downloads stay run artifacts."
             echo "release=false" >> "$GITHUB_OUTPUT"
           fi
+
+  macos:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        # Apple silicon and Intel: each builds on its own kind of Mac, so the runtime is native.
+        os: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    # The Apple secrets live in this environment, which only the default branch may use.
+    environment: apple
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Signing is set up
+        id: signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::notice::No APPLE_CERTIFICATE secret: nothing to sign with, no macOS release."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          ref: refs/tags/v${{ needs.plan.outputs.version }}
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
+      - uses: actions/setup-node@v4
+        if: steps.signing.outputs.ready == 'true'
+        with:
+          node-version: 22
       # No build cache: what signs with the certificate is built from the checkout alone.
       - if: steps.signing.outputs.ready == 'true'
         run: npm ci
@@ -167,7 +201,6 @@ jobs:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           key="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
@@ -186,9 +219,6 @@ jobs:
           rm "$key"
       - name: Check what Apple will say on another Mac
         if: steps.signing.outputs.ready == 'true'
-        id: dmg
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           bundle="src/desktop/src-tauri/target/release/bundle"
@@ -197,12 +227,10 @@ jobs:
           spctl --assess --type execute --verbose=2 "$app"
           xcrun stapler validate "$app"
           "$app/Contents/MacOS/node" "$app/Contents/Resources/runtime/node_modules/genaicode/dist/cli.js" --version
+          mkdir out
           built="$(ls "$bundle"/dmg/*.dmg | head -1)"
-          out="genaicode-$VERSION-macos-$(uname -m).dmg"
-          cp "$built" "$out"
-          ls -lh "$out"
-          echo "file=$out" >> "$GITHUB_OUTPUT"
-          # What running apps update from: the signed archive of the app and the file that names it.
+          cp "$built" "out/genaicode-$VERSION-macos-$(uname -m).dmg"
+          # What running apps update from: the signed archive of the app, and what latest.json says of it.
           archive="$bundle/macos/Genaicode.app.tar.gz"
           if [ -f "$archive" ] && [ -f "$archive.sig" ]; then
             mkdir "$RUNNER_TEMP/unpacked"
@@ -213,36 +241,193 @@ jobs:
               *) target=darwin-x86_64 ;;
             esac
             update="genaicode-$VERSION-macos-$(uname -m).app.tar.gz"
-            cp "$archive" "$update"
-            VERSION="$VERSION" TARGET="$target" SIGNATURE="$(cat "$archive.sig")" \
-              URL="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/$update" \
-              node -e 'const { VERSION, TARGET, SIGNATURE, URL } = process.env;
-                require("fs").writeFileSync("latest.json", JSON.stringify({ version: VERSION, pub_date: new Date().toISOString(),
-                  platforms: { [TARGET]: { signature: SIGNATURE, url: URL } } }, null, 2) + "\n");'
-            cat latest.json
-            echo "update=$update" >> "$GITHUB_OUTPUT"
+            cp "$archive" "out/$update"
+            node .release-tools/src/desktop/scripts/release-files.mjs platform --target "$target" --file "$update" \
+              --signature "$archive.sig" --version "$VERSION" > "out/$target.platform.json"
           fi
+          ls -lh out
       - uses: actions/upload-artifact@v4
         if: steps.signing.outputs.ready == 'true'
         with:
-          name: genaicode-macos-dmg
-          path: ${{ steps.dmg.outputs.file }}
+          name: desktop-${{ matrix.os }}
+          path: out/
           retention-days: 30
-      - name: Add the .dmg to the release
-        if: steps.signing.outputs.ready == 'true' && steps.version.outputs.release == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          FILE: ${{ steps.dmg.outputs.file }}
-          UPDATE: ${{ steps.dmg.outputs.update }}
-        run: |
-          set -euo pipefail
-          gh release upload "v$VERSION" "$FILE" --clobber --repo "$GITHUB_REPOSITORY"
-          # latest.json goes last: once it is there, running apps are offered this version.
-          if [ -n "$UPDATE" ]; then
-            gh release upload "v$VERSION" "$UPDATE" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release upload "v$VERSION" latest.json --clobber --repo "$GITHUB_REPOSITORY"
-          fi
       - name: Remove the keychain
         if: always() && steps.signing.outputs.ready == 'true'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+  linux:
+    needs: plan
+    # The oldest Ubuntu on offer: what is built there runs on newer systems, not the other way round.
+    runs-on: ubuntu-22.04
+    # For the key that signs updates. A Linux package itself is not signed.
+    environment: apple
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/v${{ needs.plan.outputs.version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
+      # A tag from before the app had a Linux build has nothing to build here.
+      - name: This version builds on Linux
+        id: linux
+        run: |
+          if [ -f src/desktop/src-tauri/tauri.linux.conf.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::v$VERSION has no Linux build of the app."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: System packages
+        if: steps.linux.outputs.ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev libfuse2 xvfb dbus-x11
+      - if: steps.linux.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.linux.outputs.ready == 'true'
+        run: npm run desktop:prepare
+      - name: Build
+        if: steps.linux.outputs.ready == 'true'
+        working-directory: src/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          config="{\"version\":\"$VERSION\"}"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            config="{\"version\":\"$VERSION\",\"bundle\":{\"createUpdaterArtifacts\":true}}"
+          else
+            unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            echo "::notice::No TAURI_SIGNING_PRIVATE_KEY secret: this release carries no update for running apps."
+          fi
+          npx tauri build --bundles deb,appimage --config "$config"
+      - name: Check what the package carries and that it starts
+        if: steps.linux.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          bundle="src/desktop/src-tauri/target/release/bundle"
+          bash .release-tools/src/desktop/scripts/check-linux.sh "$bundle"
+          mkdir out
+          appimage="$(ls "$bundle"/appimage/*.AppImage | head -1)"
+          name="genaicode-$VERSION-linux-$(uname -m).AppImage"
+          cp "$appimage" "out/$name"
+          cp "$(ls "$bundle"/deb/*.deb | head -1)" "out/genaicode-$VERSION-linux-$(uname -m).deb"
+          # An AppImage is its own update: the same file, with what latest.json says of it.
+          if [ -f "$appimage.sig" ]; then
+            node .release-tools/src/desktop/scripts/release-files.mjs platform --target "linux-$(uname -m)" --file "$name" \
+              --signature "$appimage.sig" --version "$VERSION" > "out/linux-$(uname -m).platform.json"
+          fi
+          ls -lh out
+      - uses: actions/upload-artifact@v4
+        if: steps.linux.outputs.ready == 'true'
+        with:
+          name: desktop-linux
+          path: out/
+          retention-days: 30
+
+  # One step for every platform, so latest.json names them all and goes up last.
+  publish:
+    needs: [plan, macos, linux]
+    # A platform that failed must not keep the others from their release.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    # For the token of the Homebrew tap.
+    environment: apple
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The release's own scripts come from the default branch: a tag from before they existed has none.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .release-tools
+          sparse-checkout: src/desktop/scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: out
+          merge-multiple: true
+      - name: What was built
+        id: files
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ls -lh out
+          if [ -z "$(ls out)" ]; then
+            echo "::notice::No platform built an app of v$VERSION."
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "any=true" >> "$GITHUB_OUTPUT"
+          node .release-tools/src/desktop/scripts/release-files.mjs latest --version "$VERSION" --from out
+      - name: Add the downloads to the release
+        if: steps.files.outputs.any == 'true' && needs.plan.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for file in out/genaicode-"$VERSION"-*; do
+            gh release upload "v$VERSION" "$file" --clobber --repo "$GITHUB_REPOSITORY"
+            # The same download under a name that does not change: what a link to the newest one uses.
+            case "$file" in
+              *.dmg | *.AppImage | *.deb)
+                stable="out/Genaicode-${file#out/genaicode-"$VERSION"-}"
+                cp "$file" "$stable"
+                gh release upload "v$VERSION" "$stable" --clobber --repo "$GITHUB_REPOSITORY"
+                ;;
+            esac
+          done
+          # latest.json goes last: once it is there, running apps are offered this version.
+          if [ -f out/latest.json ]; then
+            cat out/latest.json
+            gh release upload "v$VERSION" out/latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+      # `brew install --cask gtanczyk/genaicode/genaicode` reads this file of the tap.
+      - name: Update the Homebrew cask
+        if: steps.files.outputs.any == 'true' && needs.plan.outputs.release == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          arm="out/genaicode-$VERSION-macos-arm64.dmg"
+          intel="out/genaicode-$VERSION-macos-x86_64.dmg"
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::notice::No HOMEBREW_TAP_TOKEN secret: the cask stays as it is."
+            exit 0
+          fi
+          if [ ! -f "$arm" ] || [ ! -f "$intel" ]; then
+            echo "::warning::The cask needs the .dmg of both kinds of Mac: it stays as it is."
+            exit 0
+          fi
+          tap="$RUNNER_TEMP/tap"
+          git clone --depth 1 "https://x-access-token:$HOMEBREW_TAP_TOKEN@github.com/gtanczyk/homebrew-genaicode.git" "$tap"
+          mkdir -p "$tap/Casks"
+          node .release-tools/src/desktop/scripts/cask.mjs --version "$VERSION" \
+            --arm64 "$(sha256sum "$arm" | cut -d' ' -f1)" --x86_64 "$(sha256sum "$intel" | cut -d' ' -f1)" \
+            > "$tap/Casks/genaicode.rb"
+          cd "$tap"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "The cask already names $VERSION."
+            exit 0
+          fi
+          git add Casks/genaicode.rb
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "genaicode $VERSION"
+          git push

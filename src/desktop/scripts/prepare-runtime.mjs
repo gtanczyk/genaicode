@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Puts what the desktop app ships beside its shell into src-tauri/:
 //   binaries/node-<target triple>   the official Node.js binary, checked against node-runtime.json
+//   runtime/bin/node                the same binary, on Linux, where the app runs it from
 //   runtime/node_modules/genaicode  this repository, packed and installed with its runtime dependencies
 //
 //   node src/desktop/scripts/prepare-runtime.mjs [--target <triple>] [--package <npm spec>]
@@ -72,6 +73,7 @@ async function node() {
     writeFileSync(binary, readFileSync(join(scratch, name, 'bin', 'node')));
     chmodSync(binary, 0o755);
     console.log(`Node.js ${pinned.version} (${platform}) -> ${binary}`);
+    return binary;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -105,5 +107,14 @@ function genaicode() {
   }
 }
 
-await node();
+const binary = await node();
 genaicode();
+if (platform.startsWith('linux-')) {
+  // A Linux package puts what stands beside the executable into /usr/bin, where a `node` of ours
+  // would replace the system's: there Node.js goes into the runtime instead (tauri.linux.conf.json).
+  const inside = join(tauri, 'runtime', 'bin', 'node');
+  mkdirSync(dirname(inside), { recursive: true });
+  writeFileSync(inside, readFileSync(binary));
+  chmodSync(inside, 0o755);
+  console.log(`Node.js -> ${inside}`);
+}
