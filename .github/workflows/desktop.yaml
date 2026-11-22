@@ -45,7 +45,7 @@ jobs:
       - name: Check what the app carries
         run: |
           set -euo pipefail
-          app="src/desktop/src-tauri/target/release/bundle/macos/genaicode.app"
+          app="src/desktop/src-tauri/target/release/bundle/macos/Genaicode.app"
           "$app/Contents/MacOS/node" --version
           "$app/Contents/MacOS/node" "$app/Contents/Resources/runtime/node_modules/genaicode/dist/cli.js" --version
           codesign --verify --deep --strict --verbose=2 "$app"
