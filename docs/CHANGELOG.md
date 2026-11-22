@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.49.1 — 2026-11-22
+
 ### Fixed
 
 - `genaicode ui`: the row under the prompt field is lighter. The line of key hints under it is gone (they are a tooltip on the field), the bark button left the row (`/bark` stays), and the model and effort controls take less room. `<AgentChat composerTitle>` sets such a tooltip for a host (#275)
