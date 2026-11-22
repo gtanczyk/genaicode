@@ -158,6 +158,7 @@ const RISKY_LONG = [
   'pre-glob',
   'hostname-bin',
   'follow',
+  'dereference',
   'dereference-recursive',
   'exec',
   'delete',
@@ -205,6 +206,7 @@ function readerCommand(words: string[], base: string, env: NodeJS.ProcessEnv): b
     return GIT_READERS.has(sub) && !gitRunsHelpers(dir, env);
   }
   // Following symlinks could read outside the project.
+  if ((name === 'ls' || name === 'du' || name === 'find') && args.some((arg) => /^-[^-]*[LH]/.test(arg))) return false;
   if (name === 'find') return !args.some((arg) => FIND_WRITERS.has(arg) || arg === '-L' || arg === '-follow');
   if (name === 'sed') {
     // Only `sed -n '<lines>p'`: other scripts can write (`w`) or run (`e`).
@@ -304,7 +306,7 @@ function readsOnly(command: string | readonly string[], base: string, root: stri
     // Later commands run where `cd` went.
     if (name === 'cd') {
       // `cd -`, `cd --` and options go to `$OLDPWD`, `$HOME` and the like.
-      if (words.length !== 2 || words[1]!.startsWith('-')) return false;
+      if (words.length !== 2 || words[1]!.startsWith('-') || env.CDPATH) return false;
       // Only where the next command surely runs there: not in a pipe, not after `||`.
       if ((ops[i] !== undefined && ops[i] !== '&&') || (ops[i + 1] !== undefined && ops[i + 1] !== '&&')) return false;
       const next = realTarget(path.resolve(base, words[1]!));

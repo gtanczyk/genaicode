@@ -80,6 +80,9 @@ describe('isReadOnlyCommand', () => {
       'git grep -nO./helper needle',
       'git log --help',
       'diff -r a b',
+      'ls -RL .',
+      'ls --dereference -R',
+      'du -L .',
       'rg -f/tmp/patterns input',
       'grep -f../x foo',
       '',
@@ -152,6 +155,7 @@ describe('paths through symlinks and the command directory', () => {
     expect(isReadOnlyCommand('cat linked/*', project)).toBe(false);
     expect(isReadOnlyCommand('cd linked && cat key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cd src && cat a.ts', project)).toBe(true);
+    expect(isReadOnlyCommand('cd src && cat a.ts', project, { CDPATH: secret })).toBe(false);
     expect(isReadOnlyCommand('cd src && cat ../../secret/key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cd missing || cat ../secret/key.txt', project)).toBe(false);
     expect(isReadOnlyCommand('cd missing && cat ../secret/key.txt', project)).toBe(false);
