@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Internal
 
 - Desktop app: a release workflow builds the macOS app after each npm release, signs it with the Developer ID certificate, has Apple notarize it and adds the `.dmg` to the GitHub Release. It runs once the Apple secrets are in the repository (#276)
+- Desktop app: its name is Genaicode, with a capital letter (the app, its window and its menu bar items), and a second launch shows the app that already runs instead of starting another (#277)
 
 ## 2.49.1 — 2026-11-22
 

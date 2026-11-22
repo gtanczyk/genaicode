@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
           bundle="src/desktop/src-tauri/target/release/bundle"
-          app="$bundle/macos/genaicode.app"
+          app="$bundle/macos/Genaicode.app"
           codesign --verify --deep --strict --verbose=2 "$app"
           spctl --assess --type execute --verbose=2 "$app"
           xcrun stapler validate "$app"

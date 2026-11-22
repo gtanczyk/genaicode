@@ -162,7 +162,7 @@ fn save_folder(app: &AppHandle, folder: &Path) {
 fn fail(app: &AppHandle, message: String) {
     app.dialog()
         .message(message)
-        .title("genaicode")
+        .title("Genaicode")
         .kind(MessageDialogKind::Error)
         .show(|_| {});
 }
@@ -237,7 +237,7 @@ fn try_start(app: &AppHandle, folder: &Path) -> Result<(), String> {
             .file_name()
             .unwrap_or(folder.as_os_str())
             .to_string_lossy();
-        let _ = window.set_title(&format!("genaicode — {name}"));
+        let _ = window.set_title(&format!("Genaicode — {name}"));
     }
 
     let app = app.clone();
@@ -381,7 +381,7 @@ fn tower_menu(
         menu.append(&MenuItem::new(app, line, false, none)?)?;
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&MenuItem::with_id(app, SHOW, "Show genaicode", true, none)?)?;
+    menu.append(&MenuItem::with_id(app, SHOW, "Show Genaicode", true, none)?)?;
     menu.append(&MenuItem::with_id(
         app,
         TRAY_OPEN_FOLDER,
@@ -389,7 +389,7 @@ fn tower_menu(
         true,
         none,
     )?)?;
-    menu.append(&MenuItem::with_id(app, QUIT, "Quit genaicode", true, none)?)?;
+    menu.append(&MenuItem::with_id(app, QUIT, "Quit Genaicode", true, none)?)?;
     Ok(menu)
 }
 
@@ -409,8 +409,8 @@ fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
         let count = tower::count(&shell.waiting);
         let _ = tray.set_title(count.as_deref());
         let _ = tray.set_tooltip(Some(match &count {
-            Some(count) => format!("genaicode: {count} waiting for you"),
-            None => "genaicode".to_string(),
+            Some(count) => format!("Genaicode: {count} waiting for you"),
+            None => "Genaicode".to_string(),
         }));
     });
 }
@@ -535,7 +535,7 @@ fn open_session(app: &AppHandle, index: usize) {
             folder.display(),
             current.display()
         ))
-        .title("genaicode")
+        .title("Genaicode")
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Open".into(),
             "Cancel".into(),
@@ -571,12 +571,16 @@ fn on_menu(app: &AppHandle, id: &str) {
 
 pub fn run() {
     let app = tauri::Builder::default()
+        // A second launch (another copy of the app, a second click) shows the one that runs.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show(app)
+        }))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![open_folder])
         .manage(ShellState::default())
         .on_window_event(|window, event| {
             // On macOS the app lives on in the menu bar: closing the window hides it, and the
-            // Dock icon or "Show genaicode" brings it back. Quit ends it.
+            // Dock icon or "Show Genaicode" brings it back. Quit ends it.
             if let WindowEvent::CloseRequested { api, .. } = event {
                 if cfg!(target_os = "macos") {
                     api.prevent_close();
@@ -599,7 +603,7 @@ pub fn run() {
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
             let mut tray = TrayIconBuilder::with_id(TRAY)
-                .tooltip("genaicode")
+                .tooltip("Genaicode")
                 .menu(&tower_menu(handle, &[], &[], &[])?)
                 .show_menu_on_left_click(true);
             if let Some(icon) = app.default_window_icon() {

@@ -37,7 +37,7 @@ Needs Rust (stable), Node.js 22+ and, on Linux, the
 npm ci
 npm run desktop:prepare   # downloads Node.js, packs genaicode into src-tauri/runtime
 npm run desktop:dev       # run the shell from source
-npm run desktop:build     # genaicode.app and a .dmg under src-tauri/target/release/bundle
+npm run desktop:build     # Genaicode.app and a .dmg under src-tauri/target/release/bundle
 ```
 
 Run `desktop:prepare` again after changing genaicode itself. An unsigned local build runs on the
