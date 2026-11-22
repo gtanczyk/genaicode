@@ -1,5 +1,6 @@
 import type { TopicStore } from './topics.js';
 import type { SessionInfo } from './types.js';
+import type { WorkWithin } from './window.js';
 
 /** One part of an agent's work: a topic, or what has none. */
 export interface WorkShare {
@@ -46,7 +47,7 @@ const tokens = (session: SessionInfo): number => {
 export function topicShares(
   sessions: readonly SessionInfo[],
   store: Pick<TopicStore, 'topics' | 'sessions'>,
-  within?: ReadonlyMap<SessionInfo, number>,
+  within?: ReadonlyMap<SessionInfo, WorkWithin>,
 ): AgentShares[] {
   const names = new Map(store.topics.map((topic) => [topic.id, topic.name]));
   const agents = new Map<string, SessionInfo[]>();
@@ -54,8 +55,11 @@ export function topicShares(
   const found: AgentShares[] = [];
   for (const [agent, own] of agents) {
     const by = own.some((session) => (session.costUsd ?? 0) > 0) ? 'cost' : 'tokens';
-    const weight = (session: SessionInfo) =>
-      (by === 'cost' ? (session.costUsd ?? 0) : tokens(session)) * (within?.get(session) ?? 1);
+    const weight = (session: SessionInfo) => {
+      const period = within?.get(session);
+      if (by === 'tokens' && period?.tokens !== undefined) return period.tokens;
+      return (by === 'cost' ? (session.costUsd ?? 0) : tokens(session)) * (period?.part ?? 1);
+    };
     const parts = new Map<string, WorkShare & { weight: number }>();
     let total = 0;
     for (const session of own) {

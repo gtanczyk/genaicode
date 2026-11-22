@@ -53,7 +53,8 @@ it('counts only what a Codex thread did in the period, without input read again 
     usage: { inputTokens: 50_800, cachedInputTokens: 50_000, outputTokens: 200, totalTokens: 51_000 },
   });
   const parts = await partsSince([old, fresh], since);
-  expect(parts.get(old)).toBeCloseTo(1_000 / 101_000, 5);
+  expect(parts.get(old)?.part).toBeCloseTo(1_000 / 101_000, 5);
+  expect(parts.get(old)?.tokens).toBe(1_000);
   expect(parts.has(fresh)).toBe(false);
 
   const store = {
@@ -70,6 +71,20 @@ it('counts only what a Codex thread did in the period, without input read again 
   expect(within.map((share) => share.share)).toEqual([0.5, 0.5]);
 });
 
+it('weighs a Codex thread whose counter started over by the tokens of the period', async () => {
+  const resumed = session('codex', 'r', {
+    startedAt: now - 30 * day,
+    // The session's own figure is the latest counter only.
+    usage: { inputTokens: 100, outputTokens: 0, totalTokens: 100 },
+    path: file('r.jsonl', [counted(20, 1_000, 0, 0), counted(3, 100, 0, 0)]),
+  });
+  const fresh = session('codex', 'f', { startedAt: now - day, usage: { inputTokens: 100, outputTokens: 0 } });
+  const parts = await partsSince([resumed, fresh], since);
+  expect(parts.get(resumed)).toEqual({ part: 100 / 1_100, tokens: 100 });
+  const store = { topics: [{ id: 'a', name: 'A' }], sessions: { 'codex:r': 'a' } };
+  expect(topicShares([resumed, fresh], store, parts)[0]!.shares.map((share) => share.share)).toEqual([0.5, 0.5]);
+});
+
 it('weighs a Claude Code transcript by the answers of the period, each counted once', async () => {
   const answer = (id: string, daysAgo: number, output: number) => ({
     type: 'assistant',
@@ -81,7 +96,7 @@ it('weighs a Claude Code transcript by the answers of the period, each counted o
     costUsd: 10,
     path: file('c.jsonl', [answer('m1', 15, 300), answer('m2', 2, 100), answer('m2', 2, 100)]),
   });
-  expect((await partsSince([claude], since)).get(claude)).toBeCloseTo(0.25, 5);
+  expect((await partsSince([claude], since)).get(claude)?.part).toBeCloseTo(0.25, 5);
 });
 
 it('estimates from the lifetime where no file says, and keeps a session whose start is unknown whole', async () => {
@@ -93,7 +108,7 @@ it('estimates from the lifetime where no file says, and keeps a session whose st
   });
   const unknown = session('gemini', 'u', {});
   const parts = await partsSince([noFile, gone, unknown], since);
-  expect(parts.get(noFile)).toBeCloseTo(6 / 14, 5);
-  expect(parts.get(gone)).toBeCloseTo(6 / 14, 5);
-  expect(parts.get(unknown)).toBe(1);
+  expect(parts.get(noFile)?.part).toBeCloseTo(6 / 14, 5);
+  expect(parts.get(gone)?.part).toBeCloseTo(6 / 14, 5);
+  expect(parts.get(unknown)).toEqual({ part: 1 });
 });

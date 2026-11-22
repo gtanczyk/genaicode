@@ -8,6 +8,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const count = (value: unknown): number => (typeof value === 'number' && value > 0 ? value : 0);
 
+/** What a session did in a period. */
+export interface WorkWithin {
+  /** The part of its whole life's work, 0 to 1. */
+  part: number;
+  /** The tokens it used there, where its file counts them: weigh by these, not by `part` of its total. */
+  tokens?: number;
+}
+
 /** Each line of a session file, or of the `.zst` Codex made of it. Nothing when neither can be read. */
 async function eachLine(file: string, take: (line: string) => void): Promise<boolean> {
   try {
@@ -31,7 +39,7 @@ async function eachLine(file: string, take: (line: string) => void): Promise<boo
  * thread's running total with a time after every model call. Input it read again from its cache
  * is left out, or a long thread would outweigh everything by its length alone.
  */
-async function codexPart(file: string, since: number): Promise<number | undefined> {
+async function codexPart(file: string, since: number): Promise<WorkWithin | undefined> {
   let total = 0;
   let before = 0;
   let previous = 0;
@@ -59,7 +67,8 @@ async function codexPart(file: string, since: number): Promise<number | undefine
     const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : NaN;
     if (at < since) before = total;
   });
-  return done && total > 0 ? (total - before) / total : undefined;
+  // The tokens themselves too: the session's own figure is its latest counter, not this sum.
+  return done && total > 0 ? { part: (total - before) / total, tokens: total - before } : undefined;
 }
 
 /**
@@ -105,13 +114,16 @@ function partByTime(session: SessionInfo, since: number): number {
 }
 
 /**
- * The part (0 to 1) of each session's work that was done at or after `since`. A session's own
+ * What each session did at or after `since`: the part (0 to 1) of its work, and the tokens where counted. A session's own
  * figures cover its whole life, so one old, long session touched once in the window would
  * otherwise count as if all of it happened there. Read from the session's file where it keeps
  * times (Codex, Claude Code); elsewhere estimated from how much of its lifetime the window covers.
  */
-export async function partsSince(sessions: readonly SessionInfo[], since: number): Promise<Map<SessionInfo, number>> {
-  const parts = new Map<SessionInfo, number>();
+export async function partsSince(
+  sessions: readonly SessionInfo[],
+  since: number,
+): Promise<Map<SessionInfo, WorkWithin>> {
+  const parts = new Map<SessionInfo, WorkWithin>();
   const older = sessions.filter((session) => {
     // Started in the window: all of it is there.
     if (session.startedAt !== undefined && session.startedAt >= since) return false;
@@ -121,10 +133,13 @@ export async function partsSince(sessions: readonly SessionInfo[], since: number
   const work = async () => {
     while (next < older.length) {
       const session = older[next++]!;
-      let part: number | undefined;
-      if (session.path && session.source === 'codex') part = await codexPart(session.path, since);
-      else if (session.path && session.source === 'claude') part = await claudePart(session.path, since);
-      parts.set(session, part ?? partByTime(session, since));
+      let within: WorkWithin | undefined;
+      if (session.path && session.source === 'codex') within = await codexPart(session.path, since);
+      else if (session.path && session.source === 'claude') {
+        const part = await claudePart(session.path, since);
+        if (part !== undefined) within = { part };
+      }
+      parts.set(session, within ?? { part: partByTime(session, since) });
     }
   };
   await Promise.all(Array.from({ length: 8 }, work));
