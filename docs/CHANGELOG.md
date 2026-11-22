@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Internal
+
+- Desktop app (macOS): one title line. The window's buttons sit in the header of the page instead of in a title bar above it; the header moves the window and zooms it on a double click (#PRNUM)
+
 ## 2.49.0 — 2026-11-22
 
 ### Added

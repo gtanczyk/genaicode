@@ -47,6 +47,8 @@
     </style>
   </head>
   <body>
+    <!-- On macOS the window has no title bar of its own: this strip moves it. -->
+    <div data-tauri-drag-region style="position: fixed; inset: 0 0 auto 0; height: 52px"></div>
     <main>
       <h1>genaicode</h1>
       <p>Choose a project folder to start a chat with your coding agent there.</p>
