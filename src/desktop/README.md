@@ -83,7 +83,7 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 
 ## Updates
 
-The app looks for a newer version at start, every six hours while it runs and on **Check for
+The app looks for a newer version at start, every half hour while it runs and on **Check for
 Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Relaunch to update** in the
 window's header and in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
 stops the agents it runs. The shell tells the page through the server it started: it writes
