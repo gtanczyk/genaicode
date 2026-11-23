@@ -656,4 +656,112 @@ describe('rich content in genaicode ui (browser)', () => {
       await running;
     }
   }, 45_000);
+
+  it('resolves all streamed local images without losing in-flight batches and re-resolves expired capabilities', async () => {
+    mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+    const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'rich-img-retry-'));
+    cleanupDirs.push(root);
+    writeFileSync(join(root, 'one.png'), TINY_PNG);
+    writeFileSync(join(root, 'two.png'), TINY_PNG);
+
+    const stop = new AbortController();
+    let emitSecond!: () => void;
+    const waitSecond = new Promise<void>((resolve) => {
+      emitSecond = resolve;
+    });
+
+    const agent = makeAgent('streamer', async (_task, emit) => {
+      emit({ type: 'text-delta', text: 'First: ![One](./one.png)\n\n' });
+      await waitSecond;
+      emit({ type: 'text-delta', text: 'Second: ![Two](./two.png)' });
+    });
+
+    const browser = await chromium.launch();
+    let opened: string | undefined;
+    let running: Promise<number> | undefined;
+    try {
+      const launch = (options: UiLaunch) =>
+        runWeb({
+          ...options,
+          stderr: new PassThrough().resume(),
+          openUrl(url) {
+            opened = url;
+          },
+          clientScript,
+          firstPrompt: 'Stream images',
+        });
+      running = main({
+        argv: ['ui'],
+        cwd: root,
+        env: { GENAICODE_HOME: root, HOME: root },
+        agents: [agent],
+        signal: stop.signal,
+        stdout: process.stdout,
+        stderr: { write() {} },
+        readStdin: async () => undefined,
+        loadUi: async () => ({ runChat: launch, runWeb: launch }),
+      });
+      await vi.waitFor(() => expect(opened).toBeTruthy());
+
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+
+      // Hold the first /api/file/images request until the second image streams into the reply.
+      let releaseFirstBatch!: () => void;
+      const firstBatchHeld = new Promise<void>((resolve) => {
+        releaseFirstBatch = resolve;
+      });
+      let firstBatchSeen!: () => void;
+      const waitFirstBatch = new Promise<void>((resolve) => {
+        firstBatchSeen = resolve;
+      });
+      const imageRequests: string[][] = [];
+      let expiredTwoOnce = false;
+
+      await page.route('**/api/file/images', async (route) => {
+        const body = route.request().postDataJSON() as { paths?: string[] };
+        const paths = body.paths ?? [];
+        imageRequests.push(paths);
+        if (imageRequests.length === 1) {
+          firstBatchSeen();
+          await firstBatchHeld;
+        }
+        const upstream = await route.fetch();
+        const json = (await upstream.json()) as { urls?: Record<string, string> };
+        // On the initial resolution of ./two.png, return a stale capability URL so the <img> gets 404.
+        if (paths.includes('./two.png') && !expiredTwoOnce && json.urls?.['./two.png']) {
+          expiredTwoOnce = true;
+          json.urls['./two.png'] = '/files/00000000000000000000000000000000';
+        }
+        await route.fulfill({ status: upstream.status(), contentType: 'application/json', body: JSON.stringify(json) });
+      });
+
+      await page.goto(opened!);
+
+      // First image arrives and starts /api/file/images; stream the second image while batch 1 is still in flight.
+      await waitFirstBatch;
+      emitSecond();
+      await vi.waitFor(() => expect(imageRequests.some((batch) => batch.includes('./two.png'))).toBe(true));
+      // Now release batch 1: both One and Two must resolve, and Two must recover from its expired 404 capability.
+      releaseFirstBatch();
+
+      const oneImg = page.locator('img.gc-md-image[alt="One"]');
+      const twoImg = page.locator('img.gc-md-image[alt="Two"]');
+      await oneImg.waitFor();
+      await twoImg.waitFor();
+      await expect
+        .poll(() =>
+          Promise.all([
+            oneImg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0),
+            twoImg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0),
+          ]),
+        )
+        .toEqual([true, true]);
+      // Confirm ./two.png was re-requested after the expired capability failed.
+      expect(imageRequests.filter((batch) => batch.includes('./two.png')).length).toBeGreaterThanOrEqual(2);
+    } finally {
+      stop.abort();
+      await browser.close();
+      await running;
+    }
+  }, 45_000);
 });

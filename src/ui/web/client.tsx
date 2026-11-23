@@ -291,11 +291,37 @@ function useBark(view: ChatView | undefined) {
   }, [view]);
 }
 
+/** Refresh cached local-image capability URLs before the server's 15-minute inactivity TTL. */
+const IMAGE_CAPABILITY_REFRESH_MS = 10 * 60_000;
+
+interface CachedImage {
+  url: string;
+  resolvedAt: number;
+}
+
 /** Resolve local image paths referenced in agent replies to short-lived capability URLs. */
 function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled: boolean): Record<string, string> {
-  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [entries, setEntries] = useState<Record<string, CachedImage>>({});
+  const [tick, setTick] = useState(0);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   const checkedTurnCount = useRef(0);
   const attempted = useRef(new Set<string>());
+  const inFlight = useRef(new Set<string>());
+  const retriedUrl = useRef(new Map<string, string>());
+  const controllers = useRef(new Set<AbortController>());
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const controller of controllers.current) controller.abort();
+      controllers.current.clear();
+      inFlight.current.clear();
+    };
+  }, []);
+
   const pathsKey = useMemo(() => {
     if (!enabled || !turns?.length) return '';
     const found: string[] = [];
@@ -311,38 +337,127 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
   }, [turns, enabled]);
   const turnCount = turns?.length ?? 0;
 
+  // Refresh expired image capabilities proactively when returning to the tab or when their TTL elapses.
+  useEffect(() => {
+    if (!enabled || !pathsKey) return;
+    const active = pathsKey.split('\n').filter(Boolean);
+    const now = Date.now();
+    let earliest = Infinity;
+    for (const path of active) {
+      const cached = entries[path];
+      if (!cached) continue;
+      const due = cached.resolvedAt + IMAGE_CAPABILITY_REFRESH_MS;
+      if (due < earliest) earliest = due;
+    }
+    const timer =
+      earliest < Infinity ? window.setTimeout(() => setTick((n) => n + 1), Math.max(1000, earliest - now)) : undefined;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setTick((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [enabled, pathsKey, entries]);
+
+  // If a lazy-loaded or remounted thumbnail fails (e.g. its capability expired), invalidate and re-resolve once.
+  useEffect(() => {
+    if (!enabled) return;
+    const onImageError = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement) || !target.classList.contains('gc-md-image')) return;
+      const path = target.closest('[data-gc-file]')?.getAttribute('data-gc-file');
+      if (!path) return;
+      const cached = entriesRef.current[path];
+      if (!cached || retriedUrl.current.get(path) === cached.url) return;
+      retriedUrl.current.set(path, cached.url);
+      attempted.current.delete(path);
+      setEntries((prev) => {
+        if (!prev[path] || prev[path].url !== cached.url) return prev;
+        const next = { ...prev };
+        delete next[path];
+        return next;
+      });
+      setTick((n) => n + 1);
+    };
+    window.addEventListener('error', onImageError, true);
+    return () => window.removeEventListener('error', onImageError, true);
+  }, [enabled]);
+
   useEffect(() => {
     if (!enabled || !token || !pathsKey) return;
+    const now = Date.now();
     // New turns may have opened new session roots: retry previously unresolved paths.
     if (turnCount !== checkedTurnCount.current) {
       checkedTurnCount.current = turnCount;
       for (const path of [...attempted.current]) {
-        if (!urls[path]) attempted.current.delete(path);
+        if (!entriesRef.current[path] && !inFlight.current.has(path)) attempted.current.delete(path);
       }
     }
     const all = pathsKey.split('\n').filter(Boolean);
-    const missing = all.filter((path) => !attempted.current.has(path));
+    const missing = all.filter((path) => {
+      if (inFlight.current.has(path)) return false;
+      const cached = entriesRef.current[path];
+      if (cached) return now - cached.resolvedAt >= IMAGE_CAPABILITY_REFRESH_MS;
+      return !attempted.current.has(path);
+    });
     if (!missing.length) return;
-    for (const path of missing) attempted.current.add(path);
-    const abort = new AbortController();
+    const batch = missing.slice(0, 100);
+    for (const path of batch) {
+      attempted.current.add(path);
+      inFlight.current.add(path);
+    }
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    // Keep in-flight batches alive across streaming updates; only unmount aborts them.
     fetch('/api/file/images', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
-      body: JSON.stringify({ paths: missing.slice(0, 100) }),
-      signal: abort.signal,
+      body: JSON.stringify({ paths: batch }),
+      signal: controller.signal,
     })
-      .then((res) => (res.ok ? (res.json() as Promise<{ urls?: Record<string, string> }>) : undefined))
-      .then(
-        (body) => {
-          if (!body?.urls || !Object.keys(body.urls).length) return;
-          setUrls((prev) => ({ ...prev, ...body.urls }));
-        },
-        () => undefined,
-      );
-    return () => abort.abort();
-  }, [enabled, pathsKey, turnCount, urls]);
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<{ urls?: Record<string, string> }>;
+      })
+      .then((body) => {
+        if (!mounted.current) return;
+        const resolvedAt = Date.now();
+        const returned = body?.urls ?? {};
+        setEntries((prev) => {
+          const next = { ...prev };
+          let changed = false;
+          for (const path of batch) {
+            const url = returned[path];
+            if (url) {
+              if (retriedUrl.current.get(path) !== url) retriedUrl.current.delete(path);
+              next[path] = { url, resolvedAt };
+              changed = true;
+            } else if (prev[path]) {
+              delete next[path];
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      })
+      .catch(() => {
+        // Release failed or aborted paths so they can be retried instead of sticking unresolved.
+        for (const path of batch) attempted.current.delete(path);
+      })
+      .finally(() => {
+        controllers.current.delete(controller);
+        for (const path of batch) inFlight.current.delete(path);
+        if (mounted.current && missing.length > batch.length) setTick((n) => n + 1);
+      });
+  }, [enabled, pathsKey, turnCount, tick]);
 
-  return urls;
+  return useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [path, entry] of Object.entries(entries)) out[path] = entry.url;
+    return out;
+  }, [entries]);
 }
 
 /** Collect all artifacts published in the session, grouped by id with all versions, newest first. */
