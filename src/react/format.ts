@@ -5,6 +5,16 @@ import type { TokenUsage } from '../core/types.js';
 import type { PackTask } from '../agents/pack.js';
 import type { PackTaskChecks } from '../agents/pack-checks.js';
 
+export function packQuotaText(agent: string, hint: NonNullable<PackTask['quotaHint']>): string {
+  const time = (ms: number) =>
+    new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const reset = hint.resetsAt === undefined ? 'Reset time unknown.' : `Reset reported for ${time(hint.resetsAt)}.`;
+  const alternative = hint.alternative
+    ? `Suggested alternative: ${hint.alternative}.`
+    : 'No verified alternative for this task.';
+  return `${agent} reported an exhausted ${hint.window} limit at ${time(hint.observedAt)}. ${reset} ${alternative}`;
+}
+
 export function packCheckLabel(checks: PackTaskChecks, kind: 'review' | 'verify'): string {
   const result = checks[kind];
   if (!result) return 'Not run';
