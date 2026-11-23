@@ -105,9 +105,11 @@ must finish first. The check uses the latest store and hook information availabl
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
-`sessions --waiting` puts the sessions whose last message asks you something right after the
-approvals (`●`: a question, a command to run, an offer to go on, or a report that could not be
-sent back), before the ones that just ended. Scheduled tasks and headless runs nobody typed into
+`sessions --waiting` puts the sessions that need you now right after the approvals (`●`: the last
+message asked a question or gave a command to run, in the last 3 days), then the stalled ones
+(`◇`: an offer to go on, a report that could not be sent back, or a question older than that),
+then the ones that just ended. Topics, the browser's start screen and the desktop menu bar count
+only what needs you now; stalled sessions are folded under their topic. Scheduled tasks and headless runs nobody typed into
 are left out of `sessions`; `--automated` lists them too (see
 [agents](agents.md#which-sessions-need-you-hooks)).
 
@@ -161,12 +163,12 @@ the agent says so again. `--json` prints `{"limits":[{"agent","window","status",
 
 A project directory is not a piece of work: one holds many, and one piece of work is often done
 with several agents and from several directories. `npx genaicode topics` shows the sessions of all
-agents as topics, what asks for you first:
+agents as topics, what needs you first:
 
 ```
-● Pack mode       t1    claude 9, codex 3  12m ago  1 ask you
+● Pack mode       t1    claude 9, codex 3  12m ago  1 needs you
 ▶ Desktop app     t2    claude 6           1h ago   1 working
-  YouTube pins    t3    codex 2            2d ago
+  YouTube pins    t3    codex 2            2d ago   2 stalled
 14 sessions not sorted yet: "genaicode topics refresh" sorts them.
 ```
 

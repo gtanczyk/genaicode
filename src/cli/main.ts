@@ -24,6 +24,7 @@ import {
   findSession,
   groupSessions,
   isAsking,
+  isStalled,
   waitingSessions,
   HOOK_AGENTS,
   hooksFile,
@@ -281,8 +282,10 @@ Topics:
   directory, title or prompts) and keeps the answer in ~/.genaicode/topics.json. Only new sessions
   are sorted the next time, and what you renamed, merged or moved stays. Sessions relayed from a
   claude.ai project go to a topic named as that project, without asking an agent. "--again" drops
-  the topics there are, your corrections too, and sorts everything anew. A topic "asks you" for
-  approvals, and for 3 days after a session's last message asked something.
+  the topics there are, your corrections too, and sorts everything anew. A topic "needs you" for
+  approvals, and for 3 days after a session's last message asked a question or gave a command to
+  run. A session left on an offer ("I can also…, if you want"), a report it could not send, or a
+  question older than that is "stalled": shown, but it blocks nobody.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
@@ -965,9 +968,10 @@ function showWaiting(
     return EXIT_OK;
   }
   const asks = sessions.filter((session) => session.waitingFor === 'approval').length;
-  const wants = sessions.filter((session) => session.waitingFor !== 'approval' && session.ending).length;
+  const wants = sessions.filter((session) => session.waitingFor !== 'approval' && isAsking(session, now)).length;
+  const stalled = sessions.filter((session) => isStalled(session, now)).length;
   cli.stdout.write(
-    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}${wants ? `, ${wants} ask${wants === 1 ? 's' : ''} you something` : ''}:\n`,
+    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}${wants ? `, ${wants} ask${wants === 1 ? 's' : ''} you something now` : ''}${stalled ? `, ${stalled} stalled` : ''}:\n`,
   );
   for (const session of sessions) {
     const place = session.cwd ?? session.repository ?? '';
@@ -991,7 +995,7 @@ function showWaiting(
       )
       .join('');
     cli.stdout.write(
-      `\n${session.waitingFor === 'approval' ? '◆' : session.ending ? '●' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
+      `\n${session.waitingFor === 'approval' ? '◆' : isAsking(session, now) ? '●' : isStalled(session, now) ? '◇' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
     );
   }
   return EXIT_OK;
@@ -1222,7 +1226,8 @@ async function manageTopics(
     cli.stdout.write(`${topic.name} (${topic.id}): ${count(sessions.length)} in the last ${period}\n`);
     for (const session of sessions) {
       const label = session.title ?? session.lastPrompt ?? session.firstPrompt ?? '(no prompt)';
-      const mark = session.state === 'active' ? '▶' : session.ending || session.waitingFor === 'approval' ? '●' : ' ';
+      const mark =
+        session.state === 'active' ? '▶' : isAsking(session, now) ? '●' : isStalled(session, now) ? '◇' : ' ';
       cli.stdout.write(
         `${mark} ${session.agent}  ${ago(now - session.updatedAt)} ago  ${oneLine(label, 70)}  ${session.id}\n`,
       );
@@ -1261,7 +1266,11 @@ async function manageTopics(
       .sort((a, b) => b[1] - a[1])
       .map(([name, n]) => `${name} ${n}`)
       .join(', ');
-    const state = [topic.asking ? `${topic.asking} ask you` : '', topic.active ? `${topic.active} working` : '']
+    const state = [
+      topic.asking ? `${topic.asking} need${topic.asking === 1 ? 's' : ''} you` : '',
+      topic.active ? `${topic.active} working` : '',
+      topic.stalled ? `${topic.stalled} stalled` : '',
+    ]
       .filter(Boolean)
       .join(', ');
     cli.stdout.write(
@@ -1412,7 +1421,10 @@ interface WatchedTopic {
   name: string;
   /** Sessions of it in the listing. */
   sessions: number;
+  /** Sessions that need you now (`attentionOf`). */
   asking: number;
+  /** Sessions left on an offer, a failed report or an old question. */
+  stalled: number;
   active: number;
 }
 
@@ -1430,11 +1442,12 @@ function watchedTopics(
   for (const topic of topics) for (const session of topic.sessions) topicOf.set(archiveKey(session), topic.name);
   return {
     // No times: a line is printed when it changes, and work going on would change it at every look.
-    topics: topics.slice(0, WATCHED_TOPICS).map(({ id, name, sessions, asking, active }) => ({
+    topics: topics.slice(0, WATCHED_TOPICS).map(({ id, name, sessions, asking, stalled, active }) => ({
       id,
       name,
       sessions: sessions.length,
       asking,
+      stalled,
       active,
     })),
     topicOf,
@@ -1486,7 +1499,7 @@ async function watchWaiting(
         const full = await look();
         if (stop.signal.aborted) break;
         ({ questions } = full);
-        // A menu shows who asks now: a thread left days ago, or one that merely ended, is not that.
+        // A menu shows who needs you now: an offer, a thread left days ago, or one that merely ended, is not that.
         sessions = full.sessions.filter((session) => isAsking(session));
         limits = await knownLimits(cli.env);
         if (stop.signal.aborted) break;

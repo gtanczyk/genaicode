@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   acceptsSessionPrompt,
+  attentionOf,
   groupSessions,
   staleSessions,
   waitingSessions,
@@ -19,15 +20,35 @@ import {
   type SessionTopic,
 } from '../sessions.js';
 
-const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
+const MARK: Record<string, string> = {
+  active: '●',
+  waiting: '○',
+  unfinished: '◌',
+  approval: '◆',
+  now: '◉',
+  stalled: '◇',
+};
 
-/** `approval` for a session that asks to use a tool; its `state` otherwise. */
+/** What a session's last message asked, as the row's mark says it. */
+const ENDING_TITLE: Record<string, string> = {
+  question: 'asked a question',
+  command: 'gave you a command to run',
+  offer: 'offered to go on',
+  unreported: 'could not report back',
+};
+
+/** `approval` for a session that asks to use a tool, `now`/`stalled` by `attentionOf`; its `state` otherwise. */
 const shownState = (session: SessionInfo): string =>
-  session.waitingFor === 'approval' ? 'approval' : (session.state ?? '');
-const stateTitle = (session: SessionInfo): string =>
-  session.waitingFor === 'approval'
-    ? `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`
-    : (session.state ?? 'state unknown');
+  session.waitingFor === 'approval' ? 'approval' : (attentionOf(session) ?? session.state ?? '');
+const stateTitle = (session: SessionInfo): string => {
+  if (session.waitingFor === 'approval')
+    return `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`;
+  const attention = attentionOf(session);
+  const said = session.ending ? ENDING_TITLE[session.ending] : undefined;
+  if (attention === 'now') return `needs you now: ${said}`;
+  if (attention === 'stalled') return `stalled: ${said}`;
+  return session.state ?? 'state unknown';
+};
 
 const RANGES = [
   { days: 2, label: 'Last 2 days' },
@@ -35,6 +56,9 @@ const RANGES = [
   { days: 30, label: 'Last 30 days' },
   { days: 0, label: 'All time' },
 ];
+/** States whose list keeps the order of what waits for you: approvals first. */
+const INBOX = new Set(['waiting', 'approval', 'now', 'stalled']);
+
 /** Rows a project shows before "Show all". */
 const FOLD = 5;
 
@@ -43,7 +67,11 @@ const ARCHIVE_BATCH = 500;
 
 /** What a topic asks of the user and what goes on in it, for its heading. */
 const asksOf = (group: Partial<SessionTopic>): string =>
-  [group.asking ? `${group.asking} ask you` : '', group.active ? `${group.active} working` : '']
+  [
+    group.asking ? `${group.asking} need${group.asking === 1 ? 's' : ''} you` : '',
+    group.active ? `${group.active} working` : '',
+    group.stalled ? `${group.stalled} stalled` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -112,7 +140,8 @@ export function Sessions({
     return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
   }, [everyones, own, cwd]);
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
-  const waiting = useMemo(() => waitingSessions(all), [all]);
+  const needs = useMemo(() => all.filter((session) => attentionOf(session) === 'now'), [all]);
+  const stalled = useMemo(() => all.filter((session) => attentionOf(session) === 'stalled'), [all]);
   const stale = useMemo(() => staleSessions(all), [all]);
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
@@ -141,10 +170,10 @@ export function Sessions({
       : all;
     const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
-    return state === 'waiting' || state === 'approval' ? waitingSessions(found) : found;
+    return INBOX.has(state) ? waitingSessions(found) : found;
   }, [all, text, agent, state, topic, listing]);
   // What waits for you keeps its order across projects: the one with an approval first.
-  const inbox = state === 'waiting' || state === 'approval';
+  const inbox = INBOX.has(state);
   const now = Date.now();
   const sorted = !!listing?.topics?.length;
   // Its own conversations are one list: no topics among them.
@@ -232,6 +261,8 @@ export function Sessions({
           <option value="">Any state</option>
           <option value="active">● Active</option>
           <option value="approval">◆ Asks for approval</option>
+          <option value="now">◉ Needs you now</option>
+          <option value="stalled">◇ Stalled</option>
           <option value="waiting">○ Waiting for you</option>
           <option value="unfinished">◌ Unfinished</option>
           <option value="archived">Archived</option>
@@ -253,17 +284,27 @@ export function Sessions({
             </option>
           ))}
         </select>
-        {waiting.length ? (
+        {needs.length ? (
           <button
-            className={`chip waits${state === 'waiting' ? ' on' : ''}`}
-            title="Sessions whose next move is yours, approvals first"
-            aria-pressed={state === 'waiting'}
-            onClick={() => setState(state === 'waiting' ? '' : 'waiting')}
+            className={`chip waits${state === 'now' ? ' on' : ''}`}
+            title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
+            aria-pressed={state === 'now'}
+            onClick={() => setState(state === 'now' ? '' : 'now')}
           >
-            {waiting.length} wait{waiting.length === 1 ? 's' : ''} for you
-            {waiting[0]?.waitingFor === 'approval'
-              ? ` · ${waiting.filter((session) => session.waitingFor === 'approval').length} ◆`
+            {needs.length} need{needs.length === 1 ? 's' : ''} you now
+            {needs.some((session) => session.waitingFor === 'approval')
+              ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
               : ''}
+          </button>
+        ) : null}
+        {stalled.length ? (
+          <button
+            className={`chip${state === 'stalled' ? ' on' : ''}`}
+            title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
+            aria-pressed={state === 'stalled'}
+            onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
+          >
+            {stalled.length} stalled
           </button>
         ) : null}
         {stale.length && state !== 'archived' ? (
@@ -301,8 +342,14 @@ export function Sessions({
         </div>
       ))}
       {projects.map((project) => {
-        const whole = open.has(project.key) || project.sessions.length <= FOLD;
-        const rows = whole ? project.sessions : project.sessions.slice(0, FOLD);
+        // Stalled sessions fold under their topic unless asked for: they block nobody.
+        const unfold = inbox || open.has(`stalled:${project.key}`);
+        const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
+        const listed = folded.length
+          ? project.sessions.filter((session) => !folded.includes(session))
+          : project.sessions;
+        const whole = open.has(project.key) || listed.length <= FOLD;
+        const rows = whole ? listed : listed.slice(0, FOLD);
         return (
           <details key={project.key} className="project" open>
             <summary>
@@ -410,11 +457,19 @@ export function Sessions({
                 )),
               ];
             })}
-            {whole ? null : (
+            {whole && !folded.length ? null : (
               <div className="more">
-                <button onClick={() => setOpen(new Set([...open, project.key]))}>
-                  Show all {project.sessions.length}
-                </button>
+                {whole ? null : (
+                  <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
+                )}
+                {folded.length ? (
+                  <button
+                    title="Left on an offer, a report that could not be sent, or an old question"
+                    onClick={() => setOpen(new Set([...open, `stalled:${project.key}`]))}
+                  >
+                    Show {folded.length} stalled
+                  </button>
+                ) : null}
               </div>
             )}
           </details>
