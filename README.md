@@ -7,8 +7,9 @@
 </p>
 
 <p align="center">
-  <b>One API and one CLI for the coding agents you already have.</b><br>
-  Claude Code · Codex · Copilot CLI · Cursor · Gemini CLI · opencode · Muse · Mistral Vibe · Antigravity<br>
+  <b>Run your coding agents together.</b><br>
+  Claude Code · Codex · Antigravity · Copilot CLI · Cursor · Gemini CLI · opencode · Muse · Mistral Vibe<br>
+  A desktop app, a command line and a TypeScript API, on the logins you already have.<br>
   <a href="https://grzegorz.tanczyk.pl/genaicode/"><b>Homepage</b></a> · <a href="https://www.npmjs.com/package/genaicode">npm</a> · <a href="docs/CHANGELOG.md">Changelog</a>
 </p>
 
@@ -20,25 +21,46 @@
   <sub>Recorded live with Claude Code and Codex. <a href="docs/media/showcase.mp4">Full video (87 s)</a>.</sub>
 </p>
 
-## Quick start
+## Desktop app
+
+One window for all your agents: give one prompt, a lead agent splits the work, the others take
+a task each, and you review the changes and merge. Topics, plan limits and approvals sit in
+the menu bar. Free, signed and notarized, and it updates itself.
+
+| Download                                                                                                                          | For                                  |
+| --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| [Genaicode-macos-arm64.dmg](https://github.com/gtanczyk/genaicode/releases/latest/download/Genaicode-macos-arm64.dmg)             | Macs with Apple silicon, macOS 13.5+ |
+| [Genaicode-macos-x86_64.dmg](https://github.com/gtanczyk/genaicode/releases/latest/download/Genaicode-macos-x86_64.dmg)           | Intel Macs, macOS 13.5+              |
+| [Genaicode-linux-x86_64.AppImage](https://github.com/gtanczyk/genaicode/releases/latest/download/Genaicode-linux-x86_64.AppImage) | Linux x86_64, any distribution       |
+| [Genaicode-linux-x86_64.deb](https://github.com/gtanczyk/genaicode/releases/latest/download/Genaicode-linux-x86_64.deb)           | Debian and Ubuntu                    |
+
+```bash
+brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode   # macOS, Homebrew
+```
+
+The app carries its own Node.js; the agent CLIs are yours to install and log in to. On Windows
+use the command line below. More in [src/desktop/README.md](src/desktop/README.md).
+
+## Command line
 
 ```bash
 npx genaicode                                         # chat with your agent in this terminal
 npx genaicode ui                                      # the same chat in your browser
+npx genaicode ui --pack                               # a lead agent hands tasks to the others
 npx genaicode run --verify "npm test" "fix the failing tests"
 npx genaicode embed                                   # let your agent wire genaicode into your app
 ```
 
 `run --verify` runs the first agent CLI it finds, then your check; a failing check goes back
 to the agent for another try. `-a codex` (or `claude`, `copilot`, `opencode`...) picks the
-agent, and the command stays the same. Node.js 20+; the agent CLIs are yours to install and
+agent, and the command stays the same. Node.js 22.5+; the agent CLIs are yours to install and
 log in to (`npx genaicode agents` lists what it finds).
 
 To have `genaicode` as a command that keeps itself up to date (macOS, Linux), run
 `npx genaicode install` once, or the
 [shell installer](docs/cli.md#install-the-command) without npx.
 
-## What's inside
+## Library
 
 | Use it as                      | Import / command                       | Docs                              |
 | ------------------------------ | -------------------------------------- | --------------------------------- |

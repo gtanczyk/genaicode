@@ -1,5 +1,5 @@
 // Encrypted, authenticated tokens (AES-256-GCM over WebCrypto): the page keeps the
-// conversation but can neither read nor change it. Runs on Node 20+, Workers, Deno, Bun.
+// conversation but can neither read nor change it. Runs on Node 22.5+, Workers, Deno, Bun.
 
 const IV_BYTES = 12;
 const encoder = new TextEncoder();

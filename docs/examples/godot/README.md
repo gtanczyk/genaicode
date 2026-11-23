@@ -37,7 +37,7 @@ Perfect! I've collected both stars. The score is now 2. Releasing control back t
 
 ## Run it
 
-You need Node.js 20+ and an agent CLI you are logged in to (`npx genaicode agents` lists them).
+You need Node.js 22.5+ and an agent CLI you are logged in to (`npx genaicode agents` lists them).
 
 1. Open this folder in Godot 4.5. The plugin is already enabled; the genaicode dock is a tab next
    to the Inspector.

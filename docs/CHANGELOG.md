@@ -8,6 +8,12 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+**Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.
+
+### Breaking
+
+- Node.js 22.5 or newer is required, up from 20: session stores are read with `node:sqlite`, and Node.js 20 is past its end of life. The desktop app carries its own Node.js and needs none on the machine (#299)
+
 ## 2.54.0 — 2026-11-23
 
 ### Added
