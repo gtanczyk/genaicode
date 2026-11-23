@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `createAppAgent({ questions })`: pass `await startQuestionChannel()` and agents without a question tool of their own (Antigravity, Gemini, Muse, Codex outside Plan mode) get `ask_user`; their questions show as a card in `<AppAgentChat>` like Claude's
+- `createAppAgent({ questions })`: pass `await startQuestionChannel()` and agents without a question tool of their own (Antigravity, Gemini, Muse, Codex outside Plan mode) get `ask_user`; their questions show as a card in `<AppAgentChat>` like Claude's (#313)
 
 ## 2.54.0 — 2026-11-23
 
