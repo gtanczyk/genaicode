@@ -13,6 +13,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Pack `delegate` takes `model`, `effort`, a short `title` and `mcpServers`: names of the lead's MCP servers to give the task (servers the task was given, plus those in Claude Code's own config: user, `.mcp.json` and local scope). `agents` lists each member's effort values. New `ownMcpServers()` / `claudeMcpServers()` and `PackOptions.shareableMcpServers`. Before, a delegated agent ran on its default model and without the lead's servers, so a task that needed e.g. the gamedevpl server failed (#303)
 - Pack tasks panel in `genaicode ui`, the desktop app and `<AgentChat>`: each task shows a short title, a status chip, agent/model/MCP on one line, the result in its own box and the prompt folded; one task takes the whole width; the Approvals button shows only when something waits. Delegating agents are told to act on the request instead of asking to confirm a plan (#303)
 
+### Fixed
+
+- Desktop app: the loading screen shows the Genaicode wolf with a soft glow and a progress bar, in the chat page's light or dark colors, instead of plain "Genaicode / Starting…" text (#305)
+
 ## 2.53.0 — 2026-11-22
 
 ### Added

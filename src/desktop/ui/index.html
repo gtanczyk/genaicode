@@ -6,6 +6,27 @@
     <meta name="color-scheme" content="light dark" />
     <title>Genaicode</title>
     <style>
+      /* The same colors as the chat page (src/ui/web/page.ts), so the switch to it does not flash. */
+      :root {
+        --bg: #f7f7f5;
+        --text: #1d1d1b;
+        --muted: #6b6b66;
+        --track: #e4e4df;
+        --glow-a: rgba(34, 184, 207, 0.22);
+        --glow-b: rgba(230, 73, 128, 0.16);
+        --wolf: url(wolf.webp);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141414;
+          --text: #ececea;
+          --muted: #a3a39e;
+          --track: #2e2e2c;
+          --glow-a: rgba(34, 184, 207, 0.28);
+          --glow-b: rgba(230, 73, 128, 0.2);
+          --wolf: url(wolf-dark.webp);
+        }
+      }
       html,
       body {
         height: 100%;
@@ -14,26 +35,107 @@
       body {
         display: grid;
         place-items: center;
+        background: var(--bg);
+        color: var(--text);
         font:
-          15px/1.5 -apple-system,
+          14px/1.5 -apple-system,
           BlinkMacSystemFont,
           'Segoe UI',
           sans-serif;
-        background: Canvas;
-        color: CanvasText;
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: default;
       }
       main {
-        text-align: center;
-        max-width: 28rem;
-        padding: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        animation: enter 0.6s ease-out both;
       }
-      h1 {
-        font-size: 1.25rem;
-        margin: 0 0 0.5rem;
+      .wolf {
+        position: relative;
+        width: 200px;
+        height: 200px;
+      }
+      /* A slow cyan and pink glow behind the wolf, the colors of its eyes. */
+      .wolf::before {
+        content: '';
+        position: absolute;
+        inset: -40px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 38% 46%, var(--glow-a), transparent 58%),
+          radial-gradient(circle at 64% 50%, var(--glow-b), transparent 56%);
+        filter: blur(14px);
+        animation: glow 3.2s ease-in-out infinite;
+      }
+      .wolf::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: var(--wolf) center / contain no-repeat;
+        image-rendering: pixelated;
+        animation: float 3.2s ease-in-out infinite;
+      }
+      .bar {
+        width: 160px;
+        height: 3px;
+        border-radius: 3px;
+        background: var(--track);
+        overflow: hidden;
+      }
+      .bar::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #22b8cf, #e64980);
+        animation: slide 1.4s ease-in-out infinite;
       }
       p {
-        margin: 0 0 1.25rem;
-        opacity: 0.7;
+        margin: -10px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.01em;
+      }
+      @keyframes enter {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+      }
+      @keyframes float {
+        50% {
+          transform: translateY(-5px);
+        }
+      }
+      @keyframes glow {
+        50% {
+          opacity: 0.55;
+          transform: scale(0.94);
+        }
+      }
+      @keyframes slide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        main,
+        .wolf::before,
+        .wolf::after,
+        .bar::after {
+          animation: none;
+        }
+        .bar::after {
+          width: 100%;
+          opacity: 0.6;
+        }
       }
     </style>
   </head>
@@ -41,8 +143,9 @@
     <!-- On macOS the window has no title bar of its own: this strip moves it. -->
     <div data-tauri-drag-region style="position: fixed; inset: 0 0 auto 0; height: 52px"></div>
     <main>
-      <h1>Genaicode</h1>
-      <p>Starting…</p>
+      <div class="wolf" role="img" aria-label="Genaicode"></div>
+      <div class="bar" role="progressbar" aria-label="Starting"></div>
+      <p>Starting your agents…</p>
     </main>
   </body>
 </html>
