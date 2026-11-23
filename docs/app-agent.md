@@ -60,6 +60,13 @@ to your app's cookies, storage or DOM (see [agents.md](agents.md#artifacts)). In
 agent can publish a file from `dev.cwd`; in `use` mode only content it writes. An app that
 draws its own chat instead of `AppAgentChat` renders the `artifact` transcript entries itself.
 
+When the agent needs the user to choose (which of two fixes, what to call something), Claude
+Code asks with its own question tool and `<AppAgentChat>` shows a card with the options. Agents
+with no such tool (Antigravity, Gemini, Muse, Codex outside Plan mode) get `ask_user` when you
+pass a question channel: `createAppAgent({ ..., questions: await startQuestionChannel() })`
+(from `genaicode/agents`; close it when the app stops). Their questions show as the same card;
+`POST /api/agent/approvals/:id {answers}` answers them, or `AppAgent.answer()`.
+
 A read tool may return `{ text, images: [{ mimeType: 'image/png', data }] }` instead of a
 string, so the agent can look at what it changed, e.g. a screenshot of the app.
 

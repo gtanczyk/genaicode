@@ -7,7 +7,15 @@ import { codexApprovals } from './codex-approvals.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import type { AgentTask } from '../types.js';
 import type { PrepareContext, PreparedRun } from '../prepare.js';
-import { CODEX_SANDBOX, codexOwnServersOff, codexProblem, withCodexMcp, type CodexSandbox } from './codex.js';
+import {
+  CODEX_SANDBOX,
+  codexMcpToolEnd,
+  mcpName,
+  codexOwnServersOff,
+  codexProblem,
+  withCodexMcp,
+  type CodexSandbox,
+} from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
 export interface CodexLiveOptions {
@@ -277,15 +285,7 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
           },
         ];
       }
-      if (type === 'mcpToolCall')
-        return [
-          {
-            type: 'tool-end',
-            ...withId,
-            name: mcpName(item!),
-            isError: item!.status === 'failed' || (item!.error !== undefined && item!.error !== null),
-          },
-        ];
+      if (type === 'mcpToolCall') return [codexMcpToolEnd(item!)];
       if (type === 'fileChange') {
         const changes = Array.isArray(item!.changes) ? item!.changes : [];
         const paths = changes.map((change) => stringField(change, 'path')).filter((path): path is string => !!path);
@@ -307,10 +307,6 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
     default:
       return [];
   }
-}
-
-function mcpName(item: JsonObject): string {
-  return [stringField(item, 'server'), stringField(item, 'tool')].filter(Boolean).join('/') || 'mcp';
 }
 
 /**
