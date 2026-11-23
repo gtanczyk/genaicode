@@ -88,10 +88,32 @@ export function acceptsSessionPrompt(session: SessionInfo): boolean {
 /** A question at the end of a message still waits for this long; after, the thread was left. */
 export const ASKING_MS = 3 * 24 * 3600_000;
 
-/** Whether a session asks for you now: for approval, or with a message that asked something not long ago. */
+/**
+ * How a waiting session calls for the user:
+ * - `now`: it asks for approval, or its last message asked a question or gave a command to run in
+ *   the last `ASKING_MS`. Someone waits on the answer.
+ * - `stalled`: its last message offered to go on ("I can also…, if you want"), said it could not
+ *   report back, or asked something longer ago. Nobody is blocked; the thread was left.
+ */
+export type Attention = 'now' | 'stalled';
+
+/** Whether a waiting session needs the user now, has stalled, or neither (it just ended, or is not waiting). */
+export function attentionOf(session: SessionInfo, now = Date.now()): Attention | undefined {
+  if (session.archived || session.state !== 'waiting') return undefined;
+  if (session.waitingFor === 'approval') return 'now';
+  if (!session.ending) return undefined;
+  const asks = session.ending === 'question' || session.ending === 'command';
+  return asks && now - session.updatedAt < ASKING_MS ? 'now' : 'stalled';
+}
+
+/** Whether a session asks for you now: for approval, or with a question or command not long ago. */
 export function isAsking(session: SessionInfo, now = Date.now()): boolean {
-  if (session.archived || session.state !== 'waiting') return false;
-  return session.waitingFor === 'approval' || (!!session.ending && now - session.updatedAt < ASKING_MS);
+  return attentionOf(session, now) === 'now';
+}
+
+/** Whether a session waits on an offer, a failed report or an old question: left, not blocking. */
+export function isStalled(session: SessionInfo, now = Date.now()): boolean {
+  return attentionOf(session, now) === 'stalled';
 }
 
 /** A project: the sessions of every agent that share a directory (or a repository, in the cloud). */
@@ -108,12 +130,16 @@ export interface SessionProject {
 
 /**
  * The sessions whose next move is the user's (`state: 'waiting'`): those that ask for approval
- * first, then those whose last message asks something (`ending`), then the others, newest first
- * in each. Archived ones are left out.
+ * first, then those that need you now (`attentionOf`), then the stalled ones, then those that just
+ * ended, newest first in each. Archived ones are left out.
  */
-export function waitingSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
-  // Approvals, then what ends on a question or a request, then what just ended.
-  const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : session.ending ? 1 : 2);
+export function waitingSessions(sessions: readonly SessionInfo[], now = Date.now()): SessionInfo[] {
+  const order = { now: 1, stalled: 2 } as const;
+  const asks = (session: SessionInfo) => {
+    if (session.waitingFor === 'approval') return 0;
+    const attention = attentionOf(session, now);
+    return attention ? order[attention] : 3;
+  };
   return sessions
     .filter((session) => session.state === 'waiting' && !session.archived)
     .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);

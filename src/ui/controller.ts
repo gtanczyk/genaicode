@@ -31,6 +31,8 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** Whether the agent can ask the person to choose (own tool, or `ask_user` over MCP). */
+  canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
   /** Local sign-in state when inspected: `ready`, `signed-out`, or `unknown`. */
@@ -171,6 +173,9 @@ export class NoAgentError extends Error {
 export function createChatController(options: ChatOptions): ChatController {
   const env = options.env ?? process.env;
   const found = detectAgents(options.agents, env);
+  const canAgentAsk = (agent: CodingAgent): boolean =>
+    !!agent.capabilities.questions ||
+    (!!options.questionChannel && !!agent.capabilities.mcp && !agent.capabilities.remote);
   let agents: AgentChoice[] = found.map(({ agent, path }) => ({
     name: agent.name,
     command: agent.command,
@@ -178,6 +183,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(path ? { path } : {}),
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
@@ -421,6 +427,7 @@ export function createChatController(options: ChatOptions): ChatController {
         installed: info ? info.installed : (prev?.installed ?? false),
         resume: !!agent.capabilities.resume,
         steer: !!agent.capabilities.steer,
+        canAsk: canAgentAsk(agent),
         ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
         ...(info ? { auth: info.auth } : prev?.auth ? { auth: prev.auth } : {}),
         ...(info?.broken ? { broken: true } : {}),
@@ -616,7 +623,9 @@ export function createChatController(options: ChatOptions): ChatController {
                       ? ' (broken)'
                       : a.auth === 'signed-out'
                         ? ' (not signed in)'
-                        : '';
+                        : a.canAsk === false
+                          ? ' (no questions)'
+                          : '';
                   return `${a.name === session.get().agent && !setup ? '●' : '○'} ${a.name}${status}`;
                 })
                 .join('\n'),

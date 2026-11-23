@@ -534,6 +534,7 @@ function App() {
           <AgentPicker
             current={session.agent}
             agents={agentList}
+            noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
             disabled={running}
             onSelect={(name) => {
               // What still waits here was meant for the other agent.
@@ -557,7 +558,7 @@ function App() {
             {view.agents.map((agent) => (
               <option key={agent.name} value={agent.name}>
                 {agent.name}
-                {agent.installed ? '' : ' (not installed)'}
+                {!agent.installed ? ' (not installed)' : agent.canAsk === false ? ' (no questions)' : ''}
               </option>
             ))}
           </select>

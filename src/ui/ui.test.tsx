@@ -269,6 +269,41 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('reports canAsk per agent choice and marks agents that cannot ask in /agent', () => {
+    const native = { ...echoAgent('native'), capabilities: { questions: true } };
+    const mcp = { ...echoAgent('mcp'), capabilities: { mcp: true } };
+    const remote = { ...echoAgent('remote'), capabilities: { mcp: true, remote: true } };
+    const plain = { ...echoAgent('plain'), capabilities: {} };
+    const questionChannel = {
+      mcpServer: { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true },
+      bind() {},
+    };
+    const chat = createChatController({
+      agents: [native, mcp, remote, plain],
+      cwd: '/w',
+      env,
+      questionChannel,
+    });
+    expect(chat.get().agents.map((a) => [a.name, a.canAsk])).toEqual([
+      ['native', true],
+      ['mcp', true],
+      ['remote', false],
+      ['plain', false],
+    ]);
+    expect(chat.get().session.canAsk).toBe(true);
+    chat.submit('/agent');
+    const listing = chat.get().notices.at(-1)?.text ?? '';
+    expect(listing).toContain('● native');
+    expect(listing).not.toContain('native (no questions)');
+    expect(listing).toContain('○ mcp');
+    expect(listing).not.toContain('mcp (no questions)');
+    expect(listing).toContain('○ remote (no questions)');
+    expect(listing).toContain('○ plain (no questions)');
+    chat.submit('/agent plain');
+    expect(chat.get().session.canAsk).toBe(false);
+    chat.close();
+  });
+
   it('/clear empties the conversation and its notices', async () => {
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     chat.submit('hi');

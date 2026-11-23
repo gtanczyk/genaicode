@@ -1,7 +1,11 @@
 import { cursorSessions } from '../sessions/stores.js';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
-import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
+import { isHttpServer, type PreparedRun } from '../prepare.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
 
 export interface CursorAgentOptions {
@@ -56,15 +60,60 @@ export function cursor(options: CursorAgentOptions = {}): CodingAgent {
     command: options.command ?? 'cursor-agent',
     capabilities: {
       usage: true,
+      mcp: true,
       resume: true,
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => cursorArgs(task, options),
+    prepare: (task) => writeCursorMcp(task, options),
     createParser: () => createCursorParser({ partialOutput: options.partialOutput }),
   });
 }
 
-export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}): string[] {
+/** The `mcp.json` document written inside a per-run `--plugin-dir` for Cursor CLI. */
+export function cursorMcpConfig(servers: readonly McpServer[]): { mcpServers: Record<string, unknown> } {
+  const mcpServers: Record<string, unknown> = {};
+  for (const server of servers) {
+    mcpServers[server.name] = isHttpServer(server)
+      ? { url: server.url, ...(server.headers ? { headers: server.headers } : {}) }
+      : {
+          command: server.command,
+          args: [...(server.args ?? [])],
+          ...(server.env ? { env: server.env } : {}),
+        };
+  }
+  return { mcpServers };
+}
+
+/**
+ * Hand Cursor CLI the task's MCP servers through a private temporary `--plugin-dir`. Neither
+ * `~/.cursor/mcp.json` nor `<cwd>/.cursor/mcp.json` is touched, and header/env secrets stay
+ * in a `0o600` file out of argv. Cursor requires `--plugin-dir` to be at least 3 path segments
+ * deep, so the plugin lives in a `plugin` subdirectory under the temp dir.
+ */
+function writeCursorMcp(task: AgentTask, options: CursorAgentOptions): PreparedRun {
+  if (!task.mcpServers?.length) return { args: cursorArgs(task, options) };
+  const dir = mkdtempSync(join(tmpdir(), 'genaicode-cursor-mcp-'));
+  try {
+    const pluginDir = join(dir, 'plugin');
+    mkdirSync(join(pluginDir, '.cursor-plugin'), { recursive: true, mode: 0o700 });
+    writeFileSync(
+      join(pluginDir, '.cursor-plugin', 'plugin.json'),
+      JSON.stringify({ name: 'genaicode', version: '0.0.0', mcpServers: 'mcp.json' }),
+      { mode: 0o600 },
+    );
+    writeFileSync(join(pluginDir, 'mcp.json'), JSON.stringify(cursorMcpConfig(task.mcpServers)), { mode: 0o600 });
+    return {
+      args: cursorArgs(task, options, pluginDir),
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}, pluginDir?: string): string[] {
   const permissions = resolvePermissions(task.permissions);
   exclusiveOption('cursor', 'force', options.force !== undefined, 'approval', permissions.approval !== undefined);
   const args = ['-p', '--output-format', 'stream-json'];
@@ -78,6 +127,7 @@ export function cursorArgs(task: AgentTask, options: CursorAgentOptions = {}): s
     args.push(...cursorPermissionFlags({ sandbox: permissions.sandbox }).args);
   }
   if (options.approveMcps ?? true) args.push('--approve-mcps');
+  if (pluginDir) args.push('--plugin-dir', pluginDir);
   if (options.partialOutput) args.push('--stream-partial-output');
   if (task.model) args.push('--model', task.model);
   // `--resume` takes an optional value; the `=` form keeps the prompt from being read as the id.
@@ -147,6 +197,7 @@ export function createCursorParser(options: { partialOutput?: boolean } = {}): A
               stringField(success, 'interleavedOutput') ??
               stringField(success, 'stdout') ??
               stringField(success, 'content') ??
+              mcpContentText(success?.content) ??
               stringField(success, 'message') ??
               errorText(call.result);
             events.push({
@@ -202,9 +253,18 @@ function errorText(result: unknown): string | undefined {
   return typeof error === 'string' ? error : (stringField(error, 'error') ?? stringField(error, 'message'));
 }
 
+function mcpContentText(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  const texts = content
+    .map((item) => stringField(item, 'text') ?? stringField(isObject(item) ? item.text : undefined, 'text'))
+    .filter((text): text is string => !!text);
+  return texts.length ? texts.join('\n') : undefined;
+}
+
 /**
  * `{ writeToolCall: { args, result } }` → `{ name: 'write', args, result }`. Other tools
- * arrive as `{ function: { name, arguments } }`, with `arguments` a JSON string.
+ * arrive as `{ function: { name, arguments } }`, with `arguments` a JSON string, or
+ * `{ mcpToolCall: { args: { providerIdentifier, toolName, args }, result } }`.
  */
 function cursorToolCall(value: unknown): { name: string; args?: unknown; result?: unknown } | undefined {
   if (!isObject(value)) return undefined;
@@ -212,6 +272,13 @@ function cursorToolCall(value: unknown): { name: string; args?: unknown; result?
   if (!key) return undefined;
   if (key === 'function' && isObject(body)) {
     return { name: stringField(body, 'name') ?? 'function', args: parseArguments(body.arguments), result: body.result };
+  }
+  if (key === 'mcpToolCall' && isObject(body)) {
+    const callArgs = isObject(body.args) ? body.args : undefined;
+    const server = stringField(callArgs, 'providerIdentifier')?.replace(/^plugin-genaicode-/, '');
+    const tool = stringField(callArgs, 'toolName') ?? stringField(callArgs, 'name');
+    const name = server && tool ? `${server}/${tool}` : (tool ?? 'mcp');
+    return { name, args: callArgs?.args ?? body.args, result: body.result };
   }
   const name = key.replace(/ToolCall$/, '') || key;
   return isObject(body) ? { name, args: body.args, result: body.result } : { name };

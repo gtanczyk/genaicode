@@ -4,6 +4,8 @@ import type { AgentInspection } from '../../agents/status.js';
 export interface AgentPickerProps {
   current: string;
   agents: readonly AgentInspection[];
+  /** Agents that cannot ask clarifying questions (`AgentChoice.canAsk === false`). */
+  noQuestions?: ReadonlySet<string>;
   disabled?: boolean;
   onSelect(name: string): void;
   onOpenSetup(focusAgent?: string): void;
@@ -16,7 +18,7 @@ export interface AgentPickerProps {
  * - Not-installed agents appear under "More agents" with Install.
  * - Always offers "Connect another agent" at the bottom.
  */
-export function AgentPicker({ current, agents, disabled, onSelect, onOpenSetup }: AgentPickerProps) {
+export function AgentPicker({ current, agents, noQuestions, disabled, onSelect, onOpenSetup }: AgentPickerProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +101,7 @@ export function AgentPicker({ current, agents, disabled, onSelect, onOpenSetup }
                       <span className="picker-name">{agent.guide.title}</span>
                       <span className="picker-sub">
                         {agent.auth === 'ready' ? (agent.plan ?? 'Ready') : 'Installed'}
+                        {noQuestions?.has(agent.name) ? ' · no questions' : ''}
                       </span>
                       {selected ? (
                         <span className="picker-check" aria-hidden="true">

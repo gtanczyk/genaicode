@@ -5,9 +5,11 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { antigravityMcpServers } from './drivers/antigravity.js';
 import { claude, claudeArgs, claudeMcpConfig } from './drivers/claude.js';
 import { codex, codexMcpOverrides } from './drivers/codex.js';
-import { gemini } from './drivers/gemini.js';
+import { cursor, cursorMcpConfig } from './drivers/cursor.js';
+import { gemini, geminiMcpConfig } from './drivers/gemini.js';
 import { muse } from './drivers/muse.js';
 import { museMcpOverrides } from './drivers/muse-mcp.js';
+import { opencode } from './drivers/opencode.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-mcp-test-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -17,19 +19,32 @@ const reporter = join(dir, 'reporter.mjs');
 writeFileSync(
   reporter,
   `import { readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 const args = process.argv.slice(2);
 const at = args.indexOf('--mcp-config');
 const file = at >= 0 ? args[at + 1] : undefined;
+const pluginAt = args.indexOf('--plugin-dir');
+const pluginDir = pluginAt >= 0 ? args[pluginAt + 1] : undefined;
+const geminiFile = process.env.GEMINI_CLI_SYSTEM_SETTINGS_PATH;
 const report = {
   args,
   file,
   mode: file ? (statSync(file).mode & 0o777).toString(8) : undefined,
   config: file ? JSON.parse(readFileSync(file, 'utf8')) : undefined,
+  pluginDir,
+  pluginManifest: pluginDir ? JSON.parse(readFileSync(join(pluginDir, '.cursor-plugin', 'plugin.json'), 'utf8')) : undefined,
+  pluginMcpMode: pluginDir ? (statSync(join(pluginDir, 'mcp.json')).mode & 0o777).toString(8) : undefined,
+  pluginMcp: pluginDir ? JSON.parse(readFileSync(join(pluginDir, 'mcp.json'), 'utf8')) : undefined,
+  geminiFile,
+  geminiDefaults: process.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
+  geminiMode: geminiFile ? (statSync(geminiFile).mode & 0o777).toString(8) : undefined,
+  geminiConfig: geminiFile ? JSON.parse(readFileSync(geminiFile, 'utf8')) : undefined,
   header: process.env.GENAICODE_MCP_0_HEADER_0,
   env: process.env.GENAICODE_MCP_1_ENV_0,
 };
-// Both claude's and codex's final-message shapes; each parser ignores the other's.
-console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(report) }));
+// Final-message shapes for claude/cursor, codex, muse and gemini; each parser ignores the others.
+console.log(JSON.stringify({ type: 'result', subtype: 'success', status: 'success', is_error: false, result: JSON.stringify(report) }));
+console.log(JSON.stringify({ type: 'message', role: 'assistant', content: JSON.stringify(report) }));
 console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify(report) } }));
 console.log(JSON.stringify({ type: 'turn.completed' }));
 console.log(JSON.stringify({ payload_type: 'run.terminal.completed', payload: { text: JSON.stringify(report) } }));
@@ -175,8 +190,122 @@ describe('MCP servers', () => {
     ]);
   });
 
+  it('hands gemini a private system settings file via GEMINI_CLI_SYSTEM_SETTINGS_PATH and removes it afterwards', async () => {
+    expect(
+      geminiMcpConfig([
+        {
+          name: 'docs',
+          url: 'https://mcp.example/docs',
+          headers: { Authorization: 'Bearer secret' },
+          toolTimeoutSec: 300,
+        },
+        { name: 'fs', command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' } },
+      ]),
+    ).toEqual({
+      mcpServers: {
+        docs: {
+          httpUrl: 'https://mcp.example/docs',
+          headers: { Authorization: 'Bearer secret' },
+          timeout: 300_000,
+          trust: true,
+        },
+        fs: { command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' }, trust: true },
+      },
+    });
+    // With allowMcpTools: false, only trusted servers get trust: true.
+    expect(
+      geminiMcpConfig(
+        [
+          { name: 'docs', url: 'https://mcp.example/docs' },
+          { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true, toolTimeoutSec: 86_400 },
+        ],
+        { allowMcpTools: false },
+      ),
+    ).toEqual({
+      mcpServers: {
+        docs: { httpUrl: 'https://mcp.example/docs' },
+        genaicode_ask: { httpUrl: 'http://127.0.0.1:1/mcp', timeout: 86_400_000, trust: true },
+      },
+    });
+
+    // Preserves any existing system settings file (including JSONC comments) and original defaults path.
+    const existing = join(dir, 'existing-gemini-settings.json');
+    writeFileSync(
+      existing,
+      `// Enterprise Gemini defaults\n{\n  /* Keep theme and corp MCP */\n  "theme": "dark",\n  "mcpServers": {\n    "corp": { "httpUrl": "https://corp.example/mcp" } // URL has // inside string\n  }\n}\n`,
+    );
+    const baseEnv: NodeJS.ProcessEnv = { ...process.env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: existing };
+    delete baseEnv.GEMINI_CLI_SYSTEM_DEFAULTS_PATH;
+    const result = await gemini({ command: bin }).run({
+      prompt: 'p',
+      cwd: dir,
+      env: baseEnv,
+      mcpServers: servers,
+    }).result;
+    const report = JSON.parse(result.text!);
+    expect(result.ok).toBe(true);
+    expect(report.geminiFile).not.toBe(existing);
+    expect(report.geminiDefaults).toBe(join(dir, 'system-defaults.json'));
+    expect(report.geminiMode).toBe('600');
+    expect(report.geminiConfig).toEqual({
+      theme: 'dark',
+      mcpServers: {
+        corp: { httpUrl: 'https://corp.example/mcp' },
+        docs: { httpUrl: 'https://mcp.example/docs', headers: { Authorization: 'Bearer secret' }, trust: true },
+        fs: { command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' }, trust: true },
+      },
+    });
+    expect(report.args.join(' ')).not.toContain('secret');
+    expect(existsSync(report.geminiFile)).toBe(false);
+    expect(existsSync(existing)).toBe(true);
+
+    // Retains an explicit caller GEMINI_CLI_SYSTEM_DEFAULTS_PATH unchanged.
+    const customDefaults = join(dir, 'custom-defaults.json');
+    const withCustomDefaults = await gemini({ command: bin }).run({
+      prompt: 'p',
+      cwd: dir,
+      env: { ...baseEnv, GEMINI_CLI_SYSTEM_DEFAULTS_PATH: customDefaults },
+      mcpServers: servers,
+    }).result;
+    expect(JSON.parse(withCustomDefaults.text!).geminiDefaults).toBe(customDefaults);
+
+    // Fails rather than silently dropping an existing malformed system settings file.
+    const broken = join(dir, 'broken-gemini-settings.json');
+    writeFileSync(broken, '{ not valid json');
+    const failed = await gemini({ command: bin }).run({
+      prompt: 'p',
+      cwd: dir,
+      env: { ...baseEnv, GEMINI_CLI_SYSTEM_SETTINGS_PATH: broken },
+      mcpServers: servers,
+    }).result;
+    expect(failed).toMatchObject({ status: 'failed', ok: false, exitCode: null });
+    expect(failed.error).toMatch(/Existing Gemini system settings/);
+  });
+
+  it('hands cursor a private temporary --plugin-dir and removes it afterwards', async () => {
+    expect(cursorMcpConfig(servers)).toEqual({
+      mcpServers: {
+        docs: { url: 'https://mcp.example/docs', headers: { Authorization: 'Bearer secret' } },
+        fs: { command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' } },
+      },
+    });
+    const result = await cursor({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
+    const report = JSON.parse(result.text!);
+    expect(result.ok).toBe(true);
+    expect(report.pluginManifest).toEqual({ name: 'genaicode', version: '0.0.0', mcpServers: 'mcp.json' });
+    expect(report.pluginMcpMode).toBe('600');
+    expect(report.pluginMcp.mcpServers.docs.headers).toEqual({ Authorization: 'Bearer secret' });
+    expect(report.pluginMcp.mcpServers.fs).toEqual({ command: 'mcp-fs', args: ['--root', '.'], env: { LOG: '1' } });
+    expect(report.args.join(' ')).not.toContain('secret');
+    // Cursor requires --plugin-dir to be at least 3 path segments deep (safe on Linux /tmp too).
+    expect(report.pluginDir.split(/[/\\]/).filter(Boolean).length).toBeGreaterThanOrEqual(3);
+    expect(existsSync(report.pluginDir)).toBe(false);
+    // Project directory is never touched.
+    expect(existsSync(join(dir, '.cursor'))).toBe(false);
+  });
+
   it('refuses servers a driver cannot attach, and bad names', async () => {
-    const unsupported = await gemini({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
+    const unsupported = await opencode({ command: bin }).run({ prompt: 'p', cwd: dir, mcpServers: servers }).result;
     expect(unsupported).toMatchObject({ status: 'failed', exitCode: null });
     expect(unsupported.error).toMatch(/does not support MCP servers/);
 

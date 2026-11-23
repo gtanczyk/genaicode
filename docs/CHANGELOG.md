@@ -10,7 +10,17 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- "Waiting" is split into **needs you now** and **stalled**. Needs you now: an approval, or a last message that asked a question or gave a command to run in the last 3 days. Stalled: an offer to go on ("I can also…, if you want"), a report that could not be sent back, or an older question. Topics, `sessions --waiting`, the start screen and Sessions view of `genaicode ui`, and the desktop menu bar count only what needs you now; stalled sessions fold under their topic ("Show 2 stalled", a "Stalled" submenu). New `attentionOf()`, `isStalled()`, `TopicSummary.stalled`; `isAsking()` no longer counts offers and unsent reports (#315)
+- `ask_user` and per-run MCP servers (`capabilities.mcp`) on Gemini CLI (`gemini()`, via a temporary `GEMINI_CLI_SYSTEM_SETTINGS_PATH` file) and Cursor CLI (`cursor()`, via a temporary `--plugin-dir`), plus `SessionState.canAsk` and `(no questions)` markers in the UI agent picker and `/agent` (#314)
 - `genaicode ui` and the desktop app: onboarding when no agent CLI is installed or signed in. The server starts in a `setup` state with `GET /api/agents` (presence, duplicate-install hints, broken-binary detection, and cheap local sign-in checks for Claude Code and Codex), showing per-agent install/sign-in cards with copyable commands, plan limits, and **Check again** while keeping session tools working. In the desktop app, **Check again** re-reads the login shell environment without restarting. The agent picker separates Ready/Installed agents from greyed signed-out ones (**Sign in**) and **More agents** (**Install**), and auth failures on a prompt render as a sign-in card in the conversation. New exports in `genaicode/agents`: `AGENT_GUIDES`, `agentGuide`, `findAllExecutables`, `inspectAgent`, `inspectAgents`, `createAgentInspector`, `isAgentUsable`, `isAuthError`; `<AgentChat renderFailure>` in `genaicode/react` (#316)
+
+### Fixed
+
+- `ask_user` runs without a permission prompt on `museLive()` (auto-approving only `trusted` MCP server tools once via a shared trusted-tool matcher) and Copilot (`trusted` servers pre-allowed even with `allowMcpTools: false`, and `toolTimeoutSec` mapped to Copilot's `timeout` ms) (#314)
+
+### Internal
+
+- Added `scripts/ask-user-live.mjs` to live-verify `ask_user` across installed agents at 0 s and past 60 s (#314)
 
 ## 3.0.1 — 2026-11-23
 
