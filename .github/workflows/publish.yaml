@@ -71,4 +71,6 @@ jobs:
             git push origin "v$VERSION"
           fi
           node scripts/release.mjs notes "$VERSION" > "$RUNNER_TEMP/notes.md" || echo "See docs/CHANGELOG.md." > "$RUNNER_TEMP/notes.md"
-          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "v$VERSION" --latest --notes-file "$RUNNER_TEMP/notes.md"
+          # Not "latest" yet: `releases/latest/download/...` must keep serving the last version that has
+          # its desktop downloads. desktop-release.yaml makes this one the latest once its own are up.
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "v$VERSION" --latest=false --notes-file "$RUNNER_TEMP/notes.md"
