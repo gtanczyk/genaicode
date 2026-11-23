@@ -28,7 +28,13 @@ const expandAll = (values: Record<string, string> | undefined, env: Env) =>
  * One entry of Claude Code's `mcpServers` map as a genaicode `McpServer`. Only stdio and
  * streamable HTTP servers: other agents cannot attach an SSE one.
  */
-function claudeServer(name: string, entry: unknown, env: Env): McpServer | undefined {
+/**
+ * A path relative to the directory Claude Code starts the server in, made absolute: a task in
+ * another directory must start the same program.
+ */
+const anchored = (value: string, cwd: string) => (/^\.\.?[\\/]/.test(value) ? path.resolve(cwd, value) : value);
+
+function claudeServer(name: string, entry: unknown, env: Env, cwd: string): McpServer | undefined {
   if (!isRecord(entry)) return undefined;
   const type = typeof entry.type === 'string' ? entry.type : undefined;
   if (typeof entry.url === 'string' && (type === undefined || type === 'http')) {
@@ -37,12 +43,12 @@ function claudeServer(name: string, entry: unknown, env: Env): McpServer | undef
   }
   if (typeof entry.command === 'string' && (type === undefined || type === 'stdio')) {
     const args = Array.isArray(entry.args)
-      ? entry.args.filter((arg): arg is string => typeof arg === 'string').map((arg) => expand(arg, env))
+      ? entry.args.filter((arg): arg is string => typeof arg === 'string').map((arg) => anchored(expand(arg, env), cwd))
       : undefined;
     const vars = expandAll(strings(entry.env), env);
     return {
       name,
-      command: expand(entry.command, env),
+      command: anchored(expand(entry.command, env), cwd),
       ...(args?.length ? { args } : {}),
       ...(vars ? { env: vars } : {}),
     };
@@ -79,7 +85,7 @@ export async function claudeMcpServers(cwd: string, env: Env = process.env): Pro
   for (const scope of scopes) {
     if (!isRecord(scope)) continue;
     for (const [name, entry] of Object.entries(scope)) {
-      const server = claudeServer(name, entry, env);
+      const server = claudeServer(name, entry, env, cwd);
       if (server) found.set(name, server);
       else found.delete(name);
     }

@@ -21,7 +21,7 @@ describe('ownMcpServers', () => {
           old: { type: 'sse', url: 'https://sse.test' },
           tool: { type: 'stdio', command: 'tool', args: ['--x'], env: { A: '1' } },
         },
-        projects: { [project]: { mcpServers: { tool: { command: 'local-tool' } } } },
+        projects: { [project]: { mcpServers: { tool: { command: './bin/tool', args: ['../x.js', '-v'] } } } },
       }),
     );
     writeFileSync(
@@ -31,7 +31,7 @@ describe('ownMcpServers', () => {
     const env = { HOME: home, KEY: 'secret' };
     expect(await claudeMcpServers(project, env)).toEqual([
       { name: 'gamedevpl', url: 'https://gamedev.test/mcp', headers: { Authorization: 'Bearer k' } },
-      { name: 'tool', command: 'local-tool' },
+      { name: 'tool', command: join(project, 'bin/tool'), args: [join(root, 'x.js'), '-v'] },
       { name: 'docs', url: 'https://docs.test', headers: { k: 'secret' } },
     ]);
     const bare = await ownMcpServers('claude', project, { CLAUDE_CONFIG_DIR: join(root, 'none') });
