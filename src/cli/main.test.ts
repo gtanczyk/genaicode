@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { neutralHomeDir, saveConversation } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
 import {
@@ -73,6 +74,20 @@ function pathWith(...commands: string[]): string {
 }
 
 describe('parseCli', () => {
+  it('parses and validates --artifact-cdn hosts for ui, chat and tower', () => {
+    const ui = parseCli(['ui', '--artifact-cdn', 'cdn.jsdelivr.net,unpkg.com', '--artifact-cdn', 'esm.sh']);
+    expect(ui).toMatchObject({
+      kind: 'ui',
+      artifactCdn: ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://esm.sh'],
+    });
+    const chat = parseCli(['chat', '--artifact-cdn', 'http://127.0.0.1:8080']);
+    expect(chat).toMatchObject({ kind: 'chat', artifactCdn: ['http://127.0.0.1:8080'] });
+    expect(() => parseCli(['ui', '--artifact-cdn', '*'])).toThrow(UsageError);
+    expect(() => parseCli(['ui', '--artifact-cdn', 'cdn.jsdelivr.net', '--no-artifacts'])).toThrow(UsageError);
+    expect(() => parseCli(['ui', '--artifact-cdn', 'http://public.example'])).toThrow(UsageError);
+    expect(helpText).toContain('--artifact-cdn');
+  });
+
   it('uses the resumable interactive Codex and Muse drivers in the tower inbox', async () => {
     const inspect = async (launch: UiLaunch) => {
       expect(launch.towerInbox).toBeDefined();
@@ -133,6 +148,59 @@ describe('parseCli', () => {
     expect((await run('--restore', '--cwd', '/work/other')).continueFrom).toBe('b-elsewhere');
     expect(parseCli(['ui', '--restore'])).toMatchObject({ restore: true });
     expect(() => parseCli(['chat', '--restore'])).toThrow();
+  });
+
+  it('ui --home starts in neutral home and --restore brings back the last recorded conversation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-home-cli-'));
+    dirs.push(root);
+    const env = { PATH: pathWith('alpha-cli'), HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    const alpha = {
+      ...fakeAgent('alpha', []),
+      capabilities: { resume: true, mcp: true },
+      sessions: { name: 'alpha', where: 'local' as const, list: async () => [] },
+    };
+    const seen: UiLaunch[] = [];
+    const loadUi = async () => ({
+      runWeb: async (launch: UiLaunch) => (seen.push(launch), 0),
+      runChat: async (launch: UiLaunch) => (seen.push(launch), 0),
+    });
+
+    expect(
+      await main(environment({ argv: ['ui', '--home'], agents: [alpha], env, cwd: '/unrelated', loadUi }).cli),
+    ).toBe(EXIT_OK);
+    const first = seen.pop()!;
+    expect(first).toMatchObject({
+      home: true,
+      noProject: true,
+      cwd: neutralHomeDir(env),
+    });
+    expect(first.continueFrom).toBeUndefined();
+
+    await saveConversation(
+      {
+        id: 'conv-1',
+        cwd: join(root, 'src', 'knights'),
+        origin: 'topic',
+        topicId: 't1',
+        topicName: 'Knights',
+        agent: 'alpha',
+        source: 'alpha',
+        sessionId: 'alpha-sess-9',
+        updatedAt: Date.now(),
+      },
+      env,
+    );
+    expect(
+      await main(
+        environment({ argv: ['ui', '--home', '--restore'], agents: [alpha], env, cwd: '/unrelated', loadUi }).cli,
+      ),
+    ).toBe(EXIT_OK);
+    expect(seen.pop()).toMatchObject({
+      home: true,
+      cwd: neutralHomeDir(env),
+      agent: 'alpha',
+      continueFrom: 'alpha-sess-9',
+    });
   });
   it('runs Codex over its live driver in chat and ui, with or without a pack', async () => {
     const inspect = async (launch: UiLaunch) => {
@@ -298,6 +366,55 @@ describe('parseCli', () => {
     expect(await main(noMcp.cli)).toBe(EXIT_USAGE);
     expect(noMcp.err()).toContain('No installed agent with MCP support found for --pack');
   });
+  it('shares the app’s saved roster between project pack entries and keeps explicit choices', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-project-team-'));
+    dirs.push(root);
+    const cwd = join(root, 'project');
+    mkdirSync(cwd);
+    const agents = ['first', 'second', 'worker'].map((name) => ({
+      ...fakeAgent(name, []),
+      command: process.execPath,
+      capabilities: { mcp: true },
+    }));
+    let last: UiLaunch;
+    const capture = async (launch: UiLaunch) => {
+      last = launch;
+      return 0;
+    };
+    const start = async (argv: string[]) => {
+      const { cli, err } = environment({
+        cwd,
+        agents,
+        env: { HOME: root },
+        interactive: true,
+        argv,
+        loadUi: async () => ({ runWeb: capture, runChat: capture }),
+      });
+      const code = await main(cli);
+      return { code, error: err(), launch: last };
+    };
+    const desktop = await start(['ui', '--delegate', '--sessions', '--no-project']);
+    expect(desktop.code, desktop.error).toBe(EXIT_OK);
+    await desktop.launch.projectTeams!.save(cwd, { lead: 'second', members: ['worker'] });
+    for (const command of ['ui', 'chat']) {
+      const { launch } = await start([command, '--pack']);
+      expect(launch.startupNotice).toBe('Project pack: second leads · members: worker.');
+    }
+    expect((await start(['ui', '--delegate'])).launch.agent).toBe('second');
+    expect((await start(['ui', '--pack', '-a', 'first'])).launch.startupNotice).toBe(
+      'Project pack: first leads · members: worker.',
+    );
+    expect((await start(['ui', '--pack', 'first:second'])).launch.agents[0].name).toBe('pack');
+    const file = join(cwd, '.genaicode', 'pack.json');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ lead: 'second', members: ['worker'] });
+    writeFileSync(file, 'broken');
+    expect(await start(['ui', '--pack'])).toMatchObject({
+      code: EXIT_USAGE,
+      error: expect.stringContaining('Invalid JSON'),
+    });
+    expect((await start(['ui', '--pack', 'first:worker'])).code).toBe(EXIT_OK);
+  });
+
   it('parses run options', () => {
     expect(
       parseCli(['run', '-a', 'codex', '--timeout', '90', '--max-turns', '5', '--verify', 'npm test', 'fix', 'it']),
@@ -441,6 +558,16 @@ describe('parseCli', () => {
     expect(parseCli(['chat'])).toMatchObject({ mcpServers: [] });
     expect(parseCli(['ui', '--exit-with-stdin'])).toMatchObject({ exitWithStdin: true });
     expect(parseCli(['ui', '--sessions', '--no-project'])).toMatchObject({ noProject: true, sessions: true });
+    expect(parseCli(['ui', '--home'])).toMatchObject({ home: true, noProject: true, sessions: true });
+    expect(parseCli(['ui', '--sessions', '--home', '--no-open', '--exit-with-stdin'])).toMatchObject({
+      home: true,
+      noProject: true,
+      sessions: true,
+      open: false,
+      exitWithStdin: true,
+    });
+    expect(() => parseCli(['ui', '--home', '--cwd', '/tmp'])).toThrow('--home and --cwd do not go together');
+    expect(() => parseCli(['chat', '--home'])).toThrow();
     expect(() => parseCli(['ui', '--no-project'])).toThrow('--no-project goes with --sessions');
     expect(() => parseCli(['chat', '--sessions', '--no-project'])).toThrow();
     expect(() => parseCli(['chat', '--exit-with-stdin'])).toThrow(UsageError);
@@ -894,7 +1021,7 @@ describe('genaicode sessions --waiting', () => {
     const again = await answer('approve', open.id);
     expect(again.code).toBe(EXIT_FAILED);
     expect(again.err).toContain('No open question 0123456789ab');
-    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval, 1 asks you something:/);
+    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval, 1 asks you something now:/);
     expect(out.indexOf('asks to use Bash')).toBeLessThan(out.indexOf('Add CSV export'));
     expect(out).toContain('  asks: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
     expect(out).not.toContain('Working on it');
@@ -1017,7 +1144,7 @@ describe('genaicode sessions --waiting', () => {
     expect(agent.tasks).toHaveLength(1);
 
     const shown = (await run()).out.split('\n');
-    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 ask you$/);
+    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 needs you$/);
     expect(shown[1]).toMatch(/^ {2}Desktop app\s+t2\s+alpha 1\s+1h ago$/);
     expect((await run('show', 'pack')).out).toMatch(
       /^Pack mode \(t1\): 2 sessions in the last 30d\n● alpha .* one\n {2}alpha .* three\n$/,
@@ -1178,7 +1305,7 @@ describe('genaicode sessions --waiting', () => {
       ['one', 'Pack mode'],
       ['two', undefined],
     ]);
-    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 1, active: 0 }]);
+    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 1, stalled: 0, active: 0 }]);
 
     // Ctrl-C ends it too, and lets go of a stdin that is still open.
     const open = new PassThrough();

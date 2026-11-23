@@ -473,16 +473,25 @@ describe('claude() with onApproval', () => {
       FAKE_TOOL: 'ExitPlanMode',
     };
     delete env.MCP_TOOL_TIMEOUT;
-    const first = persistent.run({ prompt: 'plan it', cwd: dir, env, mode: 'plan', onApproval });
+    const first = persistent.run({ prompt: 'plan it', cwd: dir, env, mode: 'plan', permissions: 'yolo', onApproval });
     const firstEvents: AgentEvent[] = [];
     for await (const event of first) firstEvents.push(event);
     const firstResult = await first.result;
     expect(firstEvents).toContainEqual({ type: 'session', sessionId: 's-1', mode: 'plan' });
-    const resumed = persistent.run({ prompt: 'refine it', cwd: dir, env, resume: firstResult.sessionId, onApproval });
-    const resumedResult = await resumed.result;
-    const resumedReport = JSON.parse(resumedResult.text!);
-    expect(resumedReport.args).toContain('plan');
-    expect(resumedReport.answer).toMatchObject({ behavior: 'deny' });
+    for (const permissions of [undefined, 'yolo'] as const) {
+      const resumed = persistent.run({
+        prompt: 'refine it',
+        cwd: dir,
+        env,
+        permissions,
+        resume: firstResult.sessionId,
+        onApproval,
+      });
+      const resumedResult = await resumed.result;
+      const resumedReport = JSON.parse(resumedResult.text!);
+      expect(resumedReport.args).toContain('plan');
+      expect(resumedReport.answer).toMatchObject({ behavior: 'deny' });
+    }
     expect(onApproval).not.toHaveBeenCalled();
   });
 

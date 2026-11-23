@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
+import { isAgentUsable, type AgentAuthState, type AgentInspection } from '../agents/status.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
 import { outputText, type McpTool } from '../agents/mcp-tools.js';
 import {
@@ -9,11 +11,34 @@ import {
   type AgentSessionOptions,
   type SessionState,
 } from '../agents/session.js';
-import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
-import { isWithin } from '../agents/sessions/files.js';
+import {
+  agentSessionSources,
+  archiveKey,
+  codexProjects,
+  findSession,
+  isNeutralHome,
+  isSameDir,
+  listSessions,
+  readConversations,
+  readSession,
+  readTopics,
+  resolveSessionWorkspace,
+  resolveTopicWorkspace,
+  saveConversation,
+  type ConversationOrigin,
+  type TopicStore,
+} from '../agents/sessions/index.js';
+import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
-import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
+import {
+  formatSessionUpdate,
+  label,
+  type SessionSendGate,
+  type SessionSendTarget,
+  type SessionSendUpdate,
+} from '../agents/sessions/send-tool.js';
+import type { ChatSessionRelay } from '../react/session-relay.js';
 import type {
   AgentBudget,
   AgentMode,
@@ -24,6 +49,7 @@ import type {
   QuestionAnswers,
 } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
+import { formatTruncationReason } from './transcript.js';
 
 export interface AgentChoice {
   name: string;
@@ -31,10 +57,24 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** Whether the agent can ask the person to choose (own tool, or `ask_user` over MCP). */
+  canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
   /** Supports Plan mode (`/plan`). */
-  plan?: boolean;
+  canPlan?: boolean;
+  /** Local sign-in state when inspected: `ready`, `signed-out`, or `unknown`. */
+  auth?: AgentAuthState;
+  /** True when the binary exists on PATH but failed to execute. */
+  broken?: boolean;
+  /** Resolved executable path on PATH. */
+  path?: string;
+  /** CLI version when reported by `--version`. */
+  version?: string;
+  /** Plan or auth method label reported by the CLI (e.g. `Max`, `ChatGPT`, `API key`). */
+  plan?: string;
+  /** Actionable note (broken binary error, duplicate installs, etc.). */
+  hint?: string;
 }
 
 /** A line from the front end itself (agent switched, help...), shown after turn `afterTurn`. */
@@ -43,6 +83,17 @@ export interface Notice {
   afterTurn: number;
   text: string;
   tone: 'info' | 'error';
+  /** Live card for a message relayed to another session via `sessions_send`. */
+  relay?: ChatSessionRelay;
+}
+
+/** Metadata of the active conversation in `--home` mode. */
+export interface ConversationMeta {
+  id: string;
+  cwd: string;
+  origin: ConversationOrigin;
+  title?: string;
+  topic?: { id: string; name: string };
 }
 
 export interface ChatView {
@@ -56,6 +107,10 @@ export interface ChatView {
   tower?: TowerView;
   /** `!commands` still running; stop() ends them. */
   shells: number;
+  /** True when no agent is ready/usable yet (`genaicode ui` onboarding setup state). */
+  setup?: boolean;
+  /** Active conversation metadata when running in `--home` mode. */
+  conversation?: ConversationMeta;
 }
 
 /** Opens the session in the browser from the terminal chat (`/web`). */
@@ -70,6 +125,8 @@ export interface WebHandoff {
 export type ChatSource = 'terminal' | 'web';
 
 export interface ChatOptions {
+  /** Saved default for a fresh project conversation. Resumed sessions keep their selected agent. */
+  projectLead?(cwd: string): Promise<string | undefined>;
   agents: readonly CodingAgent[];
   /**
    * The stores the Sessions view, `/continue` and `--from` read. Default: those of `agents`. Give
@@ -114,8 +171,21 @@ export interface ChatOptions {
   artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
   /** The running `ask_user` channel (`AgentSessionOptions.questions`), started by the front end. */
   questionChannel?: AgentSessionOptions['questions'];
+  /** The running `open_project` channel (`AgentSessionOptions.openProject`), started in `--home` mode. */
+  openProjectChannel?: AgentSessionOptions['openProject'];
+  /** Per-conversation working directory mode (`ui --home`): starts in neutral home, resolves cwd per conversation. */
+  home?: boolean;
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
+  /** Start in `setup` state when no agent CLI is installed instead of throwing `NoAgentError` (`genaicode ui`). */
+  allowNoAgent?: boolean;
+  /** Called when a turn fails with `failure.kind === 'auth'`, so the host can refresh agent status. */
+  onAuthFailure?(agent: string): void;
+  /**
+   * Called when the user opens or sends to another session (`continueSession`, `sessions_send`,
+   * tower inbox), so the host can allow files and artifacts from that session's directory.
+   */
+  onRoot?(dir: string): void;
 }
 
 export interface ChatController {
@@ -133,13 +203,21 @@ export interface ChatController {
   decideTower(id: string, decision: TowerDecision): Promise<boolean>;
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
+  /** Apply fresh local inspection results (presence, sign-in, broken binaries) and update `setup` state. */
+  updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
   /**
-   * Take over the session with this id (any agent's, in this directory or below it): its turns
-   * join the chat and the current agent continues it, resuming when the session is its own and
-   * getting a handoff otherwise. Resolves false, with a notice, when it cannot.
+   * Take over the session with this id (any agent's, in this directory or below it, or anywhere
+   * in `--home` mode): its turns join the chat and the current agent continues it, resuming when
+   * the session is its own and getting a handoff otherwise. Resolves false, with a notice, when it cannot.
    */
   continueSession(id: string): Promise<boolean>;
+  /** Start a new conversation in the resolved directory of `topicId` (`--home` mode). */
+  startTopicChat(topicId: string): Promise<boolean>;
+  /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
+  startHomeChat(): boolean;
+  /** Move the active conversation into `target.cwd` (used by `open_project` after user confirmation). */
+  moveProject(target: { cwd: string; topic?: { id: string; name: string } }): boolean;
   close(): void;
   readonly session: AgentSession;
   /** What the agent published, for the front end that serves it. */
@@ -154,16 +232,24 @@ export class NoAgentError extends Error {
 export function createChatController(options: ChatOptions): ChatController {
   const env = options.env ?? process.env;
   const found = detectAgents(options.agents, env);
-  const agents: AgentChoice[] = found.map(({ agent, path }) => ({
+  const canAgentAsk = (agent: CodingAgent): boolean =>
+    !!agent.capabilities.questions ||
+    (!!options.questionChannel && !!agent.capabilities.mcp && !agent.capabilities.remote);
+  let agents: AgentChoice[] = found.map(({ agent, path }) => ({
     name: agent.name,
     command: agent.command,
     installed: path !== null,
+    ...(path ? { path } : {}),
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
-    ...(agent.capabilities.plan ? { plan: true } : {}),
+    ...(agent.capabilities.plan ? { canPlan: true } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
+  const explicitAgent = !!options.agent;
+  let userSelectedAgent = false;
+  let setup = false;
   let initial: CodingAgent | undefined;
   if (options.agent) {
     initial = byName.get(options.agent);
@@ -172,9 +258,14 @@ export function createChatController(options: ChatOptions): ChatController {
   } else {
     initial = found.find(({ path }) => path)?.agent;
     if (!initial) {
-      throw new NoAgentError(
-        `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
-      );
+      if (options.allowNoAgent && options.agents.length) {
+        initial = options.agents[0];
+        setup = true;
+      } else {
+        throw new NoAgentError(
+          `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
+        );
+      }
     }
   }
 
@@ -185,6 +276,12 @@ export function createChatController(options: ChatOptions): ChatController {
     return [...new Set(names)].map((name) => byName.get(name)!);
   };
   let autoApprove = options.approveAll === true;
+  let notices: Notice[] = [];
+  let conversationEpoch = 0;
+  let contextEpoch = 0;
+  const relayNotices = new Map<number, number>();
+  const relayEpochs = new Map<number, { conversation: number; context: number }>();
+  let closed = false;
   const session = createAgentSession({
     ...(options.fallback?.length ? { fallback: fallbackAgents(options.fallback) } : {}),
     agent: initial,
@@ -198,16 +295,56 @@ export function createChatController(options: ChatOptions): ChatController {
     transformPrompt: options.transformPrompt,
     ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
     ...(options.questionChannel ? { questions: options.questionChannel } : {}),
+    ...(options.openProjectChannel ? { openProject: options.openProjectChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
-  let notices: Notice[] = [];
-  let closed = false;
+  const homeMode = options.home === true;
+  const homeDir = options.cwd;
+  let conversation: ConversationMeta | undefined = homeMode
+    ? { id: randomUUID(), cwd: homeDir, origin: 'home' }
+    : undefined;
+  let lastSavedKey = '';
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
   const shells = new Set<ChildProcess>();
+  const syncConversation = (state: SessionState) => {
+    if (!homeMode || !conversation) return;
+    let next = conversation;
+    if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
+    if (!next.title && state.turns.length) next = { ...next, title: oneLine(state.turns[0]!.prompt, 120) };
+    conversation = next;
+    if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
+    const source = byName.get(state.agent)?.sessions?.name;
+    const key = JSON.stringify([
+      next.id,
+      next.cwd,
+      next.origin,
+      next.title,
+      next.topic?.id,
+      state.agent,
+      state.sessionId,
+    ]);
+    if (key === lastSavedKey) return;
+    lastSavedKey = key;
+    void saveConversation(
+      {
+        id: next.id,
+        cwd: next.cwd,
+        origin: next.origin,
+        ...(next.title ? { title: next.title } : {}),
+        ...(next.topic ? { topicId: next.topic.id, topicName: next.topic.name } : {}),
+        agent: state.agent,
+        ...(source ? { source } : {}),
+        ...(state.sessionId ? { sessionId: state.sessionId } : {}),
+        updatedAt: Date.now(),
+      },
+      env,
+    ).catch(() => undefined);
+  };
   const snapshot = (): ChatView => {
     const state = session.get();
+    syncConversation(state);
     return {
       session: state,
       notices,
@@ -215,12 +352,16 @@ export function createChatController(options: ChatOptions): ChatController {
       bark,
       autoApprove,
       shells: shells.size,
+      ...(setup ? { setup: true } : {}),
       ...(inbox ? { tower: inbox.view(state) } : {}),
+      ...(conversation ? { conversation } : {}),
     };
   };
   let view = snapshot();
+  let batching = 0;
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
+    if (batching > 0) return;
     view = snapshot();
     for (const listener of [...listeners]) {
       try {
@@ -230,7 +371,17 @@ export function createChatController(options: ChatOptions): ChatController {
       }
     }
   };
-  const unsubscribe = session.subscribe(publish);
+  const reportedAuthTurns = new Set<number>();
+  const unsubscribe = session.subscribe((state) => {
+    publish();
+    if (!options.onAuthFailure) return;
+    for (const turn of state.turns) {
+      if (turn.result?.failure?.kind === 'auth' && !reportedAuthTurns.has(turn.id)) {
+        reportedAuthTurns.add(turn.id);
+        options.onAuthFailure(turn.agent);
+      }
+    }
+  });
   const notice = (text: string, tone: Notice['tone'] = 'info') => {
     if (closed) return;
     notices = [...notices, { id: nextNotice++, afterTurn: session.get().turns.length, text, tone }].slice(-200);
@@ -290,7 +441,7 @@ export function createChatController(options: ChatOptions): ChatController {
     let child: ChildProcess;
     try {
       child = spawn(command, {
-        cwd: options.cwd,
+        cwd: session.get().cwd,
         env,
         shell: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -344,7 +495,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }, 3000).unref?.();
   };
 
-  const selectAgent = (name: string, options?: { fresh?: boolean }): boolean => {
+  const selectAgent = (name: string, selectOptions?: { fresh?: boolean }): boolean => {
     const agent = byName.get(name);
     if (!agent) {
       notice(`Unknown agent "${name}". Known agents: ${[...byName.keys()].join(', ')}.`, 'error');
@@ -354,23 +505,177 @@ export function createChatController(options: ChatOptions): ChatController {
       notice('Stop the running turn before switching agents.', 'error');
       return false;
     }
+    userSelectedAgent = true;
     if (agent.name === session.get().agent) {
-      if (options?.fresh) {
+      if (selectOptions?.fresh) {
+        contextEpoch += 1;
         session.setAgent(agent, { handoff: false });
         notice(`Still ${name}. New agent session, no context.`);
       }
       return true;
     }
-    session.setAgent(agent, { handoff: !options?.fresh });
-    const installed = agents.find((choice) => choice.name === name)?.installed;
-    const missing = installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
-    const context = options?.fresh
+    if (selectOptions?.fresh) contextEpoch += 1;
+    session.setAgent(agent, { handoff: !selectOptions?.fresh });
+    const choice = agents.find((candidate) => candidate.name === name);
+    const missing = choice?.installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
+    const context = selectOptions?.fresh
       ? ' New agent session, no context.'
       : session.get().turns.length
         ? ' It hears the conversation so far with your next prompt.'
         : '';
     notice(`Switched to ${name}.${missing}${context}`);
     return true;
+  };
+
+  const updateAgents = (inspections: readonly AgentInspection[]) => {
+    if (closed) return;
+    const byInspection = new Map(inspections.map((item) => [item.name, item]));
+    agents = options.agents.map((agent) => {
+      const info = byInspection.get(agent.name);
+      const prev = agents.find((choice) => choice.name === agent.name);
+      return {
+        name: agent.name,
+        command: agent.command,
+        installed: info ? info.installed : (prev?.installed ?? false),
+        resume: !!agent.capabilities.resume,
+        steer: !!agent.capabilities.steer,
+        canAsk: canAgentAsk(agent),
+        ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
+        ...(agent.capabilities.plan ? { canPlan: true } : {}),
+        ...(info ? { auth: info.auth } : prev?.auth ? { auth: prev.auth } : {}),
+        ...(info?.broken ? { broken: true } : {}),
+        ...(info?.path ? { path: info.path } : {}),
+        ...(info?.version ? { version: info.version } : {}),
+        ...(info?.plan ? { plan: info.plan } : {}),
+        ...(info?.hint ? { hint: info.hint } : {}),
+      };
+    });
+    const usable = inspections.filter(isAgentUsable);
+    const wasSetup = setup;
+    const nextSetup = !explicitAgent && options.allowNoAgent === true && usable.length === 0;
+    const state = session.get();
+    const currentInfo = byInspection.get(state.agent);
+    const currentUsable = currentInfo ? isAgentUsable(currentInfo) : false;
+    // Pick the first Ready agent (or installed unknown agent) when leaving setup, or before any turn starts if current is unusable.
+    const preferred = usable.find((item) => item.auth === 'ready') ?? usable[0];
+    setup = nextSetup;
+    const shouldSwitch = wasSetup
+      ? !userSelectedAgent || !currentUsable
+      : state.turns.length === 0 && !explicitAgent && !userSelectedAgent && !currentUsable;
+    if (preferred && state.status === 'idle' && shouldSwitch) {
+      const target = byName.get(preferred.name);
+      if (target && target.name !== state.agent) {
+        session.setAgent(target, { handoff: state.turns.length > 0 });
+        return;
+      }
+    }
+    publish();
+  };
+
+  const startHomeChat = (): boolean => {
+    batching++;
+    let ok = false;
+    try {
+      ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
+      if (ok) {
+        conversationEpoch += 1;
+        contextEpoch += 1;
+        relayNotices.clear();
+        notices = [];
+        if (homeMode) {
+          conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
+          lastSavedKey = '';
+        }
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) {
+      notice('A turn is running. /stop it first, then /clear.', 'error');
+      return false;
+    }
+    publish();
+    return true;
+  };
+
+  const moveProject = (target: { cwd: string; topic?: { id: string; name: string } }): boolean => {
+    batching++;
+    let ok = false;
+    try {
+      ok = session.setCwd(target.cwd, { handoff: true });
+      if (ok && homeMode) {
+        conversation = {
+          ...(conversation ?? { id: randomUUID(), cwd: target.cwd, origin: 'project' }),
+          cwd: target.cwd,
+          origin: 'project',
+          ...(target.topic ? { topic: target.topic } : {}),
+        };
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) return false;
+    publish();
+    return true;
+  };
+
+  const startTopicChat = async (topicId: string): Promise<boolean> => {
+    if (!homeMode) return false;
+    if (session.get().status === 'running') {
+      notice('Stop the running turn before starting another chat.', 'error');
+      return false;
+    }
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    try {
+      const [store, listing, codex] = await Promise.all([
+        readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
+        listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
+        codexProjects({ env }).catch(() => []),
+      ]);
+      const topic = store.topics.find((candidate) => candidate.id === topicId);
+      if (!topic) {
+        notice(`No topic "${topicId}" found.`, 'error');
+        return false;
+      }
+      const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
+      const savedLead = resolved.status === 'resolved' ? await options.projectLead?.(resolved.cwd) : undefined;
+      const lead = savedLead ? byName.get(savedLead) : undefined;
+      batching++;
+      let ok = false;
+      try {
+        ok = session.clear({ cwd: resolved.cwd });
+        if (ok) {
+          conversationEpoch += 1;
+          contextEpoch += 1;
+          relayNotices.clear();
+          if (lead) session.setAgent(lead, { handoff: false });
+          notices = [];
+          conversation = {
+            id: randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            topic: { id: topic.id, name: topic.name },
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
+        notice('Stop the running turn before starting another chat.', 'error');
+        return false;
+      }
+      publish();
+      if (resolved.status === 'unresolved') {
+        notice(
+          `No local folder found for "${topic.name}". Mention a directory (e.g. ~/src/…) to move this conversation there.`,
+        );
+      }
+      return true;
+    } catch (error) {
+      notice(`Could not start a chat for that topic: ${errorText(error)}`, 'error');
+      return false;
+    }
   };
 
   const continueSession = async (id: string): Promise<boolean> => {
@@ -382,29 +687,135 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       const { session: theirs } = found;
-      if (!theirs.cwd || !isWithin(theirs.cwd, options.cwd)) {
-        const where = theirs.cwd ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.` : '';
-        notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
-        return false;
+      const readForAdopt = async () => {
+        const maxTurns = 100;
+        const reasons = new Set<'max-turns' | 'tail-bytes'>();
+        let turns = await readSession(sources, theirs, {
+          maxTurns: maxTurns + 1,
+          onTruncated: (reason) => reasons.add(reason),
+        });
+        if (turns.length > maxTurns) {
+          reasons.add('max-turns');
+          turns = turns.slice(-maxTurns);
+        }
+        return { turns, truncatedReason: formatTruncationReason(reasons, maxTurns, 'loaded') };
+      };
+      if (!homeMode) {
+        if (!theirs.cwd || !isWithin(theirs.cwd, options.cwd)) {
+          const where = theirs.cwd
+            ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.`
+            : '';
+          notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
+          return false;
+        }
+        const { turns, truncatedReason } = await readForAdopt();
+        const agent = byName.get(session.get().agent);
+        // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
+        const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+        if (!turns.length && !own) {
+          notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
+          return false;
+        }
+        if (
+          !session.adopt(turns, {
+            ...(own ? { sessionId: theirs.id, mode: theirs.mode } : {}),
+            ...(truncatedReason ? { truncatedReason } : {}),
+          })
+        ) {
+          notice('Stop the running turn before taking over another session.', 'error');
+          return false;
+        }
+        // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
+        contextEpoch += 1;
+        const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+        const count = turns.length ? ` (${turns.length} turns)` : '';
+        notice(
+          setup
+            ? `Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`
+            : own
+              ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+              : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+        );
+        return true;
       }
-      const turns = await readSession(sources, theirs);
+
+      // `--home` mode: resolve working directory per conversation (A.1) across any project.
+      let resolved = resolveSessionWorkspace(theirs, { env });
+      if (resolved.status === 'unresolved') {
+        const [listing, codex] = await Promise.all([
+          listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
+          codexProjects({ env }).catch(() => []),
+        ]);
+        resolved = resolveSessionWorkspace(theirs, { env, sessions: listing.sessions, codexProjects: codex });
+      }
+      const [{ turns, truncatedReason }, store, savedList] = await Promise.all([
+        readForAdopt(),
+        readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
+        readConversations(env).catch(() => []),
+      ]);
       const agent = byName.get(session.get().agent);
-      // Its own store and it can resume: no handoff needed.
-      const own = !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+      const sameDir = resolved.status === 'resolved' && !!theirs.cwd && isSameDir(resolved.cwd, theirs.cwd);
+      // Never treat an uninstalled setup placeholder as own.
+      const own = !setup && sameDir && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
       if (!turns.length && !own) {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
       }
-      if (!session.adopt(turns, own ? { sessionId: theirs.id, ...(theirs.mode ? { mode: theirs.mode } : {}) } : {})) {
+      const saved = savedList.find(
+        (candidate) => candidate.sessionId === theirs.id && (!candidate.source || candidate.source === theirs.source),
+      );
+      const topicId = store.sessions[archiveKey(theirs)] ?? saved?.topicId;
+      const topicObj =
+        (topicId ? store.topics.find((candidate) => candidate.id === topicId) : undefined) ??
+        (saved?.topicId && saved?.topicName ? { id: saved.topicId, name: saved.topicName } : undefined);
+      const name = theirs.title ?? theirs.firstPrompt ?? saved?.title ?? theirs.id;
+      batching++;
+      let ok = false;
+      try {
+        ok = session.adopt(turns, {
+          ...(own ? { sessionId: theirs.id, mode: theirs.mode } : {}),
+          ...(truncatedReason ? { truncatedReason } : {}),
+          cwd: resolved.cwd,
+          replace: true,
+        });
+        if (ok) {
+          conversationEpoch += 1;
+          contextEpoch += 1;
+          relayNotices.clear();
+          notices = [];
+          conversation = {
+            id: saved?.id ?? randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            title: oneLine(name, 120),
+            ...(topicObj ? { topic: { id: topicObj.id, name: topicObj.name } } : {}),
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }
-      const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
-      notice(
-        own
-          ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
-          : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
-      );
+      if (resolved.cwd) options.onRoot?.(resolved.cwd);
+      if (theirs.cwd) options.onRoot?.(theirs.cwd);
+      publish();
+      const count = turns.length ? ` (${turns.length} turns)` : '';
+      if (setup) {
+        notice(`Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`);
+      } else if (resolved.status === 'unresolved') {
+        notice(
+          `Took over "${name}" from ${theirs.agent}. ${resolved.reason ?? 'Original directory is no longer available.'} Mention a directory (e.g. ~/src/…) to move this conversation there.`,
+        );
+      } else {
+        notice(
+          own
+            ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+            : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+        );
+      }
       return true;
     } catch (error) {
       notice(`Could not take over the session: ${errorText(error)}`, 'error');
@@ -430,24 +841,101 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
   let sends = 0;
+  const isLiveRelay = (item: Notice) => item.relay?.status === 'queued' || item.relay?.status === 'working';
+  const upsertRelay = (update: SessionSendUpdate) => {
+    if (closed) return;
+    let epochs = relayEpochs.get(update.id);
+    if (!epochs) {
+      epochs = { conversation: conversationEpoch, context: contextEpoch };
+      relayEpochs.set(update.id, epochs);
+    } else if (epochs.conversation !== conversationEpoch) {
+      return;
+    }
+    const reply =
+      update.reply !== undefined
+        ? plainSessionText(
+            update.reply.length > MAX_RELAY_REPLY
+              ? `${update.reply.slice(0, MAX_RELAY_REPLY).trimEnd()}\n\n… (reply truncated)`
+              : update.reply,
+          )
+        : undefined;
+    const error = update.error !== undefined ? plainSessionText(update.error) : undefined;
+    const relay: ChatSessionRelay = {
+      agent: plainSessionText(update.target.agent),
+      sessionId: update.target.id,
+      ...(update.target.title ? { title: plainSessionText(update.target.title) } : {}),
+      cwd: plainSessionText(update.target.cwd),
+      prompt: plainSessionText(update.text),
+      status: update.status,
+      startedAt: update.startedAt,
+      ...(update.endedAt !== undefined ? { endedAt: update.endedAt } : {}),
+      ...(update.tool ? { tool: plainSessionText(update.tool) } : {}),
+      ...(update.activity ? { activity: plainSessionText(update.activity) } : {}),
+      ...(reply !== undefined ? { reply } : {}),
+      ...(error !== undefined ? { error } : {}),
+    };
+    const tone: Notice['tone'] = update.status === 'failed' ? 'error' : 'info';
+    const text = relayFallbackText(update.target, relay);
+    const currentTurns = session.get().turns.length;
+    const settled = update.status === 'answered' || update.status === 'failed';
+    if (update.status === 'answered' || update.status === 'failed') {
+      if (update.target.cwd) options.onRoot?.(update.target.cwd);
+      relayEpochs.delete(update.id);
+      if (epochs.context === contextEpoch) {
+        session.addContext(
+          formatSessionUpdate({
+            target: update.target,
+            status: update.status,
+            ...(update.reply !== undefined ? { reply: update.reply } : {}),
+            ...(update.error !== undefined ? { error: update.error } : {}),
+          }),
+        );
+      }
+    }
+    const existingId = relayNotices.get(update.id);
+    if (existingId !== undefined) {
+      const index = notices.findIndex((item) => item.id === existingId);
+      if (index >= 0) {
+        const prior = notices[index]!;
+        // Keep settled notices append-only (Ink <Static> prints newly appended items by index)
+        // and land chronologically at the bottom if turns or other settled notices came after.
+        const hasSettledAfter = notices.slice(index + 1).some((item) => !isLiveRelay(item));
+        const moved = settled && (currentTurns > prior.afterTurn || hasSettledAfter);
+        const nextItem: Notice = {
+          id: prior.id,
+          afterTurn: moved ? Math.max(prior.afterTurn, currentTurns) : prior.afterTurn,
+          text,
+          tone,
+          relay,
+        };
+        notices = moved
+          ? [...notices.slice(0, index), ...notices.slice(index + 1), nextItem]
+          : notices.map((item, i) => (i === index ? nextItem : item));
+        if (settled) relayNotices.delete(update.id);
+        publish();
+        return;
+      }
+    }
+    const id = nextNotice++;
+    if (!settled) relayNotices.set(update.id, id);
+    notices = [...notices, { id, afterTurn: currentTurns, text, tone, relay }].slice(-200);
+    publish();
+  };
   const offSend = options.sessionSend?.attach({
-    confirm: async (target, text, { queued } = {}) =>
-      (await session.ask({
-        id: `sessions-send-${++sends}`,
-        kind: 'other',
-        summary: plainSessionText(
-          `${queued ? 'Queue for' : 'Send to'} ${label(target)} (${target.cwd})${queued ? ', after its current turn' : ''}:\n${text}`,
-        ),
-        detail: { tool: 'sessions_send', target, text, ...(queued ? { queued } : {}) },
-      })) === 'approve',
-    queued: (target) =>
-      notice(plainSessionText(`${label(target)} is working: the message goes when its current turn ends.`)),
-    done: (target, { result, error }) => {
-      const failed = error ?? (result && !result.ok ? (result.error ?? result.status) : undefined);
-      if (failed) return notice(plainSessionText(`${label(target)} did not take the message: ${failed}`), 'error');
-      const reply = result?.text?.trim().slice(0, 800);
-      notice(plainSessionText(reply ? `${label(target)} answered:\n${reply}` : `${label(target)} took the message.`));
+    confirm: async (target, text, { queued } = {}) => {
+      const ok =
+        (await session.ask({
+          id: `sessions-send-${++sends}`,
+          kind: 'other',
+          summary: plainSessionText(
+            `${queued ? 'Queue for' : 'Send to'} ${label(target)} (${target.cwd})${queued ? ', after its current turn' : ''}:\n${text}`,
+          ),
+          detail: { tool: 'sessions_send', target, text, ...(queued ? { queued } : {}) },
+        })) === 'approve';
+      if (ok && target.cwd) options.onRoot?.(target.cwd);
+      return ok;
     },
+    update: upsertRelay,
   });
   if (options.startupNotice) notice(options.startupNotice);
   if (options.waitingOnStart) {
@@ -495,11 +983,19 @@ export function createChatController(options: ChatOptions): ChatController {
         return 'ok';
       }
       if (text.trimStart().startsWith('!!')) {
+        if (setup) {
+          notice('Connect an agent to start.', 'error');
+          return 'ok';
+        }
         session.send(text.trimStart().slice(1));
         return 'ok';
       }
       const command = parseSlash(text);
       if (!command) {
+        if (setup) {
+          notice('Connect an agent to start.', 'error');
+          return 'ok';
+        }
         session.send(text.startsWith('//') ? text.slice(1) : text);
         return 'ok';
       }
@@ -520,10 +1016,18 @@ export function createChatController(options: ChatOptions): ChatController {
           else {
             notice(
               agents
-                .map(
-                  (a) =>
-                    `${a.name === session.get().agent ? '●' : '○'} ${a.name}${a.installed ? '' : ' (not installed)'}`,
-                )
+                .map((a) => {
+                  const status = !a.installed
+                    ? ' (not installed)'
+                    : a.broken
+                      ? ' (broken)'
+                      : a.auth === 'signed-out'
+                        ? ' (not signed in)'
+                        : a.canAsk === false
+                          ? ' (no questions)'
+                          : '';
+                  return `${a.name === session.get().agent && !setup ? '●' : '○'} ${a.name}${status}`;
+                })
                 .join('\n'),
             );
           }
@@ -591,15 +1095,20 @@ export function createChatController(options: ChatOptions): ChatController {
           else notice('Use /read <session id>. /waiting shows the IDs.', 'error');
           return 'ok';
         case 'new':
+          contextEpoch += 1;
           session.reset();
           notice('Next prompt starts a new agent session.');
           return 'ok';
         case 'clear':
-          if (session.clear()) {
-            notices = [];
-            publish();
-          } else notice('A turn is running. /stop it first, then /clear.', 'error');
+          startHomeChat();
           return 'ok';
+        case 'where': {
+          const dir = session.get().cwd;
+          const neutral = homeMode && isNeutralHome(dir, { env }) ? ' (neutral home)' : '';
+          const topic = conversation?.topic ? ` · topic: ${conversation.topic.name}` : '';
+          notice(`Working directory: ${dir}${neutral}${topic}`);
+          return 'ok';
+        }
         case 'stop':
           stopAll();
           return 'ok';
@@ -658,9 +1167,20 @@ export function createChatController(options: ChatOptions): ChatController {
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     answer: (id, answers) => session.answer(id, answers),
-    decideTower: (id, decision) => inbox?.decide(session, id, decision) ?? Promise.resolve(false),
+    decideTower: (id, decision) => {
+      if (!inbox) return Promise.resolve(false);
+      if (decision === 'send' || decision === 'approve') {
+        const cwd = inbox.view(session.get()).items.find((item) => item.id === id)?.cwd;
+        if (cwd) options.onRoot?.(cwd);
+      }
+      return inbox.decide(session, id, decision);
+    },
     selectAgent,
+    updateAgents,
     continueSession,
+    startTopicChat,
+    startHomeChat,
+    moveProject,
     setModel(model) {
       session.setModel(model || undefined);
     },
@@ -670,6 +1190,8 @@ export function createChatController(options: ChatOptions): ChatController {
       clearInterval(inboxTimer);
       offInbox?.();
       inbox?.close();
+      relayNotices.clear();
+      relayEpochs.clear();
       offSend?.();
       stopShells();
       unsubscribe();
@@ -677,6 +1199,22 @@ export function createChatController(options: ChatOptions): ChatController {
       session.close();
     },
   };
+}
+
+const MAX_RELAY_REPLY = 16_000;
+
+function relayFallbackText(target: SessionSendTarget, relay: ChatSessionRelay): string {
+  const who = plainSessionText(label(target));
+  switch (relay.status) {
+    case 'queued':
+      return `${who} is working: the message goes when its current turn ends.`;
+    case 'working':
+      return `${who} is working on the message.`;
+    case 'failed':
+      return `${who} did not take the message: ${relay.error ?? 'failed'}`;
+    case 'answered':
+      return relay.reply ? `${who} answered:\n${relay.reply}` : `${who} took the message.`;
+  }
 }
 
 /** Stored transcripts may contain terminal controls. Keep only display text, tabs and newlines. */

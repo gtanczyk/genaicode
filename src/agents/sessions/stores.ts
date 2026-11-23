@@ -118,7 +118,7 @@ export function museSessions(options: StoreOptions = {}): SessionSource {
     },
     async read(info, readOptions) {
       if (!info.path) throw new Error(`Muse names no log for session ${info.id}.`);
-      return museTranscript(await transcriptLines(info.path), readOptions);
+      return museTranscript(await transcriptLines(info.path, readOptions), readOptions);
     },
   };
 }
@@ -241,7 +241,7 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
     },
     async read(info, readOptions) {
       if (!info.path) throw new Error(`Session ${info.id} has no transcript file.`);
-      return antigravityTranscript(await transcriptLines(info.path), readOptions);
+      return antigravityTranscript(await transcriptLines(info.path, readOptions), readOptions);
     },
   };
 }
@@ -350,7 +350,7 @@ export function copilotSessions(options: StoreOptions = {}): SessionSource {
     },
     async read(info, readOptions) {
       // Newer CLIs write no event log: what was said may then be in the CLI's own index.
-      const lines = info.path ? await transcriptLines(info.path).catch(() => null) : null;
+      const lines = info.path ? await transcriptLines(info.path, readOptions).catch(() => null) : null;
       if (lines) return copilotTranscript(lines, readOptions);
       // The index of the store the session was listed from: <store>/session-state/<id>/events.jsonl.
       const env = options.env ?? process.env;
@@ -528,7 +528,7 @@ export function vibeSessions(options: StoreOptions = {}): SessionSource {
     },
     async read(info, readOptions) {
       if (!info.path) throw new Error(`Session ${info.id} has no messages file.`);
-      return vibeTranscript(await transcriptLines(info.path), readOptions);
+      return vibeTranscript(await transcriptLines(info.path, readOptions), readOptions);
     },
   };
 }
@@ -629,7 +629,7 @@ export function geminiSessions(options: StoreOptions = {}): SessionSource {
     },
     async read(info, readOptions) {
       if (!info.path) throw new Error(`Session ${info.id} has no chat file.`);
-      return geminiTranscript(await transcriptLines(info.path), readOptions);
+      return geminiTranscript(await transcriptLines(info.path, readOptions), readOptions);
     },
   };
 }

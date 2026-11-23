@@ -86,9 +86,15 @@ export function createAppAgentHandler(agent: AppAgent, options: AppAgentHandlerO
         return true;
       }
       if (method === 'GET' && route.startsWith('/artifacts/')) {
-        const found = agent.artifacts?.read(route.slice('/artifacts/'.length));
+        const rawVersion = url.searchParams.get('v');
+        const parsedVersion = rawVersion !== null && /^\d+$/.test(rawVersion) ? Number(rawVersion) : undefined;
+        const found = agent.artifacts?.read(route.slice('/artifacts/'.length), parsedVersion);
         if (!found) return json(res, 404, { error: 'not found' });
-        const response = artifactResponse(found.artifact, found.body, { range: req.headers.range });
+        const response = artifactResponse(found.artifact, found.body, {
+          range: req.headers.range,
+          allowScriptHosts: agent.artifacts?.allowScriptHosts?.(),
+          download: url.searchParams.get('download') === '1',
+        });
         res.writeHead(response.status, response.headers).end(response.body);
         return true;
       }

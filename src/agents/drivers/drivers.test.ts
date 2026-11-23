@@ -234,6 +234,18 @@ describe('codex driver', () => {
     expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'a.roots': [] } })).toContain('a.roots=[]');
   });
 
+  it('includes the result or error text of live MCP tool calls in the chat', () => {
+    const item = { id: 'i1', type: 'mcpToolCall', server: 'pack', tool: 'agents' };
+    const completed = (fields: Record<string, unknown>) =>
+      codexNotification('item/completed', { item: { ...item, ...fields } });
+    expect(completed({ status: 'failed', error: { message: 'Tool call declined' } })).toEqual([
+      { type: 'tool-end', id: 'i1', name: 'pack/agents', isError: true, output: 'Tool call declined' },
+    ]);
+    expect(
+      completed({ status: 'completed', error: null, result: { content: [{ type: 'text', text: 'codex' }] } }),
+    ).toEqual([{ type: 'tool-end', id: 'i1', name: 'pack/agents', isError: false, output: 'codex' }]);
+  });
+
   it('decodes exec JSONL into agent events', () => {
     const parser = createCodexParser();
     const events = feed(parser, [

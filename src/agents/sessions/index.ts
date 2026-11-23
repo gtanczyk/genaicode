@@ -67,6 +67,8 @@ export {
   findTopic,
   inRunDirectory,
   isAsking,
+  isStalled,
+  attentionOf,
   isTopicsRun,
   folderTopics,
   projectTopics,
@@ -86,14 +88,51 @@ export {
   withTopicsRun,
   writeTopics,
 } from './topics.js';
-export type { Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
+export type { Attention, Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
-export { SessionSendGate, sessionSendTool } from './send-tool.js';
-export type { SessionSendHandler, SessionSendTarget, SessionSendToolOptions } from './send-tool.js';
+export { formatSessionUpdate, SessionSendGate, sessionSendTool } from './send-tool.js';
+export type {
+  SessionSendHandler,
+  SessionSendReply,
+  SessionSendStatus,
+  SessionSendTarget,
+  SessionSendToolOptions,
+  SessionSendUpdate,
+} from './send-tool.js';
 export type { SessionToolsOptions } from './tools.js';
 export type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource, SessionActivity } from './types.js';
+export {
+  conversationsFile,
+  displayPath,
+  ensureNeutralHome,
+  expandPath,
+  genaicodeHomeDir,
+  isDisallowedWorkspace,
+  isExplicitPath,
+  isNeutralHome,
+  isSameDir,
+  neutralHomeDir,
+  normalizeRepo,
+  OPEN_PROJECT_TOOL,
+  openProjectTool,
+  readConversations,
+  resolveProjectTarget,
+  resolveSessionWorkspace,
+  resolveTopicWorkspace,
+  saveConversation,
+  startProjectChannel,
+} from './workspace.js';
+export type {
+  ConversationOrigin,
+  ConversationRecord,
+  OpenProjectToolOptions,
+  ProjectChannel,
+  ProjectTarget,
+  WorkspaceDeps,
+  WorkspaceResolution,
+} from './workspace.js';
 
 /**
  * The session sources of `agents`, one per store: `codex()` and `codexLive()` share theirs.

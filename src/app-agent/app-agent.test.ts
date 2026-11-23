@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
+import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, QuestionHandler } from '../agents/types.js';
 import { createAppAgent, type AppAgent, type AppAgentOptions, type AppAgentTrace } from './app-agent.js';
 import { PROMPT_MARKER, userText } from './state.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
@@ -1645,6 +1645,40 @@ describe('conversation across switches', () => {
     expect((await post(base, '/approvals/q1', { answers: { db: ['SQLite'] } })).status).toBe(200);
     expect(await answered).toEqual({ db: ['SQLite'] });
     expect((await post(base, '/approvals/q1', { answers: { db: ['SQLite'] } })).status).toBe(404);
+  });
+
+  it('gives agents without questions of their own the ask_user channel', async () => {
+    let handler: QuestionHandler | undefined;
+    const channel = {
+      mcpServer: { name: 'genaicode_ask', url: 'http://127.0.0.1:9/mcp', trusted: true },
+      bind: (next: QuestionHandler | undefined) => (handler = next),
+    };
+    let asked: Promise<unknown> = Promise.resolve();
+    const { agent: muse, tasks } = fakeAgent([
+      async () => {
+        // The turn has started once run() returned.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        asked = Promise.resolve(
+          handler!({
+            id: 'ask-1',
+            kind: 'question',
+            scope: 'once',
+            questions: [{ id: 'q', question: 'Which?', options: [{ label: 'A' }] }],
+          }),
+        );
+        return `chose ${JSON.stringify(await asked)}`;
+      },
+    ]);
+    const { agent, base } = await serve({ name: 'app', agents: () => [muse], questions: channel });
+    await post(base, '/send', { text: 'go' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(tasks[0]!.mcpServers!.map((server) => server.name)).toEqual(['app', 'genaicode_ask']);
+    expect(agent.get().session!.approvals[0]!.kind).toBe('question');
+    expect((await post(base, '/approvals/ask-1', { answers: { q: ['A'] } })).status).toBe(200);
+    expect(await asked).toEqual({ q: ['A'] });
+    await settle(agent);
+    agent.reset();
+    expect(handler).toBeUndefined();
   });
 });
 

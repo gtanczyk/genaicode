@@ -27,17 +27,31 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 | `Contents/MacOS/node`         | The official Node.js binary, version and checksums in `node-runtime.json` |
 | `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
 
-Without any agent CLI on the machine the window shows how to get one and goes on to the chat once
-one is installed. The app has no project folder: it works where your agents work, and its chat is about their
-sessions in every project. On start the shell reads the environment of your login shell (so the agent CLIs and the API keys your profile exports are found), runs
-`node cli.js ui --sessions --no-project --no-open --exit-with-stdin --restore --cwd ~/.genaicode/home` (a
-directory of the app's own, outside every project) and shows the address that prints. `--restore` brings back the conversation the app had last, so a restart or an update does not lose it. `--sessions` gives the agent the session index as tools, so a question about what goes on in a project is answered from it and not by searching the disk. The
-empty chat opens on your topics: those that wait for you, those agents work on, and each agent's plan limits; a topic opens its sessions. The
-page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
+Without any installed or signed-in agent CLI on the machine, the window opens on an onboarding
+screen showing each supported agent's state (**Not installed**, **Installed, not signed in**, or
+**Ready**) with copyable install/sign-in commands and **Check again** — no error dialog, and no
+restart needed. The app has no project folder: each conversation resolves its own working
+directory from context (a continued session's directory or repo root, a topic's most recent active
+directory, or `~/.genaicode/home` for cross-project questions), and its chat is about their sessions
+in every project. On start the shell reads the environment of your login shell (so the agent CLIs
+and the API keys your profile exports are found), and on **Check again** it re-reads that login
+environment (within the same 5 s timeout) and passes it to the running server over stdin so an agent
+installed in Terminal is picked up immediately. The shell removes any legacy saved folder file, runs
+`node cli.js ui --sessions --delegate --home --no-open --exit-with-stdin --restore` and shows the
+address that prints. `--restore` brings back the conversation the app had last, so a restart or an
+update does not lose it. `--sessions` gives the agent the session index as tools, so a question
+about what goes on in a project is answered from it and not by searching the disk; in the neutral
+home, `open_project` lets the agent offer to move the conversation into a project directory after
+your confirmation. The empty chat opens on your topics: those that wait for you, those agents work
+on, recent topics, and each agent's plan limits; a topic opens its sessions or starts a new chat in
+that topic's directory. The page gets no Tauri commands; it is the page a browser would load.
+Quitting the app stops the server.
+
+The **Developer** menu (and the session chip in the chat header, plus the `⋯` menu on every row in **Chats** / **Sessions**) lets you copy the full session ID, the session's file path on disk, the formatted Markdown transcript, or the raw JSON state, or save the transcript to a `.md` / `.json` file via the native Save dialog.
 
 It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
-how many. A session shows the window; a question an agent holds open for an answer
+how many. Clicking a session shows the window and opens that session in its directory; a question an agent holds open for an answer
 from outside (`genaicode hooks install --answer`) has **Approve** and **Deny**, which run
 `sessions approve|deny <question>`. Above them the menu shows how much of each agent's plan is used
 (`claude: 5h 62% · 7d 41%`), from the `limits` of the same watch. Once `genaicode topics refresh`
@@ -89,9 +103,14 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 
 ## Updates
 
+After an update, **What’s new** shows the running version and the release notes bundled with the app.
+When the previous version is known, it includes the changes across skipped releases. Open **What’s new**
+in the window header to read the notes again. In a terminal, `genaicode whats-new` shows the notes for
+the version of the command you are running.
+
 The app looks for a newer version at start, every half hour while it runs and on **Check for
-Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Relaunch to update** in the
-window's header and in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
+Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Install 3.x.y and relaunch** in the
+window header and **Relaunch to Update (3.x.y)** in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
 stops the agents it runs. The shell tells the page through the server it started: it writes
 `update-downloading <version>`, `update-ready <version>` and `update-installing <version>` to the server's stdin, and the page's button makes the server print
 `Relaunch to update` on stderr, which the shell reads. It reads `latest.json` of the newest GitHub Release, which
@@ -106,7 +125,6 @@ private key means a manual download for everyone. Without the secret a release g
 
 | Variable                 | For development                                         |
 | ------------------------ | ------------------------------------------------------- |
-| `GENAICODE_DESKTOP_CWD`  | Directory the chat runs in, instead of the app's own    |
 | `GENAICODE_DESKTOP_NODE` | Node.js binary to run, instead of the bundled one       |
 | `GENAICODE_DESKTOP_CLI`  | `cli.js` to run, e.g. `dist/cli.js` of the working tree |
 

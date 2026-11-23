@@ -7,7 +7,9 @@ import {
   ASKING_MS,
   findTopic,
   inRunDirectory,
+  attentionOf,
   isAsking,
+  isStalled,
   mergeTopics,
   moveSessions,
   folderTopics,
@@ -178,11 +180,21 @@ describe('topics', () => {
     expect(later.store.topics).toHaveLength(2);
   });
 
-  it('asks for you for approvals, and for a while after a message asked something', () => {
+  it('needs you for approvals and fresh questions or commands; offers and old questions stalled', () => {
     const now = 10 * 24 * 3600_000;
     const waiting = (more: Partial<SessionInfo>) =>
       session('w', { state: 'waiting', updatedAt: now - 3600_000, ...more });
-    expect(isAsking(waiting({ ending: 'offer' }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'question' }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'command' }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'request' }), now)).toBe(true);
+    expect(isStalled(waiting({ ending: 'request', updatedAt: now - ASKING_MS - 1 }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'offer' }), now)).toBe(false);
+    expect(attentionOf(waiting({ ending: 'offer' }), now)).toBe('stalled');
+    expect(attentionOf(waiting({ ending: 'unreported' }), now)).toBe('stalled');
+    expect(isStalled(waiting({ ending: 'question', updatedAt: now - ASKING_MS - 1 }), now)).toBe(true);
+    expect(attentionOf(waiting({}), now)).toBeUndefined();
+    expect(attentionOf(waiting({ ending: 'offer', archived: true }), now)).toBeUndefined();
+    expect(attentionOf(waiting({ waitingFor: 'approval', ending: 'offer', updatedAt: 0 }), now)).toBe('now');
     expect(isAsking(waiting({ ending: 'question', updatedAt: now - ASKING_MS - 1 }), now)).toBe(false);
     expect(isAsking(waiting({ waitingFor: 'approval', updatedAt: 0 }), now)).toBe(true);
     expect(isAsking(waiting({}), now)).toBe(false);
@@ -220,6 +232,7 @@ describe('topics', () => {
       session('c', { updatedAt: 1000, state: 'waiting', waitingFor: 'approval' }),
       session('e', { updatedAt: 900, state: 'waiting', ending: 'question', archived: true }),
       session('d', { updatedAt: 9000 }),
+      session('f', { updatedAt: 800, state: 'waiting', ending: 'offer' }),
     ];
     const store: TopicStore = {
       topics: [
@@ -227,7 +240,14 @@ describe('topics', () => {
         { id: 't2', name: 'Asking' },
         { id: 't3', name: 'Empty' },
       ],
-      sessions: { 'claude:a': 't1', 'codex:b': 't1', 'claude:c': 't2', 'claude:e': 't2', 'claude:gone': 't3' },
+      sessions: {
+        'claude:a': 't1',
+        'codex:b': 't1',
+        'claude:c': 't2',
+        'claude:e': 't2',
+        'claude:f': 't1',
+        'claude:gone': 't3',
+      },
     };
     const { topics, unsorted } = summarizeTopics(listed, store);
     expect(unsorted.map((one) => one.id)).toEqual(['d']);
@@ -235,9 +255,10 @@ describe('topics', () => {
     expect(topics[0]).toMatchObject({ asking: 1, active: 0, updatedAt: 1000, agents: { claude: 2 } });
     expect(topics[1]).toMatchObject({
       asking: 0,
+      stalled: 1,
       active: 1,
       updatedAt: 5000,
-      agents: { claude: 1, codex: 1 },
+      agents: { claude: 2, codex: 1 },
       projects: ['src/genaicode', 'x/site'],
     });
   });

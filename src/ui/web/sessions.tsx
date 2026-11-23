@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   acceptsSessionPrompt,
+  attentionOf,
   groupSessions,
   staleSessions,
   waitingSessions,
@@ -9,6 +10,7 @@ import {
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
 import { SessionReply } from './session-reply.js';
+import { TranscriptMenu } from './transcript-menu.js';
 import {
   ago,
   canContinueHere,
@@ -16,18 +18,40 @@ import {
   groupByTopic,
   groupInOrder,
   resumeCommand,
+  UNSORTED_TOPIC,
   type SessionTopic,
 } from '../sessions.js';
 
-const MARK: Record<string, string> = { active: '●', waiting: '○', unfinished: '◌', approval: '◆' };
+const MARK: Record<string, string> = {
+  active: '●',
+  waiting: '○',
+  unfinished: '◌',
+  approval: '◆',
+  now: '◉',
+  stalled: '◇',
+};
 
-/** `approval` for a session that asks to use a tool; its `state` otherwise. */
+/** What a session's last message asked, as the row's mark says it. */
+const ENDING_TITLE: Record<string, string> = {
+  question: 'asked a question',
+  request: 'asked you to confirm or decide',
+  command: 'gave you a command to run',
+  offer: 'offered to go on',
+  unreported: 'could not report back',
+};
+
+/** `approval` for a session that asks to use a tool, `now`/`stalled` by `attentionOf`; its `state` otherwise. */
 const shownState = (session: SessionInfo): string =>
-  session.waitingFor === 'approval' ? 'approval' : (session.state ?? '');
-const stateTitle = (session: SessionInfo): string =>
-  session.waitingFor === 'approval'
-    ? `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`
-    : (session.state ?? 'state unknown');
+  session.waitingFor === 'approval' ? 'approval' : (attentionOf(session) ?? session.state ?? '');
+const stateTitle = (session: SessionInfo): string => {
+  if (session.waitingFor === 'approval')
+    return `asks for approval${session.waitingTool ? ` to use ${session.waitingTool}` : ''}`;
+  const attention = attentionOf(session);
+  const said = session.ending ? ENDING_TITLE[session.ending] : undefined;
+  if (attention === 'now') return `needs you now: ${said}`;
+  if (attention === 'stalled') return `stalled: ${said}`;
+  return session.state ?? 'state unknown';
+};
 
 const RANGES = [
   { days: 2, label: 'Last 2 days' },
@@ -35,6 +59,9 @@ const RANGES = [
   { days: 30, label: 'Last 30 days' },
   { days: 0, label: 'All time' },
 ];
+/** States whose list keeps the order of what waits for you: approvals first. */
+const INBOX = new Set(['waiting', 'approval', 'now', 'stalled']);
+
 /** Rows a project shows before "Show all". */
 const FOLD = 5;
 
@@ -43,7 +70,11 @@ const ARCHIVE_BATCH = 500;
 
 /** What a topic asks of the user and what goes on in it, for its heading. */
 const asksOf = (group: Partial<SessionTopic>): string =>
-  [group.asking ? `${group.asking} ask you` : '', group.active ? `${group.active} working` : '']
+  [
+    group.asking ? `${group.asking} need${group.asking === 1 ? 's' : ''} you` : '',
+    group.active ? `${group.active} working` : '',
+    group.stalled ? `${group.stalled} stalled` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -51,25 +82,37 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 export function Sessions({
   token,
   cwd,
+  home,
   onContinue,
+  onNewTopicChat,
   topic,
   onAllTopics,
   own,
   onAllSessions,
+  nativeSave,
+  onStatus,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
   cwd: string;
+  /** True in `--home` mode: any local readable session can be continued, and topics get New chat. */
+  home?: boolean;
   /** Take the session over in the chat. */
   onContinue(session: SessionInfo): void;
+  /** Start a new conversation in the resolved directory of a topic (`--home` mode). */
+  onNewTopicChat?(topicId: string): void;
   /** Show only this topic (its id), as picked on the start screen. */
   topic?: string;
   /** Back to every topic. */
   onAllTopics?(): void;
-  /** Show only the conversations this chat had itself: those that ran in `cwd`. */
+  /** Show only the conversations this chat had itself. */
   own?: boolean;
   /** Back to every agent's sessions. */
   onAllSessions?(): void;
+  /** Desktop host handles Save File dialogs natively. */
+  nativeSave?: boolean;
+  /** Brief feedback after copying or downloading a session's ID or transcript. */
+  onStatus?(message: string, isError?: boolean): void;
 }) {
   const [days, setDays] = useState(7);
   const [listing, setListing] = useState<WebSessionListing>();
@@ -107,12 +150,21 @@ export function Sessions({
 
   const everyones = listing?.sessions ?? [];
   const all = useMemo(() => {
-    if (!own) return everyones;
+    if (!own || home) return everyones;
     const here = cwd.replace(/[\\/]+$/, '');
     return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
-  }, [everyones, own, cwd]);
+  }, [everyones, own, home, cwd]);
+  const topicNames = useMemo(
+    () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
+    [listing?.topics],
+  );
+  const topicNameOf = (session: SessionInfo) => {
+    const id = listing?.topicOf?.[`${session.source}:${session.id}`];
+    return id ? topicNames.get(id) : undefined;
+  };
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
-  const waiting = useMemo(() => waitingSessions(all), [all]);
+  const needs = useMemo(() => all.filter((session) => attentionOf(session) === 'now'), [all]);
+  const stalled = useMemo(() => all.filter((session) => attentionOf(session) === 'stalled'), [all]);
   const stale = useMemo(() => staleSessions(all), [all]);
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
@@ -141,23 +193,31 @@ export function Sessions({
       : all;
     const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
-    return state === 'waiting' || state === 'approval' ? waitingSessions(found) : found;
+    return INBOX.has(state) ? waitingSessions(found) : found;
   }, [all, text, agent, state, topic, listing]);
   // What waits for you keeps its order across projects: the one with an approval first.
-  const inbox = state === 'waiting' || state === 'approval';
+  const inbox = INBOX.has(state);
   const now = Date.now();
   const sorted = !!listing?.topics?.length;
   // Its own conversations are one list: no topics among them.
   const by = sorted && !own ? (chosen ?? 'topic') : 'project';
-  const projects = useMemo(
-    () =>
-      by === 'topic'
-        ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
-        : inbox
-          ? groupInOrder(shown)
-          : groupSessions(shown),
-    [shown, inbox, by, listing],
-  );
+  const projects = useMemo(() => {
+    if (own && home) {
+      if (!shown.length) return [];
+      const counts: Record<string, number> = {};
+      let updatedAt = 0;
+      for (const session of shown) {
+        counts[session.agent] = (counts[session.agent] ?? 0) + 1;
+        updatedAt = Math.max(updatedAt, session.updatedAt);
+      }
+      return [{ key: 'own', name: 'Chats of this app', sessions: shown, updatedAt, agents: counts }];
+    }
+    return by === 'topic'
+      ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
+      : inbox
+        ? groupInOrder(shown)
+        : groupSessions(shown);
+  }, [shown, inbox, by, listing, own, home]);
 
   const [answering, setAnswering] = useState<string>();
   const [answerFailed, setAnswerFailed] = useState<string>();
@@ -211,9 +271,16 @@ export function Sessions({
           </button>
         ) : null}
         {topic ? (
-          <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
-            {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
-          </button>
+          <>
+            <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
+              {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
+            </button>
+            {onNewTopicChat ? (
+              <button className="chip off" onClick={() => onNewTopicChat(topic)}>
+                New chat
+              </button>
+            ) : null}
+          </>
         ) : null}
         <input
           type="search"
@@ -232,6 +299,8 @@ export function Sessions({
           <option value="">Any state</option>
           <option value="active">● Active</option>
           <option value="approval">◆ Asks for approval</option>
+          <option value="now">◉ Needs you now</option>
+          <option value="stalled">◇ Stalled</option>
           <option value="waiting">○ Waiting for you</option>
           <option value="unfinished">◌ Unfinished</option>
           <option value="archived">Archived</option>
@@ -253,17 +322,27 @@ export function Sessions({
             </option>
           ))}
         </select>
-        {waiting.length ? (
+        {needs.length ? (
           <button
-            className={`chip waits${state === 'waiting' ? ' on' : ''}`}
-            title="Sessions whose next move is yours, approvals first"
-            aria-pressed={state === 'waiting'}
-            onClick={() => setState(state === 'waiting' ? '' : 'waiting')}
+            className={`chip waits${state === 'now' ? ' on' : ''}`}
+            title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
+            aria-pressed={state === 'now'}
+            onClick={() => setState(state === 'now' ? '' : 'now')}
           >
-            {waiting.length} wait{waiting.length === 1 ? 's' : ''} for you
-            {waiting[0]?.waitingFor === 'approval'
-              ? ` · ${waiting.filter((session) => session.waitingFor === 'approval').length} ◆`
+            {needs.length} need{needs.length === 1 ? 's' : ''} you now
+            {needs.some((session) => session.waitingFor === 'approval')
+              ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
               : ''}
+          </button>
+        ) : null}
+        {stalled.length ? (
+          <button
+            className={`chip${state === 'stalled' ? ' on' : ''}`}
+            title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
+            aria-pressed={state === 'stalled'}
+            onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
+          >
+            {stalled.length} stalled
           </button>
         ) : null}
         {stale.length && state !== 'archived' ? (
@@ -301,26 +380,57 @@ export function Sessions({
         </div>
       ))}
       {projects.map((project) => {
-        const whole = open.has(project.key) || project.sessions.length <= FOLD;
-        const rows = whole ? project.sessions : project.sessions.slice(0, FOLD);
+        // Stalled sessions fold under their topic unless asked for: they block nobody.
+        const unfold = inbox || open.has(`stalled:${project.key}`);
+        const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
+        const listed = folded.length
+          ? project.sessions.filter((session) => !folded.includes(session))
+          : project.sessions;
+        const whole = open.has(project.key) || listed.length <= FOLD;
+        const rows = whole ? listed : listed.slice(0, FOLD);
+        const topicId =
+          by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
+            ? project.key.slice('topic:'.length)
+            : undefined;
         return (
           <details key={project.key} className="project" open>
             <summary>
               <b>{project.name}</b>
               <span className="path">
-                {by === 'topic' ? asksOf(project) : project.key.startsWith('cloud:') ? 'cloud' : project.key}
+                {own && home
+                  ? ''
+                  : by === 'topic'
+                    ? asksOf(project)
+                    : project.key.startsWith('cloud:')
+                      ? 'cloud'
+                      : project.key}
               </span>
               <span className="counts">
                 {Object.entries(project.agents)
                   .map(([name, count]) => `${name} ${count}`)
                   .join(' · ')}
               </span>
+              {topicId && onNewTopicChat ? (
+                <button
+                  type="button"
+                  className="topic-new"
+                  aria-label={`New chat in ${project.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNewTopicChat(topicId);
+                  }}
+                >
+                  New chat
+                </button>
+              ) : null}
             </summary>
             {rows.map((session) => {
               const sender =
                 acceptsSessionPrompt(session) &&
                 listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
               const replying = replyTo?.source === session.source && replyTo.id === session.id;
+              const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
               return [
                 <div key={`${session.source}:${session.id}`} className="session-row">
                   <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
@@ -332,6 +442,7 @@ export function Sessions({
                   </span>
                   <span className="label" title={session.lastPrompt ?? session.title}>
                     {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
                     {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
                     {session.branch ? <small>{session.branch}</small> : null}
                   </span>
@@ -349,7 +460,7 @@ export function Sessions({
                         {session.archived ? 'Unarchive' : 'Archive'}
                       </button>
                     ) : null}
-                    {canContinueHere(session, cwd, listing?.readable ?? []) ? (
+                    {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) ? (
                       <button
                         title="Bring this conversation into the chat: the agent chosen there continues it"
                         onClick={() => onContinue(session)}
@@ -366,6 +477,18 @@ export function Sessions({
                         {copied === session.id ? 'Copied' : 'Copy resume command'}
                       </button>
                     ) : null}
+                    <TranscriptMenu
+                      token={token}
+                      endpoint={`/api/sessions/${encodeURIComponent(session.source)}/${encodeURIComponent(session.id)}/transcript`}
+                      sessionId={session.id}
+                      sessionPath={session.path}
+                      storedSession={{ source: session.source, id: session.id }}
+                      nativeSave={nativeSave}
+                      label="⋯"
+                      ariaLabel={`Copy ID or transcript for ${session.title ?? session.id}`}
+                      title="Copy session ID, file path or transcript"
+                      onStatus={onStatus}
+                    />
                   </span>
                 </div>,
                 replying && sender ? (
@@ -410,11 +533,20 @@ export function Sessions({
                 )),
               ];
             })}
-            {whole ? null : (
+            {whole && !folded.length ? null : (
               <div className="more">
-                <button onClick={() => setOpen(new Set([...open, project.key]))}>
-                  Show all {project.sessions.length}
-                </button>
+                {whole ? null : (
+                  <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
+                )}
+                {folded.length ? (
+                  <button
+                    title="Left on an offer, a report that could not be sent, or an old question"
+                    // Every row, so the five-row fold does not hide what was asked for.
+                    onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
+                  >
+                    Show {folded.length} stalled
+                  </button>
+                ) : null}
               </div>
             )}
           </details>

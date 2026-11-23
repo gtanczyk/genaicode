@@ -1,325 +1,296 @@
 #!/usr/bin/env node
-// Live verification for Codex's own `request_user_input` tool (Plan mode and the
-// `default_mode_request_user_input` feature flag), plus one-question-tool-per-turn checks.
-// Not part of `npm test`. Runs against the real installed `codex` CLI after `npm run build`.
+// Live acceptance check for `ask_user` across installed coding agents.
+// Not part of `npm test`: starts real agent CLIs and consumes model tokens.
 //
-// Usage:
-//   node scripts/ask-user-live.mjs [--mode plan|flag|both] [--case single|multi|skip|other|all]
-//                                  [--delay <sec>] [--effort <level>] [--verbose]
-import { execFileSync } from 'node:child_process';
+// Usage (after `npm run build`):
+//   node scripts/ask-user-live.mjs
+//   node scripts/ask-user-live.mjs --agent muse,museLive,codex --delay 0,65 --verbose
+//
+// Exit 0 when every tested agent passes at every requested delay, 1 otherwise.
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseArgs } from 'node:util';
-import { codexLive, createAgentSession, prepareCodexLive, startQuestionChannel } from '../dist/agents.js';
+import {
+  antigravity,
+  claude,
+  cliVersion,
+  codex,
+  codexLive,
+  copilot,
+  createAgentSession,
+  cursor,
+  findExecutable,
+  gemini,
+  muse,
+  museLive,
+  startQuestionChannel,
+} from '../dist/agents.js';
 
-const VALID_MODES = new Set(['plan', 'flag', 'both']);
-const VALID_CASES = new Set(['single', 'multi', 'skip', 'other']);
+const PROMPT =
+  'Use the ask_user tool once to ask me which color I prefer (Red, Green, Blue), then tell me in one sentence what I chose.';
 
-const { values } = parseArgs({
-  options: {
-    mode: { type: 'string', default: 'both' },
-    case: { type: 'string', default: 'all' },
-    delay: { type: 'string', default: '0' },
-    effort: { type: 'string', default: 'low' },
-    verbose: { type: 'boolean', default: false },
-  },
-});
+const ROSTER = [
+  { id: 'codex', create: () => codex() },
+  { id: 'codexLive', create: () => codexLive() },
+  { id: 'antigravity', create: () => antigravity() },
+  { id: 'copilot', create: () => copilot() },
+  { id: 'muse', create: () => muse() },
+  { id: 'museLive', create: () => museLive() },
+  { id: 'gemini', create: () => gemini() },
+  { id: 'cursor', create: () => cursor() },
+  { id: 'claude', create: () => claude() },
+];
 
-if (!VALID_MODES.has(values.mode)) {
-  console.error(`Invalid --mode: ${values.mode}. Expected plan, flag, or both.`);
-  process.exit(2);
-}
+const DEFAULT_IDS = ['codex', 'codexLive', 'antigravity', 'copilot', 'muse', 'museLive', 'gemini', 'cursor'];
 
-const selectedCases =
-  values.case === 'all'
-    ? [...VALID_CASES]
-    : values.case
+function parseArgs(argv) {
+  let agents;
+  let delays = [0, 65];
+  let timeoutSec = 180;
+  let verbose = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--verbose' || arg === '-v') {
+      verbose = true;
+    } else if (arg === '--agent' || arg === '--agents') {
+      const value = argv[++i];
+      if (!value) throw new Error(`${arg} requires a value`);
+      agents = [...(agents ?? []), ...value.split(',').filter(Boolean)];
+    } else if (arg.startsWith('--agent=')) {
+      agents = [...(agents ?? []), ...arg.slice('--agent='.length).split(',').filter(Boolean)];
+    } else if (arg === '--delay' || arg === '--delays') {
+      const value = argv[++i];
+      if (!value) throw new Error(`${arg} requires a value`);
+      delays = value.split(',').map((part) => {
+        const n = Number(part);
+        if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid delay: ${part}`);
+        return n;
+      });
+    } else if (arg.startsWith('--delay=')) {
+      delays = arg
+        .slice('--delay='.length)
         .split(',')
-        .map((part) => part.trim())
-        .filter((part, index, list) => part.length > 0 && list.indexOf(part) === index);
-if (
-  !selectedCases.length ||
-  (values.case !== 'all' && values.case.split(',').some((part) => !VALID_CASES.has(part.trim())))
-) {
-  console.error(
-    `Invalid --case: ${values.case}. Expected all or a comma-separated subset of ${[...VALID_CASES].join(',')}.`,
-  );
-  process.exit(2);
-}
-
-const delaySec = Number(values.delay);
-if (!Number.isFinite(delaySec) || delaySec < 0) {
-  console.error(`Invalid --delay: ${values.delay}`);
-  process.exit(2);
-}
-
-const runTimeoutMs = Math.max(120, delaySec + 120) * 1000;
-
-const version = (() => {
-  try {
-    return execFileSync('codex', ['--version'], { encoding: 'utf8' }).trim();
-  } catch {
-    return 'unknown';
-  }
-})();
-console.log(
-  `Codex: ${version} | mode=${values.mode} | case=${values.case} | delay=${delaySec}s | effort=${values.effort}`,
-);
-
-function pickOption(question, pattern, fallback) {
-  return question?.options?.find((opt) => pattern.test(opt.label))?.label ?? fallback;
-}
-
-function baseLabel(label) {
-  return label.replace(/\s*\([^)]*\)\s*$/, '').trim();
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-const modes = values.mode === 'both' ? ['plan', 'flag'] : [values.mode];
-const cases = [
-  {
-    id: 'single',
-    prompt:
-      'Call the request_user_input tool once to ask me one single-choice question: "Which color?" with options Red, Green, Blue. After I answer, reply with ONLY the color I picked.',
-    answer: (req) => {
-      const choice = pickOption(req.questions[0], /green/i, 'Green');
-      return { [req.questions[0].id]: [choice] };
-    },
-    check: (text, req, sent) => {
-      const picked = baseLabel(sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Green');
-      return new RegExp(escapeRegExp(picked), 'i').test(text);
-    },
-  },
-  {
-    id: 'multi',
-    prompt:
-      'Call the request_user_input tool once with TWO questions in the same call: (1) "Which database?" with options Postgres and SQLite; (2) "Which features?" with options Search, Export, Audit. After I answer, summarize both of my answers in one short sentence.',
-    answer: (req) => {
-      const out = {};
-      if (req.questions[0]) out[req.questions[0].id] = [pickOption(req.questions[0], /postgres/i, 'Postgres')];
-      if (req.questions[1]) {
-        const search = pickOption(req.questions[1], /search/i, 'Search');
-        const exp = pickOption(req.questions[1], /export/i, 'Export');
-        out[req.questions[1].id] = [search === exp ? search : `${search}, ${exp}`];
-      }
-      return out;
-    },
-    check: (text, req, sent) => {
-      const db = baseLabel(sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Postgres');
-      const features = (sent?.[req?.questions?.[1]?.id]?.[0] ?? 'Search, Export')
-        .split(/\s*,\s*/)
-        .map(baseLabel)
-        .filter(Boolean);
-      return (
-        (req?.questions?.length ?? 0) >= 2 &&
-        new RegExp(escapeRegExp(db), 'i').test(text) &&
-        features.every((feature) => new RegExp(escapeRegExp(feature), 'i').test(text))
-      );
-    },
-  },
-  {
-    id: 'skip',
-    prompt:
-      'Call the request_user_input tool once to ask me "Which framework?" with options React and Vue. If I do not answer, decide yourself and say what you chose in one short sentence.',
-    answer: () => undefined,
-    check: (text) => /(react|vue)/i.test(text),
-  },
-  {
-    id: 'other',
-    prompt:
-      'Call the request_user_input tool once to ask me "Which port should the server use?" with options 3000 and 8080, allowing a custom Other answer. After I answer, reply with the port I gave.',
-    answer: (req) => ({ [req.questions[0].id]: ['4242'] }),
-    check: (text) => text.includes('4242'),
-  },
-].filter((item) => selectedCases.includes(item.id));
-
-const cwd = mkdtempSync(join(tmpdir(), 'genaicode-ask-user-live-'));
-const rows = [];
-
-async function wait(ms, signal) {
-  if (ms <= 0) return;
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
-  });
-}
-
-async function withTimeout(promise, ms, onTimeout) {
-  let timer;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          onTimeout?.();
-          reject(new Error(`Timed out after ${Math.round(ms / 1000)}s`));
-        }, ms);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-try {
-  const driverOptions = { onlyTaskMcpServers: 'when-listed', sandbox: 'read-only' };
-  const agent = codexLive(driverOptions);
-  for (const mode of modes) {
-    for (const item of cases) {
-      let seen;
-      let sent;
-      let withdrew = false;
-      const t0 = Date.now();
-      const run = agent.run({
-        prompt: item.prompt,
-        cwd,
-        effort: values.effort,
-        timeoutMs: runTimeoutMs,
-        ...(mode === 'plan'
-          ? { mode: 'plan' }
-          : { extraArgs: ['-c', 'features.default_mode_request_user_input=true'] }),
-        onQuestion: async (req, signal) => {
-          seen = req;
-          if (delaySec > 0) await wait(delaySec * 1000, signal);
-          if (signal?.aborted) {
-            withdrew = true;
-            return undefined;
-          }
-          sent = item.answer(req);
-          return sent;
-        },
-      });
-      for await (const event of run) {
-        if (values.verbose && (event.type === 'approval-resolved' || event.type === 'error')) {
-          console.log(`  [${mode}/${item.id}] event:`, JSON.stringify(event));
-        }
-      }
-      const result = await run.result;
-      const elapsed = `${((Date.now() - t0) / 1000).toFixed(1)}s`;
-      const text = (result.text ?? '').replace(/\s+/g, ' ').trim();
-      const ok = result.ok && Boolean(seen) && !withdrew && item.check(text, seen, sent);
-      rows.push({
-        mode,
-        case: item.id,
-        ok,
-        asked: Boolean(seen),
-        withdrew,
-        elapsed,
-        text: text.slice(0, 80),
-      });
-      if (values.verbose) {
-        console.log(`\n--- ${mode}/${item.id} (${elapsed}) ---`);
-        console.log('raw request.detail:', JSON.stringify(seen?.detail, null, 2));
-        console.log('response answers:', JSON.stringify(sent));
-        console.log('final text:', text);
-      }
-    }
-  }
-
-  // Also verify one-question-tool-per-turn inside an AgentSession with a question channel:
-  // in Plan mode `genaicode_ask` is stripped before spawning Codex (verified via prepareCodexLive)
-  // and Codex calls its native `request_user_input`.
-  if (modes.includes('plan') && selectedCases.includes('single')) {
-    const channel = await startQuestionChannel();
-    let capturedTask;
-    const spyAgent = {
-      ...agent,
-      run(task) {
-        capturedTask = task;
-        return agent.run({ ...task, timeoutMs: runTimeoutMs });
-      },
-    };
-    const session = createAgentSession({
-      agent: spyAgent,
-      cwd,
-      effort: values.effort,
-      mode: 'plan',
-      questions: channel,
-    });
-    const handledIds = new Set();
-    const questionIds = [];
-    const unexpectedApprovals = [];
-    let chosenColor = 'Green';
-    const stopSub = session.subscribe((state) => {
-      for (const pending of state.approvals) {
-        if (handledIds.has(pending.id)) continue;
-        handledIds.add(pending.id);
-        if (pending.kind !== 'question' || !pending.questions?.length) {
-          unexpectedApprovals.push(pending.id);
-          session.approve(pending.id, 'deny');
-          continue;
-        }
-        questionIds.push(pending.id);
-        const q = pending.questions[0];
-        chosenColor = pickOption(q, /green/i, 'Green');
-        session.answer(pending.id, { [q.id]: [chosenColor] });
-      }
-    });
-    const t0 = Date.now();
-    try {
-      session.send(
-        'Ask me which color I prefer (Red, Green, Blue) using your question tool, then reply with ONLY the color I picked.',
-      );
-      await withTimeout(session.idle(), runTimeoutMs + 10_000, () => session.stop());
-      const turn = session.get().turns[0];
-      const text = (turn?.result?.text ?? '').replace(/\s+/g, ' ').trim();
-      const attachedBySession = Boolean(capturedTask?.mcpServers?.some((s) => s.name === channel.mcpServer.name));
-      const preparedPlan = capturedTask ? await prepareCodexLive(capturedTask, driverOptions) : { args: [] };
-      const preparedDefault = capturedTask
-        ? await prepareCodexLive({ ...capturedTask, mode: 'default' }, driverOptions)
-        : { args: [] };
-      const strippedInPlan = !preparedPlan.args.some((arg) => arg.includes(channel.mcpServer.name));
-      const keptInDefault = preparedDefault.args.some((arg) => arg.includes(channel.mcpServer.name));
-      const usedOwnTool = questionIds.length === 1 && !questionIds[0].startsWith('ask-');
-      const ok =
-        Boolean(turn?.result?.ok) &&
-        attachedBySession &&
-        strippedInPlan &&
-        keptInDefault &&
-        usedOwnTool &&
-        unexpectedApprovals.length === 0 &&
-        new RegExp(escapeRegExp(baseLabel(chosenColor)), 'i').test(text);
-      rows.push({
-        mode: 'plan+session',
-        case: 'own-tool-only',
-        ok,
-        asked: questionIds.length > 0,
-        withdrew: false,
-        elapsed: `${((Date.now() - t0) / 1000).toFixed(1)}s`,
-        text: text.slice(0, 80),
-      });
-      if (values.verbose) {
-        console.log(`\n--- plan+session/own-tool-only ---`);
-        console.log({
-          attachedBySession,
-          strippedInPlan,
-          keptInDefault,
-          usedOwnTool,
-          unexpectedApprovals,
-          chosenColor,
-          text,
+        .map((part) => {
+          const n = Number(part);
+          if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid delay: ${part}`);
+          return n;
         });
-      }
-    } finally {
-      stopSub();
-      session.close();
-      await channel.close();
+    } else if (arg === '--timeout') {
+      timeoutSec = Number(argv[++i]);
+      if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('Invalid --timeout');
+    } else if (arg.startsWith('--timeout=')) {
+      timeoutSec = Number(arg.slice('--timeout='.length));
+      if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('Invalid --timeout');
+    } else if (arg === '--help' || arg === '-h') {
+      console.log(`Usage: node scripts/ask-user-live.mjs [options]
+
+Options:
+  --agent <ids>    Comma-separated agent ids (default: ${DEFAULT_IDS.join(',')})
+                   Available: ${ROSTER.map((r) => r.id).join(', ')}
+  --delay <secs>   Comma-separated answer delays in seconds (default: 0,65)
+  --timeout <sec>  Per-run timeout in seconds on top of delay (default: 180)
+  --verbose        Print full approval requests, tool calls, and errors`);
+      process.exit(0);
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
-} finally {
-  rmSync(cwd, { recursive: true, force: true });
+  return { agents: agents ?? DEFAULT_IDS, delays, timeoutSec, verbose };
 }
 
-console.table(rows);
-process.exit(rows.length > 0 && rows.every((row) => row.ok) ? 0 : 1);
+function oneLine(text, max = 64) {
+  if (!text) return '';
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+async function runCase(entry, delaySec, timeoutSec, verbose) {
+  const agent = entry.create();
+  const cwd = mkdtempSync(join(tmpdir(), `genaicode-ask-live-${entry.id}-`));
+  const channel = await startQuestionChannel();
+  const seenIds = new Set();
+  const questions = [];
+  const extraApprovals = [];
+  const timers = [];
+  let withdrawnEarly = false;
+  let session;
+
+  try {
+    session = createAgentSession({
+      agent,
+      cwd,
+      questions: channel,
+      task: { timeoutMs: (timeoutSec + delaySec) * 1000 },
+    });
+
+    const unsubscribe = session.subscribe((state) => {
+      for (const req of state.approvals) {
+        if (seenIds.has(req.id)) continue;
+        seenIds.add(req.id);
+        if (verbose) {
+          console.error(`[${entry.id} delay=${delaySec}s] approval-request:`, JSON.stringify(req, null, 2));
+        }
+        if (req.kind === 'question') {
+          questions.push(req);
+          const qid = req.questions?.[0]?.id ?? 'q1';
+          const answer = () => {
+            const ok = session.answer(req.id, { [qid]: ['Green'] });
+            if (!ok) withdrawnEarly = true;
+            if (verbose) {
+              console.error(`[${entry.id} delay=${delaySec}s] answered ${req.id} after ${delaySec}s (accepted=${ok})`);
+            }
+          };
+          if (delaySec === 0) {
+            queueMicrotask(answer);
+          } else {
+            timers.push(setTimeout(answer, delaySec * 1000));
+          }
+        } else {
+          extraApprovals.push(req);
+          // Deny unexpected permission prompts so the run finishes instead of hanging.
+          queueMicrotask(() => session.approve(req.id, 'deny'));
+        }
+      }
+    });
+
+    session.send(PROMPT);
+    await session.idle();
+    unsubscribe();
+
+    const turn = session.get().turns.at(-1);
+    const entries = turn?.entries ?? [];
+    const tools = entries.filter((item) => item.kind === 'tool');
+    const toolErrors = tools.filter((item) => item.isError);
+    const errors = entries.filter((item) => item.kind === 'error').map((item) => item.message);
+    const finalText =
+      turn?.result?.text ??
+      entries
+        .filter((item) => item.kind === 'text')
+        .map((item) => item.text)
+        .join('\n')
+        .trim();
+
+    if (verbose) {
+      console.error(
+        `[${entry.id} delay=${delaySec}s] result:`,
+        JSON.stringify({ result: turn?.result, tools, errors }, null, 2),
+      );
+    }
+
+    const timedOut =
+      withdrawnEarly ||
+      turn?.result?.status === 'timeout' ||
+      toolErrors.some((tool) => /time(?:d)?\s*out|deadline/i.test(tool.output ?? '')) ||
+      errors.some((message) => /time(?:d)?\s*out|deadline/i.test(message));
+
+    const calledTool = questions.length > 0;
+    const namesGreen = /\bgreen\b/i.test(finalText ?? '');
+    const passed =
+      turn?.result?.ok === true &&
+      questions.length === 1 &&
+      extraApprovals.length === 0 &&
+      !timedOut &&
+      toolErrors.length === 0 &&
+      namesGreen;
+
+    return {
+      agent: entry.id,
+      delay: `${delaySec}s`,
+      calledTool: questions.length === 1 ? 'yes' : `no (${questions.length})`,
+      extraApprovals: extraApprovals.length
+        ? `${extraApprovals.length} (${extraApprovals.map((r) => r.summary ?? r.kind).join('; ')})`
+        : '0',
+      timedOut: timedOut ? 'yes' : 'no',
+      toolErrors: toolErrors.length,
+      finalAnswer: oneLine(finalText || turn?.result?.error || errors[0] || ''),
+      status: passed ? 'PASS' : 'FAIL',
+      passed,
+    };
+  } finally {
+    for (const timer of timers) clearTimeout(timer);
+    session?.close();
+    await channel.close().catch(() => {});
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+function formatTable(rows) {
+  const columns = [
+    ['Agent', 'agent'],
+    ['Version', 'version'],
+    ['Delay', 'delay'],
+    ['Called tool', 'calledTool'],
+    ['Extra approvals', 'extraApprovals'],
+    ['Timed out', 'timedOut'],
+    ['Status', 'status'],
+    ['Final answer', 'finalAnswer'],
+  ];
+  const widths = columns.map(([header, key]) =>
+    Math.max(header.length, ...rows.map((row) => String(row[key] ?? '').length)),
+  );
+  const line = (values) => values.map((value, i) => String(value).padEnd(widths[i])).join(' | ');
+  const sep = widths.map((width) => '-'.repeat(width)).join('-+-');
+  return [
+    line(columns.map(([header]) => header)),
+    sep,
+    ...rows.map((row) => line(columns.map(([, key]) => row[key] ?? ''))),
+  ].join('\n');
+}
+
+async function main() {
+  const { agents: requestedIds, delays, timeoutSec, verbose } = parseArgs(process.argv.slice(2));
+  const byId = new Map(ROSTER.map((entry) => [entry.id, entry]));
+  for (const id of requestedIds) {
+    if (!byId.has(id)) throw new Error(`Unknown agent id: ${id}. Available: ${ROSTER.map((r) => r.id).join(', ')}`);
+  }
+
+  const rows = [];
+  let failures = 0;
+
+  for (const id of requestedIds) {
+    const entry = byId.get(id);
+    const probe = entry.create();
+    const bin = findExecutable(probe.command);
+    if (!bin) {
+      rows.push({
+        agent: id,
+        version: '-',
+        delay: '-',
+        calledTool: '-',
+        extraApprovals: '-',
+        timedOut: '-',
+        status: 'SKIP',
+        finalAnswer: `${probe.command} not installed`,
+      });
+      continue;
+    }
+    const version = (await cliVersion(probe.command)) ?? 'unknown';
+    if (!probe.capabilities.mcp && !probe.capabilities.questions) {
+      rows.push({
+        agent: id,
+        version,
+        delay: '-',
+        calledTool: '-',
+        extraApprovals: '-',
+        timedOut: '-',
+        status: 'SKIP',
+        finalAnswer: 'no capabilities.mcp / capabilities.questions',
+      });
+      continue;
+    }
+    for (const delaySec of delays) {
+      console.error(`Running ${id} (${version}) with delay=${delaySec}s...`);
+      const result = await runCase(entry, delaySec, timeoutSec, verbose);
+      rows.push({ ...result, version });
+      if (!result.passed) failures += 1;
+    }
+  }
+
+  console.log('\n' + formatTable(rows));
+  process.exit(failures > 0 ? 1 : 0);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
+  process.exit(1);
+});

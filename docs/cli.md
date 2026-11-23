@@ -105,9 +105,12 @@ must finish first. The check uses the latest store and hook information availabl
 `npx genaicode notify on` then shows a desktop notification when a session asks for approval
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
-`sessions --waiting` puts the sessions whose last message asks you something right after the
-approvals (`●`: a question, a command to run, an offer to go on, or a report that could not be
-sent back), before the ones that just ended. Scheduled tasks and headless runs nobody typed into
+`sessions --waiting` puts the sessions that need you now right after the approvals (`●`: the last
+message asked a question, asked you to confirm or decide, or gave a command to run, in the last 3
+days), then the stalled ones
+(`◇`: an offer to go on, a report that could not be sent back, or a question older than that),
+then the ones that just ended. Topics, the browser's start screen and the desktop menu bar count
+only what needs you now; stalled sessions are folded under their topic. Scheduled tasks and headless runs nobody typed into
 are left out of `sessions`; `--automated` lists them too (see
 [agents](agents.md#which-sessions-need-you-hooks)).
 
@@ -161,12 +164,12 @@ the agent says so again. `--json` prints `{"limits":[{"agent","window","status",
 
 A project directory is not a piece of work: one holds many, and one piece of work is often done
 with several agents and from several directories. `npx genaicode topics` shows the sessions of all
-agents as topics, what asks for you first:
+agents as topics, what needs you first:
 
 ```
-● Pack mode       t1    claude 9, codex 3  12m ago  1 ask you
+● Pack mode       t1    claude 9, codex 3  12m ago  1 needs you
 ▶ Desktop app     t2    claude 6           1h ago   1 working
-  YouTube pins    t3    codex 2            2d ago
+  YouTube pins    t3    codex 2            2d ago   2 stalled
 14 sessions not sorted yet: "genaicode topics refresh" sorts them.
 ```
 
@@ -253,7 +256,7 @@ npx genaicode                      # chat in this terminal (same as "genaicode c
 npx genaicode chat -a claude -C ../api
 npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
 npx genaicode chat --web           # both: the terminal and the browser on one session
-npx genaicode ui --pack            # pack using all installed agents (first MCP agent leads)
+npx genaicode ui --pack            # saved project team, or all installed agents
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
@@ -274,18 +277,34 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-With `--pack` (all installed agents, first MCP-capable one leads; pass `-a <lead>` to choose the
-lead) or `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
+In the desktop app or `genaicode ui --pack`, open **Project team**, choose a lead and workers,
+and click **Remember this team for the project**. In the desktop home view, first choose or enter
+the project's folder. Opening a new chat from a project’s topic also selects its saved lead. The next `genaicode ui --pack`, `chat --pack` or `tower` in that project
+reads the same `.genaicode/pack.json`, at the Git worktree root or the working directory outside Git.
+For example, `{"lead":"claude","members":["codex","gemini"]}` lets Claude delegate to Codex and Gemini.
+With no profile, all installed agents join and the first MCP-capable agent leads.
+`--pack lead:member,member` overrides the whole roster for one launch. With bare `--pack`,
+`-a <lead>` overrides only the lead. An unavailable saved agent is reported by name.
+
+The lead chooses which tasks to delegate. **Pack tasks**
 under its turn shows each worker's prompt, activity, result and changed files. The slot counter
 includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
 `--max-tokens` and `--max-cost` include the lead and its workers.
 
 `--delegate` keeps the usual agent picker but gives every agent that takes MCP servers the same
-tools, with all installed agents as members: ask Claude for a second opinion from Antigravity and
+tools. It uses the workers saved for the delegated task’s directory, or the installed agents when
+there is no profile. Ask Claude for a second opinion from Antigravity and
 Claude delegates it instead of starting `agy` from its shell, where Antigravity cannot ask for
 anything and returns empty. The delegated agent's approvals come to this chat, and commands that
 only read inside its directory pass without asking. A turn that delegates nothing looks as
 before. The desktop app starts its chat this way.
+
+The pack’s `agents` tool takes the target directory, model, effort and MCP server names. A refusal
+or a fully used window observed within the last 15 minutes can suggest another installed worker.
+The task card records the observation and the reset time when available. An alternative needs
+recent quota remaining and the requested capabilities. For a named model the pack needs to have
+seen the worker report that model. The operator decides whether to substitute a named agent.
+A 90% reading alone leaves the choice as it was.
 
 In the browser, select a task or open **Approvals**. In the terminal, press Tab on an empty
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
@@ -389,11 +408,21 @@ you did not ask for, and a plugin's server cannot be switched off alone. The plu
 them. `--agent-mcp` keeps both. A Codex too old to list its servers (`codex mcp list --json`) keeps
 them too, with a note.
 The agent can publish artifacts: a report, chart or mockup as a self-contained HTML page, an
-image, a Markdown document. The browser UI shows each as a card that opens a preview; the
-terminal shows a line, and `/web` opens the browser on the same session. Pages run in a
-sandboxed frame with no network and no access to the UI (see
-[agents.md](agents.md#artifacts)). Agents that take MCP servers get the tool;
+image, audio, video, PDF or Markdown document. The browser UI opens both artifacts and project files
+in one resizable side panel beside the chat (with full-size toggle, version switcher, download,
+session **Artifacts** list, line jumping for `:line` / `#L12-L20` links, and rich viewers for
+Markdown, images, audio, video, PDF and sandboxed HTML); the terminal shows a line, and `/web` opens
+the browser on the same session. Pages run in a sandboxed frame with no network and no access to the
+UI by default (see [agents.md](agents.md#artifacts)); `--artifact-cdn <host>[,<host>]` opts in to
+specific CDN hosts for scripts, stylesheets and fonts while keeping fetch, images and forms blocked
+(also configurable in the desktop app's **Settings**). Agents that take MCP servers get the tool;
 `--no-artifacts` leaves it out.
+In `--sessions` and desktop mode, file viewing and `publish_artifact` paths follow the directories
+of the active session, opened/sent sessions and pack worktrees rather than only the server's own
+`cwd`, while still refusing out-of-root paths, escaping symlinks and credential files. In the desktop
+app, external links (`http(s)` and `mailto`) and artifact **New tab** open in the system default
+browser, downloads prompt with a Save dialog and **Show in Finder / File Manager**, and file links
+and out-of-project notices offer **Reveal**.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
 Such an app can also write `update-downloading <version>` to that stdin while it downloads a newer
@@ -407,12 +436,30 @@ conversations that ran in the chat's own directory, apart from every agent's ses
 With `--restore` the page opens on the conversation the chat in this directory had last, with
 its agent and its history, so stopping and starting the server loses nothing; `--from` or
 `--resume` name another one.
-While no agent CLI is installed, `genaicode ui` does not give up: its link shows which agents
-it can use, the command that installs each and how to sign in, and it moves on to the chat by
-itself once one is found (it looks every few seconds and on **Check again**).
-With `--sessions --no-project` the page names no project and suggests questions about the work
-of every agent: the chat is then about the sessions, wherever they run, and `--cwd` is only
-where its own agent starts. The desktop app runs it this way.
+While no agent CLI is installed or signed in, `genaicode ui` starts in a `setup` state instead of
+exiting: the page shows an onboarding screen with one card per supported agent (`Not installed`,
+`Installed, not signed in`, or `Ready`), copyable install and sign-in commands, vendor install links,
+plan limits, and **Check again** (also polling every few seconds), while the prompt box stays
+disabled ("Connect an agent to start") and the Sessions view keeps working. `GET /api/agents`
+reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
+binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
+(or installed), the onboarding collapses into the normal home; **Connect another agent** stays in the
+agent picker alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
+a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
+**Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
+send it back (`env <json>` on stdin) so newly installed CLIs are picked up without a restart.
+With `--home` (as the desktop app runs it), there is no fixed project folder: each conversation
+resolves its own working directory (continuing a session uses its directory or repo root, **New
+chat** on a topic card uses that topic's most recent non-automated directory, and **New chat** from
+the home screen runs in the neutral home `~/.genaicode/home`). In the neutral home or when a
+directory cannot be resolved, the agent gets an `open_project` tool that asks for confirmation via a
+question card before moving the conversation into a project directory (or creating a missing one).
+The header shows the conversation's title and topic without a path; hover the header or type
+`/where` to see the directory, and the file panel follows the active conversation's directory. When
+Codex works in a directory for the first time, it asks to trust it through a question card instead
+of failing. `genaicode ui --cwd <dir>` keeps single-folder behaviour unchanged. With `--sessions
+--no-project` the page names no project and suggests questions about the work of every agent while
+keeping `--cwd` fixed.
 
 `genaicode ui` listens on the loopback address and prints a link with a random access
 token. Opening it in a browser moves the token into origin-isolated `sessionStorage`, strips

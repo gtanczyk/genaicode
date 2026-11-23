@@ -10,6 +10,15 @@ import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { delegationBrief, pack } from '../agents/pack.js';
+import {
+  packRoot,
+  profileChoices,
+  projectTeams,
+  readPackProfile,
+  validateTeam,
+  type ProjectTeams,
+  type PackProfile,
+} from '../agents/pack-profile.js';
 import { codexLive } from '../agents/drivers/codex-live.js';
 import { museLive } from '../agents/drivers/muse-live.js';
 import { sendSession } from '../agents/sessions/send.js';
@@ -24,6 +33,7 @@ import {
   findSession,
   groupSessions,
   isAsking,
+  isStalled,
   waitingSessions,
   HOOK_AGENTS,
   hooksFile,
@@ -83,6 +93,7 @@ import {
   writeTopics,
   type TopicStore,
 } from '../agents/sessions/topics.js';
+import { ensureNeutralHome, readConversations } from '../agents/sessions/workspace.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -96,6 +107,8 @@ import {
   defaultUpdateDeps,
   findInstall,
   installCommand,
+  installedReleaseNotes,
+  readVersion,
   shadowingCommand,
   registerRun,
   selfInstall,
@@ -140,6 +153,8 @@ export interface UiLaunch {
   agents: readonly CodingAgent[];
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
+  projectTeams?: ProjectTeams;
+  projectLead?(cwd: string): Promise<string | undefined>;
   sessionSources?: readonly SessionSource[];
   sessionTools?: readonly McpTool[];
   towerInbox?: TowerInbox;
@@ -155,6 +170,11 @@ export interface UiLaunch {
   approveAll?: boolean;
   /** `--no-artifacts`: false. */
   artifacts?: boolean;
+  /** `--artifact-cdn`: opt-in CDN hosts HTML artifacts may load scripts/styles/fonts from. */
+  artifactCdn?: readonly string[];
+  /** Extra allowed roots from opened sessions (`--sessions`). */
+  extraRoots?: ReadonlySet<string>;
+  onRoot?(dir: string): void;
   env: NodeJS.ProcessEnv;
   version: string;
   stdout: NodeJS.WriteStream;
@@ -173,6 +193,8 @@ export interface UiLaunch {
   exitWithStdin?: boolean;
   /** `ui --no-project`: the page names no project. */
   noProject?: boolean;
+  /** `ui --home`: no fixed project folder; conversations resolve their own working directory. */
+  home?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
   /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -215,6 +237,7 @@ Usage:
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
   genaicode install [options]          Install "genaicode" as a command that updates itself
+  genaicode whats-new                  Show release notes for the installed version
   genaicode update [options]           Update the installed genaicode command
 
 Install options (macOS, Linux; same as scripts/install.sh):
@@ -281,8 +304,10 @@ Topics:
   directory, title or prompts) and keeps the answer in ~/.genaicode/topics.json. Only new sessions
   are sorted the next time, and what you renamed, merged or moved stays. Sessions relayed from a
   claude.ai project go to a topic named as that project, without asking an agent. "--again" drops
-  the topics there are, your corrections too, and sorts everything anew. A topic "asks you" for
-  approvals, and for 3 days after a session's last message asked something.
+  the topics there are, your corrections too, and sorts everything anew. A topic "needs you" for
+  approvals, and for 3 days after a session's last message asked a question or gave a command to
+  run. A session left on an offer ("I can also…, if you want"), a report it could not send, or a
+  question older than that is "stalled": shown, but it blocks nobody.
 
 Hooks options:
   -a, --agent <name>      Only this agent (claude, codex, gemini, copilot, cursor); default: all installed
@@ -316,7 +341,7 @@ Notify options:
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one; with --pack, the lead)
-      --pack [lead:list]  Start a pack: omit the value to use all installed agents, or name them
+      --pack [lead:list]  Use the project team or installed agents. A named roster overrides the project
                           explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
                           the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
@@ -337,13 +362,18 @@ Chat and UI options:
       --restore           (ui) Open on the conversation the chat in this directory had last,
                           with its agent, unless --from or --resume names another
       --no-project        (ui) The page names no project: for a chat about the sessions of
-                          every project, as the desktop app runs it
+                          every project
+      --home              (ui) No fixed project folder: each conversation resolves its own
+                          directory (home starts in ~/.genaicode/home), as the desktop app runs it
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --agent-mcp         Codex keeps its plugins and the MCP servers of its own config. Without
                           it, a chat gives Codex only the servers above and its own tools
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
+      --artifact-cdn <h>  Allow HTML artifacts to load scripts, styles and fonts from these CDN
+                          hosts (comma-separated or repeatable, e.g. cdn.jsdelivr.net,unpkg.com);
+                          fetch, images and forms stay blocked. Off by default
       --sessions          Give the agent read access to the session index. Ask what needs your
                           attention across agents with sessions_waiting
       --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
@@ -416,7 +446,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
-  const quick = ['help', 'version', 'update', 'self-install', 'install'].includes(command.kind);
+  const quick = ['help', 'version', 'whats-new', 'update', 'self-install', 'install'].includes(command.kind);
   // Machine-readable output and protocol servers get no banner and start no updater.
   const machine = command.kind === 'acp' || command.kind === 'sessions-mcp' || ('json' in command && command.json);
   if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
@@ -441,6 +471,14 @@ function dispatch(
     case 'version':
       cli.stdout.write(`${packageVersion()}\n`);
       return EXIT_OK;
+    case 'whats-new': {
+      const version = readVersion(updater.packageRoot);
+      const notes = installedReleaseNotes(version, undefined, updater.packageRoot);
+      cli.stdout.write(
+        `${notes || `Genaicode ${version} · https://github.com/gtanczyk/genaicode/releases/tag/v${version}`}\n`,
+      );
+      return EXIT_OK;
+    }
     case 'agents':
       return listAgents(cli, agents, command.json);
     case 'sessions':
@@ -691,6 +729,30 @@ async function lastSessionIn(
 }
 
 /**
+ * The newest conversation recorded in `--home` mode whose agent can still resume it.
+ * Falls back to `lastSessionIn(homeDir)` when no recorded conversation is available.
+ */
+async function lastHomeSession(
+  homeDir: string,
+  sources: readonly SessionSource[],
+  agents: readonly CodingAgent[],
+  only: string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<{ id: string; agent: string } | undefined> {
+  const installed = new Set(
+    detectAgents(agents, env)
+      .filter(({ agent, path }) => path && agent.capabilities.resume && (!only || agent.name === only))
+      .map(({ agent }) => agent.name),
+  );
+  const recorded = await readConversations(env).catch(() => []);
+  for (const conv of recorded) {
+    if (!conv.sessionId || !conv.agent || !installed.has(conv.agent)) continue;
+    return { id: conv.sessionId, agent: conv.agent };
+  }
+  return lastSessionIn(homeDir, sources, agents, only, env);
+}
+
+/**
  * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
  * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
  * the headless ones. Codex gets the chat's MCP servers only, unless `agentMcp` keeps its own.
@@ -731,6 +793,9 @@ async function runUi(
   let towerInbox: TowerInbox | undefined;
   let startupNotice: string | undefined;
   let initial = options.agent;
+  const launchCwd = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
+  let profiles: ProjectTeams | undefined;
+  let projectLead: ((directory: string) => Promise<string | undefined>) | undefined;
   if (options.pack) {
     const spec = options.pack;
     if (options.mcpServers.some((server) => server.name === 'pack')) {
@@ -741,13 +806,27 @@ async function runUi(
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     let lead: CodingAgent;
     let members: CodingAgent[];
+    const choices = profileChoices(packAgents, cli.env);
     if ('auto' in spec) {
-      const installed = detectAgents(packAgents, cli.env)
-        .filter((found) => found.path !== null)
-        .map((found) => found.agent);
+      let saved: PackProfile | undefined;
+      try {
+        saved = options.noProject ? undefined : await readPackProfile(await packRoot(launchCwd));
+        if (saved) {
+          if (options.agent) saved.lead = options.agent;
+          validateTeam(saved, choices);
+        }
+      } catch (error) {
+        cli.stderr.write(
+          `${error instanceof Error ? error.message : error} Use an explicit --pack LEAD:MEMBERS to override it.\n`,
+        );
+        return EXIT_USAGE;
+      }
+      const installed = choices.filter((choice) => choice.installed).map((choice) => member(choice.name));
       if (options.agent !== undefined) {
         if (!knownAgents(cli, agents, [options.agent], '--agent')) return EXIT_USAGE;
         lead = member(options.agent);
+      } else if (saved) {
+        lead = member(saved.lead);
       } else {
         const picked = installed.find((agent) => agent.capabilities.mcp);
         if (!picked) {
@@ -765,9 +844,8 @@ async function runUi(
         cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
         return EXIT_USAGE;
       }
-      // Every installed agent joins the pack (including the lead).
-      members = installed.includes(lead) ? installed : [lead, ...installed];
-      startupNotice = `Pack: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
+      members = saved ? saved.members.map(member) : installed.includes(lead) ? installed : [lead, ...installed];
+      startupNotice = `${saved ? 'Project pack' : 'Pack'}: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
     } else {
       if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
       lead = member(spec.lead);
@@ -781,13 +859,14 @@ async function runUi(
       sessionAgents = packAgents;
       towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
-    const project = resolve(cli.cwd, options.cwd ?? '.');
-    const projectDir = await fs.realpath(project).catch(() => project);
+    profiles = projectTeams(choices, cli.env, { lead: lead.name, members: members.map((agent) => agent.name) });
+    const projectDir = await fs.realpath(launchCwd).catch(() => launchCwd);
     const command = options.verify ?? (await npmTestCommand(projectDir));
     const team = pack({
       lead,
       members,
       maxParallel: spec.maxParallel,
+      readLimits: knownLimits,
       operatorMerge: true,
       sessionProposalTool: towerInbox?.proposalTool,
       verification: command
@@ -810,14 +889,34 @@ async function runUi(
       cli.stderr.write('--delegate provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    // Each agent that takes MCP servers keeps its name and may hand work to the installed ones.
+    // Each agent that takes MCP servers keeps its name and may hand work to any installed helper.
+    // `pack()` checks `findExecutable()` per run, so agents installed after startup join without a restart.
     const helpers = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
-    const installed = detectAgents(helpers, cli.env)
-      .filter((found) => found.path !== null)
-      .map((found) => found.agent);
+    const choices = profileChoices(helpers, cli.env);
+    profiles = projectTeams(choices, cli.env);
+    const homeCwd = options.noProject ? await fs.realpath(launchCwd).catch(() => launchCwd) : undefined;
+    const projectTeam = async (directory: string) =>
+      directory === homeCwd ? undefined : readPackProfile(await packRoot(directory));
+    projectLead = async (directory) => {
+      const saved = await projectTeam(directory);
+      if (saved) validateTeam(saved, profileChoices(helpers, cli.env));
+      return saved?.lead;
+    };
     agents = agents.map((agent) =>
       agent.capabilities.mcp
-        ? pack({ name: agent.name, lead: agent, members: installed, brief: delegationBrief, operatorMerge: true })
+        ? pack({
+            name: agent.name,
+            lead: agent,
+            members: helpers,
+            brief: delegationBrief,
+            operatorMerge: true,
+            projectMembers: async (directory) => {
+              const saved = await projectTeam(directory);
+              if (saved) validateTeam({ lead: agent.name, members: saved.members }, profileChoices(helpers, cli.env));
+              return saved?.members;
+            },
+            readLimits: knownLimits,
+          })
         : agent,
     );
   }
@@ -836,24 +935,38 @@ async function runUi(
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
-  // `--restore`: the conversation this directory's chat had last, so a restart loses nothing.
+  // `--restore`: the conversation this directory's (or app's) chat had last, so a restart loses nothing.
   let restored: string | undefined;
   if (options.kind === 'ui' && options.restore && !options.from && !options.resume && !options.pack) {
-    const last = await lastSessionIn(resolve(cli.cwd, options.cwd ?? '.'), indexed, agents, options.agent, cli.env);
+    const last = options.home
+      ? await lastHomeSession(launchCwd, indexed, agents, options.agent, cli.env)
+      : await lastSessionIn(launchCwd, indexed, agents, options.agent, cli.env);
     if (last) {
       restored = last.id;
       initial ??= last.agent;
     }
   }
+  if (projectLead && !options.noProject && !initial && !options.from && !options.resume) {
+    try {
+      initial = await projectLead(launchCwd);
+    } catch (error) {
+      cli.stderr.write(`${error instanceof Error ? error.message : error}\n`);
+      return EXIT_USAGE;
+    }
+  }
   const ui = await (cli.loadUi ?? loadBundledUi)();
   // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
   // ...and a way to pass a message to one of them, which the person allows first.
+  const extraRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    if (dir) extraRoots.add(dir);
+  };
   const sends = options.sessions ? new AbortController() : undefined;
   const sendGate = sends ? new SessionSendGate() : undefined;
   const tools =
     options.sessions && sendGate
       ? [
-          ...sessionTools(indexed, { env: cli.env }),
+          ...sessionTools(indexed, { env: cli.env, onSession: (session) => session.cwd && addRoot(session.cwd) }),
           sessionSendTool(sessionAgents, sendGate, { env: cli.env, signal: sends!.signal }),
         ]
       : undefined;
@@ -874,8 +987,10 @@ async function runUi(
     ...(sendGate ? { sessionSend: sendGate } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
+    ...(profiles ? { projectTeams: profiles } : {}),
+    ...(options.home && !options.agent && projectLead ? { projectLead } : {}),
     agent: initial,
-    cwd: resolve(cli.cwd, options.cwd ?? '.'),
+    cwd: launchCwd,
     model: options.model,
     effort: options.effort,
     resume: options.resume,
@@ -892,8 +1007,12 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.noProject ? { noProject: true } : {}),
+    ...(options.home ? { home: true } : {}),
     ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
+    ...(options.artifactCdn ? { artifactCdn: options.artifactCdn } : {}),
+    extraRoots,
+    onRoot: addRoot,
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback ? { fallback: options.fallback } : {}),
     ...extra,
@@ -945,6 +1064,7 @@ const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 /** How a waiting session's last words are introduced, by what they ask (`SessionInfo.ending`). */
 const ENDING_SAYS = {
   question: 'asks',
+  request: 'asks you',
   command: 'wants you to run',
   offer: 'offers',
   unreported: 'could not report back',
@@ -965,9 +1085,10 @@ function showWaiting(
     return EXIT_OK;
   }
   const asks = sessions.filter((session) => session.waitingFor === 'approval').length;
-  const wants = sessions.filter((session) => session.waitingFor !== 'approval' && session.ending).length;
+  const wants = sessions.filter((session) => session.waitingFor !== 'approval' && isAsking(session, now)).length;
+  const stalled = sessions.filter((session) => isStalled(session, now)).length;
   cli.stdout.write(
-    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}${wants ? `, ${wants} ask${wants === 1 ? 's' : ''} you something` : ''}:\n`,
+    `${sessions.length} session${sessions.length === 1 ? '' : 's'} wait${sessions.length === 1 ? 's' : ''} for you${period}${asks ? `, ${asks} for approval` : ''}${wants ? `, ${wants} ask${wants === 1 ? 's' : ''} you something now` : ''}${stalled ? `, ${stalled} stalled` : ''}:\n`,
   );
   for (const session of sessions) {
     const place = session.cwd ?? session.repository ?? '';
@@ -991,7 +1112,7 @@ function showWaiting(
       )
       .join('');
     cli.stdout.write(
-      `\n${session.waitingFor === 'approval' ? '◆' : session.ending ? '●' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
+      `\n${session.waitingFor === 'approval' ? '◆' : isAsking(session, now) ? '●' : isStalled(session, now) ? '◇' : '○'} ${project || '(no directory)'}  ${session.agent}  ${ago(now - session.updatedAt)} ago\n  ${text}\n  ${what}\n${commands}${open}${resume ? `  ${resume}\n` : ''}`,
     );
   }
   return EXIT_OK;
@@ -1222,7 +1343,8 @@ async function manageTopics(
     cli.stdout.write(`${topic.name} (${topic.id}): ${count(sessions.length)} in the last ${period}\n`);
     for (const session of sessions) {
       const label = session.title ?? session.lastPrompt ?? session.firstPrompt ?? '(no prompt)';
-      const mark = session.state === 'active' ? '▶' : session.ending || session.waitingFor === 'approval' ? '●' : ' ';
+      const mark =
+        session.state === 'active' ? '▶' : isAsking(session, now) ? '●' : isStalled(session, now) ? '◇' : ' ';
       cli.stdout.write(
         `${mark} ${session.agent}  ${ago(now - session.updatedAt)} ago  ${oneLine(label, 70)}  ${session.id}\n`,
       );
@@ -1261,7 +1383,11 @@ async function manageTopics(
       .sort((a, b) => b[1] - a[1])
       .map(([name, n]) => `${name} ${n}`)
       .join(', ');
-    const state = [topic.asking ? `${topic.asking} ask you` : '', topic.active ? `${topic.active} working` : '']
+    const state = [
+      topic.asking ? `${topic.asking} need${topic.asking === 1 ? 's' : ''} you` : '',
+      topic.active ? `${topic.active} working` : '',
+      topic.stalled ? `${topic.stalled} stalled` : '',
+    ]
       .filter(Boolean)
       .join(', ');
     cli.stdout.write(
@@ -1412,7 +1538,10 @@ interface WatchedTopic {
   name: string;
   /** Sessions of it in the listing. */
   sessions: number;
+  /** Sessions that need you now (`attentionOf`). */
   asking: number;
+  /** Sessions left on an offer, a failed report or an old question. */
+  stalled: number;
   active: number;
 }
 
@@ -1430,11 +1559,12 @@ function watchedTopics(
   for (const topic of topics) for (const session of topic.sessions) topicOf.set(archiveKey(session), topic.name);
   return {
     // No times: a line is printed when it changes, and work going on would change it at every look.
-    topics: topics.slice(0, WATCHED_TOPICS).map(({ id, name, sessions, asking, active }) => ({
+    topics: topics.slice(0, WATCHED_TOPICS).map(({ id, name, sessions, asking, stalled, active }) => ({
       id,
       name,
       sessions: sessions.length,
       asking,
+      stalled,
       active,
     })),
     topicOf,
@@ -1486,7 +1616,7 @@ async function watchWaiting(
         const full = await look();
         if (stop.signal.aborted) break;
         ({ questions } = full);
-        // A menu shows who asks now: a thread left days ago, or one that merely ended, is not that.
+        // A menu shows who needs you now: an offer, a thread left days ago, or one that merely ended, is not that.
         sessions = full.sessions.filter((session) => isAsking(session));
         limits = await knownLimits(cli.env);
         if (stop.signal.aborted) break;

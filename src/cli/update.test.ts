@@ -347,6 +347,17 @@ describe('genaicode update', () => {
     expect(result.stdout).toContain('`genaicode update`');
   });
 
+  it('prints only the running release on demand, without checking for updates', async () => {
+    const { root, deps, spawned } = installed('2.35.1');
+    const file = join(root, 'docs', 'CHANGELOG.md');
+    writeFileSync(file, CHANGELOG.replace('A fix (#199)', 'A fix (#199)\n\n### Internal\n\n- Build tooling'));
+    const notes = await run(['whats-new'], deps);
+    expect(notes).toEqual({ code: 0, stdout: '## 2.35.1 — 2026-11-19\n\n### Fixed\n\n- A fix (#199)\n', stderr: '' });
+    rmSync(file);
+    expect((await run(['whats-new'], deps)).stdout).toContain('/releases/tag/v2.35.1');
+    expect(spawned).toEqual([]);
+  });
+
   it('turns automatic updates off and on', async () => {
     const { deps, home } = installed();
     expect((await run(['update', '--auto', 'off'], deps)).stdout).toBe('Automatic updates off.\n');

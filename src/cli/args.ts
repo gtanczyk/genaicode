@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { normalizeScriptHosts } from '../agents/media.js';
 import { isSandboxPolicy } from '../agents/permissions.js';
 import type { AgentBudget, McpServer, SandboxPolicy } from '../agents/types.js';
 
@@ -7,6 +8,7 @@ export type PackSpec = { auto: true; maxParallel?: number } | { lead: string; me
 export type CliCommand =
   | { kind: 'help' }
   | { kind: 'version' }
+  | { kind: 'whats-new' }
   | {
       kind: 'update';
       /** `--check`: only say whether a newer version exists. */
@@ -103,6 +105,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `ui --no-project`: the page names no project, for a chat about the sessions of every one. */
       noProject?: true;
+      /** `ui --home`: no fixed project folder; each conversation resolves its own cwd, starting in `~/.genaicode/home`. */
+      home?: true;
       /** `ui --restore`: open on the conversation this directory's chat had last. */
       restore?: true;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
@@ -111,6 +115,8 @@ export type CliCommand =
       agentMcp?: true;
       /** `--no-artifacts`. */
       artifacts?: false;
+      /** `--artifact-cdn host[,host]`: opt-in CDN hosts HTML artifacts may load scripts/styles/fonts from. */
+      artifactCdn?: string[];
       /** `--sessions`: give the agent the session index (`sessions_list`, `sessions_read`...). */
       sessions?: true;
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -173,6 +179,10 @@ export function parseCli(argv: readonly string[]): CliCommand {
   const options = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
   if (options.includes('--help') || options.includes('-h')) return { kind: 'help' };
 
+  if (command === 'whats-new') {
+    if (rest.length) throw new UsageError('Usage: genaicode whats-new');
+    return { kind: 'whats-new' };
+  }
   if (command === 'update') {
     const { values } = parse(() =>
       parseArgs({
@@ -523,6 +533,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       'max-cost': { type: 'string' as const },
       fallback: { type: 'string' as const, multiple: true as const },
       'no-artifacts': { type: 'boolean' as const },
+      'artifact-cdn': { type: 'string' as const, multiple: true as const },
       'agent-mcp': { type: 'boolean' as const },
       sessions: { type: 'boolean' as const },
       ...(command === 'ui'
@@ -530,6 +541,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
             'no-open': { type: 'boolean' as const },
             'exit-with-stdin': { type: 'boolean' as const },
             'no-project': { type: 'boolean' as const },
+            home: { type: 'boolean' as const },
             restore: { type: 'boolean' as const },
           }
         : { web: { type: 'boolean' as const } }),
@@ -550,6 +562,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       web?: boolean;
       'exit-with-stdin'?: boolean;
       'no-project'?: boolean;
+      home?: boolean;
       restore?: boolean;
     };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
@@ -573,8 +586,12 @@ export function parseCli(argv: readonly string[]): CliCommand {
       throw new UsageError('--delegate and --pack do not go together: a pack already delegates.');
     if (values.verify !== undefined && (!pack || !values.verify.trim()))
       throw new UsageError('--verify needs --pack and a nonempty test command.');
-    if (extra['no-project'] && values.sessions !== true)
+    if (extra.home && values.cwd !== undefined)
+      throw new UsageError('--home and --cwd do not go together: --home resolves the directory per conversation.');
+    if (extra['no-project'] && !extra.home && values.sessions !== true)
       throw new UsageError('--no-project goes with --sessions: without a project the chat is about the sessions.');
+    if (values['no-artifacts'] === true && values['artifact-cdn']?.length)
+      throw new UsageError('--artifact-cdn does not go with --no-artifacts.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
@@ -593,12 +610,14 @@ export function parseCli(argv: readonly string[]): CliCommand {
       open: extra['no-open'] !== true,
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
-      ...(extra['no-project'] === true ? { noProject: true as const } : {}),
+      ...(extra['no-project'] === true || extra.home === true ? { noProject: true as const } : {}),
+      ...(extra.home === true ? { home: true as const } : {}),
       ...(extra.restore === true ? { restore: true as const } : {}),
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
+      ...artifactCdnOf(values['artifact-cdn']),
       ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),
-      ...(command === 'tower' || values.sessions === true ? { sessions: true } : {}),
+      ...(command === 'tower' || values.sessions === true || extra.home === true ? { sessions: true } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
     };
@@ -742,6 +761,19 @@ function fallbackOf(values: readonly string[] | undefined): { fallback?: string[
   const names = values.flatMap((value) => value.split(/[\s,]+/)).filter(Boolean);
   if (!names.length) throw new UsageError('--fallback expects agent names, e.g. --fallback codex,gemini.');
   return { fallback: [...new Set(names)] };
+}
+
+/** `--artifact-cdn cdn.jsdelivr.net,unpkg.com` (repeatable) validated and normalized. */
+function artifactCdnOf(values: readonly string[] | undefined): { artifactCdn?: string[] } {
+  if (!values) return {};
+  const raw = values.flatMap((value) => value.split(/[\s,]+/)).filter(Boolean);
+  if (!raw.length)
+    throw new UsageError('--artifact-cdn expects hostnames, e.g. --artifact-cdn cdn.jsdelivr.net,unpkg.com.');
+  try {
+    return { artifactCdn: normalizeScriptHosts(raw) };
+  } catch (error) {
+    throw new UsageError(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** `--max-tokens <n>` and `--max-cost <usd>` as a budget, when either is given. */

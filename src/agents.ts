@@ -2,8 +2,18 @@ export { cliAgent } from './agents/cli-agent.js';
 export { sendSession } from './agents/sessions/send.js';
 export type { SessionSendOptions } from './agents/sessions/send.js';
 export type { AgentOutcome, AgentOutputParser, CliAgentDefinition } from './agents/cli-agent.js';
-export { detectAgents, findExecutable } from './agents/discovery.js';
+export { detectAgents, findAllExecutables, findExecutable } from './agents/discovery.js';
 export type { AgentAvailability } from './agents/discovery.js';
+export { AGENT_GUIDES, agentGuide, agentOrder } from './agents/drivers/catalog.js';
+export type { AgentGuide } from './agents/drivers/catalog.js';
+export { createAgentInspector, inspectAgent, inspectAgents, isAgentUsable } from './agents/status.js';
+export type {
+  AgentAuthState,
+  AgentInspection,
+  AgentInspector,
+  AgentInspectorOptions,
+  InspectOptions,
+} from './agents/status.js';
 export { claude, claudeArgs, claudeRateLimits, createClaudeParser } from './agents/drivers/claude.js';
 export { mergePermissionFlags, resolvePermissions, unsupportedPermissions, YOLO } from './agents/permissions.js';
 export type { PermissionFlags } from './agents/permissions.js';
@@ -41,7 +51,7 @@ export type {
   RateLimit,
   SandboxPolicy,
 } from './agents/types.js';
-export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
+export { epochMs, isAuthError, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
 export {
   ASK_USER_TOOL,
@@ -174,11 +184,14 @@ export {
   serveMcpStdio,
   SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,
+  formatSessionUpdate,
   SessionSendGate,
   sessionSendTool,
   findTopic,
   inRunDirectory,
   isAsking,
+  isStalled,
+  attentionOf,
   isTopicsRun,
   folderTopics,
   projectTopics,
@@ -214,6 +227,7 @@ export type {
   SessionReadOptions,
   SessionSource,
   SessionActivity,
+  Attention,
   StoreOptions,
   HookAgent,
   HooksOptions,
@@ -232,6 +246,12 @@ export type {
   CodexServerOptions,
   CodexSessionsVia,
   SessionToolsOptions,
+  SessionSendHandler,
+  SessionSendReply,
+  SessionSendStatus,
+  SessionSendTarget,
+  SessionSendToolOptions,
+  SessionSendUpdate,
   CodexProject,
   Topic,
   TopicFolder,
@@ -243,9 +263,21 @@ export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport }
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';
 export { codexMcpOverrides } from './agents/drivers/codex.js';
-export { createGeminiParser, gemini, geminiArgs, geminiPermissionFlags } from './agents/drivers/gemini.js';
+export {
+  createGeminiParser,
+  gemini,
+  geminiArgs,
+  geminiMcpConfig,
+  geminiPermissionFlags,
+} from './agents/drivers/gemini.js';
 export type { GeminiAgentOptions, GeminiApprovalMode } from './agents/drivers/gemini.js';
-export { createCursorParser, cursor, cursorArgs, cursorPermissionFlags } from './agents/drivers/cursor.js';
+export {
+  createCursorParser,
+  cursor,
+  cursorArgs,
+  cursorMcpConfig,
+  cursorPermissionFlags,
+} from './agents/drivers/cursor.js';
 export type { CursorAgentOptions } from './agents/drivers/cursor.js';
 export { createOpencodeParser, opencode, opencodeArgs, opencodePermissionFlags } from './agents/drivers/opencode.js';
 export type { OpencodeAgentOptions } from './agents/drivers/opencode.js';
@@ -332,6 +364,17 @@ export type {
   ArtifactChannelOptions,
   ArtifactStore,
   ArtifactResponse,
+  ArtifactResponseRequest,
   ArtifactStoreOptions,
   PublishArtifact,
 } from './agents/artifacts.js';
+export {
+  contentHeaders,
+  contentSecurityPolicy,
+  DEFAULT_ARTIFACT_CDN_HOSTS,
+  MEDIA_TYPES,
+  mediaTypeFor,
+  normalizeScriptHost,
+  normalizeScriptHosts,
+} from './agents/media.js';
+export type { ContentHeaderOptions, ContentKind, MediaType, RootsInput } from './agents/media.js';

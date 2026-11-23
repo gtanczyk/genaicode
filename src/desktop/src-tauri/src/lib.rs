@@ -1,24 +1,30 @@
 //! The genaicode desktop shell.
 //!
-//! It owns no chat logic. It starts the bundled Node.js on the bundled `genaicode ui`, waits for
-//! the address that server prints, and shows that page in the window. The app has no project
-//! folder: its chat is about the sessions of every agent, each of which has its own, so the server
-//! runs in a directory of the app's own and its page names none. The page gets no Tauri
+//! It owns no chat logic. It starts the bundled Node.js on the bundled `genaicode ui --home`, waits
+//! for the address that server prints, and shows that page in the window. The app has no project
+//! folder: each conversation resolves its own working directory from context (starting in the
+//! neutral home `~/.genaicode/home`), and its page names no folder. The page gets no Tauri
 //! commands: there are no capabilities, so it is the same page a browser would load.
 //!
 //! Beside the window it keeps an icon in the menu bar: the sessions of every agent that wait for
 //! the user, read from `genaicode sessions --waiting --json --watch`, with Approve and Deny for the
 //! questions that can be answered from outside their agent.
 
+mod nav;
 mod tower;
+mod transcript;
 mod update;
 
 use std::{
+    collections::{BTreeMap, HashMap, VecDeque},
     env, fs,
     io::{BufRead, BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{mpsc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc, Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -26,11 +32,19 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Manager, RunEvent, Url, WindowEvent, Wry,
+    webview::{DownloadEvent, NewWindowResponse},
+    AppHandle, Manager, RunEvent, Url, WebviewWindowBuilder, WindowEvent, Wry,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_opener::OpenerExt;
 
 const CHECK_UPDATES: &str = "check-updates";
+const DEV_COPY_ID: &str = "dev:copy-id";
+const DEV_COPY_PATH: &str = "dev:copy-path";
+const DEV_COPY_MD: &str = "dev:copy-md";
+const DEV_COPY_JSON: &str = "dev:copy-json";
+const DEV_SAVE_MD: &str = "dev:save-md";
+const DEV_SAVE_JSON: &str = "dev:save-json";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
 /// `deny:<question>` and `open:<index of the session in the last snapshot>`, which shows the window.
 const TRAY: &str = "tower";
@@ -39,6 +53,8 @@ const QUIT: &str = "quit";
 const RELAUNCH: &str = "relaunch";
 /// What `genaicode ui` prints when its page asks for the relaunch that installs an update.
 const RELAUNCH_LINE: &str = "Relaunch to update";
+/// What `genaicode ui` prints when Check again asks to re-read the login shell environment.
+const REFRESH_ENV_LINE: &str = "Refresh env";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
 const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
 
@@ -49,13 +65,24 @@ struct Server {
     stdin: Option<ChildStdin>,
 }
 
+/// In-flight webview downloads staged in the temp dir until the user picks a save path.
+type PendingDownloads = Arc<Mutex<HashMap<String, VecDeque<(PathBuf, String)>>>>;
+
 #[derive(Default)]
 struct Shell {
     server: Option<Server>,
+    /// Address and token of the running `genaicode ui` server, for native Developer menu actions.
+    server_endpoint: Option<transcript::Endpoint>,
+    /// Exact origin (`http://127.0.0.1:<port>`) of the active `genaicode ui` server.
+    server_origin: Arc<Mutex<Option<nav::ServerOrigin>>>,
+    /// Staged downloads waiting to finish so a non-blocking Save dialog can place them.
+    pending_downloads: PendingDownloads,
     /// Bumped on every start, so the reader of a replaced server stays quiet.
     generation: u64,
-    /// The user's login shell environment, read once: where their agent CLIs live, their keys.
+    /// The user's login shell environment, read at start and refreshed on Check again.
     login: Option<Vec<(String, String)>>,
+    /// Prevents overlapping login-shell probes when Check again is clicked repeatedly.
+    refreshing_env: bool,
     /// `genaicode sessions --waiting --json --watch`, which feeds the menu bar.
     watcher: Option<Server>,
     /// What it last said waits: the menu bar's items point into it.
@@ -149,24 +176,40 @@ fn genaicode(app: &AppHandle, shell: &mut Shell) -> Result<Command, String> {
     // After the login environment, so a profile cannot turn it back on: the app updates itself
     // as a whole, and the copy inside it must not look for newer ones.
     command.env("GENAICODE_NO_AUTO_UPDATE", "1");
+    // Tells `genaicode ui` that this shell handles `Refresh env` requests over stderr/stdin.
+    command.env("GENAICODE_DESKTOP_SHELL", "1");
     Ok(command)
 }
 
-/// Where the app's own chat runs: a directory of its own under the user's `~/.genaicode`, outside
-/// every project. `GENAICODE_DESKTOP_CWD` names another one, for development.
-fn home_folder(app: &AppHandle) -> Result<PathBuf, String> {
-    let folder = match env::var_os("GENAICODE_DESKTOP_CWD") {
-        Some(folder) => PathBuf::from(folder),
-        None => app
-            .path()
-            .home_dir()
-            .map_err(|error| error.to_string())?
-            .join(".genaicode")
-            .join("home"),
-    };
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create {}: {error}", folder.display()))?;
-    Ok(folder)
+/// Delete the saved folder file left behind by earlier versions of the desktop app, if present.
+fn remove_legacy_saved_folder(config_dir: &Path) {
+    let _ = fs::remove_file(config_dir.join("folder"));
+}
+
+/// Format an `open-session <id>` stdin command for the server, rejecting malformed session ids.
+fn open_session_command(id: &str) -> Option<String> {
+    if id.is_empty()
+        || id.len() > 200
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b':' | b'-'))
+    {
+        return None;
+    }
+    Some(format!("open-session {id}"))
+}
+
+/// Where desktop settings (`desktop.json`) live, beside `~/.genaicode/home`.
+fn settings_file(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(root) = env::var_os("GENAICODE_HOME") {
+        return Ok(PathBuf::from(root).join("desktop.json"));
+    }
+    Ok(app
+        .path()
+        .home_dir()
+        .map_err(|error| error.to_string())?
+        .join(".genaicode")
+        .join("desktop.json"))
 }
 
 fn fail(app: &AppHandle, message: String) {
@@ -184,6 +227,7 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 /// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
 /// them running. Kill it only if it has not exited within `STOP_GRACE`.
 fn stop(shell: &mut Shell) {
+    shell.server_endpoint = None;
     let Some(Server { mut child, stdin }) = shell.server.take() else {
         return;
     };
@@ -207,27 +251,42 @@ fn start(app: &AppHandle) {
 }
 
 fn try_start(app: &AppHandle) -> Result<(), String> {
-    let folder = home_folder(app)?;
+    let settings_path = settings_file(app)?;
+    let settings = nav::load_settings(&settings_path);
     let state = app.state::<ShellState>();
     let mut shell = state.lock().map_err(|_| "the shell state is poisoned")?;
     let mut command = genaicode(app, &mut shell)?;
     stop(&mut shell);
+    if let Ok(mut origin) = shell.server_origin.lock() {
+        *origin = None;
+    }
+    let origin_slot = Arc::clone(&shell.server_origin);
     shell.generation += 1;
     let generation = shell.generation;
+    command.args([
+        "ui",
+        "--sessions",
+        "--delegate",
+        "--home",
+        "--no-open",
+        "--exit-with-stdin",
+        // A restart, for an update or not, comes back to the conversation it left.
+        "--restore",
+    ]);
+    command.env(
+        "GENAICODE_DESKTOP_VERSION",
+        app.package_info().version.to_string(),
+    );
+    let cdn_hosts: Vec<&str> = settings
+        .artifact_cdn
+        .iter()
+        .map(String::as_str)
+        .filter(|host| nav::is_safe_cdn_host(host))
+        .collect();
+    if !cdn_hosts.is_empty() {
+        command.arg("--artifact-cdn").arg(cdn_hosts.join(","));
+    }
     command
-        .args([
-            "ui",
-            "--sessions",
-            "--delegate",
-            "--no-project",
-            "--no-open",
-            "--exit-with-stdin",
-            // A restart, for an update or not, comes back to the conversation it left.
-            "--restore",
-            "--cwd",
-        ])
-        .arg(&folder)
-        .current_dir(&folder)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -248,16 +307,23 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             if !opened && line.starts_with(OPEN_PREFIX) {
                 opened = true;
                 let address = line["Open ".len()..].trim().to_string();
+                let endpoint = transcript::parse_endpoint(&address);
                 let handle = app.clone();
+                let slot = Arc::clone(&origin_slot);
                 let _ = app.run_on_main_thread(move || {
                     let state = handle.state::<ShellState>();
-                    let current = state.lock().map(|shell| shell.generation).ok();
-                    if current != Some(generation) {
+                    let Ok(mut shell) = state.lock() else { return };
+                    if shell.generation != generation {
                         return;
                     }
+                    shell.server_endpoint = endpoint;
+                    drop(shell);
                     if let (Some(window), Ok(url)) =
                         (handle.get_webview_window("main"), Url::parse(&address))
                     {
+                        if let Ok(mut origin) = slot.lock() {
+                            *origin = nav::ServerOrigin::from_url(&url);
+                        }
                         let _ = window.navigate(url);
                     }
                     // A chat that starts after an update was downloaded hears of it now.
@@ -266,7 +332,24 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             } else if opened && line == RELAUNCH_LINE {
                 // The page's "Relaunch to update": only an update this app downloaded installs.
                 update::relaunch(&app);
-            } else if !opened {
+            } else if opened && line == REFRESH_ENV_LINE {
+                // Check again: re-read the login shell environment without restarting the server.
+                refresh_env(&app, generation);
+            } else if opened && line.starts_with(nav::REVEAL_PREFIX) {
+                if let Some(path) = nav::parse_reveal_line(&line) {
+                    if path.exists() {
+                        let _ = app.opener().reveal_item_in_dir(&path);
+                    }
+                }
+            } else if opened && line.starts_with(nav::SETTINGS_PREFIX) {
+                if let Some(updated) = nav::parse_settings_line(&line) {
+                    let _ = nav::save_settings(&settings_path, &updated);
+                }
+            } else if opened {
+                if let Some(request) = transcript::parse_save_line(&line) {
+                    save_transcript(&app, request);
+                }
+            } else {
                 said.push(line);
                 if said.len() > 12 {
                     said.remove(0);
@@ -305,6 +388,57 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             });
     });
     Ok(())
+}
+
+/// Encode environment variables as one `env <json>` line for `genaicode ui`'s stdin.
+fn format_env_line(vars: Option<&[(String, String)]>) -> String {
+    let mut map: BTreeMap<&str, &str> = BTreeMap::new();
+    if let Some(vars) = vars {
+        for (name, value) in vars {
+            if name == "GENAICODE_NO_AUTO_UPDATE" {
+                continue;
+            }
+            map.insert(name.as_str(), value.as_str());
+        }
+    }
+    let json = serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string());
+    format!("env {json}")
+}
+
+/// Re-read the user's login shell environment on a background thread (with the existing 5 s limit)
+/// and send it to the running `genaicode ui` over stdin so newly installed CLIs are picked up
+/// without restarting the app.
+fn refresh_env(app: &AppHandle, generation: u64) {
+    {
+        let state = app.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        if shell.quitting || shell.generation != generation || shell.refreshing_env {
+            return;
+        }
+        shell.refreshing_env = true;
+    }
+    let app = app.clone();
+    thread::spawn(move || {
+        let fresh = login_env();
+        let state = app.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        shell.refreshing_env = false;
+        if let Some(vars) = fresh {
+            shell.login = Some(vars);
+        }
+        if shell.quitting || shell.generation != generation {
+            return;
+        }
+        let line = format_env_line(shell.login.as_deref());
+        if let Some(stdin) = shell
+            .server
+            .as_mut()
+            .and_then(|server| server.stdin.as_mut())
+        {
+            let _ = writeln!(stdin, "{line}");
+            let _ = stdin.flush();
+        }
+    });
 }
 
 fn show(app: &AppHandle) {
@@ -405,6 +539,24 @@ fn tower_menu(
     for line in &working {
         menu.append(&MenuItem::new(app, line, false, none)?)?;
     }
+    // What was left on an offer or an old question: folded, and not in the count by the icon.
+    if let Some((heading, lines)) = tower::stalled(topics) {
+        if working.is_empty() {
+            menu.append(&PredefinedMenuItem::separator(app)?)?;
+        }
+        let items = lines
+            .iter()
+            .enumerate()
+            .map(|(index, line)| {
+                MenuItem::with_id(app, format!("open:stalled:{index}"), line, true, none)
+            })
+            .collect::<tauri::Result<Vec<_>>>()?;
+        let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items
+            .iter()
+            .map(|item| item as &dyn tauri::menu::IsMenuItem<Wry>)
+            .collect();
+        menu.append(&Submenu::with_items(app, heading, true, &refs)?)?;
+    }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, SHOW, "Show Genaicode", true, none)?)?;
     menu.append(&MenuItem::with_id(app, QUIT, "Quit Genaicode", true, none)?)?;
@@ -429,7 +581,7 @@ fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
         let count = tower::count(&shell.waiting);
         let _ = tray.set_title(count.as_deref());
         let _ = tray.set_tooltip(Some(match &count {
-            Some(count) => format!("Genaicode: {count} waiting for you"),
+            Some(count) => format!("Genaicode: {count} need you now"),
             None => "Genaicode".to_string(),
         }));
     });
@@ -520,13 +672,228 @@ fn answer(app: &AppHandle, ask: &str, allow: bool) {
     });
 }
 
+fn info(app: &AppHandle, message: String) {
+    app.dialog()
+        .message(message)
+        .title("Genaicode")
+        .kind(MessageDialogKind::Info)
+        .show(|_| {});
+}
+
+fn current_endpoint(app: &AppHandle) -> Result<transcript::Endpoint, String> {
+    let state = app.state::<ShellState>();
+    let shell = state.lock().map_err(|_| "the shell state is poisoned")?;
+    shell
+        .server_endpoint
+        .clone()
+        .ok_or_else(|| "Genaicode is still starting.".to_string())
+}
+
+fn send_toast(app: &AppHandle, text: &str) {
+    let line = transcript::format_toast_line(text);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let state = handle.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        if let Some(stdin) = shell
+            .server
+            .as_mut()
+            .and_then(|server| server.stdin.as_mut())
+        {
+            let _ = stdin.write_all(line.as_bytes());
+            let _ = stdin.flush();
+        }
+    });
+}
+
+#[derive(Clone, Copy)]
+enum CopyKind {
+    SessionId,
+    SessionPath,
+    Markdown,
+    Json,
+}
+
+fn copy_transcript_item(app: &AppHandle, kind: CopyKind) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let endpoint = match current_endpoint(&app) {
+            Ok(endpoint) => endpoint,
+            Err(message) => return info(&app, message),
+        };
+        let path = match kind {
+            CopyKind::SessionId | CopyKind::SessionPath => "/api/transcript?format=meta",
+            CopyKind::Markdown => "/api/transcript?format=md",
+            CopyKind::Json => "/api/transcript?format=json",
+        };
+        let response = match transcript::fetch(&endpoint, path) {
+            Ok(response) if response.status == 200 => response,
+            Ok(response) => {
+                return fail(
+                    &app,
+                    format!(
+                        "Could not read conversation transcript (HTTP {}).",
+                        response.status
+                    ),
+                );
+            }
+            Err(message) => return fail(&app, message),
+        };
+        let (text, toast) = match kind {
+            CopyKind::SessionId => {
+                let meta: transcript::Meta = match serde_json::from_slice(&response.body) {
+                    Ok(meta) => meta,
+                    Err(error) => {
+                        return fail(&app, format!("Could not read session info: {error}"))
+                    }
+                };
+                match meta.session_id.filter(|id| !id.is_empty()) {
+                    Some(id) => (id, "Copied session ID"),
+                    None => {
+                        return info(
+                            &app,
+                            "This conversation has no session ID yet. Send a message first.".into(),
+                        );
+                    }
+                }
+            }
+            CopyKind::SessionPath => {
+                let meta: transcript::Meta = match serde_json::from_slice(&response.body) {
+                    Ok(meta) => meta,
+                    Err(error) => {
+                        return fail(&app, format!("Could not read session info: {error}"))
+                    }
+                };
+                match meta.session_path.filter(|path| !path.is_empty()) {
+                    Some(path) => (path, "Copied session file path"),
+                    None => {
+                        return info(
+                            &app,
+                            "No session file was found on disk for this conversation yet.".into(),
+                        );
+                    }
+                }
+            }
+            CopyKind::Markdown => (
+                String::from_utf8_lossy(&response.body).into_owned(),
+                "Copied transcript (Markdown)",
+            ),
+            CopyKind::Json => (
+                String::from_utf8_lossy(&response.body).into_owned(),
+                "Copied raw state (JSON)",
+            ),
+        };
+        match transcript::copy_to_clipboard(&text) {
+            Ok(()) => send_toast(&app, toast),
+            Err(message) => fail(&app, format!("Could not copy to clipboard: {message}")),
+        }
+    });
+}
+
+fn save_transcript(app: &AppHandle, request: transcript::SaveRequest) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let endpoint = match current_endpoint(&app) {
+            Ok(endpoint) => endpoint,
+            Err(message) => return info(&app, message),
+        };
+        let response = match transcript::fetch(&endpoint, &request.api_path()) {
+            Ok(response) if response.status == 200 => response,
+            Ok(response) if response.status == 404 => {
+                return fail(&app, "That session could not be found.".into());
+            }
+            Ok(response) => {
+                return fail(
+                    &app,
+                    format!("Could not read transcript (HTTP {}).", response.status),
+                );
+            }
+            Err(message) => return fail(&app, message),
+        };
+        let filename = response
+            .filename
+            .unwrap_or_else(|| request.format.default_filename().to_string());
+        let bytes = response.body;
+        let handle = app.clone();
+        app.dialog()
+            .file()
+            .set_file_name(&filename)
+            .add_filter(request.format.label(), &[request.format.as_str()])
+            .save_file(move |picked| {
+                let Some(path) = picked.and_then(|file| file.into_path().ok()) else {
+                    return;
+                };
+                match fs::write(&path, &bytes) {
+                    Ok(()) => {
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(&filename);
+                        send_toast(&handle, &format!("Saved {name}"));
+                    }
+                    Err(error) => fail(&handle, format!("Could not save transcript: {error}")),
+                }
+            });
+    });
+}
+
+/// Tell the running `genaicode ui --home` server to open the session clicked in the menu bar.
+fn open_session(app: &AppHandle, index: usize) {
+    let state = app.state::<ShellState>();
+    let Ok(mut shell) = state.lock() else { return };
+    let Some(line) = shell
+        .waiting
+        .get(index)
+        .and_then(|session| open_session_command(&session.id))
+    else {
+        return;
+    };
+    if let Some(stdin) = shell
+        .server
+        .as_mut()
+        .and_then(|server| server.stdin.as_mut())
+    {
+        let _ = writeln!(stdin, "{line}");
+        let _ = stdin.flush();
+    }
+}
+
 fn on_menu(app: &AppHandle, id: &str) {
-    if id == SHOW || id.starts_with("open:") {
+    if id == SHOW {
+        show(app);
+    } else if let Some(index) = id.strip_prefix("open:") {
+        if let Ok(index) = index.parse::<usize>() {
+            open_session(app, index);
+        }
         show(app);
     } else if id == RELAUNCH {
         update::relaunch(app);
     } else if id == CHECK_UPDATES {
         update::check(app, true);
+    } else if id == DEV_COPY_ID {
+        copy_transcript_item(app, CopyKind::SessionId);
+    } else if id == DEV_COPY_PATH {
+        copy_transcript_item(app, CopyKind::SessionPath);
+    } else if id == DEV_COPY_MD {
+        copy_transcript_item(app, CopyKind::Markdown);
+    } else if id == DEV_COPY_JSON {
+        copy_transcript_item(app, CopyKind::Json);
+    } else if id == DEV_SAVE_MD {
+        save_transcript(
+            app,
+            transcript::SaveRequest {
+                format: transcript::Format::Md,
+                session: None,
+            },
+        );
+    } else if id == DEV_SAVE_JSON {
+        save_transcript(
+            app,
+            transcript::SaveRequest {
+                format: transcript::Format::Json,
+                session: None,
+            },
+        );
     } else if id == QUIT {
         app.exit(0);
     } else if let Some(ask) = id.strip_prefix("approve:") {
@@ -543,6 +910,7 @@ pub fn run() {
             show(app)
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ShellState::default())
         .on_window_event(|window, event| {
@@ -557,6 +925,142 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle();
+            let (origin_slot, pending_downloads) = {
+                let state = handle.state::<ShellState>();
+                let shell = state.lock().map_err(|_| "the shell state is poisoned")?;
+                (
+                    Arc::clone(&shell.server_origin),
+                    Arc::clone(&shell.pending_downloads),
+                )
+            };
+            let download_origin = Arc::clone(&origin_slot);
+            let download_seq = Arc::new(AtomicU64::new(1));
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .first()
+                .cloned()
+                .ok_or("main window missing from tauri.conf.json")?;
+            let nav_handle = handle.clone();
+            let new_window_handle = handle.clone();
+            let download_handle = handle.clone();
+            WebviewWindowBuilder::from_config(handle, &window_config)?
+                .on_navigation(move |url| {
+                    let server = origin_slot.lock().ok().and_then(|slot| *slot);
+                    match nav::main_navigation(url, server) {
+                        nav::MainNav::Allow => true,
+                        nav::MainNav::OpenExternal(target) => {
+                            let _ = nav_handle.opener().open_url(target, None::<&str>);
+                            false
+                        }
+                        nav::MainNav::Deny => false,
+                    }
+                })
+                .on_new_window(move |url, _features| {
+                    if let Some(target) = nav::external_url(&url) {
+                        let _ = new_window_handle.opener().open_url(target, None::<&str>);
+                    }
+                    NewWindowResponse::Deny
+                })
+                .on_download(move |_webview, event| match event {
+                    DownloadEvent::Requested { url, destination } => {
+                        let server = download_origin.lock().ok().and_then(|slot| *slot);
+                        if !nav::is_download_allowed(&url, server) {
+                            return false;
+                        }
+                        // `on_download` runs on the main thread, so showing a blocking dialog here
+                        // would deadlock. Stage in a unique temp file first, then prompt with the
+                        // non-blocking Save dialog once the download completes.
+                        let name = nav::suggested_filename(&url, destination);
+                        let seq = download_seq.fetch_add(1, Ordering::Relaxed);
+                        let staged = env::temp_dir()
+                            .join(format!("genaicode-dl-{}-{seq}-{name}", std::process::id()));
+                        let _ = fs::remove_file(&staged);
+                        if let Ok(mut pending) = pending_downloads.lock() {
+                            pending
+                                .entry(url.as_str().to_string())
+                                .or_default()
+                                .push_back((staged.clone(), name));
+                        }
+                        *destination = staged;
+                        true
+                    }
+                    DownloadEvent::Finished { url, path, success } => {
+                        let tracked = pending_downloads.lock().ok().and_then(|mut pending| {
+                            let key = url.as_str();
+                            let entry = pending.get_mut(key)?.pop_front();
+                            if pending.get(key).is_some_and(VecDeque::is_empty) {
+                                pending.remove(key);
+                            }
+                            entry
+                        });
+                        // WKWebView reports `path: None` on finish; fall back to our staged path.
+                        let (source, name) = match (path, tracked) {
+                            (Some(p), Some((_, name))) => (p, name),
+                            (None, Some((p, name))) => (p, name),
+                            (Some(p), None) => {
+                                let name = nav::suggested_filename(&url, &p);
+                                (p, name)
+                            }
+                            (None, None) => {
+                                if !success {
+                                    fail(&download_handle, "The download did not complete.".into());
+                                }
+                                return true;
+                            }
+                        };
+                        if !success {
+                            let _ = fs::remove_file(&source);
+                            fail(&download_handle, "The download did not complete.".into());
+                            return true;
+                        }
+                        let mut save = download_handle.dialog().file().set_file_name(&name);
+                        if let Ok(downloads) = download_handle.path().download_dir() {
+                            save = save.set_directory(downloads);
+                        }
+                        let app_handle = download_handle.clone();
+                        save.save_file(move |chosen| {
+                            let Some(dest) = chosen.and_then(|fp| fp.into_path().ok()) else {
+                                let _ = fs::remove_file(&source);
+                                return;
+                            };
+                            if let Err(error) = nav::move_file(&source, &dest) {
+                                let _ = fs::remove_file(&source);
+                                fail(&app_handle, format!("Could not save {name}: {error}"));
+                                return;
+                            }
+                            let final_name = dest
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(&name)
+                                .to_string();
+                            let reveal_btn = if cfg!(target_os = "macos") {
+                                "Show in Finder"
+                            } else {
+                                "Show in File Manager"
+                            };
+                            let opener_app = app_handle.clone();
+                            app_handle
+                                .dialog()
+                                .message(format!("Saved {final_name}."))
+                                .title("Genaicode")
+                                .kind(MessageDialogKind::Info)
+                                .buttons(MessageDialogButtons::OkCancelCustom(
+                                    reveal_btn.into(),
+                                    "OK".into(),
+                                ))
+                                .show(move |reveal| {
+                                    if reveal {
+                                        let _ = opener_app.opener().reveal_item_in_dir(&dest);
+                                    }
+                                });
+                        });
+                        true
+                    }
+                    _ => true,
+                })
+                .build()?;
             let updates = MenuItem::with_id(
                 handle,
                 CHECK_UPDATES,
@@ -578,6 +1082,57 @@ pub fn run() {
                 Some(own) => own.append(&updates)?,
                 None => menu.append(&updates)?,
             }
+            let developer = Submenu::with_items(
+                handle,
+                "Developer",
+                true,
+                &[
+                    &MenuItem::with_id(handle, DEV_COPY_ID, "Copy Session ID", true, None::<&str>)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_PATH,
+                        "Copy Session File Path",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_MD,
+                        "Copy Transcript (Markdown)",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_JSON,
+                        "Copy Raw State (JSON)",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_SAVE_MD,
+                        "Save Transcript as Markdown…",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_SAVE_JSON,
+                        "Save Transcript as JSON…",
+                        true,
+                        None::<&str>,
+                    )?,
+                ],
+            )?;
+            let menu_count = menu.items()?.len();
+            if menu_count > 1 {
+                menu.insert(&developer, menu_count - 1)?;
+            } else {
+                menu.append(&developer)?;
+            }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
             let mut tray = TrayIconBuilder::with_id(TRAY)
@@ -591,6 +1146,9 @@ pub fn run() {
             if tray.build(app).is_ok() {
                 watch(handle);
             }
+            if let Ok(config_dir) = handle.path().app_config_dir() {
+                remove_legacy_saved_folder(&config_dir);
+            }
             start(handle);
             update::watch(handle);
             Ok(())
@@ -602,6 +1160,13 @@ pub fn run() {
         RunEvent::Exit => {
             if let Ok(mut shell) = app.state::<ShellState>().lock() {
                 shell.quitting = true;
+                if let Ok(mut pending) = shell.pending_downloads.lock() {
+                    for (_, queue) in pending.drain() {
+                        for (staged, _) in queue {
+                            let _ = fs::remove_file(staged);
+                        }
+                    }
+                }
                 if let Some(mut watcher) = shell.watcher.take() {
                     let _ = watcher.child.kill();
                     let _ = watcher.child.wait();
@@ -614,4 +1179,56 @@ pub fn run() {
         RunEvent::Reopen { .. } => show(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn formats_env_as_a_single_json_line_without_auto_update_override() {
+        assert_eq!(format_env_line(None), "env {}");
+        let vars = vec![
+            ("PATH".to_string(), "/opt/homebrew/bin:/usr/bin".to_string()),
+            ("MULTILINE".to_string(), "a\nb".to_string()),
+            ("GENAICODE_NO_AUTO_UPDATE".to_string(), "0".to_string()),
+        ];
+        let line = format_env_line(Some(&vars));
+        assert!(line.starts_with("env "));
+        assert!(!line.contains('\n'));
+        let parsed: BTreeMap<String, String> =
+            serde_json::from_str(&line["env ".len()..]).expect("valid json");
+        assert_eq!(
+            parsed.get("PATH").map(String::as_str),
+            Some("/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(parsed.get("MULTILINE").map(String::as_str), Some("a\nb"));
+        assert!(!parsed.contains_key("GENAICODE_NO_AUTO_UPDATE"));
+    }
+
+    #[test]
+    fn removes_legacy_saved_folder_on_upgrade() {
+        let dir = env::temp_dir().join(format!("genaicode-desktop-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let saved = dir.join("folder");
+        fs::write(&saved, "/Users/me/src/knights").unwrap();
+        assert!(saved.exists());
+        remove_legacy_saved_folder(&dir);
+        assert!(!saved.exists());
+        // Second call when missing is a no-op.
+        remove_legacy_saved_folder(&dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validates_open_session_stdin_command() {
+        assert_eq!(
+            open_session_command("abc-123_def.456:789").as_deref(),
+            Some("open-session abc-123_def.456:789")
+        );
+        assert_eq!(open_session_command(""), None);
+        assert_eq!(open_session_command("id\nupdate-ready 1.0.0"), None);
+        assert_eq!(open_session_command("bad id"), None);
+    }
 }

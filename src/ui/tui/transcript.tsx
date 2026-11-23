@@ -1,10 +1,20 @@
 import { Box, Text } from 'ink';
 import type { SessionEntry, SessionTurn } from '../../agents/session.js';
 import { describeFailover } from '../../agents/failover.js';
-import { outputTail, relativePath, toolLabel, toolSummary, turnFooter } from '../format.js';
+import {
+  firstLine,
+  formatDuration,
+  outputTail,
+  relativePath,
+  shortId,
+  toolLabel,
+  toolSummary,
+  turnFooter,
+} from '../format.js';
 import type { Notice } from '../controller.js';
 import { plainSessionText } from '../controller.js';
 import { packMetrics, packTaskStatus, packTaskTitle } from '../../react/format.js';
+import { relayProjectName } from '../../react/session-relay.js';
 import type { ApprovalRequest } from '../../agents/types.js';
 
 /** Inline `code` and **bold**, the two marks agents use most in terminal answers. */
@@ -274,7 +284,57 @@ export function TurnView({
   );
 }
 
-export function NoticeView({ notice }: { notice: Notice }) {
+export function NoticeView({ notice, now = Date.now() }: { notice: Notice; now?: number }) {
+  if (notice.relay) {
+    const { relay } = notice;
+    const project = relayProjectName(relay.cwd);
+    const title = relay.title ? firstLine(relay.title) : shortId(relay.sessionId);
+    const duration =
+      relay.status === 'working'
+        ? formatDuration(now - relay.startedAt)
+        : relay.endedAt !== undefined && relay.endedAt - relay.startedAt >= 1000
+          ? formatDuration(relay.endedAt - relay.startedAt)
+          : '';
+    const badge =
+      relay.status === 'queued'
+        ? { mark: '○', text: 'Queued', color: 'yellow' as const }
+        : relay.status === 'working'
+          ? { mark: '●', text: `Working · ${duration}`, color: 'cyan' as const }
+          : relay.status === 'answered'
+            ? { mark: '✓', text: duration ? `Answered · ${duration}` : 'Answered', color: 'green' as const }
+            : { mark: '✗', text: 'Failed', color: 'red' as const };
+    const step = relay.status === 'working' ? (relay.tool ? toolLabel(relay.tool) : relay.activity) : undefined;
+    return (
+      <Box marginBottom={1} flexDirection="column">
+        <Text wrap="truncate-end">
+          <Text color={badge.color} bold>
+            {badge.mark} {relay.agent}
+          </Text>
+          {project ? <Text color="gray"> · {project}</Text> : null}
+          <Text color={badge.color}> · {badge.text}</Text>
+          {title ? <Text color="gray"> · {title}</Text> : null}
+        </Text>
+        <Box flexDirection="column" paddingLeft={2}>
+          {relay.status === 'queued' ? <Text color="gray">Waiting for its current turn to finish…</Text> : null}
+          {step ? (
+            <Text color="gray" wrap="truncate-end">
+              {step}
+            </Text>
+          ) : null}
+          {relay.status === 'answered' ? (
+            relay.reply ? (
+              <Markdown text={relay.reply} />
+            ) : (
+              <Text color="gray">Took the message.</Text>
+            )
+          ) : null}
+          {relay.status === 'failed' ? (
+            <Text color="red">{relay.error || 'Could not deliver the message.'}</Text>
+          ) : null}
+        </Box>
+      </Box>
+    );
+  }
   return (
     <Box marginBottom={1} flexDirection="column">
       {notice.text.split('\n').map((line, i) => (

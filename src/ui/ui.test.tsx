@@ -1,14 +1,21 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
-import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
+import {
+  readConversations,
+  SessionSendGate,
+  sessionTools,
+  writeTopics,
+  type SessionInfo,
+  type SessionSource,
+} from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
 import {
@@ -22,7 +29,9 @@ import {
   turnFooter,
 } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
+import { NoticeView } from './tui/transcript.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
+import { uiRelease } from './web/release.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
@@ -94,6 +103,7 @@ describe('format helpers', () => {
     expect(parseSlash('/effort XHigh')).toEqual({ kind: 'effort', effort: 'xhigh' });
     expect(parseSlash('/waiting Harbor Docs')).toEqual({ kind: 'waiting', project: 'Harbor Docs' });
     expect(parseSlash('/read 01234567')).toEqual({ kind: 'read', id: '01234567' });
+    expect(parseSlash('/where')).toEqual({ kind: 'where' });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
@@ -131,6 +141,13 @@ describe('format helpers', () => {
         ]),
       ),
     ).toBe('done');
+    // A relayed session message settling also asks for attention once.
+    const idle = state([[1, true]]);
+    const workingNotice = [{ id: 1, relay: { status: 'working' } }];
+    const answeredNotice = [{ id: 1, relay: { status: 'answered' } }];
+    expect(needsAttention(idle, idle, workingNotice, workingNotice)).toBeUndefined();
+    expect(needsAttention(idle, idle, workingNotice, answeredNotice)).toBe('done');
+    expect(needsAttention(idle, idle, answeredNotice, answeredNotice)).toBeUndefined();
   });
 
   it('describes a turn by its outcome', () => {
@@ -282,6 +299,136 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('reports canAsk per agent choice and marks agents that cannot ask in /agent', () => {
+    const native = { ...echoAgent('native'), capabilities: { questions: true } };
+    const mcp = { ...echoAgent('mcp'), capabilities: { mcp: true } };
+    const remote = { ...echoAgent('remote'), capabilities: { mcp: true, remote: true } };
+    const plain = { ...echoAgent('plain'), capabilities: {} };
+    const questionChannel = {
+      mcpServer: { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true },
+      bind() {},
+    };
+    const chat = createChatController({
+      agents: [native, mcp, remote, plain],
+      cwd: '/w',
+      env,
+      questionChannel,
+    });
+    expect(chat.get().agents.map((a) => [a.name, a.canAsk])).toEqual([
+      ['native', true],
+      ['mcp', true],
+      ['remote', false],
+      ['plain', false],
+    ]);
+    expect(chat.get().session.canAsk).toBe(true);
+    chat.submit('/agent');
+    const listing = chat.get().notices.at(-1)?.text ?? '';
+    expect(listing).toContain('● native');
+    expect(listing).not.toContain('native (no questions)');
+    expect(listing).toContain('○ mcp');
+    expect(listing).not.toContain('mcp (no questions)');
+    expect(listing).toContain('○ remote (no questions)');
+    expect(listing).toContain('○ plain (no questions)');
+    chat.submit('/agent plain');
+    expect(chat.get().session.canAsk).toBe(false);
+    chat.close();
+  });
+
+  it('keeps setup turns when an agent becomes usable and preserves canAsk across updateAgents', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-setup-continue-'));
+    try {
+      const claude = { ...echoAgent('claude', 'claude'), capabilities: { questions: true, resume: true } };
+      const codex = { ...echoAgent('codex', 'codex'), capabilities: { resume: true } };
+      const pastSession = {
+        source: 'claude',
+        agent: 'claude',
+        id: 'old-claude-1',
+        where: 'local' as const,
+        cwd: '/w',
+        title: 'Earlier work',
+        firstPrompt: 'Audit the router',
+        lastReply: 'Router looks clean.',
+        updatedAt: Date.now() - 60_000,
+      };
+      const chat = createChatController({
+        agents: [claude, codex],
+        sessionSources: [
+          {
+            name: 'claude',
+            where: 'local',
+            list: async () => [pastSession],
+            read: async () => [
+              {
+                id: 1,
+                agent: 'claude',
+                prompt: 'Audit the router',
+                startedAt: Date.now() - 60_000,
+                endedAt: Date.now() - 59_000,
+                entries: [{ kind: 'text', text: 'Router looks clean.', streaming: false }],
+                result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Router looks clean.' },
+              },
+            ],
+          },
+        ],
+        cwd: '/w',
+        env: { PATH: empty },
+        allowNoAgent: true,
+      });
+      expect(chat.get().setup).toBe(true);
+      expect(await chat.continueSession('old-claude-1')).toBe(true);
+      expect(chat.get().setup).toBe(true);
+      expect(chat.get().session.turns).toHaveLength(1);
+      // Do not bind an uninstalled placeholder's sessionId during setup.
+      expect(chat.get().session.sessionId).toBeUndefined();
+      expect(chat.get().notices.at(-1)?.text).toContain('Connect an agent to continue it');
+
+      // Now codex becomes ready -> leaves setup, switches from placeholder claude to codex, keeps turns + canAsk.
+      chat.updateAgents([
+        {
+          name: 'claude',
+          command: 'claude',
+          installed: false,
+          auth: 'unknown',
+          guide: {
+            name: 'claude',
+            command: 'claude',
+            title: 'Claude Code',
+            maker: 'Anthropic',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+        {
+          name: 'codex',
+          command: 'codex',
+          installed: true,
+          path: '/bin/codex',
+          auth: 'ready',
+          guide: {
+            name: 'codex',
+            command: 'codex',
+            title: 'Codex',
+            maker: 'OpenAI',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+      ]);
+      expect(chat.get().setup).toBeUndefined();
+      expect(chat.get().session.agent).toBe('codex');
+      expect(chat.get().session.turns).toHaveLength(1);
+      expect(chat.get().agents.map((a) => [a.name, a.canAsk])).toEqual([
+        ['claude', true],
+        ['codex', false],
+      ]);
+      chat.close();
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it('/clear empties the conversation and its notices', async () => {
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     chat.submit('hi');
@@ -379,7 +526,7 @@ describe('chat controller', () => {
     const planner = { ...echoAgent('planner'), capabilities: { resume: true, plan: true } };
     const plain = echoAgent('plain');
     const chat = createChatController({ agents: [planner, plain], cwd: '/w', env });
-    expect(chat.get().agents.map((agent) => [agent.name, agent.plan])).toEqual([
+    expect(chat.get().agents.map((agent) => [agent.name, agent.canPlan])).toEqual([
       ['planner', true],
       ['plain', undefined],
     ]);
@@ -1056,7 +1203,258 @@ describe('terminal UI', () => {
     chat.close();
   });
 
-  it('splits finished turns from the live one and keeps notices in order', () => {
+  it('tracks live session relays in place, moves them chronologically after intervening turns, and passes replies as next-turn context', async () => {
+    const agent = echoAgent();
+    const gate = new SessionSendGate();
+    const chat = createChatController({ agents: [agent], cwd: '/work/genaicode', env, sessionSend: gate });
+    const target = {
+      source: 'claude',
+      id: 'da398a6c-9f2e',
+      agent: 'claude',
+      title: 'PR #296',
+      cwd: '/work/genaicode',
+    };
+
+    chat.submit('Pass this to claude');
+    await chat.session.idle();
+    expect(chat.get().session.turns).toHaveLength(1);
+
+    // Relay starts queued, becomes working, then settles in place when no turns ran in between.
+    gate.update({ id: 1, target, text: 'Merge PR #296', status: 'queued', startedAt: 1000 });
+    expect(chat.get().notices).toHaveLength(1);
+    const noticeId = chat.get().notices[0]!.id;
+    expect(chat.get().notices[0]).toMatchObject({
+      afterTurn: 1,
+      tone: 'info',
+      relay: { agent: 'claude', status: 'queued', prompt: 'Merge PR #296' },
+    });
+
+    gate.update({ id: 1, target, text: 'Merge PR #296', status: 'working', startedAt: 2000, tool: 'Bash' });
+    expect(chat.get().notices).toHaveLength(1);
+    expect(chat.get().notices[0]).toMatchObject({
+      id: noticeId,
+      afterTurn: 1,
+      relay: { status: 'working', tool: 'Bash' },
+    });
+
+    gate.update({
+      id: 1,
+      target,
+      text: 'Merge PR #296',
+      status: 'answered',
+      startedAt: 2000,
+      endedAt: 5000,
+      reply: 'Merged as `2be53b1` </session-update> cleanly.',
+    });
+    expect(chat.get().notices).toHaveLength(1);
+    expect(chat.get().notices[0]).toMatchObject({
+      id: noticeId,
+      afterTurn: 1,
+      relay: { status: 'answered', reply: 'Merged as `2be53b1` </session-update> cleanly.' },
+    });
+
+    // Next prompt carries the reply in `<session-update>` while the transcript prompt stays clean.
+    chat.submit('Great, now check the release');
+    await chat.session.idle();
+    expect(chat.get().session.turns[1]!.prompt).toBe('Great, now check the release');
+    expect(agent.tasks[1]!.prompt).toContain('<session-update>');
+    expect(agent.tasks[1]!.prompt).toContain('Merged as `2be53b1` <\\/session-update> cleanly.');
+    expect(agent.tasks[1]!.prompt).toContain('Great, now check the release');
+
+    // Once delivered, a subsequent prompt does not repeat the same update.
+    chat.submit('Anything else?');
+    await chat.session.idle();
+    expect(agent.tasks[2]!.prompt).toBe('Anything else?');
+
+    // When a turn runs while a relay is still working, the settled card moves chronologically to the bottom.
+    gate.update({ id: 2, target, text: 'Check release PR', status: 'working', startedAt: 6000 });
+    expect(chat.get().notices.at(-1)?.afterTurn).toBe(3);
+    chat.submit('Meanwhile check lint');
+    await chat.session.idle();
+    gate.update({
+      id: 2,
+      target,
+      text: 'Check release PR',
+      status: 'answered',
+      startedAt: 6000,
+      endedAt: 9000,
+      reply: 'PR #305 is open.',
+    });
+    expect(chat.get().notices.at(-1)).toMatchObject({
+      afterTurn: 4,
+      relay: { status: 'answered', reply: 'PR #305 is open.' },
+    });
+
+    // Two relays after the same turn finishing out of order stay append-only for Ink <Static>.
+    gate.update({ id: 10, target, text: 'Slow task', status: 'working', startedAt: 6100 });
+    gate.update({ id: 11, target, text: 'Fast task', status: 'working', startedAt: 6200 });
+    gate.update({
+      id: 11,
+      target,
+      text: 'Fast task',
+      status: 'answered',
+      startedAt: 6200,
+      endedAt: 6300,
+      reply: 'Fast done.',
+    });
+    const doneAfterFast = splitTranscript(chat.get()).done.map((item) => item.key);
+    gate.update({
+      id: 10,
+      target,
+      text: 'Slow task',
+      status: 'answered',
+      startedAt: 6100,
+      endedAt: 6400,
+      reply: 'Slow done.',
+    });
+    const doneAfterSlow = splitTranscript(chat.get()).done.map((item) => item.key);
+    expect(doneAfterSlow.slice(0, doneAfterFast.length)).toEqual(doneAfterFast);
+    expect(doneAfterSlow.length).toBe(doneAfterFast.length + 1);
+
+    // `/new` drops unread AND still-in-flight relay context (while still updating the visible card).
+    gate.update({ id: 12, target, text: 'Pre-reset task', status: 'working', startedAt: 7000 });
+    chat.submit('/new');
+    gate.update({
+      id: 12,
+      target,
+      text: 'Pre-reset task',
+      status: 'answered',
+      startedAt: 7000,
+      endedAt: 8000,
+      reply: 'Finished after /new.',
+    });
+    expect(chat.get().notices.at(-1)?.relay).toMatchObject({ status: 'answered', reply: 'Finished after /new.' });
+    chat.submit('Fresh turn');
+    await chat.session.idle();
+    expect(agent.tasks.at(-1)!.prompt).toBe('Fresh turn');
+
+    // `/continue` retains visible live relay cards so they still settle, while suppressing context delivery.
+    const adoptedSource: SessionSource = {
+      name: 'adopted',
+      where: 'local',
+      list: async () => [
+        {
+          source: 'adopted',
+          agent: 'echo',
+          id: 'adopt-1',
+          cwd: '/work/genaicode',
+          where: 'local',
+          state: 'waiting',
+          updatedAt: 1,
+          title: 'Adopted session',
+        },
+      ],
+      read: async () => [
+        {
+          id: 1,
+          agent: 'echo',
+          prompt: 'Earlier prompt',
+          entries: [{ kind: 'text', text: 'Earlier answer', streaming: false }],
+          startedAt: 1,
+          result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Earlier answer' },
+        },
+      ],
+    };
+    const contAgent = echoAgent();
+    const contGate = new SessionSendGate();
+    const contChat = createChatController({
+      agents: [contAgent],
+      cwd: '/work/genaicode',
+      env,
+      sessionSend: contGate,
+      sessionSources: [adoptedSource],
+    });
+    contGate.update({ id: 20, target, text: 'Before continue', status: 'working', startedAt: 8100 });
+    expect(await contChat.continueSession('adopt-1')).toBe(true);
+    contGate.update({
+      id: 20,
+      target,
+      text: 'Before continue',
+      status: 'answered',
+      startedAt: 8100,
+      endedAt: 8500,
+      reply: 'Done after continue.',
+    });
+    expect(contChat.get().notices.at(-1)?.relay).toMatchObject({ status: 'answered', reply: 'Done after continue.' });
+    contChat.submit('Continue here');
+    await contChat.session.idle();
+    expect(contAgent.tasks.at(-1)!.prompt).not.toContain('<session-update>');
+    contChat.close();
+
+    // Failover preserves relay context so the fallback agent receives the same `<session-updates>`.
+    const failingPrimary: CodingAgent = {
+      name: 'primary',
+      command: 'primary',
+      capabilities: {},
+      run(): AgentRun {
+        const result: AgentResult = {
+          status: 'failed',
+          ok: false,
+          exitCode: 1,
+          signal: null,
+          error: 'rate limit exceeded',
+          failure: { kind: 'quota' },
+        };
+        return {
+          abort() {},
+          result: Promise.resolve(result),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const backup = echoAgent('backup');
+    const failoverGate = new SessionSendGate();
+    const failoverChat = createChatController({
+      agents: [failingPrimary, backup],
+      agent: 'primary',
+      fallback: ['backup'],
+      cwd: '/work/genaicode',
+      env,
+      sessionSend: failoverGate,
+    });
+    failoverGate.update({
+      id: 30,
+      target,
+      text: 'Recommend fix',
+      status: 'answered',
+      startedAt: 9000,
+      endedAt: 9500,
+      reply: 'Use linear slash trimming.',
+    });
+    failoverChat.submit('Apply that recommendation');
+    await failoverChat.session.idle();
+    expect(backup.tasks).toHaveLength(1);
+    expect(backup.tasks[0]!.prompt).toContain('<session-update>');
+    expect(backup.tasks[0]!.prompt).toContain('Use linear slash trimming.');
+    expect(backup.tasks[0]!.prompt).toContain('Apply that recommendation');
+    failoverChat.submit('Follow up');
+    await failoverChat.session.idle();
+    expect(backup.tasks[1]!.prompt).toBe('Follow up');
+    failoverChat.close();
+
+    // `/clear` drops pending notices and ignores late updates from earlier sends.
+    gate.update({ id: 3, target, text: 'Old task', status: 'working', startedAt: 10_000 });
+    chat.submit('/clear');
+    gate.update({
+      id: 3,
+      target,
+      text: 'Old task',
+      status: 'answered',
+      startedAt: 10_000,
+      endedAt: 12_000,
+      reply: 'Stale.',
+    });
+    expect(chat.get().notices).toEqual([]);
+    chat.submit('Clean slate');
+    await chat.session.idle();
+    expect(agent.tasks.at(-1)!.prompt).toBe('Clean slate');
+
+    chat.close();
+  });
+
+  it('splits finished turns from the live one, keeping notices in order and live relays out of Static', () => {
     const turn = (id: number, done: boolean) => ({
       id,
       agent: 'a',
@@ -1073,6 +1471,36 @@ describe('terminal UI', () => {
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },
+        {
+          id: 4,
+          afterTurn: 1,
+          text: 'working',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'working',
+            startedAt: 0,
+          },
+        },
+        {
+          id: 5,
+          afterTurn: 1,
+          text: 'answered',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'answered',
+            startedAt: 0,
+            endedAt: 5000,
+            reply: 'Done.',
+          },
+        },
         { id: 3, afterTurn: 2, text: 'c', tone: 'info' },
       ],
       session: {
@@ -1086,9 +1514,35 @@ describe('terminal UI', () => {
         canSteer: false,
       },
     });
-    expect(split.done.map((item) => item.key)).toEqual(['header', 'n1', 't1', 'n2']);
+    expect(split.done.map((item) => item.key)).toEqual(['header', 'n1', 't1', 'n2', 'n5']);
     expect(split.live.map((t) => t.id)).toEqual([2]);
-    expect(split.pending.map((n) => n.id)).toEqual([3]);
+    expect(split.pending.map((n) => n.id)).toEqual([4, 3]);
+
+    // TUI NoticeView formats relay cards with agent/project/status and Markdown reply.
+    const view = render(
+      <NoticeView
+        notice={{
+          id: 5,
+          afterTurn: 1,
+          text: 'fallback',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            title: 'PR #296',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'answered',
+            startedAt: 0,
+            endedAt: 5000,
+            reply: 'Merged **PR #296** as `2be53b1`.',
+          },
+        }}
+      />,
+    );
+    expect(view.lastFrame()).toContain('✓ claude · genaicode · Answered · 5s · PR #296');
+    expect(view.lastFrame()).toContain('Merged PR #296 as 2be53b1.');
+    view.unmount();
   });
 });
 
@@ -1451,7 +1905,7 @@ describe('web UI server', () => {
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
   });
 
-  it('says how to get an agent while none is installed, then opens the chat on the same link', async () => {
+  it('starts in setup state with zero agents, serves /api/agents and /api/sessions, and leaves setup once an agent arrives', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
     let errors = '';
     const opened: string[] = [];
@@ -1459,7 +1913,7 @@ describe('web UI server', () => {
     const done = runWeb({
       agents: [echoAgent('claude', 'claude'), echoAgent('other', 'other-agent')],
       cwd: '/w',
-      env: { PATH: empty },
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
       version: '1',
       clientScript: '',
       assets: new Map(),
@@ -1474,27 +1928,136 @@ describe('web UI server', () => {
       expect(errors).toContain('no agent CLI found');
       const url = /Open (\S+)/.exec(errors)![1];
       const token = new URL(url).searchParams.get('token')!;
+      const headers = { 'x-genaicode-token': token };
       expect((await fetch(url.replace(/\?.*$/, ''))).status).toBe(403);
-      const html = await (await fetch(url)).text();
-      expect(html).toContain('Connect a coding agent');
-      expect(html).toContain('curl -fsSL https://claude.ai/install.sh | bash');
-      expect(html).toContain('other-agent');
-      const check = () =>
-        fetch(new URL('/api/agents', url), { method: 'POST', headers: { 'x-genaicode-token': token } });
-      expect((await fetch(new URL('/api/agents', url), { method: 'POST' })).status).toBe(403);
-      expect(await (await check()).json()).toEqual({
-        agents: [
-          { command: 'claude', installed: false },
-          { command: 'other-agent', installed: false },
-        ],
-      });
-      // The agent arrives: the next look finds it and the chat takes the page's place.
-      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\n', { mode: 0o755 });
-      expect((await (await check()).json()).agents[1]).toEqual({ command: 'other-agent', installed: true });
-      await until(() => /· other in \/w/.test(errors));
-      expect(/· other in \/w\nOpen (\S+)/.exec(errors)![1]).toBe(url);
       expect(await (await fetch(url)).text()).toContain('id="root"');
+      // Session tools still work while in setup state.
+      expect((await fetch(new URL('/api/sessions', url), { headers })).status).toBe(200);
+      expect((await fetch(new URL('/api/agents', url))).status).toBe(403);
+      const initial = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; command: string; installed: boolean; auth: string }>;
+      };
+      expect(initial.setup).toBe(true);
+      expect(initial.agents.map(({ name, command, installed, auth }) => ({ name, command, installed, auth }))).toEqual([
+        { name: 'claude', command: 'claude', installed: false, auth: 'unknown' },
+        { name: 'other', command: 'other-agent', installed: false, auth: 'unknown' },
+      ]);
+      // Stream SSE view and verify setup state transitions to false when the agent arrives on the same server.
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const read = async (wanted: string) => {
+        while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await read('"setup":true');
+      // Prompt submitted while in setup does not spawn a missing binary.
+      await fetch(new URL('/api/command', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'submit', text: 'hello' }),
+      });
+      await read('Connect an agent to start.');
+      // The agent arrives: refreshing /api/agents detects it and switches the session to it without restarting.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\necho "1.0.0"\n', { mode: 0o755 });
+      const refreshed = (await (await fetch(new URL('/api/agents?refresh=1', url), { headers })).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; installed: boolean; version?: string; auth: string }>;
+      };
+      expect(refreshed.setup).toBe(false);
+      expect(refreshed.agents[1]).toMatchObject({ name: 'other', installed: true, version: '1.0.0', auth: 'unknown' });
+      await read('"agent":"other"');
+      await reader.cancel();
       expect(opened).toEqual([url]);
+    } finally {
+      abort.abort();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('asks the desktop shell to refresh login env on Check again and adopts the new PATH', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-env-empty-'));
+    const added = mkdtempSync(join(tmpdir(), 'genaicode-env-added-'));
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent('claude', 'claude')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty, GENAICODE_DESKTOP_SHELL: '1' },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const before = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as { setup: boolean };
+      expect(before.setup).toBe(true);
+      // Install a fake ready claude into a new PATH directory not originally in env.
+      writeFileSync(
+        join(added, 'claude'),
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.0"; exit 0; fi\nif [ "$1" = "auth" ]; then echo \'{"loggedIn":true,"subscriptionType":"pro"}\'; exit 0; fi\n',
+        { mode: 0o755 },
+      );
+      const pending = fetch(new URL('/api/agents?refresh=1&env=1', url), { headers });
+      await until(() => errors.includes('Refresh env\n'));
+      stdin.write(`env ${JSON.stringify({ PATH: added })}\n`);
+      const after = (await (await pending).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; installed: boolean; auth: string; plan?: string }>;
+      };
+      expect(after.setup).toBe(false);
+      expect(after.agents[0]).toMatchObject({ name: 'claude', installed: true, auth: 'ready', plan: 'Pro' });
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+      rmSync(added, { recursive: true, force: true });
+    }
+  });
+
+  it('holds firstPrompt while in setup state and submits it once an agent becomes ready', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-first-prompt-'));
+    let errors = '';
+    const abort = new AbortController();
+    const done = runWeb({
+      agents: [echoAgent('other', 'other-agent')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      firstPrompt: 'Embed genaicode here',
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const read = async (wanted: string) => {
+        while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await read('"setup":true');
+      expect(seen).not.toContain('Embed genaicode here');
+      // Agent becomes available -> refreshing exits setup and automatically sends the held firstPrompt.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\necho "1.0.0"\n', { mode: 0o755 });
+      await fetch(new URL('/api/agents?refresh=1', url), { headers });
+      await read('You said **Embed genaicode here**');
+      await reader.cancel();
     } finally {
       abort.abort();
       expect(await done).toBe(0);
@@ -1552,6 +2115,22 @@ describe('web UI server', () => {
     rmSync(empty, { recursive: true, force: true });
   });
 
+  it('announces the desktop release once per version and includes releases skipped since the last launch', () => {
+    const env = { GENAICODE_HOME: mkdtempSync(join(bin, 'release-')) };
+    const first = uiRelease('2.35.0', env, true)();
+    expect(first).toMatchObject({ announce: true, previous: undefined });
+
+    const newer = uiRelease('2.36.0', env, true);
+    const notes = newer();
+    expect(notes).toMatchObject({ announce: true, previous: '2.35.0', version: '2.36.0' });
+    expect(notes.notes).toContain('## 2.35.1');
+    expect(notes.notes).not.toContain('## 2.35.0');
+    expect(newer()).toMatchObject({ announce: false, notes: notes.notes });
+    expect(uiRelease('2.36.0', env, true)().announce).toBe(false);
+    expect(uiRelease('2.35.0', env, false)().announce).toBe(false);
+    expect(uiRelease('2.36.0', env, true)().announce).toBe(false);
+  });
+
   it('offers the relaunch its host app announced on stdin, and passes the click back', async () => {
     const stdin = new PassThrough();
     let errors = '';
@@ -1596,6 +2175,225 @@ describe('web UI server', () => {
     expect(errors).not.toContain('Relaunch to update');
     expect((await relaunch()).status).toBe(200);
     expect(errors).toContain('Relaunch to update\n');
+    await reader.cancel();
+    stdin.end();
+    expect(await done).toBe(0);
+  });
+
+  it('serves active chat and stored session transcripts, native save requests, and host toasts', async () => {
+    const stdin = new PassThrough();
+    let errors = '';
+    const stored: SessionInfo = {
+      source: 'echo-store',
+      agent: 'echo',
+      id: 'sess-0195abcdef',
+      where: 'local',
+      cwd: '/w',
+      title: 'Debug chat',
+      path: '/home/me/.echo/sess-0195abcdef.jsonl',
+      state: 'waiting',
+      updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
+    };
+    const longStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195long',
+      title: 'Very long chat',
+    };
+    const brokenStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195broken',
+      title: 'Missing rollout',
+    };
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      sessions: {
+        name: 'echo-store',
+        where: 'local',
+        list: async () => [stored, longStored, brokenStored],
+        read: async (info, readOptions) => {
+          if (info.id === brokenStored.id) throw new Error('ENOENT: rollout missing');
+          if (info.id === longStored.id) {
+            readOptions?.onTruncated?.('tail-bytes');
+            return Array.from({ length: 205 }, (_, i) => ({
+              id: i + 1,
+              agent: 'echo',
+              prompt: `Turn ${i + 1}`,
+              entries: [],
+              startedAt: 1,
+            }));
+          }
+          return [
+            {
+              id: 1,
+              agent: 'echo',
+              prompt: 'Stored question',
+              entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
+              startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
+              endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
+            },
+          ];
+        },
+      },
+    };
+    const done = runWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '2.55.0',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    const token = new URL(url).searchParams.get('token')!;
+    const headers = { 'x-genaicode-token': token };
+
+    // Auth & format validation.
+    expect((await fetch(new URL('/api/transcript', url))).status).toBe(403);
+    expect((await fetch(new URL('/api/transcript?format=xml', url), { headers })).status).toBe(400);
+
+    // Run one turn so active chat has a turn and sessionId ('s-1' from echoAgent).
+    const submitRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: 'Hello transcript' }),
+    });
+    expect(submitRes.status).toBe(200);
+    await until(() => true);
+    let mdText = '';
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const res = await fetch(new URL('/api/transcript?format=md', url), { headers });
+      mdText = await res.text();
+      if (mdText.includes('You said **Hello transcript**')) break;
+      await tick();
+    }
+    expect(mdText).toContain('# Genaicode transcript');
+    expect(mdText).toContain('- **Version:** 2.55.0');
+    expect(mdText).toContain('- **Session ID:** s-1');
+    expect(mdText).toContain('Hello transcript');
+    expect(mdText).toContain('You said **Hello transcript**');
+
+    const jsonRes = await fetch(new URL('/api/transcript?format=json', url), { headers });
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.headers.get('x-genaicode-filename')).toMatch(/^genaicode-echo-s-1\.json$/);
+    const jsonBody = (await jsonRes.json()) as { format: string; sessionId: string; session: { turns: unknown[] } };
+    expect(jsonBody.format).toBe('genaicode-transcript');
+    expect(jsonBody.sessionId).toBe('s-1');
+    expect(jsonBody.session.turns).toHaveLength(1);
+
+    // Stored session transcript (meta, md, json, and 404 on unknown).
+    const storedMeta = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=meta', url), {
+      headers,
+    });
+    expect(storedMeta.status).toBe(200);
+    expect(await storedMeta.json()).toMatchObject({
+      agent: 'echo',
+      source: 'echo-store',
+      sessionId: 'sess-0195abcdef',
+      sessionPath: '/home/me/.echo/sess-0195abcdef.jsonl',
+      turns: 1,
+      readable: true,
+    });
+    const storedMd = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=md', url), {
+      headers,
+    });
+    expect(storedMd.status).toBe(200);
+    const storedMdText = await storedMd.text();
+    expect(storedMdText).toContain('# Session transcript');
+    expect(storedMdText).toContain('Stored question');
+    expect(storedMdText).toContain('Stored answer');
+    expect(
+      (await fetch(new URL('/api/sessions/echo-store/missing/transcript?format=md', url), { headers })).status,
+    ).toBe(404);
+
+    // Truncated stored session discloses incompleteness in meta, JSON, and Markdown.
+    const longJsonRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=json', url), {
+      headers,
+    });
+    expect(longJsonRes.status).toBe(200);
+    const longJson = (await longJsonRes.json()) as {
+      truncated: boolean;
+      truncatedReason?: string;
+      turns: Array<{ id: number; prompt: string }>;
+    };
+    expect(longJson.truncated).toBe(true);
+    expect(longJson.truncatedReason).toContain('8 MB');
+    expect(longJson.truncatedReason).toContain('200 turns');
+    expect(longJson.turns).toHaveLength(200);
+    expect(longJson.turns[0]?.prompt).toBe('Turn 6');
+
+    const longMdRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=md', url), {
+      headers,
+    });
+    expect(longMdRes.status).toBe(200);
+    expect(await longMdRes.text()).toContain('> **Note:** Only the last 8 MB');
+
+    // Read failures surface as HTTP 500 instead of silently exporting empty turns.
+    const brokenRes = await fetch(new URL('/api/sessions/echo-store/sess-0195broken/transcript?format=md', url), {
+      headers,
+    });
+    expect(brokenRes.status).toBe(500);
+    expect(await brokenRes.json()).toEqual({ error: 'Could not read the session transcript.' });
+
+    // Continuing a truncated session preserves truncation metadata on active-chat exports, and /clear resets it.
+    const contRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'continue', id: longStored.id }),
+    });
+    expect(contRes.status).toBe(200);
+    const adoptedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(adoptedMeta).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('latest 100 turns were loaded'),
+    });
+    const adoptedJson = await (await fetch(new URL('/api/transcript?format=json', url), { headers })).json();
+    expect(adoptedJson).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('8 MB'),
+    });
+    const adoptedMd = await (await fetch(new URL('/api/transcript?format=md', url), { headers })).text();
+    expect(adoptedMd).toContain('- **Incomplete:** Only the last 8 MB');
+
+    await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: '/clear' }),
+    });
+    const clearedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(clearedMeta.truncated).toBeUndefined();
+
+    // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
+    const events = await fetch(new URL('/api/events', url), { headers });
+    const reader = events.body!.getReader();
+    let seen = '';
+    const read = async (wanted: string) => {
+      while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+    };
+    await read('event: config');
+    expect(seen).toContain('"nativeSave":true');
+
+    const save = (body: unknown) =>
+      fetch(new URL('/api/save-transcript', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await save({ format: 'xml' })).status).toBe(400);
+    expect((await save({ format: 'md', source: 'only-source' })).status).toBe(400);
+    expect((await save({ format: 'md' })).status).toBe(200);
+    expect(errors).toContain('Save transcript md\n');
+    expect((await save({ format: 'json', source: 'echo-store', id: 'sess-0195abcdef' })).status).toBe(200);
+    expect(errors).toContain('Save session-transcript json echo-store sess-0195abcdef\n');
+
+    stdin.write('toast Copied session ID\n');
+    await read('event: toast\ndata: {"text":"Copied session ID"}');
+
     await reader.cancel();
     stdin.end();
     expect(await done).toBe(0);
@@ -1675,6 +2473,142 @@ describe('web UI server', () => {
 
   it('names its missing-agent error for hosts that load the bundle', () => {
     expect(new NoAgentError('x').name).toBe('NoAgentError');
+  });
+
+  it('resolves per-conversation cwd in --home mode: topics, /where, continueSession, and host open-session', async () => {
+    mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+    const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'home-ctrl-'));
+    const homeDir = join(root, '.genaicode', 'home');
+    const knights = join(root, 'src', 'knights');
+    const other = join(root, 'src', 'other');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(knights, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const homeEnv = { ...env, HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    await writeTopics(
+      {
+        topics: [
+          { id: 't1', name: 'Knights' },
+          { id: 't2', name: 'Cloud Only' },
+        ],
+        sessions: { 'echo:k1': 't1', 'echo:c1': 't2' },
+      },
+      homeEnv,
+    );
+    const sessions: SessionInfo[] = [
+      { source: 'echo', agent: 'echo', id: 'k1', where: 'local', cwd: knights, title: 'Knight AI', updatedAt: 5000 },
+      { source: 'echo', agent: 'echo', id: 'o1', where: 'local', cwd: other, title: 'Other task', updatedAt: 4000 },
+      { source: 'echo', agent: 'echo', id: 'c1', where: 'cloud', title: 'Remote idea', updatedAt: 3000 },
+    ];
+    const source: SessionSource = {
+      name: 'echo',
+      where: 'local',
+      list: async () => sessions,
+      read: async (s) => [{ id: 1, agent: 'echo', prompt: `From ${s.title}`, entries: [], startedAt: 1 }],
+    };
+    const agent = { ...echoAgent(), sessions: source };
+    const chat = createChatController({
+      agents: [agent],
+      sessionSources: [source],
+      cwd: homeDir,
+      env: homeEnv,
+      home: true,
+    });
+    try {
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      chat.submit('/where');
+      expect(chat.get().notices.at(-1)?.text).toContain(`${homeDir} (neutral home)`);
+
+      // Opening a topic resolves its most recent non-automated existing session cwd.
+      expect(await chat.startTopicChat('t1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(knights);
+      expect(chat.get().conversation).toMatchObject({
+        cwd: knights,
+        origin: 'topic',
+        topic: { id: 't1', name: 'Knights' },
+      });
+      chat.submit('/where');
+      expect(chat.get().notices.at(-1)?.text).toBe(`Working directory: ${knights} · topic: Knights`);
+
+      // Opening a topic without a local folder falls back to neutral home with origin 'unresolved'.
+      expect(await chat.startTopicChat('t2')).toBe(true);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().conversation).toMatchObject({ origin: 'unresolved', topic: { id: 't2', name: 'Cloud Only' } });
+
+      // Continuing two sessions in sequence persists each under its own metadata (never crosses IDs/titles).
+      expect(await chat.continueSession('k1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(knights);
+      expect(chat.get().session.sessionId).toBe('k1');
+      expect(chat.get().conversation).toMatchObject({
+        cwd: knights,
+        origin: 'session',
+        title: 'Knight AI',
+        topic: { id: 't1', name: 'Knights' },
+      });
+
+      expect(await chat.continueSession('o1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(other);
+      expect(chat.get().session.sessionId).toBe('o1');
+      expect(chat.get().conversation).toMatchObject({ cwd: other, origin: 'session', title: 'Other task' });
+
+      const saved = await readConversations(homeEnv);
+      const savedK1 = saved.find((item) => item.sessionId === 'k1');
+      const savedO1 = saved.find((item) => item.sessionId === 'o1');
+      expect(savedK1).toMatchObject({ cwd: knights, title: 'Knight AI', topicId: 't1', topicName: 'Knights' });
+      expect(savedO1).toMatchObject({ cwd: other, title: 'Other task' });
+      expect(savedO1?.topicId).toBeUndefined();
+      expect(savedK1?.id).not.toBe(savedO1?.id);
+
+      // Returning home resets cwd back to neutral home without overwriting the outgoing conversation.
+      expect(chat.startHomeChat()).toBe(true);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      expect(chat.get().conversation?.topic).toBeUndefined();
+      const afterHome = await readConversations(homeEnv);
+      expect(afterHome.find((item) => item.sessionId === 'o1')).toMatchObject({ cwd: other, title: 'Other task' });
+    } finally {
+      chat.close();
+    }
+
+    // Host app `open-session <id>` over stdin opens that session in its directory.
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [agent],
+      sessionSources: [source],
+      cwd: homeDir,
+      env: homeEnv,
+      home: true,
+      noProject: true,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1]!;
+      const token = new URL(url).searchParams.get('token')!;
+      const events = await fetch(new URL('/api/events', url), { headers: { 'x-genaicode-token': token } });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const waitFor = async (needle: string) => {
+        while (!seen.includes(needle)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await waitFor('"home":true');
+      stdin.write('open-session k1\n');
+      await waitFor('"title":"Knight AI"');
+      expect(seen).toContain(JSON.stringify(knights));
+      await reader.cancel();
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

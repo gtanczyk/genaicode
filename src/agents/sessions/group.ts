@@ -32,6 +32,20 @@ const OFFER = new RegExp(
   String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}`,
   'iu',
 );
+// "If you need to…", "jeśli musisz…", "nie musisz…": a condition or a release, not something asked of the user.
+const NOT_IF = String.raw`(?<!${B}(if|when|in case|jeśli|jeżeli|gdy|kiedy|skoro|nie),?\s+)`;
+// A request put as a statement, or a yes/no gate dressed as an offer: an answer is waited for.
+const REQUEST = new RegExp(
+  [
+    String.raw`${B}(daj znać|napisz|powiedz|let me know|tell me),?\s+(czy|whether)${E}`,
+    String.raw`${B}(czy mam|should i|shall i|do you want me to)${E}`,
+    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|czekam na (twoj|ciebie|decyzj|odpowied)|potrzebuję od ciebie)`,
+    String.raw`${NOT_IF}${B}musisz`,
+    String.raw`${B}(twoja decyzja|decyzja należy do ciebie|your call|up to you|please confirm|waiting (for|on) (you|your))${E}`,
+    String.raw`${NOT_IF}${B}you(('ll| will)?( still)? need to| have to| must)${E}`,
+  ].join('|'),
+  'iu',
+);
 /** What may follow the last word: quotes, brackets, emphasis, an emoji. */
 const TRAILING_CHAR = /^[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]$/u;
 
@@ -56,8 +70,9 @@ function stripTrailing(input: string): string {
 
 /**
  * What the end of an agent's message asks of the user, by its shape alone: it says it could not
- * report back, it ends with a question, with a command in a code block, or with an offer to go on.
- * A guess from the last 200 characters: a request put as a statement is not seen.
+ * report back, it ends with a question, with a command in a code block, with a request put as a
+ * statement ("Confirm…", "Your call whether…", "Daj znać, czy mam…"), or with an offer to go on.
+ * A guess from the last 200 characters: a request in words this does not know is not seen.
  */
 export function replyEnding(lastReply: string | undefined): ReplyEnding | undefined {
   if (!lastReply) return undefined;
@@ -70,6 +85,7 @@ export function replyEnding(lastReply: string | undefined): ReplyEnding | undefi
   }
   const body = text.endsWith('.') || text.endsWith('!') ? text.slice(0, -1) : text;
   const last = body.slice(Math.max(body.lastIndexOf('.'), body.lastIndexOf('?'), body.lastIndexOf('!')) + 1);
+  if (REQUEST.test(last)) return 'request';
   if (OFFER.test(last)) return 'offer';
   return undefined;
 }
@@ -88,10 +104,32 @@ export function acceptsSessionPrompt(session: SessionInfo): boolean {
 /** A question at the end of a message still waits for this long; after, the thread was left. */
 export const ASKING_MS = 3 * 24 * 3600_000;
 
-/** Whether a session asks for you now: for approval, or with a message that asked something not long ago. */
+/**
+ * How a waiting session calls for the user:
+ * - `now`: it asks for approval, or its last message asked a question, made a request or gave a
+ *   command to run in the last `ASKING_MS`. Someone waits on the answer.
+ * - `stalled`: its last message offered to go on ("I can also…, if you want"), said it could not
+ *   report back, or asked something longer ago. Nobody is blocked; the thread was left.
+ */
+export type Attention = 'now' | 'stalled';
+
+/** Whether a waiting session needs the user now, has stalled, or neither (it just ended, or is not waiting). */
+export function attentionOf(session: SessionInfo, now = Date.now()): Attention | undefined {
+  if (session.archived || session.state !== 'waiting') return undefined;
+  if (session.waitingFor === 'approval') return 'now';
+  if (!session.ending) return undefined;
+  const asks = session.ending === 'question' || session.ending === 'request' || session.ending === 'command';
+  return asks && now - session.updatedAt < ASKING_MS ? 'now' : 'stalled';
+}
+
+/** Whether a session asks for you now: for approval, or with a question or command not long ago. */
 export function isAsking(session: SessionInfo, now = Date.now()): boolean {
-  if (session.archived || session.state !== 'waiting') return false;
-  return session.waitingFor === 'approval' || (!!session.ending && now - session.updatedAt < ASKING_MS);
+  return attentionOf(session, now) === 'now';
+}
+
+/** Whether a session waits on an offer, a failed report or an old question: left, not blocking. */
+export function isStalled(session: SessionInfo, now = Date.now()): boolean {
+  return attentionOf(session, now) === 'stalled';
 }
 
 /** A project: the sessions of every agent that share a directory (or a repository, in the cloud). */
@@ -108,12 +146,16 @@ export interface SessionProject {
 
 /**
  * The sessions whose next move is the user's (`state: 'waiting'`): those that ask for approval
- * first, then those whose last message asks something (`ending`), then the others, newest first
- * in each. Archived ones are left out.
+ * first, then those that need you now (`attentionOf`), then the stalled ones, then those that just
+ * ended, newest first in each. Archived ones are left out.
  */
-export function waitingSessions(sessions: readonly SessionInfo[]): SessionInfo[] {
-  // Approvals, then what ends on a question or a request, then what just ended.
-  const asks = (session: SessionInfo) => (session.waitingFor === 'approval' ? 0 : session.ending ? 1 : 2);
+export function waitingSessions(sessions: readonly SessionInfo[], now = Date.now()): SessionInfo[] {
+  const order = { now: 1, stalled: 2 } as const;
+  const asks = (session: SessionInfo) => {
+    if (session.waitingFor === 'approval') return 0;
+    const attention = attentionOf(session, now);
+    return attention ? order[attention] : 3;
+  };
   return sessions
     .filter((session) => session.state === 'waiting' && !session.archived)
     .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);

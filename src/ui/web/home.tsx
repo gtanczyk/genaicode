@@ -17,10 +17,18 @@ async function load<T>(path: string, token: string): Promise<T> {
 }
 
 /**
- * The start screen of a chat with the session index: the topics that ask for you, those agents
- * work on now, and how much of each agent's plan is used. Shows nothing until topics exist.
+ * The start screen of a chat with the session index: the topics that need you now, those agents
+ * work on now, those left stalled (folded), and how much of each agent's plan is used. Shows nothing until topics exist.
  */
-export function Home({ token, onTopic }: { token: string; onTopic(id: string): void }) {
+export function Home({
+  token,
+  onTopic,
+  onNewTopicChat,
+}: {
+  token: string;
+  onTopic(id: string): void;
+  onNewTopicChat?(id: string): void;
+}) {
   const [listing, setListing] = useState<WebSessionListing>();
   const [limits, setLimits] = useState<AgentLimit[]>([]);
   const [shares, setShares] = useState<AgentShares[]>([]);
@@ -51,23 +59,40 @@ export function Home({ token, onTopic }: { token: string; onTopic(id: string): v
 
   if (!listing?.topics?.length) return null;
   const now = Date.now();
-  const { asking, working } = topicsNow(listing.sessions, listing.topics, listing.topicOf ?? {}, now);
+  const { asking, working, recent, stalled } = topicsNow(listing.sessions, listing.topics, listing.topicOf ?? {}, now);
   const agents = [...new Set(limits.map((limit) => limit.agent))].sort();
-  const row = (group: SessionTopic) => (
-    <button key={group.key} className="topic" onClick={() => onTopic(group.key.slice('topic:'.length))}>
-      <b>{group.name}</b>
-      <span>
-        {[
-          group.asking ? `${group.asking} ask you` : '',
-          group.active ? `${group.active} working` : '',
-          Object.keys(group.agents).sort().join(', '),
-          `${ago(now - group.updatedAt)} ago`,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-      </span>
-    </button>
-  );
+  const row = (group: SessionTopic) => {
+    const id = group.key.slice('topic:'.length);
+    return (
+      <div key={group.key} className="topic" data-topic-id={id}>
+        <button type="button" className="topic-open" onClick={() => onTopic(id)}>
+          <b>{group.name}</b>
+          <span>
+            {[
+              group.asking ? `${group.asking} need${group.asking === 1 ? 's' : ''} you` : '',
+              group.active ? `${group.active} working` : '',
+              group.stalled ? `${group.stalled} stalled` : '',
+              Object.keys(group.agents).sort().join(', '),
+              `${ago(now - group.updatedAt)} ago`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
+        </button>
+        {onNewTopicChat ? (
+          <button
+            type="button"
+            className="chip off topic-new"
+            title={`Start a new chat in ${group.name}`}
+            aria-label={`New chat in ${group.name}`}
+            onClick={() => onNewTopicChat(id)}
+          >
+            New chat
+          </button>
+        ) : null}
+      </div>
+    );
+  };
   return (
     <section className="home" aria-label="Your topics">
       {agents.length ? (
@@ -108,7 +133,7 @@ export function Home({ token, onTopic }: { token: string; onTopic(id: string): v
       ) : null}
       {asking.length ? (
         <>
-          <h2>Waiting for you</h2>
+          <h2>Needs you now</h2>
           {asking.map(row)}
         </>
       ) : null}
@@ -118,7 +143,22 @@ export function Home({ token, onTopic }: { token: string; onTopic(id: string): v
           {working.map(row)}
         </>
       ) : null}
-      {asking.length || working.length ? null : <p>Nothing asks for you, and no agent is at work.</p>}
+      {recent.length ? (
+        <>
+          <h2>Topics</h2>
+          {recent.map(row)}
+        </>
+      ) : null}
+      {asking.length || working.length || recent.length ? null : <p>Nothing needs you now, and no agent is at work.</p>}
+      {stalled.length ? (
+        <details className="stalled">
+          <summary>
+            Stalled in {stalled.length} topic{stalled.length === 1 ? '' : 's'}
+            <small>offers, unsent reports and questions left for days</small>
+          </summary>
+          {stalled.map(row)}
+        </details>
+      ) : null}
     </section>
   );
 }

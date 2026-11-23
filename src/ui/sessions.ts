@@ -1,4 +1,4 @@
-import { groupSessions, isAsking, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
+import { attentionOf, groupSessions, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
 
 /** What the Sessions view narrows the list by. */
 export interface SessionFilter {
@@ -7,7 +7,7 @@ export interface SessionFilter {
   agent?: string;
   /**
    * A `SessionActivity`, `approval` for sessions that ask to use a tool, `open` for those that wait
-   * for the user, `archived` for those put away. Archived sessions show only under `archived`.
+   * for the user, `now` / `stalled` by `attentionOf`, `archived` for those put away. Archived sessions show only under `archived`.
    */
   state?: string;
 }
@@ -21,6 +21,8 @@ export function filterSessions(sessions: readonly SessionInfo[], filter: Session
       // Every archived one, whatever its state.
     } else if (filter.state === 'approval') {
       if (session.waitingFor !== 'approval') return false;
+    } else if (filter.state === 'now' || filter.state === 'stalled') {
+      if (attentionOf(session) !== filter.state) return false;
     } else if (filter.state === 'open' ? session.state === 'waiting' : filter.state && session.state !== filter.state)
       return false;
     if (!words.length) return true;
@@ -53,8 +55,10 @@ export function groupInOrder(sessions: readonly SessionInfo[]): SessionProject[]
 
 /** A topic's sessions as the Sessions view shows them: a group like a project, with what it asks. */
 export interface SessionTopic extends SessionProject {
-  /** Sessions that ask for approval, or whose last message asked something not long ago. */
+  /** Sessions that need you now: an approval, or a question or command not long ago. */
   asking: number;
+  /** Sessions left on an offer, a failed report or an old question: nobody is blocked on them. */
+  stalled: number;
   /** Sessions an agent works in now. */
   active: number;
 }
@@ -80,14 +84,25 @@ export function groupByTopic(
     const key = name === undefined ? UNSORTED_TOPIC : `topic:${id}`;
     let group = groups.get(key);
     if (!group) {
-      group = { key, name: name ?? 'Not sorted yet', sessions: [], updatedAt: 0, agents: {}, asking: 0, active: 0 };
+      group = {
+        key,
+        name: name ?? 'Not sorted yet',
+        sessions: [],
+        updatedAt: 0,
+        agents: {},
+        asking: 0,
+        stalled: 0,
+        active: 0,
+      };
       groups.set(key, group);
     }
     group.sessions.push(session);
     group.updatedAt = Math.max(group.updatedAt, session.updatedAt);
     group.agents[session.agent] = (group.agents[session.agent] ?? 0) + 1;
     if (session.state === 'active') group.active += 1;
-    if (isAsking(session, now)) group.asking += 1;
+    const attention = attentionOf(session, now);
+    if (attention === 'now') group.asking += 1;
+    else if (attention === 'stalled') group.stalled += 1;
   }
   const last = (group: SessionTopic) => (group.key === UNSORTED_TOPIC ? 1 : 0);
   return [...groups.values()].sort(
@@ -99,15 +114,16 @@ export function groupByTopic(
 const MOST_TOPICS = 6;
 
 /**
- * What to look at first: the topics that ask for you, then those agents work on now and that ask
- * nothing. Sessions no topic has are left out: they have no name to show.
+ * What to look at first: the topics that need you now, then those agents work on now and that ask
+ * nothing, then recent quiet topics, and those that only stalled (to show folded). Sessions no
+ * topic has are left out: they have no name to show.
  */
 export function topicsNow(
   sessions: readonly SessionInfo[],
   topics: ReadonlyArray<{ id: string; name: string }>,
   topicOf: Readonly<Record<string, string>>,
   now = Date.now(),
-): { asking: SessionTopic[]; working: SessionTopic[] } {
+): { asking: SessionTopic[]; working: SessionTopic[]; recent: SessionTopic[]; stalled: SessionTopic[] } {
   const named = groupByTopic(
     sessions.filter((session) => !session.archived),
     topics,
@@ -117,6 +133,9 @@ export function topicsNow(
   return {
     asking: named.filter((group) => group.asking).slice(0, MOST_TOPICS),
     working: named.filter((group) => !group.asking && group.active).slice(0, MOST_TOPICS),
+    recent: named.filter((group) => !group.asking && !group.active && !group.stalled).slice(0, MOST_TOPICS),
+    // Every one: they are folded, and the point is to see how much was left.
+    stalled: named.filter((group) => !group.asking && !group.active && group.stalled),
   };
 }
 
@@ -137,10 +156,18 @@ export function resumeCommand(session: SessionInfo): string | undefined {
 
 /**
  * Whether the chat working in `cwd` can take a session over: a local one from that directory or
- * below it, in a store whose conversations can be read (`readable` source names).
+ * below it (or any local session when `anyCwd` is true in `--home` mode), in a store whose
+ * conversations can be read (`readable` source names).
  */
-export function canContinueHere(session: SessionInfo, cwd: string, readable: readonly string[]): boolean {
-  if (session.where !== 'local' || !session.cwd || !cwd || !readable.includes(session.source)) return false;
+export function canContinueHere(
+  session: SessionInfo,
+  cwd: string,
+  readable: readonly string[],
+  options?: { anyCwd?: boolean },
+): boolean {
+  if (session.where !== 'local' || !readable.includes(session.source)) return false;
+  if (options?.anyCwd) return true;
+  if (!session.cwd || !cwd) return false;
   let end = cwd.length;
   while (end > 1 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
   const root = cwd.slice(0, end);

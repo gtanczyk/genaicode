@@ -221,7 +221,7 @@ describe('cursor driver', () => {
     ]);
   });
 
-  it('reports a failed shell command and function tool calls', () => {
+  it('reports a failed shell command, function calls, and plugin MCP tool calls', () => {
     const parser = createCursorParser();
     const events = feed(parser, [
       tool('completed', 'k4', {
@@ -229,12 +229,39 @@ describe('cursor driver', () => {
       }),
       tool('started', 'f1', { function: { name: 'grep', arguments: '{"pattern":"x"}' } }),
       tool('completed', 'f1', { function: { name: 'grep', arguments: '{"pattern":"x"}' } }),
+      tool('started', 'm1', {
+        mcpToolCall: {
+          args: {
+            providerIdentifier: 'plugin-genaicode-genaicode_ask',
+            toolName: 'ask_user',
+            args: { questions: [] },
+          },
+        },
+      }),
+      tool('completed', 'm1', {
+        mcpToolCall: {
+          args: {
+            providerIdentifier: 'plugin-genaicode-genaicode_ask',
+            toolName: 'ask_user',
+            args: { questions: [] },
+          },
+          result: { success: { content: [{ text: { text: 'The user answered:\nColor? Green' } }] } },
+        },
+      }),
     ]);
     expect(events).toEqual([
       { type: 'session', sessionId: 's-1' },
       { type: 'tool-end', id: 'k4', name: 'shell', isError: true, output: 'boom\n' },
       { type: 'tool-start', id: 'f1', name: 'grep', input: { pattern: 'x' } },
       { type: 'tool-end', id: 'f1', name: 'grep', isError: false },
+      { type: 'tool-start', id: 'm1', name: 'genaicode_ask/ask_user', input: { questions: [] } },
+      {
+        type: 'tool-end',
+        id: 'm1',
+        name: 'genaicode_ask/ask_user',
+        isError: false,
+        output: 'The user answered:\nColor? Green',
+      },
     ]);
   });
 

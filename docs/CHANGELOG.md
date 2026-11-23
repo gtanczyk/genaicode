@@ -11,10 +11,45 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - Plan mode (`task.mode: 'plan'`, `capabilities.plan`, `AgentSession.setMode()`, `CodexLiveOptions.collaborationMode`, and `/plan` + the Plan toggle in `genaicode chat`, `ui` and the desktop app): Codex enters app-server Plan mode (re-sent on resume only when changed), Claude Code uses `--permission-mode plan` and Gemini uses `--approval-mode plan`. When Codex offers its own `request_user_input` tool (Plan mode or `features.default_mode_request_user_input`), `codexLive()` drops `genaicode_ask` so Codex gets only one question tool per turn (#328)
+- `sessions_send` in `genaicode ui`, `chat`, the desktop app and `<AgentChat>`: messages passed to another session show as live cards (`Queued` → `Working` with current step → `Answered` / `Failed`) with the target agent's avatar, project chip, collapsible sent prompt and Markdown-rendered reply instead of a raw monospace notice. Settled replies are passed into the active chat agent's context on the next prompt and trigger background notifications, and `sessions_send` tells the agent not to promise polling or checking back later (#323)
+- `genaicode ui` and the desktop app: developer transcript export in the chat header (`session …` menu), in **Chats** / **Sessions** rows (`⋯`), and in the desktop app's **Developer** menu — copy the full session ID, the session file path on disk, the Markdown transcript (metadata, turns, tool calls, diffs, approvals, questions, pack tasks, notices) or raw JSON state, or save/download `.md` and `.json` files (with a native Save dialog in the desktop app) (#322)
+- The desktop app shows the installed version and what changed after an update. Reopen **What’s new** from the window header or run `genaicode whats-new` (#327)
+- "Needs you now" also sees requests put as statements and yes/no gates dressed as offers: `SessionInfo.ending` has a new value `request` ("Confirm…", "Your call whether…", "Daj znać, czy mam…", "Musisz jeszcze…", "…jeśli potwierdzisz"), counted like a question for 3 days. On a real machine a 2-hour-old "let me know whether to push the release" sat among the stalled sessions, and about half of the checked waiting sessions with no signal were such requests (#324)
+- Desktop app and `genaicode ui --home`: per-conversation working directories without a fixed project folder. Cross-project chats start in `~/.genaicode/home`; **New chat** on a topic card opens in that topic's most recent non-automated directory; continuing any local session (from Sessions, Chats, the menu bar or `/continue`) resolves its directory or repository root; and `open_project` lets an agent move a conversation into an existing or new directory after one confirmation card. The header shows the conversation title and topic instead of a path (hover or `/where` shows the directory), file panel and upload roots follow the conversation, and Codex asks to trust a new directory via a question card. `genaicode ui --cwd` behaves as before (#318)
+- Save a project’s pack lead and workers from the desktop or web app. The CLI reuses that team and task cards suggest compatible workers when a fresh reading shows an exhausted quota (#325)
+- Rich content across `genaicode ui`, the desktop app and `<AgentChat>`: unified resizable side viewer panel for both files and artifacts (with full-size mode, version switcher, **New tab**, **Download**, session **Artifacts** list, live in-place updates on republish, and panel-attached submit confirmation; `<AgentChat onOpenArtifact>` and exported `<ArtifactPanel>`) (#317)
+- Rich file viewers and line jumping: `/api/file`, `/api/file/raw` and short-lived `/files/<id>` capability URLs stream text (with `:line` / `:line:col` / `#L12-L20` line highlighting via `onOpenFile(path, position?)`), rendered Markdown (with Source toggle), images (fit / actual size), audio, video (`Range` support), PDF (with external fallback on WebKitGTK), sandboxed HTML (with Source toggle), and binary downloads, enforcing `SECRET_DIRS`/`SECRET_FILE` filtering (#317)
+- Dynamic multi-root file and artifact access: `ArtifactStoreOptions.cwd` and `createProjectFiles()` accept a list or function of allowed roots so `genaicode ui --sessions`, pack task worktrees and the desktop app serve files and `publish_artifact` paths from opened/sent session directories (resolving relative paths against the session's `cwd` first) (#317)
+- Markdown images in replies (`![alt](target)`): local image paths resolve to lazy no-referrer thumbnails (`<AgentChat imageUrl>`) that open in the panel; remote `http(s)` images render a click-to-load chip by default so replies never trigger unsolicited requests (`<AgentChat remoteImages="load">` opts in); `data:` targets stay plain text (#317)
+- Opt-in CDN hosts for HTML artifacts: `ArtifactStoreOptions.allowScriptHosts`, `genaicode ui --artifact-cdn <host>[,<host>]` and a desktop **Settings** control (off by default) add trusted hosts to HTML CSP `script-src`, `style-src` and `font-src` only while keeping `connect-src`, `img-src`, `media-src` and `form-action` closed, and inform the agent in the `publish_artifact` tool description (#317)
+- Desktop app links, downloads and Reveal: `tauri-plugin-opener` with strict `http(s)`/`mailto` scheme filtering in `on_new_window` and `on_navigation` (opening external links and tokenless artifact **New tab** links in the system browser), native Save dialog + **Show in Finder / File Manager** in `on_download`, and `POST /api/reveal` / `<AgentChat onRevealFile>` (#317)
+- `genaicode ui` and the desktop app: onboarding when no agent CLI is installed or signed in. The server starts in a `setup` state with `GET /api/agents` (presence, duplicate-install hints, broken-binary detection, and cheap local sign-in checks for Claude Code and Codex), showing per-agent install/sign-in cards with copyable commands, plan limits, and **Check again** while keeping session tools working. In the desktop app, **Check again** re-reads the login shell environment without restarting. The agent picker separates Ready/Installed agents from greyed signed-out ones (**Sign in**) and **More agents** (**Install**), and auth failures on a prompt render as a sign-in card in the conversation. New exports in `genaicode/agents`: `AGENT_GUIDES`, `agentGuide`, `findAllExecutables`, `inspectAgent`, `inspectAgents`, `createAgentInspector`, `isAgentUsable`, `isAuthError`; `<AgentChat renderFailure>` in `genaicode/react` (#316)
 
 ### Fixed
 
 - `codexLive()` and `codexTurns()` read Codex's Plan-mode output (`item/plan/delta` and completed `plan` items) instead of dropping it (#328)
+- Chat renders Markdown links with angle-delimited destinations, including paths with spaces or parentheses. The desktop file panel offers Reveal for linked project folders (#329)
+
+### Internal
+
+- A new release becomes the "latest" one on GitHub only after the desktop build has added its downloads, so `releases/latest/download/Genaicode-*` links no longer return 404 for the half hour after each release (#321)
+
+## 3.1.0 — 2026-11-23
+
+### Added
+
+- `createAppAgent({ questions })`: pass `await startQuestionChannel()` and agents without a question tool of their own (Antigravity, Gemini, Muse, Codex outside Plan mode) get `ask_user`; their questions show as a card in `<AppAgentChat>` like Claude's (#313)
+- "Waiting" is split into **needs you now** and **stalled**. Needs you now: an approval, or a last message that asked a question or gave a command to run in the last 3 days. Stalled: an offer to go on ("I can also…, if you want"), a report that could not be sent back, or an older question. Topics, `sessions --waiting`, the start screen and Sessions view of `genaicode ui`, and the desktop menu bar count only what needs you now; stalled sessions fold under their topic ("Show 2 stalled", a "Stalled" submenu). New `attentionOf()`, `isStalled()`, `TopicSummary.stalled`; `isAsking()` no longer counts offers and unsent reports (#315)
+- `ask_user` and per-run MCP servers (`capabilities.mcp`) on Gemini CLI (`gemini()`, via a temporary `GEMINI_CLI_SYSTEM_SETTINGS_PATH` file) and Cursor CLI (`cursor()`, via a temporary `--plugin-dir`), plus `SessionState.canAsk` and `(no questions)` markers in the UI agent picker and `/agent` (#314)
+
+### Fixed
+
+- Codex in chat and the desktop app honors Ask first and Auto-approve for MCP tool calls, including Sessions and Pack, and shows the tool result or error message (#320)
+- `ask_user` runs without a permission prompt on `museLive()` (auto-approving only `trusted` MCP server tools once via a shared trusted-tool matcher) and Copilot (`trusted` servers pre-allowed even with `allowMcpTools: false`, and `toolTimeoutSec` mapped to Copilot's `timeout` ms) (#314)
+
+### Internal
+
+- Added `scripts/ask-user-live.mjs` to live-verify `ask_user` across installed agents at 0 s and past 60 s (#314)
 
 ## 3.0.1 — 2026-11-23
 

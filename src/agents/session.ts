@@ -5,6 +5,7 @@ import { packApproval, PackActionError, type PackAction, type PackControls, type
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import { markQuestionChannelServer } from './ask-user.js';
+import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
   AgentBudget,
@@ -111,6 +112,10 @@ export interface SessionState {
   fallback?: string[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
+  /** Whether the current agent can ask the person to choose (own tool, or `ask_user` over MCP). */
+  canAsk?: boolean;
+  /** Set when earlier turns of this conversation were omitted (e.g. `maxTurns` cap or resuming a truncated session). */
+  truncatedReason?: string;
 }
 
 export interface AgentSessionOptions {
@@ -178,6 +183,11 @@ export interface AgentSessionOptions {
    * `approvals` like the agent's own, for `answer()`, in the turn that is running.
    */
   questions?: { mcpServer: McpServer; bind(handler: QuestionHandler | undefined): void };
+  /**
+   * Give local MCP agents `open_project` while `enabled()` is true (neutral home or unresolved
+   * directory), so the agent can offer to move the conversation into a project via a question card.
+   */
+  openProject?: { mcpServer: McpServer; enabled(): boolean; bind(handler: QuestionHandler | undefined): void };
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -203,6 +213,13 @@ export interface AgentSession {
    * own turn instead of steering a running one.
    */
   send(text: string, options?: { note?: boolean; queue?: boolean }): void;
+  /**
+   * Queue a host context block for the next prompt without starting a turn (for example, a reply
+   * from another session). Prepended once on the next turn or live steer, preserved if that turn
+   * fails over or the steer falls back to the queue, and cleared by `reset()`, `clear()`,
+   * `adopt()`, or a fresh agent switch (`handoff: false`).
+   */
+  addContext(text: string): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
@@ -236,22 +253,32 @@ export interface AgentSession {
   setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
   setBudget(budget: AgentBudget | undefined): void;
+  /**
+   * Move the conversation to another working directory. Agent sessions cannot change `cwd`
+   * mid-session, so the next turn starts a fresh agent session in `cwd`, handing over the
+   * conversation so far unless `{ handoff: false }`. May be called during a running turn (e.g.
+   * from `open_project`): the running turn's session id is forgotten when it ends.
+   */
+  setCwd(cwd: string, options?: { handoff?: boolean }): boolean;
   /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
   /**
    * Start a new conversation: `reset()`, and the transcript and what waits for a turn are dropped
    * too. Usage and the budget stay. Returns false while a turn is running.
    */
-  clear(): boolean;
+  clear(options?: { cwd?: string }): boolean;
   /**
    * Take over a conversation that happened elsewhere (`readSession()` gives the turns of another
-   * agent's session). The turns join the transcript, and the next turn hands them over to the
-   * current agent the way a switch does. With `sessionId`, the turns are the current agent's own
-   * session: the next turn resumes it instead (`capabilities.resume`), with nothing to hand over.
+   * agent's session). The turns join the transcript (or replace it when `replace` is true), and
+   * the next turn hands them over to the current agent the way a switch does. With `sessionId`,
+   * the turns are the current agent's own session: the next turn resumes it instead
+   * (`capabilities.resume`), with nothing to hand over. Returns false while a turn is running.
    * With `mode: 'plan'`, restores Plan mode when the agent supports it and no mode is set yet.
-   * Returns false while a turn is running.
    */
-  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string; mode?: AgentMode }): boolean;
+  adopt(
+    turns: readonly SessionTurn[],
+    options?: { sessionId?: string; mode?: AgentMode; cwd?: string; replace?: boolean; truncatedReason?: string },
+  ): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
   /** Stop everything and drop subscribers. */
@@ -262,6 +289,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const maxToolOutput = options.maxToolOutput ?? 4_000;
   const maxTurns = options.maxTurns ?? 200;
   const toAgent = (prompt: string) => (options.transformPrompt ? options.transformPrompt(prompt) : prompt);
+  const agentCanAsk = (candidate: CodingAgent): boolean =>
+    !!candidate.capabilities.questions ||
+    (!!options.questions && !!candidate.capabilities.mcp && !candidate.capabilities.remote);
   let agent = options.agent;
   if (options.mode !== undefined && options.mode !== 'default' && options.mode !== 'plan')
     throw new Error(`Unknown mode "${String(options.mode)}". Expected 'plan' or 'default'.`);
@@ -282,6 +312,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback?.length ? { fallback: options.fallback.map((candidate) => candidate.name) } : {}),
     canSteer: false,
+    canAsk: agentCanAsk(agent),
   };
   let fallback: readonly CodingAgent[] = options.fallback ?? [];
   // Agents that failed the current prompt; reset when a prompt starts on its own.
@@ -354,6 +385,32 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
   let nextIsNote = false;
   let noteTurn: { id: number; text: string } | undefined;
+  // Host context blocks queued for the next prompt (`addContext()`), preserved across failover and rejected steers.
+  const MAX_PENDING_CONTEXT = 10;
+  let contextEpoch = 0;
+  let pendingContext: string[] = [];
+  type ContextBatch = { texts: string[]; epoch: number; restored: boolean };
+  let turnContext: ContextBatch[] = [];
+  const clearContext = () => {
+    contextEpoch += 1;
+    pendingContext = [];
+    turnContext = [];
+  };
+  const takeContext = (): ContextBatch | undefined => {
+    if (!pendingContext.length) return undefined;
+    const batch: ContextBatch = { texts: pendingContext, epoch: contextEpoch, restored: false };
+    pendingContext = [];
+    return batch;
+  };
+  const restoreContext = (batches: readonly ContextBatch[]) => {
+    const recovered: string[] = [];
+    for (const batch of batches) {
+      if (batch.restored || batch.epoch !== contextEpoch) continue;
+      batch.restored = true;
+      recovered.push(...batch.texts);
+    }
+    if (recovered.length) pendingContext = [...recovered, ...pendingContext].slice(-MAX_PENDING_CONTEXT);
+  };
   const shiftNote = (): string => {
     const [next, ...rest] = state.notes ?? [];
     nextIsNote = true;
@@ -379,14 +436,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     set({ turns: state.turns.map((turn) => (turn.id === id ? change(turn) : turn)) });
   };
 
-  const keepTurns = (turns: SessionTurn[]) => {
+  const keepTurns = (turns: SessionTurn[], inheritedReason: string | undefined) => {
+    const dropped = turns.length > maxTurns;
     const kept = turns.slice(-maxTurns);
     for (const [id, packRun] of packRuns)
       if (!kept.some((turn) => turn.id === id)) {
         packRun.unsubscribe?.();
         packRuns.delete(id);
       }
-    return kept;
+    const truncatedReason = dropped
+      ? `Only the latest ${maxTurns} turns are kept in memory; earlier turns were omitted.`
+      : inheritedReason;
+    return { turns: kept, truncatedReason };
   };
 
   const syncPackTask = (turnId: number, id: string) => {
@@ -559,7 +620,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     addApproval(turnId, request);
     if (signal?.aborted) return Promise.resolve('deny');
     // Publishing changes nothing on disk, and the store has its own checks: no question for it.
-    if (!request.subtaskId && isPublishRequest(request, options.artifacts?.mcpServer))
+    if (!request.subtaskId && isServerToolRequest(request, options.artifacts?.mcpServer, PUBLISH_ARTIFACT_TOOL))
+      return Promise.resolve('approve');
+    // `open_project` shows its own confirmation card; no separate tool permission prompt ahead of it.
+    if (!request.subtaskId && isServerToolRequest(request, options.openProject?.mcpServer, OPEN_PROJECT_TOOL))
       return Promise.resolve('approve');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
@@ -606,8 +670,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
   };
 
-  // `ask_user` calls land in the turn that is running; between turns nobody is asked.
-  options.questions?.bind(async (request) => {
+  // `ask_user` and `open_project` calls land in the turn that is running; between turns nobody is asked.
+  const bindQuestion: QuestionHandler = async (request) => {
     const turn = state.turns.at(-1);
     if (closed || !run || !turn || turn.result) return undefined;
     const answers = await onQuestion(turn.id, request, controller?.signal);
@@ -622,7 +686,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       ),
     }));
     return answers;
-  });
+  };
+  options.questions?.bind(bindQuestion);
+  options.openProject?.bind(bindQuestion);
 
   const denyPending = () => {
     for (const resolve of waiting.values()) resolve('deny');
@@ -657,7 +723,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             : undefined;
     const mode = state.mode !== undefined && next.capabilities.plan ? state.mode : undefined;
     modeCleared = false;
-    set({ agent: next.name, sessionId, rateLimits: [], effort, mode });
+    set({ agent: next.name, sessionId, rateLimits: [], effort, mode, canAsk: agentCanAsk(next) });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
@@ -786,9 +852,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     explicitResume = undefined;
     const turnController = new AbortController();
     controller = turnController;
+    const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn], state.truncatedReason);
     set({
       status: 'running',
-      turns: keepTurns([...state.turns, turn]),
+      turns: nextTurns,
+      truncatedReason,
       canSteer: false,
     });
     const leavingPlan =
@@ -804,6 +872,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? 'default'
           : undefined;
     let current: AgentRun;
+    let contextBatch: ContextBatch | undefined;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
       if (left?.spent) throw new Error(left.spent);
@@ -814,6 +883,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const extraServers: McpServer[] = [];
       if (turnAgent.capabilities.mcp) {
         if (options.artifacts?.mcpServer) extraServers.push(options.artifacts.mcpServer);
+        if (options.openProject && !turnAgent.capabilities.remote && options.openProject.enabled())
+          extraServers.push(options.openProject.mcpServer);
         if (options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote) {
           const taken = new Set([...baseServers, ...extraServers].map((server) => server.name));
           const baseName = options.questions.mcpServer.name;
@@ -822,12 +893,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           extraServers.push(markQuestionChannelServer({ ...options.questions.mcpServer, name }));
         }
       }
+      const basePrompt = rewritten ?? toAgent(prompt);
+      contextBatch = takeContext();
+      const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
       current = turnAgent.run({
         ...options.task,
         ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
         ...(budget ? { budget } : {}),
         ...(taskMode ? { mode: taskMode } : {}),
-        prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
+        prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
         model: state.model,
         effort: turnEffort,
@@ -836,6 +910,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         onApproval: (request, signal) => onApproval(turnId, request, signal),
         onQuestion: (request, signal) => onQuestion(turnId, request, signal),
       });
+      turnContext = contextBatch ? [contextBatch] : [];
       if (current.pack) {
         const { lead, maxParallel } = current.pack;
         packRuns.set(turnId, {
@@ -849,6 +924,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }));
       }
     } catch (error) {
+      if (contextBatch) restoreContext([contextBatch]);
+      turnContext = [];
       // A throwing transformPrompt (or driver) fails this turn; the queue goes on as usual.
       current = failedRun(error instanceof Error ? error.message : String(error));
     }
@@ -906,8 +983,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           if (sessionId) set({ sessionId });
         }
       }
+      const activeContext = turnContext;
+      turnContext = [];
       if (failOver(turnId, result, effectiveMode)) {
-        // The same prompt again, on the next agent, keeping the mode it ran in; a note stays a note.
+        // Restore host context delivered to the failed turn so the fallback agent hears it too.
+        restoreContext(activeContext);
+        // The same prompt again, on the next agent; a note stays a note.
         if (finished && noteTurnWas) nextIsNote = true;
         return startTurn(finished!.prompt, true, { mode: effectiveMode });
       }
@@ -963,6 +1044,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const turnController = controller;
       // Transform only what is steered now; a queued prompt is transformed when its turn starts.
       let steerText: string | undefined;
+      let steerContext: ContextBatch | undefined;
       if (
         current?.steer &&
         state.canSteer &&
@@ -971,17 +1053,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         !sendOptions?.queue
       ) {
         try {
-          steerText = toAgent(prompt);
+          const transformed = toAgent(prompt);
+          steerContext = takeContext();
+          steerText = steerContext ? `${steerContext.texts.join('\n\n')}\n\n${transformed}` : transformed;
         } catch {
           // Queued instead: its turn reports the failure.
         }
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
+        if (steerContext) turnContext.push(steerContext);
         addEntry(turnId, { kind: 'input', text: prompt });
         current.steer(steerText).catch(() => {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
+          if (steerContext) restoreContext([steerContext]);
           enqueue(prompt, wantedMode, wantedLeavePlan);
           if (state.status === 'idle' && !budgetInReview()) {
             const next = takeNext();
@@ -992,6 +1078,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       enqueue(prompt, wantedMode, wantedLeavePlan);
       modeCleared = false;
+    },
+    addContext(text) {
+      const item = text.trim();
+      if (!item || closed) return;
+      pendingContext = [...pendingContext, item].slice(-MAX_PENDING_CONTEXT);
     },
     stop() {
       checkLifetime.abort();
@@ -1080,6 +1171,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     setAgent(next, switchOptions) {
       const carry = handoffOn && switchOptions?.handoff !== false;
+      if (!carry) clearContext();
       if (next === agent) {
         // Switching to the current agent fresh is a reset of its session.
         if (!carry) {
@@ -1131,7 +1223,20 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     setBudget(budget) {
       set({ budget });
     },
+    setCwd(cwd, moveOptions) {
+      if (closed) return false;
+      if (cwd === state.cwd) return true;
+      const carry = handoffOn && moveOptions?.handoff !== false;
+      if (!carry) clearContext();
+      explicitResume = undefined;
+      known.clear();
+      missedAfter = carry && state.turns.length ? resetAt : undefined;
+      if (state.status === 'running') forgetAfterTurn = true;
+      set({ cwd, sessionId: undefined });
+      return true;
+    },
     reset() {
+      clearContext();
       explicitResume = undefined;
       modeCleared = false;
       known.clear();
@@ -1140,22 +1245,44 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },
-    clear() {
+    clear(clearOptions) {
       if (state.status === 'running' || closed) return false;
+      clearContext();
       explicitResume = undefined;
       modeCleared = false;
       known.clear();
       missedAfter = undefined;
       resetAt = nextTurnId - 1;
       queue = [];
-      set({ sessionId: undefined, turns: [], queued: [], notes: [] });
+      set({
+        sessionId: undefined,
+        turns: [],
+        queued: [],
+        notes: [],
+        truncatedReason: undefined,
+        ...(clearOptions?.cwd !== undefined ? { cwd: clearOptions.cwd } : {}),
+      });
       return true;
     },
     adopt(turns, adoptOptions) {
       if (state.status === 'running' || closed) return false;
       const own = adoptOptions?.sessionId && agent.capabilities.resume ? adoptOptions.sessionId : undefined;
-      if (!turns.length && !own) return true;
-      const before = state.turns.at(-1)?.id ?? 0;
+      const nextCwd = adoptOptions?.cwd;
+      const cwdChanged = nextCwd !== undefined && nextCwd !== state.cwd;
+      const replace = adoptOptions?.replace === true;
+      if (!turns.length && !own && !cwdChanged && !replace) return true;
+      clearContext();
+      if (cwdChanged || replace) {
+        explicitResume = undefined;
+        known.clear();
+      }
+      if (replace) {
+        queue = [];
+        missedAfter = undefined;
+        resetAt = nextTurnId - 1;
+      }
+      const baseTurns = replace ? [] : state.turns;
+      const before = baseTurns.at(-1)?.id ?? 0;
       const adopted = turns.map((turn) => {
         // A handoff of its own belongs to the session it came from.
         const copy: SessionTurn = { ...turn, id: nextTurnId++ };
@@ -1176,13 +1303,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           effort: state.effort,
           mode: inheritedMode ?? state.mode ?? adoptOptions?.mode,
         });
-      } else {
+      } else if (adopted.length) {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
       }
+      const { turns: nextTurns, truncatedReason } = keepTurns(
+        [...baseTurns, ...adopted],
+        adoptOptions?.truncatedReason ?? (replace ? undefined : state.truncatedReason),
+      );
       set({
-        turns: keepTurns([...state.turns, ...adopted]),
-        ...(own ? { sessionId: own } : {}),
+        turns: nextTurns,
+        truncatedReason,
+        ...(replace
+          ? { queued: [], notes: [], sessionId: own }
+          : own
+            ? { sessionId: own }
+            : cwdChanged
+              ? { sessionId: undefined }
+              : {}),
+        ...(cwdChanged ? { cwd: nextCwd } : {}),
         ...(inheritedMode ? { mode: inheritedMode } : {}),
       });
       return true;
@@ -1193,9 +1332,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     close() {
       closed = true;
+      clearContext();
       for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
       options.questions?.bind(undefined);
+      options.openProject?.bind(undefined);
       if (state.notes?.length) set({ notes: [] });
       this.stop();
       listeners.clear();
@@ -1205,14 +1346,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 }
 
-/** Claude's permission prompt for the session's own `publish_artifact` tool. */
-function isPublishRequest(request: ApprovalRequest, server: McpServer | undefined): boolean {
+/** Claude's permission prompt for one of the session's own MCP tools (`publish_artifact`, `open_project`). */
+function isServerToolRequest(request: ApprovalRequest, server: McpServer | undefined, tool: string): boolean {
   const detail = request.detail;
   return (
     !!server &&
     typeof detail === 'object' &&
     detail !== null &&
-    (detail as { tool_name?: unknown }).tool_name === `mcp__${server.name}__${PUBLISH_ARTIFACT_TOOL}`
+    (detail as { tool_name?: unknown }).tool_name === `mcp__${server.name}__${tool}`
   );
 }
 

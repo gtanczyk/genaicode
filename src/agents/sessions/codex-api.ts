@@ -252,5 +252,6 @@ export async function readCodexThread(
     cursor = isRecord(result) && typeof result.nextCursor === 'string' ? result.nextCursor : null;
     if (!cursor || !data.length) break;
   }
+  if (cursor && turns.length >= wanted) options.onTruncated?.('max-turns');
   return codexTurns(turns.reverse(), options);
 }

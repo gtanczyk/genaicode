@@ -33,8 +33,8 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 | Claude Code      | `claude()`                    | `steer()`, MCP, approvals, max turns, effort       |
 | Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals            |
 | GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns              |
-| Cursor           | `cursor()`                    | streamed text deltas                               |
-| Gemini CLI       | `gemini()`                    | approval mode                                      |
+| Cursor           | `cursor()`                    | MCP servers, streamed text deltas                  |
+| Gemini CLI       | `gemini()`                    | MCP servers, approval mode                         |
 | opencode         | `opencode()`                  | `provider/model` ids, variants                     |
 | Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price                |
 | Antigravity CLI  | `antigravity()`               | `steer()`, MCP, approvals, sandbox, effort, usage  |
@@ -352,11 +352,13 @@ browser's Sessions view has the same as a "N wait for you" button; in code,
 
 Not every waiting session asks for something: most just ended. `SessionInfo.ending` says what the
 end of the agent's last message asks, read from its shape by `replyEnding(lastReply)`: `question`
-(it ends on a question), `command` (it ends on a shell code block for you to run), `offer` ("I can
-also...", "let me know") or `unreported` (it says it could not report back to the thread that sent
-it). Those come right after the approvals in `--waiting`, marked `●`, and `sessions_list` says
-`[ends with: question]`. It is a guess from the last 200 characters: a request put as a plain
-statement is not seen.
+(it ends on a question), `request` (a request put as a statement: "Confirm…", "Your call
+whether…", "Daj znać, czy mam…", "Musisz jeszcze…"), `command` (it ends on a shell code block for
+you to run), `offer` ("I can also...", "let me know") or `unreported` (it says it could not report
+back to the thread that sent it). `attentionOf(session)` turns that into `now` (an approval, or a
+question, request or command from the last 3 days) or `stalled` (an offer, an unsent report, or
+anything older). `sessions_list` says `[ends with: question]`. It is a guess from the last 200
+characters: a request in words it does not know is not seen.
 
 Sessions nobody typed into are left out of every listing: scheduled tasks and notifications in
 Claude Code (every prompt has `origin.kind` or `turnOrigin` other than `human`, or the session
@@ -591,9 +593,11 @@ message there as a new turn, with that session's own agent in its own directory.
 message to each session shows as an approval in the chat, with the recipient and the exact
 text; once allowed, later messages to that session go without asking until the chat closes.
 With auto-approve on (`--yes`, `/auto`) nothing is asked. The tool returns once the message is
-sent, and the chat shows the session's answer when its turn ends. A session that is working right
+sent, and the chat shows a live card (`Queued` → `Working` → `Answered` / `Failed`) with the target
+agent's progress and full Markdown reply when its turn ends, passing that reply into the chat
+agent's context on the next prompt so it does not have to poll or repeat it. A session that is working right
 now (or waits for an approval) gets the message queued: the tool answers "Queued for ...", the
-chat says so, and the message goes as that session's next turn once the current one ends. Several
+card shows `Queued`, and the message goes as that session's next turn once the current one ends. Several
 messages to one session go in order, one turn each. A queued message is dropped when the chat
 closes first or the session still works after 6 hours (`maxWaitMs`). The agent in the other
 session is not interrupted: its CLI offers no way in from outside mid-turn. Closing the chat
@@ -753,7 +757,7 @@ app.get('/artifacts/:id', (req, res) => {
 
 - The agent gets one MCP tool, `publish_artifact({ title, path | content + format, name? })`, on
   a loopback MCP server behind a bearer token. So it works for the agents that take MCP servers
-  in genaicode (claude, codex, codexLive, copilot, muse, museLive, antigravity); the others
+  in genaicode (claude, codex, codexLive, copilot, cursor, gemini, muse, museLive, antigravity); the others
   simply do not get the tool. An app with its own MCP server can mount `store.tool()` there
   and pass `{ store }` alone; `createAppAgent` does exactly that (see [app-agent.md](app-agent.md)).
 - Each publish adds an `artifact` entry (`{ id, title, kind, mimeType, bytes, version, path? }`)
@@ -783,17 +787,28 @@ app.get('/artifacts/:id', (req, res) => {
 
 Artifacts are agent-written content, so they are handled as untrusted:
 
-- **Files**: only regular files inside `cwd` after resolving symlinks; `.git`, `.genaicode`,
-  `.ssh` and similar folders, `.env*`, key and certificate files are refused. This guards
-  against a confused or prompt-injected agent, not against one with a shell, which can read
-  those files anyway.
+- **Files**: only regular files inside allowed roots after resolving symlinks (`cwd` accepts a single
+  directory, a list of roots, or a function returning them — e.g. the session's `cwd`, opened session
+  directories, and pack worktrees); `.git`, `.genaicode`, `.ssh` and similar folders, `.env*`, key and
+  certificate files are refused. This guards against a confused or prompt-injected agent, not against
+  one with a shell, which can read those files anyway.
 - **Types**: the MIME type comes from the file extension or `format`, never from the agent,
   and everything is sent with `nosniff`. Unknown types download instead of rendering.
 - **HTML**: `artifactResponse()` sends a Content-Security-Policy with `sandbox allow-scripts`
   and `default-src 'none'`: the page runs its own inline code in an origin of its own (no
   cookies, storage or DOM of your app, also when its URL is opened directly) and loads
-  nothing from the network, so no CDN scripts either. `<AgentChat>` adds the same sandbox on
-  the frame. SVG is shown as an image, or with scripts off when opened directly.
+  nothing from the network by default. To opt in to specific library CDNs, pass
+  `allowScriptHosts: ['cdn.jsdelivr.net', 'unpkg.com']` to `createArtifactStore` /
+  `startArtifactChannel` (and to `artifactResponse`, or `store.allowScriptHosts()`): those hosts are
+  added to `script-src`, `style-src` and `font-src` only while `connect-src`, `img-src`, `media-src`
+  and `form-action` stay closed, and the `publish_artifact` tool description tells the agent which
+  hosts are allowed and recommends Subresource Integrity. **Residual risk**: a script loaded from an
+  allowed CDN executes with access to the artifact's data, so choosing hosts is a trust decision.
+  `<AgentChat>` adds the same sandbox on the frame. SVG is shown as an image, or with scripts off
+  when opened directly.
+- **Versions**: `store.read(id, version?)` retains previous versions of republished artifacts within
+  `maxTotalBytes` (dropping superseded versions before whole artifacts), and `artifactResponse`
+  supports `{ download: true }` to force `Content-Disposition: attachment`.
 - **Answers from a page** are data from agent-written code: they reach the agent only after
   the user saw and confirmed them, at most 20 KB of JSON at a time.
 - **What is left**: a page can still navigate its own frame to another site and carry data in
@@ -919,9 +934,11 @@ const run = claude().run({
   `createAgentSession({ questions: channel })` hands it to every agent that takes MCP servers
   and has no `capabilities.questions` (nor `capabilities.remote`: managed and hosted agents run
   elsewhere and cannot reach this machine's loopback). Its questions show and are answered like
-  the agent's own; the tool returns the answers as text, and Codex is told to wait up to a day
-  for it (`toolTimeoutSec` on the server). The server is `trusted`: Codex and Antigravity run
-  it without a permission prompt in front of the question. `genaicode chat` and `ui` do this.
+  the agent's own; the tool returns the answers as text, and Codex, Copilot and Gemini are told
+  to wait up to a day for it (`toolTimeoutSec` on the server). The server is `trusted`: Codex,
+  Antigravity, Muse live, Copilot and Gemini run it without a permission prompt in front of the
+  question. `SessionState.canAsk` reports whether the current agent can ask (own tool, or MCP
+  with a question channel). `genaicode chat` and `ui` do this.
 - In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
   it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
   the options, and `genaicode chat` asks in the terminal.
@@ -1024,7 +1041,7 @@ protocol and resolves with `{ ok, error? }` when the turn ends.
 ## MCP servers
 
 `task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
-(`claude`, `codex`, `codexLive`, `copilot`, `muse`, `museLive`, `antigravity`):
+(`claude`, `codex`, `codexLive`, `copilot`, `cursor`, `gemini`, `muse`, `museLive`, `antigravity`):
 
 ```ts
 await claude().run({
@@ -1046,15 +1063,25 @@ await claude().run({
   on Codex's own environment and forwarded by name (`env_vars`); two servers cannot use
   different values for the same variable.
 - Copilot CLI gets a temporary `--additional-mcp-config @<file>` (mode 0600, removed after
-  the run), added to the user's own MCP config. `--allow-all-tools` already covers the
-  servers' tools; with `allowAllTools: false` each server is pre-allowed with
-  `--allow-tool=<name>` unless `allowMcpTools: false`.
+  the run), added to the user's own MCP config, with `timeout` mapped from `toolTimeoutSec`
+  (in ms). `--allow-all-tools` already covers the servers' tools; with `allowAllTools: false`
+  each server is pre-allowed with `--allow-tool=<name>` unless `allowMcpTools: false` (`trusted`
+  servers are always pre-allowed).
+- Gemini CLI gets a temporary system settings file (mode 0600, removed after the run) via
+  `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, preserving any existing system settings file without
+  touching user or project settings. HTTP servers use `httpUrl`, `toolTimeoutSec` maps to
+  `timeout` (in ms), and servers are marked `trust: true` unless `allowMcpTools: false`
+  (`trusted` servers are always marked trusted).
+- Cursor CLI (`cursor-agent`) gets a temporary `--plugin-dir` containing `.cursor-plugin/plugin.json`
+  and `mcp.json` (mode 0600, removed after the run). Neither `~/.cursor/mcp.json` nor the
+  project's `.cursor/mcp.json` is touched, and secrets stay out of argv.
 - Muse Code (`muse exec`, `muse serve`) gets repeatable `-c mcp_servers.<name>.*` overrides
   (`transport` `streamable_http` or `stdio`, `url`, `command`, `args`). Header values and a
   stdio server's `env` values go through environment variables that the overrides name as a
   whole-value `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code
-  1.4.4 or newer (checked with 1.4.13). Under `museLive()` with `permissions.approval: 'ask'`
-  every MCP tool call is an approval request: answer it in `onApproval`.
+  1.4.4 or newer (checked with 1.4.25). Under `museLive()` with `permissions.approval: 'ask'`
+  every untrusted MCP tool call is an approval request: answer it in `onApproval`; tools of a
+  `trusted` server (`ask_user`) are approved once automatically without prompting.
 - Antigravity CLI (`agy acp`, 1.5.0+) receives the task's HTTP and stdio servers in the
   JSON-RPC `session/new` / `session/resume` request over stdin, so secret headers and env
   values never appear in argv or on disk, and pre-allows the attached servers' tools for the

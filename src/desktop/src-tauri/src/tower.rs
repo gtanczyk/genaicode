@@ -24,7 +24,7 @@ pub struct Waiting {
     pub last_reply: Option<String>,
     pub waiting_for: Option<String>,
     pub waiting_tool: Option<String>,
-    /// What the end of its last message asks: `question`, `command`, `offer`, `unreported`.
+    /// What the end of its last message asks: `question`, `request`, `command`, `offer`, `unreported`.
     pub ending: Option<String>,
     /// The name of the topic it belongs to (`genaicode topics`), when it has one.
     pub topic: Option<String>,
@@ -38,7 +38,10 @@ pub struct Topic {
     pub id: String,
     pub name: String,
     pub sessions: usize,
+    /// Sessions that need the user now: approvals, fresh questions and commands to run.
     pub asking: usize,
+    /// Sessions left on an offer, an unsent report or an old question: they block nobody.
+    pub stalled: usize,
     pub active: usize,
 }
 
@@ -116,6 +119,33 @@ pub fn working(topics: &[Topic]) -> Vec<String> {
     lines
 }
 
+/// The topics that only stalled, one line each, for a folded submenu: `Knights · 3 stalled`.
+/// The heading says how many sessions in all; `None` when nothing stalled.
+pub fn stalled(topics: &[Topic]) -> Option<(String, Vec<String>)> {
+    let left: Vec<&Topic> = topics
+        .iter()
+        .filter(|topic| topic.stalled > 0 && topic.asking == 0)
+        .collect();
+    if left.is_empty() {
+        return None;
+    }
+    let total: usize = left.iter().map(|topic| topic.stalled).sum();
+    let mut lines: Vec<String> = left
+        .iter()
+        .take(MOST)
+        .map(|topic| {
+            one_line(
+                &format!("{} · {} stalled", topic.name, topic.stalled),
+                LABEL,
+            )
+        })
+        .collect();
+    if left.len() > MOST {
+        lines.push(format!("…and {} more topics", left.len() - MOST));
+    }
+    Some((format!("Stalled ({total})"), lines))
+}
+
 /// A line of the menu. `session` is the index in the snapshot the menu was built from.
 #[derive(Debug, PartialEq)]
 pub enum Entry {
@@ -149,6 +179,7 @@ fn one_line(text: &str, most: usize) -> String {
 fn ending_says(ending: &str) -> Option<&'static str> {
     match ending {
         "question" => Some("asks"),
+        "request" => Some("asks you"),
         "command" => Some("wants you to run"),
         "offer" => Some("offers"),
         "unreported" => Some("could not report back"),
@@ -234,7 +265,7 @@ pub fn entries(sessions: &[Waiting]) -> Vec<Entry> {
         }
     }
     if all.is_empty() {
-        return vec![Entry::Note("Nothing waits for you".into())];
+        return vec![Entry::Note("Nothing needs you now".into())];
     }
     if all.len() > MOST {
         let more = all.len() - MOST;
@@ -384,10 +415,36 @@ mod tests {
     }
 
     #[test]
+    fn folds_the_topics_that_only_stalled() {
+        let line = r#"{"sessions":[],"topics":[{"id":"t1","name":"Knights","sessions":9,"asking":0,"stalled":3,"active":0},{"id":"t2","name":"Pack mode","sessions":4,"asking":1,"stalled":2,"active":0},{"id":"t3","name":"Docs","sessions":2,"asking":0,"active":1}]}"#;
+        let snapshot = parse_snapshot(line).expect("a snapshot");
+        assert_eq!(snapshot.topics[2].stalled, 0);
+        assert_eq!(
+            stalled(&snapshot.topics),
+            Some((
+                "Stalled (3)".to_string(),
+                vec!["Knights · 3 stalled".to_string()]
+            ))
+        );
+        assert_eq!(stalled(&[]), None);
+        let many: Vec<Topic> = (0..15)
+            .map(|index| Topic {
+                name: format!("Topic {index}"),
+                stalled: 1,
+                ..Default::default()
+            })
+            .collect();
+        let (heading, lines) = stalled(&many).expect("stalled topics");
+        assert_eq!(heading, "Stalled (15)");
+        assert_eq!(lines.len(), MOST + 1);
+        assert_eq!(lines[MOST], "…and 3 more topics");
+    }
+
+    #[test]
     fn says_when_nothing_waits_and_when_more_do_than_fit() {
         assert_eq!(
             entries(&[]),
-            vec![Entry::Note("Nothing waits for you".into())]
+            vec![Entry::Note("Nothing needs you now".into())]
         );
         assert_eq!(count(&[]), None);
         let many: Vec<Waiting> = (0..15)

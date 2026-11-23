@@ -189,3 +189,31 @@ it('reclaims a send after the process holding its claim has exited', async () =>
   expect(await sendSession([agentFor()], session.id, 'retry', { env: isolated })).toBe(ok);
   expect(readdirSync(dir)).toEqual([]);
 });
+
+it('aborts and awaits the started run if onStart throws before releasing the claim', async () => {
+  let aborted = false;
+  let settle!: () => void;
+  const done = new Promise<AgentResult>((resolve) => {
+    settle = () => resolve({ status: 'aborted', ok: false, exitCode: null, signal: 'SIGTERM' });
+  });
+  const owner = agentFor([session]);
+  owner.run.mockImplementationOnce(() => ({
+    result: done,
+    abort() {
+      aborted = true;
+      settle();
+    },
+    async *[Symbol.asyncIterator]() {
+      yield { type: 'done', result: await done };
+    },
+  }));
+  await expect(
+    sendSession([owner], session.id, 'go', {
+      env,
+      onStart: () => {
+        throw new Error('boom');
+      },
+    }),
+  ).rejects.toThrow('boom');
+  expect(aborted).toBe(true);
+});

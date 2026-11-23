@@ -3,7 +3,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '../agents/session.js';
-import { AgentChat, artifactSubmission, Markdown, type AgentChatProps } from '../react.js';
+import {
+  AgentChat,
+  ArtifactPanel,
+  artifactSubmission,
+  Markdown,
+  parseFileTarget,
+  type AgentChatProps,
+} from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -221,6 +228,17 @@ describe('AgentChat', () => {
     expect(text('ol li')).toEqual(['one', 'two']);
   });
 
+  it('renders angle-delimited web links and keeps unsupported schemes as text', () => {
+    act(() =>
+      root.render(
+        <Markdown text="[docs](<https://example.org/a_(b)>), [mail](<mailto:a@example.org>) or [bad](<javascript:alert(1)>)." />,
+      ),
+    );
+    expect(text('a')).toEqual(['docs', 'mail']);
+    expect($$('a').map((a) => a.getAttribute('href'))).toEqual(['https://example.org/a_(b)', 'mailto:a@example.org']);
+    expect($('.gc-md').textContent).toBe('docs, mail or [bad](<javascript:alert(1)>).');
+  });
+
   it('renders headings, quotes, rules and item continuations, and stays fast on hostile text', () => {
     act(() =>
       root.render(<Markdown text={'## Plan\n\n> quoted *note*\n\n---\n\n- one\n  more\n- two\n\n#not a heading'} />),
@@ -405,7 +423,7 @@ describe('AgentChat', () => {
     const link = $<HTMLButtonElement>('.gc-file-link');
     expect(link.textContent).toBe('a.txt');
     act(() => link.click());
-    expect(onOpenFile).toHaveBeenCalledWith('/w/a.txt');
+    expect(onOpenFile).toHaveBeenCalledWith('/w/a.txt', { line: 1 });
     expect(document.querySelector('a[href="https://example.com"]')).not.toBeNull();
   });
 
@@ -504,6 +522,39 @@ describe('AgentChat', () => {
     type('hello');
     key({ key: 'Enter' });
     expect(props.onSend).not.toHaveBeenCalled();
+  });
+
+  it('replaces raw error entries when renderFailure returns custom content', () => {
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'codex',
+          prompt: 'hello',
+          entries: [{ kind: 'error', message: 'RAW 401 stderr output' }],
+          startedAt: 1000,
+          endedAt: 1200,
+          result: {
+            status: 'failed',
+            ok: false,
+            exitCode: 1,
+            signal: null,
+            error: 'RAW 401 stderr output',
+            failure: { kind: 'auth' },
+          },
+        },
+      ],
+    });
+    render({
+      state,
+      renderFailure: (turn) =>
+        turn.result?.failure?.kind === 'auth' ? (
+          <div className="custom-signin">Sign in to {turn.agent}</div>
+        ) : undefined,
+    });
+    expect(container.textContent).toContain('Sign in to codex');
+    expect(container.textContent).not.toContain('RAW 401 stderr output');
+    expect(container.textContent).toContain('sign-in required · codex');
   });
 
   it('shows an agent question as a card and sends the answers', () => {
@@ -639,6 +690,180 @@ describe('AgentChat', () => {
     // Notices sit between turns: after the first one here.
     const order = $$('.gc-thread > *').map((el) => el.className);
     expect(order).toEqual(['gc-turn', 'gc-after-turn', 'gc-notice gc-err', 'gc-turn', 'gc-footer-slot']);
+  });
+
+  it('renders live cross-session relay cards with status, collapsible prompt, and Markdown replies', () => {
+    const startedAt = Date.now() - 42_000;
+    render({
+      formatToolName: (name) => (name === 'Bash' ? 'Shell' : name),
+      notices: [
+        {
+          id: 'r1',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'da398a6c-9f2e-48a6-b766-b329efe401b3',
+            title: 'Merge PR #296',
+            cwd: '/work/genaicode',
+            prompt: 'Check CI and merge PR #296\nNo admin bypass.',
+            status: 'answered',
+            startedAt,
+            endedAt: startedAt + 42_000,
+            reply:
+              '[PR #296](https://github.com/gtanczyk/genaicode/pull/296) merged as `2be53b1`.\n\n- **Checks:** all green',
+          },
+        },
+        {
+          id: 'r2',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'ab12cd34',
+            cwd: '/work/genaicode',
+            prompt: 'Check release PR',
+            status: 'working',
+            startedAt: Date.now() - 5_000,
+            tool: 'Bash',
+          },
+        },
+        {
+          id: 'r3',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 'ff99ee88',
+            cwd: '/work/genaicode',
+            prompt: 'Run npm run check',
+            status: 'queued',
+            startedAt: Date.now(),
+          },
+        },
+        {
+          id: 'r4',
+          afterTurn: 1,
+          text: 'fallback',
+          tone: 'error',
+          relay: {
+            agent: 'claude',
+            sessionId: 'deadbeef',
+            cwd: '/work/genaicode',
+            prompt: 'Inspect logs',
+            status: 'failed',
+            startedAt,
+            endedAt: startedAt + 1_000,
+            error: 'Session could not be found.',
+          },
+        },
+      ],
+    });
+    const cards = $$('.gc-relay');
+    expect(cards).toHaveLength(4);
+
+    // Answered: avatar, project chip, duration pill, collapsible sent prompt, rendered Markdown.
+    const answered = cards[0]!;
+    expect(answered.querySelector('.gc-relay-avatar')?.textContent).toBe('cl');
+    expect(answered.querySelector('.gc-relay-project')?.textContent).toBe('genaicode');
+    expect(answered.querySelector('.gc-relay-status')?.textContent).toBe('Answered · 42s');
+    expect(answered.querySelector('.gc-relay-sent-preview')?.textContent).toBe('Check CI and merge PR #296');
+    expect(answered.querySelector('.gc-relay-sent-full')?.textContent).toContain('No admin bypass.');
+    expect(answered.querySelector('.gc-relay-body a')?.getAttribute('href')).toBe(
+      'https://github.com/gtanczyk/genaicode/pull/296',
+    );
+    expect(answered.querySelector('.gc-relay-body code')?.textContent).toBe('2be53b1');
+    expect(answered.querySelector('.gc-relay-body strong')?.textContent).toBe('Checks:');
+
+    // Working: spinner + formatted tool name.
+    const working = cards[1]!;
+    expect(working.querySelector('.gc-relay-status .gc-spin')).toBeTruthy();
+    expect(working.querySelector('.gc-relay-status')?.textContent).toContain('Working ·');
+    expect(working.querySelector('.gc-relay-live')?.textContent).toBe('NowShell');
+
+    // Queued: waiting hint.
+    const queued = cards[2]!;
+    expect(queued.querySelector('.gc-relay-status')?.textContent).toBe('Queued');
+    expect(queued.querySelector('.gc-relay-live')?.textContent).toContain('Waiting for its current turn');
+
+    // Failed: error alert.
+    const failed = cards[3]!;
+    expect(failed.querySelector('.gc-relay-status')?.textContent).toBe('Failed');
+    expect(failed.querySelector('[role="alert"]')?.textContent).toBe('Session could not be found.');
+  });
+
+  it('scopes Markdown file links and local images in relay replies to the target project and active workspace', () => {
+    const onOpenFile = vi.fn();
+    const imageUrl = vi.fn((path: string) =>
+      path.endsWith('.png') ? `/files/${encodeURIComponent(path)}` : undefined,
+    );
+    render({
+      onOpenFile,
+      imageUrl,
+      state: fixture({ cwd: '/work/app' }),
+      notices: [
+        {
+          id: 'same-sub',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 's1',
+            cwd: '/work/app/packages/ui',
+            prompt: 'Check file',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply: 'See [button](./src/button.tsx) and [outside](../../../other/secret.ts).',
+          },
+        },
+        {
+          id: 'foreign',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 's2',
+            cwd: '/work/other',
+            prompt: 'Check result',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply:
+              'See [result](./src/result.ts#L12-L20), [app](/work/app/src/index.ts), ![shot](./shot.png), and [escape](../../etc/passwd).',
+          },
+        },
+      ],
+    });
+    const [inWorkspace, foreign] = $$('.gc-relay');
+    // Subdirectory link resolves against relay.cwd and opens inside /work/app.
+    const inButton = inWorkspace!.querySelector<HTMLButtonElement>('button.gc-file-link');
+    expect(inButton?.getAttribute('data-gc-file')).toBe('/work/app/packages/ui/src/button.tsx');
+    act(() => inButton!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/app/packages/ui/src/button.tsx');
+    // Traversal escaping both relay.cwd and /work/app renders as plain non-clickable text.
+    expect(inWorkspace!.querySelectorAll('button.gc-file-link')).toHaveLength(1);
+    expect(inWorkspace!.querySelector('span.gc-file-link')?.getAttribute('title')).toBe('/work/other/secret.ts');
+
+    // Foreign project links resolve against relay.cwd (never the active workspace) and preserve line ranges.
+    const foreignButtons = Array.from(foreign!.querySelectorAll<HTMLButtonElement>('button.gc-file-link'));
+    expect(foreignButtons.map((el) => el.getAttribute('data-gc-file'))).toEqual([
+      '/work/other/src/result.ts',
+      '/work/app/src/index.ts',
+    ]);
+    act(() => foreignButtons[0]!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/other/src/result.ts', { line: 12, endLine: 20 });
+
+    // Local image in the foreign relay resolves against relay.cwd too.
+    const imgBtn = foreign!.querySelector<HTMLButtonElement>('button.gc-md-image-btn');
+    expect(imgBtn?.getAttribute('data-gc-file')).toBe('/work/other/shot.png');
+    expect(imageUrl).toHaveBeenCalledWith('/work/other/shot.png');
+
+    // Escaped path outside both relay.cwd and state.cwd stays non-clickable.
+    const escaped = foreign!.querySelector('span.gc-file-link');
+    expect(escaped?.getAttribute('title')).toBe('/etc/passwd');
+    act(() => (escaped as HTMLElement).click());
+    expect(onOpenFile).toHaveBeenCalledTimes(2);
   });
 
   it('replaces or drops the header, sets the theme', () => {
@@ -936,5 +1161,223 @@ describe('AgentChat', () => {
     const sent = (props.onSend as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(sent[0]).toBe('just text');
     expect(sent[1] ?? []).toEqual([]);
+  });
+
+  it('passes file-link line and range positions to onOpenFile and parses targets cleanly', () => {
+    expect(parseFileTarget('/w/a.ts:12')).toEqual({ path: '/w/a.ts', position: { line: 12 } });
+    expect(parseFileTarget('/w/a.ts:12:3')).toEqual({ path: '/w/a.ts', position: { line: 12, column: 3 } });
+    expect(parseFileTarget('./src/b.ts#L12-L20')).toEqual({ path: './src/b.ts', position: { line: 12, endLine: 20 } });
+    expect(parseFileTarget('C:\\work\\c.ts:5:2')).toEqual({ path: 'C:\\work\\c.ts', position: { line: 5, column: 2 } });
+    expect(parseFileTarget('/w/plain.ts')).toEqual({ path: '/w/plain.ts' });
+
+    const onOpenFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [
+            {
+              kind: 'text',
+              text: 'See [one](/w/a.ts:12:3), [range](<./My Project (draft)/b.ts#L5-L9>) and [podroz-po-calym-swiecie](</work/podroz-po-calym-swiecie>).',
+              streaming: false,
+            },
+          ],
+        },
+      ],
+    });
+    render({ state, onOpenFile });
+    const links = $$('.gc-file-link');
+    expect(links).toHaveLength(3);
+    expect(links.map((element) => element.textContent)).toEqual(['one', 'range', 'podroz-po-calym-swiecie']);
+    click(links[0]!);
+    click(links[1]!);
+    click(links[2]!);
+    expect(onOpenFile.mock.calls).toEqual([
+      ['/w/a.ts', { line: 12, column: 3 }],
+      ['./My Project (draft)/b.ts', { line: 5, endLine: 9 }],
+      ['/work/podroz-po-calym-swiecie'],
+    ]);
+  });
+
+  it('renders Markdown images safely: local thumbnails, click-to-load remote chips, no data: URIs, linear time', () => {
+    const onOpenFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [
+            {
+              kind: 'text',
+              text: [
+                '![Chart](/work/chart.png)',
+                '![Unresolved](./missing.png)',
+                '![Tracker](https://cdn.example/pixel.png?secret=1)',
+                '![Inline](data:image/svg+xml,<svg/>)',
+                '![Nested](https://a.example/x.png) [![Inner](https://b.example/y.png)](https://outer.example)',
+              ].join('\n\n'),
+              streaming: false,
+            },
+          ],
+        },
+      ],
+    });
+    render({
+      state,
+      onOpenFile,
+      imageUrl: (path) => (path === '/work/chart.png' ? '/files/deadbeef' : undefined),
+    });
+
+    // Local resolved image becomes a clickable thumbnail with lazy + no-referrer.
+    const thumb = $<HTMLImageElement>('.gc-md-image-btn img.gc-md-image');
+    expect(thumb.getAttribute('src')).toBe('/files/deadbeef');
+    expect(thumb.getAttribute('loading')).toBe('lazy');
+    expect(thumb.getAttribute('referrerpolicy')).toBe('no-referrer');
+    click($('.gc-md-image-btn'));
+    expect(onOpenFile).toHaveBeenCalledWith('/work/chart.png');
+
+    // Unresolved local image falls back to a file link.
+    const fallback = $<HTMLButtonElement>('.gc-file-link[data-gc-file="./missing.png"]');
+    expect(fallback.textContent).toBe('Unresolved');
+
+    // Remote images NEVER render an <img> before clicking Load.
+    expect($$('img').map((el) => el.getAttribute('src'))).toEqual(['/files/deadbeef']);
+    const chips = $$('.gc-md-image-chip');
+    expect(chips.length).toBe(3);
+    expect(chips[0]!.textContent).toContain('Image: cdn.example/pixel.png');
+    expect(chips[0]!.textContent).not.toContain('secret=1');
+    // No nested links around images.
+    expect($$('a a')).toHaveLength(0);
+
+    // Clicking Load loads that specific remote image with no-referrer.
+    click(chips[0]!.querySelector('button.gc-md-image-load')!);
+    expect($$('img').map((el) => el.getAttribute('src'))).toEqual([
+      '/files/deadbeef',
+      'https://cdn.example/pixel.png?secret=1',
+    ]);
+
+    // data: URI is never rendered as an image; kept as plain text.
+    expect(container.textContent).toContain('![Inline](data:image/svg+xml,<svg/>)');
+    expect($$('img[src^="data:"]')).toHaveLength(0);
+
+    // Clicking Load authorizes only that exact URL: replacing it at the same position requires a fresh click.
+    act(() => root.render(<Markdown text="![First](https://img.example/one.png)" />));
+    click($('button.gc-md-image-load'));
+    expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/one.png');
+    act(() => root.render(<Markdown text="![Second](https://img.example/two.png)" />));
+    expect($$('img')).toHaveLength(0);
+    expect($('.gc-md-image-chip').textContent).toContain('img.example/two.png');
+
+    // remoteImages="load" loads remote images immediately.
+    act(() => root.render(<Markdown text="![Photo](https://img.example/pic.jpg)" remoteImages="load" />));
+    expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/pic.jpg');
+
+    // Bounded regex stays fast on hostile unclosed image tokens.
+    const started = Date.now();
+    act(() => root.render(<Markdown text={`${'!['.repeat(20_000)}${'('.repeat(20_000)}`} />));
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('delegates artifact Open to onOpenArtifact and exports a working ArtifactPanel', () => {
+    const v1 = {
+      id: 'a'.repeat(32),
+      name: 'survey',
+      title: 'Survey',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 120,
+      version: 1,
+    };
+    const v2 = { ...v1, bytes: 180, version: 2 };
+    const state = fixture();
+    state.turns[0].entries.push({ kind: 'artifact', artifact: v2 });
+    const onOpenArtifact = vi.fn();
+    render({ state, artifactUrl: (a) => `/artifacts/${a.id}?v=${a.version}`, onOpenArtifact });
+    click($$('.gc-artifact button')[0]!);
+    expect(onOpenArtifact).toHaveBeenCalledWith(v2);
+    // Inline iframe is NOT expanded when onOpenArtifact is set.
+    expect($('iframe')).toBeNull();
+
+    // Exported <ArtifactPanel>: version switching, full size Esc order, and submit confirmation.
+    const onSelectVersion = vi.fn();
+    const onSubmit = vi.fn();
+    const onClose = vi.fn();
+    act(() =>
+      root.render(
+        <ArtifactPanel
+          artifact={v2}
+          versions={[v1, v2]}
+          url={`/artifacts/${v2.id}?v=2`}
+          onSelectVersion={onSelectVersion}
+          onSubmit={onSubmit}
+          onClose={onClose}
+        />,
+      ),
+    );
+    const select = $<HTMLSelectElement>('select[aria-label="Version"]');
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['2', '1']);
+    act(() => {
+      select.value = '1';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onSelectVersion).toHaveBeenCalledWith(v1);
+
+    // Esc exits full size first, then closes panel.
+    click(button('Full size')!);
+    expect($('.gc-panel').getAttribute('data-full-size')).toBe('true');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect($('.gc-panel').getAttribute('data-full-size')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Submit flow stays attached to the panel's frame.
+    const frame = $<HTMLIFrameElement>('iframe.gc-panel-frame');
+    const page = {};
+    Object.defineProperty(frame, 'contentWindow', { value: page, configurable: true });
+    act(() => {
+      const event = new MessageEvent('message', { data: { genaicode: 'submit', data: { ok: true } } });
+      Object.defineProperty(event, 'source', { value: page });
+      window.dispatchEvent(event);
+    });
+    click(button('Send to agent')!);
+    expect(onSubmit).toHaveBeenCalledWith(v2, { ok: true });
+  });
+
+  it('offers a right-click Reveal context menu on file links when onRevealFile is provided', () => {
+    const onOpenFile = vi.fn();
+    const onRevealFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [{ kind: 'text', text: 'Check [notes.md](/w/notes.md).', streaming: false }],
+        },
+      ],
+    });
+    render({ state, onOpenFile, onRevealFile });
+    act(() => {
+      $('.gc-file-link').dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }),
+      );
+    });
+    const menu = $('[role="menu"]');
+    expect(menu).not.toBeNull();
+    const revealBtn = Array.from(menu.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Reveal'))!;
+    click(revealBtn);
+    expect(onRevealFile).toHaveBeenCalledWith('/w/notes.md');
+    expect($('[role="menu"]')).toBeNull();
   });
 });

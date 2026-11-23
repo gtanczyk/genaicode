@@ -9,7 +9,7 @@ import type { AgentMode } from '../types.js';
  */
 export type SessionActivity = 'active' | 'waiting' | 'unfinished';
 
-export type ReplyEnding = 'question' | 'command' | 'offer' | 'unreported';
+export type ReplyEnding = 'question' | 'request' | 'command' | 'offer' | 'unreported';
 
 /** One conversation with a coding agent, wherever the agent keeps it. */
 export interface SessionInfo {
@@ -72,8 +72,9 @@ export interface SessionInfo {
   automated?: true;
   /**
    * What the end of the agent's latest message asks of the user, read from `lastReply` of a
-   * `waiting` session (`replyEnding()`): a `question`, a `command` to run, an `offer` to go on, or
-   * `unreported` when it says it could not report back to whoever sent it. None: it just ended.
+   * `waiting` session (`replyEnding()`): a `question`, a `request` put as a statement, a `command`
+   * to run, an `offer` to go on, or `unreported` when it says it could not report back to whoever
+   * sent it. None: it just ended.
    */
   ending?: ReplyEnding;
   /** Put away with `genaicode sessions archive` and nothing happened in it since. */
@@ -133,4 +134,6 @@ export interface SessionReadOptions {
   maxTurns?: number;
   /** Tool output longer than this is cut. Default 4000 characters. */
   maxToolOutput?: number;
+  /** Called when earlier turns or file bytes were omitted due to `maxTurns` or the tail-size cap. */
+  onTruncated?(reason: 'max-turns' | 'tail-bytes'): void;
 }

@@ -430,7 +430,7 @@ describe('codexLive', () => {
   });
 
   it('masks secret requestUserInput answers in events while sending the real value to Codex', async () => {
-    const run = codexLive({ command: codexBin }).run({
+    const run = codexLive({ command: codexBin, askTrust: false }).run({
       prompt: 'ask secret',
       cwd: dir,
       mode: 'plan',
@@ -454,7 +454,7 @@ describe('codexLive', () => {
     const channel = await startQuestionChannel({ name: 'choices' });
     channel.bind(() => ({ tok: ['bound-answer'] }));
     try {
-      const run = codexLive({ command: codexBin }).run({
+      const run = codexLive({ command: codexBin, askTrust: false }).run({
         prompt: 'ask',
         cwd: dir,
         mode: 'plan',

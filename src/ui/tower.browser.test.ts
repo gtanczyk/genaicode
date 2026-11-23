@@ -1,11 +1,13 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { recordLimits } from '../agents/sessions/limits.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { expect, it, vi } from 'vitest';
-import { pendingAsks, waitForAnswer, type SessionInfo } from '../agents/sessions/index.js';
+import { pendingAsks, waitForAnswer, writeTopics, type SessionInfo } from '../agents/sessions/index.js';
 import type { AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
 import { runWeb } from './index.js';
@@ -39,6 +41,7 @@ async function callPack(task: AgentTask, name: string, args: Record<string, unkn
   });
   const answer = await response.json();
   if (answer.result.isError) throw new Error(answer.result.content[0].text);
+  return String(answer.result.content[0].text);
 }
 
 it('shares pack approvals, other sessions and individually reviewed messages between two browsers', async () => {
@@ -258,3 +261,304 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it('copies session ID, file path and transcripts and downloads files from chat header and Sessions view', async () => {
+  const browser = await chromium.launch();
+  mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+  const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'transcript-'));
+  const env = { GENAICODE_HOME: root, HOME: root };
+  const stop = new AbortController();
+  const activeSessionId = 'ses_0195active123456';
+  const activeSessionPath = join(root, 'active.jsonl');
+  const storedSession: SessionInfo = {
+    id: 'ses_0195stored654321',
+    source: 'reporter',
+    agent: 'reporter',
+    where: 'local',
+    cwd: root,
+    title: 'Observed conversation',
+    path: join(root, 'stored.jsonl'),
+    state: 'waiting',
+    updatedAt: Date.now(),
+  };
+  const reporter: CodingAgent = {
+    name: 'reporter',
+    command: process.execPath,
+    capabilities: { mcp: true, resume: true },
+    sessions: {
+      name: 'reporter',
+      where: 'local',
+      list: async () => [
+        { ...storedSession, id: activeSessionId, path: activeSessionPath, title: 'Active chat' },
+        storedSession,
+      ],
+      read: async (info) => [
+        {
+          id: 1,
+          agent: 'reporter',
+          prompt: `Prompt in ${info.id}`,
+          entries: [{ kind: 'text', text: `Reply in ${info.id}`, streaming: false }],
+          startedAt: Date.now() - 2000,
+          endedAt: Date.now() - 1000,
+        },
+      ],
+    },
+    run(task) {
+      const result: AgentResult = {
+        status: 'completed',
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        sessionId: activeSessionId,
+        text: `Observed answer for: ${task.prompt}`,
+      };
+      return {
+        result: Promise.resolve(result),
+        abort() {},
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'session', sessionId: activeSessionId };
+          yield { type: 'message', text: result.text! };
+          yield { type: 'done', result };
+        },
+      };
+    },
+  };
+  let running: Promise<number> | undefined;
+  try {
+    const bundle = await build({
+      entryPoints: ['src/ui/web/client.tsx'],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      jsx: 'automatic',
+      loader: { '.css': 'text' },
+      define: { 'process.env.NODE_ENV': '"production"' },
+    });
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript: bundle.outputFiles[0].text,
+        firstPrompt: 'Something weird happened here',
+      });
+    running = main({
+      argv: ['ui', '--sessions', '--no-artifacts'],
+      cwd: root,
+      env,
+      agents: [reporter],
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy());
+    const context = await browser.newContext({
+      permissions: ['clipboard-read', 'clipboard-write'],
+      acceptDownloads: true,
+    });
+    const page = await context.newPage();
+    await page.goto(opened!);
+    await page.getByText('Observed answer for: Something weird happened here').waitFor();
+
+    // Header session chip opens the developer/transcript menu.
+    const chip = page.getByRole('button', { name: /session …ve123456/ });
+    await chip.click();
+    await page.getByText(activeSessionPath).waitFor();
+
+    await page.getByRole('menuitem', { name: 'Copy session ID' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(activeSessionId);
+    await page.getByRole('status').filter({ hasText: 'Copied session ID' }).waitFor();
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy session file path' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(activeSessionPath);
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy transcript (Markdown)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied transcript (Markdown)' }).waitFor();
+    const copiedMd = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copiedMd).toContain('# Genaicode transcript');
+    expect(copiedMd).toContain(activeSessionId);
+    expect(copiedMd).toContain(activeSessionPath);
+    expect(copiedMd).toContain('Something weird happened here');
+    expect(copiedMd).toContain('Observed answer for: Something weird happened here');
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy raw state (JSON)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied raw state (JSON)' }).waitFor();
+    const copiedJson = JSON.parse(await page.evaluate(() => navigator.clipboard.readText())) as {
+      format: string;
+      sessionId: string;
+      sessionPath: string;
+    };
+    expect(copiedJson).toMatchObject({
+      format: 'genaicode-transcript',
+      sessionId: activeSessionId,
+      sessionPath: activeSessionPath,
+    });
+
+    await chip.click();
+    const [mdDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('menuitem', { name: 'Download Markdown (.md)' }).click(),
+    ]);
+    expect(mdDownload.suggestedFilename()).toBe('genaicode-reporter-ve123456.md');
+
+    // Sessions view row menu copies ID & downloads stored session transcript.
+    await page.getByRole('button', { name: 'Sessions' }).click();
+    const row = page.locator('.session-row').filter({ hasText: 'Observed conversation' });
+    await row.waitFor();
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await page.getByRole('menuitem', { name: 'Copy session ID' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(storedSession.id);
+
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await page.getByRole('menuitem', { name: 'Copy transcript (Markdown)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied transcript (Markdown)' }).waitFor();
+    const storedMd = await page.evaluate(() => navigator.clipboard.readText());
+    expect(storedMd).toContain('# Session transcript');
+    expect(storedMd).toContain(`Prompt in ${storedSession.id}`);
+    expect(storedMd).toContain(`Reply in ${storedSession.id}`);
+
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    const [jsonDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('menuitem', { name: 'Download JSON (.json)' }).click(),
+    ]);
+    expect(jsonDownload.suggestedFilename()).toBe('genaicode-reporter-ed654321.json');
+
+    await context.close();
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);
+
+it('saves a team from the desktop home, uses it on delegation and on a fresh project launch', async () => {
+  const browser = await chromium.launch();
+  const fixtures = join(process.cwd(), 'node_modules', '.genaicode-test');
+  mkdirSync(fixtures, { recursive: true });
+  const root = mkdtempSync(join(fixtures, 'project-pack-'));
+  const project = join(root, 'catalog');
+  execFileSync('git', ['init', '-q', project]);
+  const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+  await writeTopics(
+    { topics: [{ id: 'catalog', name: 'Catalog' }], sessions: { 'captain:catalog-work': 'catalog' } },
+    env,
+  );
+  const prior: SessionInfo = {
+    agent: 'captain',
+    source: 'captain',
+    id: 'catalog-work',
+    where: 'local',
+    cwd: project,
+    title: 'Catalog work',
+    state: 'waiting',
+    updatedAt: Date.now(),
+  };
+  const ran: string[] = [];
+  const rosters: string[][] = [];
+  const captain = driver('captain', async (task) => {
+    const members = JSON.parse(await callPack(task, 'agents', { cwd: project })) as Array<{ name: string }>;
+    rosters.push(members.map((m) => m.name));
+    await callPack(task, 'delegate', { agent: 'worker', prompt: 'Check the catalog', mode: 'shared', cwd: project });
+    await callPack(task, 'wait', {});
+  });
+  const agents = [
+    { ...captain, sessions: { name: 'captain', where: 'local' as const, list: async () => [prior] } },
+    ...['worker', 'backup', 'spare'].map((name) =>
+      driver(name, async () => {
+        ran.push(name);
+      }),
+    ),
+  ];
+  const resetsAt = Date.now() + 60 * 60_000;
+  recordLimits('worker', [{ window: '5h', status: 'exceeded', usedPercent: 100, resetsAt }], env);
+  recordLimits('backup', [{ window: '5h', status: 'ok', usedPercent: 20, resetsAt }], env);
+  const bundle = await build({
+    entryPoints: ['src/ui/web/client.tsx'],
+    bundle: true,
+    write: false,
+    platform: 'browser',
+    jsx: 'automatic',
+    loader: { '.css': 'text' },
+    define: { 'process.env.NODE_ENV': '"production"' },
+  });
+  let stop = new AbortController();
+  let running: Promise<number> | undefined;
+  const start = async (cwd: string, argv: string[]) => {
+    stop = new AbortController();
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript: bundle.outputFiles[0].text,
+      });
+    running = main({
+      argv,
+      cwd,
+      env,
+      agents,
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy(), { timeout: 8000 });
+    const page = await browser.newPage();
+    await page.goto(opened!);
+    return page;
+  };
+  try {
+    const home = await start(root, ['ui', '--sessions', '--delegate', '--home', '--no-artifacts']);
+    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByLabel('Project folder').fill(project);
+    await home.getByRole('button', { name: 'Open', exact: true }).click();
+    await home.getByLabel('Lead', { exact: true }).selectOption('backup');
+    await home.getByRole('checkbox', { name: 'captain' }).uncheck();
+    await home.getByRole('checkbox', { name: 'spare' }).uncheck();
+    await home.getByRole('button', { name: 'Remember this team for the project' }).click();
+    await home.getByText('Team saved in .genaicode/pack.json', { exact: false }).waitFor();
+    expect(JSON.parse(readFileSync(join(project, '.genaicode', 'pack.json'), 'utf8'))).toEqual({
+      lead: 'backup',
+      members: ['worker', 'backup'],
+    });
+    await home.getByRole('button', { name: 'Close project team' }).click();
+    await home.getByLabel('Message', { exact: true }).fill('Use worker in the catalog project.');
+    await home.getByLabel('Message', { exact: true }).press('Enter');
+    await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
+    expect(ran).toEqual(['worker']);
+    expect(rosters).toEqual([['worker', 'backup']]);
+    await home.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await home.getByRole('button', { name: 'New chat in Catalog' }).click();
+    await home.getByText('What should backup work on in Catalog?').waitFor();
+    await home.getByRole('button', { name: 'Project team' }).click();
+    expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup');
+    expect(await home.getByLabel('Project folder').count()).toBe(0);
+    await home.close();
+    stop.abort();
+    await running;
+    const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
+    await scoped.getByText('Project pack: backup leads · members: worker, backup.').waitFor();
+    await scoped.getByRole('button', { name: 'Project team' }).click();
+    expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
+    expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 45_000);

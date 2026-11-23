@@ -109,6 +109,56 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 }
 
 describe('pack', () => {
+  it('clears a recovered model’s refusal and preserves other models and measured windows', async () => {
+    let finishOlder!: () => void;
+    const older = new Promise<void>((resolve) => {
+      finishOlder = resolve;
+    });
+    const worker = fake('worker', async (task, emit) => {
+      if (task.prompt === 'older retry') await older;
+      if (task.prompt === 'refuse') {
+        if (task.model === 'b') emit({ type: 'rate-limit', limit: { window: 'quota', status: 'exceeded' } });
+        return { ok: false, status: 'failed', failure: { kind: 'quota' } };
+      }
+      emit({ type: 'rate-limit', limit: { window: '5h', status: 'ok', usedPercent: 12 } });
+      if (task.prompt === 'report weekly limit')
+        emit({ type: 'rate-limit', limit: { window: '7d', status: 'exceeded', usedPercent: 100 } });
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const run = async (model: string, prompt: string) => {
+          const { id } = JSON.parse(await tool(task, 'delegate', { agent: 'worker', mode: 'shared', model, prompt }));
+          return JSON.parse(await tool(task, 'wait', { ids: [id] }))[0];
+        };
+        const hint = async (model: string) => JSON.parse(await tool(task, 'agents', { model }))[0].quotaHint;
+        await run('a', 'refuse');
+        await run('b', 'refuse');
+        expect(await hint('a')).toMatchObject({ window: 'a quota' });
+        expect(await hint('b')).toMatchObject({ window: 'b quota' });
+        expect(await run('a', 'retry')).not.toHaveProperty('quotaHint');
+        expect(await hint('a')).toBeUndefined();
+        expect(await hint('b')).toMatchObject({ window: 'b quota' });
+        expect(await run('a', 'another task')).not.toHaveProperty('quotaHint');
+        const pending = JSON.parse(
+          await tool(task, 'delegate', { agent: 'worker', mode: 'shared', model: 'b', prompt: 'older retry' }),
+        );
+        try {
+          await run('b', 'refuse');
+        } finally {
+          finishOlder();
+        }
+        await tool(task, 'wait', { ids: [pending.id] });
+        expect(await hint('b')).toMatchObject({ window: 'b quota' });
+        await run('b', 'report weekly limit');
+        expect(await hint('b')).toMatchObject({ window: '7d' });
+      },
+      { mcp: true },
+    );
+    const result = await pack({ lead, members: [worker] }).run({ cwd: root, prompt: 'check recovery' }).result;
+    expect(result.ok, result.error).toBe(true);
+  });
+
   it('reviews the complete patch and tests the worker directory before accepting a new revision', async () => {
     const cwd = repo();
     const correct = 'module.exports = (n) => n ?? 1;\n';

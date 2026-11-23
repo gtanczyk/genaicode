@@ -7,6 +7,7 @@ import type {
   ApprovalDecision,
   ApprovalHandler,
   ApprovalRequest,
+  McpServer,
   QuestionHandler,
 } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
@@ -27,11 +28,12 @@ function harness(
   decideAck: (params: Record<string, unknown>) => unknown = () => ({ terminal: true }),
   permissions?: AgentPermissions,
   onQuestion?: QuestionHandler,
+  mcpServers?: readonly McpServer[],
 ) {
   const sent: Sent[] = [];
   const events: AgentEvent[] = [];
   const lifetime = new AbortController();
-  const task = { prompt: 'p', cwd: '.', onApproval, onQuestion, permissions };
+  const task = { prompt: 'p', cwd: '.', onApproval, onQuestion, permissions, ...(mcpServers ? { mcpServers } : {}) };
   const rpc: RpcPeer = new RpcPeer(
     (line) => {
       const message = JSON.parse(line) as Sent;
@@ -302,6 +304,42 @@ describe('codexApprovals', () => {
     expect(onApproval.mock.calls[0]![1]).toBeInstanceOf(AbortSignal);
   });
 
+  describe('MCP tool approvals', () => {
+    const method = 'mcpServer/elicitation/request';
+    const params = {
+      threadId: 'th-1',
+      turnId: 'tu-1',
+      serverName: 'sessions',
+      mode: 'form',
+      message: 'Allow sessions to run sessions_list?',
+      requestedSchema: { type: 'object', properties: {} },
+      _meta: { codex_approval_kind: 'mcp_tool_call', persist: ['session', 'always'] },
+    };
+
+    it('requests a decision per call and answers once, including when auto-approved', async () => {
+      const handler = vi.fn<ApprovalHandler>().mockResolvedValueOnce('approve').mockResolvedValueOnce('deny');
+      const h = codex(handler);
+      expect((await h.request(method, params)).result).toEqual({ action: 'accept', content: {}, _meta: null });
+      expect((await h.request(method, params)).result).toEqual({ action: 'decline', content: null, _meta: null });
+      expect(handler.mock.calls[0]![0]).toMatchObject({ kind: 'other', scope: 'once', summary: params.message });
+      expect(handler.mock.calls[1]![0].id).not.toBe(handler.mock.calls[0]![0].id);
+    });
+
+    it('declines forms asking for input and URL requests without passing them to auto-approve', async () => {
+      const handler = vi.fn<ApprovalHandler>(() => 'approve');
+      const h = codex(handler);
+      for (const change of [
+        { _meta: null },
+        { mode: 'url' },
+        { requestedSchema: { type: 'object', properties: { answer: { type: 'string' } } } },
+      ]) {
+        expect((await h.request(method, { ...params, ...change })).result).toMatchObject({ action: 'decline' });
+      }
+      expect((await h.request(method, { ...params, turnId: 'old' })).error).toMatchObject({ code: -32602 });
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
   it('answers file changes, and the legacy protocol in its own vocabulary', async () => {
     const h = codex(() => 'approve');
     const change = { threadId: 'th-1', turnId: 'tu-1', itemId: 'f1', reason: null, grantRoot: null };
@@ -414,7 +452,6 @@ describe('codexApprovals', () => {
     ).toMatchObject({
       code: -32602,
     });
-    expect(h.approvals.request('mcpServer/elicitation/request', command)).toBeUndefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -486,8 +523,11 @@ describe('museApprovals', () => {
     currentRequirementId: { approvalId: 'ap-1', sourceIndex: 0 },
     availableChoices: choices,
   };
-  const muse = (onApproval?: ApprovalHandler, ack?: (params: Record<string, unknown>) => unknown) =>
-    harness((session) => museApprovals(session, () => ids), onApproval, ack);
+  const muse = (
+    onApproval?: ApprovalHandler,
+    ack?: (params: Record<string, unknown>) => unknown,
+    mcpServers?: readonly McpServer[],
+  ) => harness((session) => museApprovals(session, () => ids), onApproval, ack, undefined, undefined, mcpServers);
 
   it('acknowledges the server request, asks once per stage and decides with the server ids', async () => {
     const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
@@ -622,5 +662,53 @@ describe('museApprovals', () => {
     h.notify('approval/requested', { ...approval, approvalId: 'ap-2' });
     await h.settle();
     expect(asked).toHaveLength(1);
+  });
+
+  it('auto-approves tools of trusted MCP servers once without asking, and still asks for everything else', async () => {
+    const onApproval = vi.fn<ApprovalHandler>(() => 'deny');
+    const h = muse(onApproval, undefined, [
+      { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true },
+      { name: 'genaicode_ask_x', url: 'http://127.0.0.1:2/mcp' },
+      { name: 'docs', url: 'https://mcp.example' },
+    ]);
+    // Trusted MCP tool call: approved once without invoking onApproval.
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-trusted',
+      toolName: 'mcp__genaicode_ask__ask_user',
+      subject: { kind: 'tool', toolName: 'mcp__genaicode_ask__ask_user' },
+      currentRequirementId: { approvalId: 'ap-trusted', sourceIndex: 0 },
+    });
+    // Look-alike prefix server, untrusted server, and shell mentioning the trusted tool: all still ask.
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-prefix',
+      toolName: 'mcp__genaicode_ask_x__ask_user',
+      subject: { kind: 'tool', toolName: 'mcp__genaicode_ask_x__ask_user' },
+      currentRequirementId: { approvalId: 'ap-prefix', sourceIndex: 0 },
+    });
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-docs',
+      toolName: 'mcp__docs__search',
+      subject: { kind: 'tool', toolName: 'mcp__docs__search' },
+      currentRequirementId: { approvalId: 'ap-docs', sourceIndex: 0 },
+    });
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-shell',
+      toolName: 'shell',
+      subject: { kind: 'shell', command: 'echo mcp__genaicode_ask__ask_user' },
+      currentRequirementId: { approvalId: 'ap-shell', sourceIndex: 0 },
+    });
+    await h.settle();
+    expect(onApproval).toHaveBeenCalledTimes(3);
+    expect(onApproval.mock.calls.map(([req]) => req.id)).toEqual(['ap-prefix', 'ap-docs', 'ap-shell']);
+    expect(h.decides().map((params) => [params.approvalId, params.choiceId])).toEqual([
+      ['ap-trusted', 'c-once'],
+      ['ap-prefix', 'c-deny'],
+      ['ap-docs', 'c-deny'],
+      ['ap-shell', 'c-deny'],
+    ]);
   });
 });
