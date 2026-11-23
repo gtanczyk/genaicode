@@ -53,6 +53,7 @@ export { NoAgentError };
  * (`genaicode/vite`) for `startEmbeddedWeb`.
  */
 export interface UiRunOptions extends ChatOptions {
+  projectTeams?: import('../agents/pack-profile.js').ProjectTeams;
   agents: readonly CodingAgent[];
   sessionAgents?: readonly CodingAgent[];
   version: string;
@@ -491,6 +492,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
           permissions: sandbox ? { sandbox } : undefined,
         }),
       limits: () => knownLimits(options.env),
+      projectTeams: options.projectTeams,
       // Automatic runs too: they use the plan like everything else.
       shares: async (query) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
