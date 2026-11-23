@@ -194,6 +194,13 @@ export function createChatController(options: ChatOptions): ChatController {
   };
   let autoApprove = options.approveAll === true;
   let pendingRelayContext: SessionRelayContext[] = [];
+  let inFlightRelayContext: { turnId: number; updates: SessionRelayContext[]; contextEpoch: number } | undefined;
+  let notices: Notice[] = [];
+  let conversationEpoch = 0;
+  let contextEpoch = 0;
+  const relayNotices = new Map<number, number>();
+  const relayEpochs = new Map<number, { conversation: number; context: number }>();
+  let closed = false;
   const transformPrompt =
     options.transformPrompt || options.sessionSend
       ? (prompt: string) => {
@@ -201,6 +208,16 @@ export function createChatController(options: ChatOptions): ChatController {
           if (!pendingRelayContext.length) return base;
           const updates = pendingRelayContext;
           pendingRelayContext = [];
+          const currentTurn = session.get().turns.at(-1);
+          if (currentTurn) {
+            inFlightRelayContext =
+              inFlightRelayContext?.turnId === currentTurn.id && inFlightRelayContext.contextEpoch === contextEpoch
+                ? {
+                    ...inFlightRelayContext,
+                    updates: [...inFlightRelayContext.updates, ...updates].slice(-MAX_CONTEXT_UPDATES),
+                  }
+                : { turnId: currentTurn.id, updates, contextEpoch };
+          }
           return `${formatRelayContext(updates)}\n\n${base}`;
         }
       : undefined;
@@ -218,12 +235,6 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(options.questionChannel ? { questions: options.questionChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
-  let notices: Notice[] = [];
-  let conversationEpoch = 0;
-  let contextEpoch = 0;
-  const relayNotices = new Map<number, number>();
-  const relayEpochs = new Map<number, { conversation: number; context: number }>();
-  let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
@@ -252,7 +263,25 @@ export function createChatController(options: ChatOptions): ChatController {
       }
     }
   };
-  const unsubscribe = session.subscribe(publish);
+  const reconcileInFlightRelay = (state: SessionState) => {
+    if (!inFlightRelayContext) return;
+    const turn = state.turns.find((candidate) => candidate.id === inFlightRelayContext!.turnId);
+    if (turn?.entries.some((entry) => entry.kind === 'failover')) {
+      const retry = inFlightRelayContext;
+      inFlightRelayContext = undefined;
+      if (retry.contextEpoch === contextEpoch) {
+        pendingRelayContext = [...retry.updates, ...pendingRelayContext].slice(-MAX_CONTEXT_UPDATES);
+      }
+      return;
+    }
+    if (state.status === 'idle' || !turn || state.turns.at(-1)?.id !== inFlightRelayContext.turnId) {
+      inFlightRelayContext = undefined;
+    }
+  };
+  const unsubscribe = session.subscribe((state) => {
+    reconcileInFlightRelay(state);
+    publish();
+  });
   const notice = (text: string, tone: Notice['tone'] = 'info') => {
     if (closed) return;
     notices = [...notices, { id: nextNotice++, afterTurn: session.get().turns.length, text, tone }].slice(-200);
@@ -380,6 +409,7 @@ export function createChatController(options: ChatOptions): ChatController {
       if (options?.fresh) {
         contextEpoch += 1;
         pendingRelayContext = [];
+        inFlightRelayContext = undefined;
         session.setAgent(agent, { handoff: false });
         notice(`Still ${name}. New agent session, no context.`);
       }
@@ -388,6 +418,7 @@ export function createChatController(options: ChatOptions): ChatController {
     if (options?.fresh) {
       contextEpoch += 1;
       pendingRelayContext = [];
+      inFlightRelayContext = undefined;
     }
     session.setAgent(agent, { handoff: !options?.fresh });
     const installed = agents.find((choice) => choice.name === name)?.installed;
@@ -430,6 +461,7 @@ export function createChatController(options: ChatOptions): ChatController {
       // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
       contextEpoch += 1;
       pendingRelayContext = [];
+      inFlightRelayContext = undefined;
       const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
       notice(
         own
@@ -697,6 +729,7 @@ export function createChatController(options: ChatOptions): ChatController {
         case 'new':
           contextEpoch += 1;
           pendingRelayContext = [];
+          inFlightRelayContext = undefined;
           session.reset();
           notice('Next prompt starts a new agent session.');
           return 'ok';
@@ -706,6 +739,7 @@ export function createChatController(options: ChatOptions): ChatController {
             contextEpoch += 1;
             relayNotices.clear();
             pendingRelayContext = [];
+            inFlightRelayContext = undefined;
             notices = [];
             publish();
           } else notice('A turn is running. /stop it first, then /clear.', 'error');
@@ -765,6 +799,7 @@ export function createChatController(options: ChatOptions): ChatController {
       relayNotices.clear();
       relayEpochs.clear();
       pendingRelayContext = [];
+      inFlightRelayContext = undefined;
       offSend?.();
       stopShells();
       unsubscribe();

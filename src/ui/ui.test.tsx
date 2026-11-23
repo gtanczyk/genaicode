@@ -1231,6 +1231,59 @@ describe('terminal UI', () => {
     expect(contAgent.tasks.at(-1)!.prompt).not.toContain('<session-updates>');
     contChat.close();
 
+    // Failover preserves relay context so the fallback agent receives the same `<session-updates>`.
+    const failingPrimary: CodingAgent = {
+      name: 'primary',
+      command: 'primary',
+      capabilities: {},
+      run(): AgentRun {
+        const result: AgentResult = {
+          status: 'failed',
+          ok: false,
+          exitCode: 1,
+          signal: null,
+          error: 'rate limit exceeded',
+          failure: { kind: 'quota' },
+        };
+        return {
+          abort() {},
+          result: Promise.resolve(result),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const backup = echoAgent('backup');
+    const failoverGate = new SessionSendGate();
+    const failoverChat = createChatController({
+      agents: [failingPrimary, backup],
+      agent: 'primary',
+      fallback: ['backup'],
+      cwd: '/work/genaicode',
+      env,
+      sessionSend: failoverGate,
+    });
+    failoverGate.update({
+      id: 30,
+      target,
+      text: 'Recommend fix',
+      status: 'answered',
+      startedAt: 9000,
+      endedAt: 9500,
+      reply: 'Use linear slash trimming.',
+    });
+    failoverChat.submit('Apply that recommendation');
+    await failoverChat.session.idle();
+    expect(backup.tasks).toHaveLength(1);
+    expect(backup.tasks[0]!.prompt).toContain('<session-updates>');
+    expect(backup.tasks[0]!.prompt).toContain('Use linear slash trimming.');
+    expect(backup.tasks[0]!.prompt).toContain('Apply that recommendation');
+    failoverChat.submit('Follow up');
+    await failoverChat.session.idle();
+    expect(backup.tasks[1]!.prompt).toBe('Follow up');
+    failoverChat.close();
+
     // `/clear` drops pending notices and ignores late updates from earlier sends.
     gate.update({ id: 3, target, text: 'Old task', status: 'working', startedAt: 10_000 });
     chat.submit('/clear');
