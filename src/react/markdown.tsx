@@ -1,13 +1,165 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 // A small, safe Markdown subset for agent replies: paragraphs, headings, lists, task lists,
-// quotes, tables, fenced code, inline code, bold, italic, strikethrough and links. Everything is a React text node, so HTML in the
-// text shows as text. Links must be http(s) or mailto and open in a new tab. A link to a path on disk shows
-// its label as a `gc-file-link` button carrying the path in `data-gc-file`: the chat opens it when the host can.
+// quotes, tables, fenced code, inline code, bold, italic, strikethrough, links and images.
+// Everything is a React element or text node, so raw HTML shows as text.
+// Links must be http(s) or mailto and open in a new tab. A link to a path on disk shows its label
+// as a `gc-file-link` button carrying `data-gc-file` and optional line/column data attributes.
+// Images `![alt](target)`: local paths render a thumbnail when the host resolves them via
+// `imageUrl` (or fall back to a file link); remote http(s) URLs show a click-to-load chip unless
+// `remoteImages="load"`; `data:` targets are left as plain text.
+
+/** Place inside a file parsed from `:12`, `:12:3`, `#L12` or `#L12-L20`. All numbers are 1-based. */
+export interface FilePosition {
+  line: number;
+  endLine?: number;
+  column?: number;
+}
+
+export interface MarkdownProps {
+  text: string;
+  streaming?: boolean;
+  className?: string;
+  /** Resolve a local path in `![alt](path)` to an image URL (e.g. capability URL). */
+  imageUrl?(path: string): string | undefined;
+  /**
+   * How `![alt](https://...)` images load: `'click'` (default, placeholder chip until clicked so
+   * a reply cannot make the page call a URL on its own) or `'load'`.
+   */
+  remoteImages?: 'click' | 'load';
+  /** Resolve relative file links (`./...`, `../...`) against this directory. */
+  fileBase?: string;
+  /** Only render file links as clickable buttons when they resolve inside one of these project roots. */
+  fileRoot?: string | readonly string[];
+}
 
 // Every repetition is bounded, so text full of unclosed markers stays linear to scan.
+// Images must precede links so `![alt](target)` is not split into `!` + link.
 const INLINE =
-  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])|(\[[^[\]\n]{1,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))/g;
+  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(!\[[^[\]\n]{0,500}\]\((https?:\/\/[^)\s]{1,2000})\))|(!\[[^[\]\n]{0,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])|(\[[^[\]\n]{1,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))/g;
+
+const LOCAL_IMAGE = /!\[[^[\]\n]{0,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\)/g;
+
+/** Split a file link target into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
+export function parseFileTarget(target: string): { path: string; position?: FilePosition } {
+  const hash = target.lastIndexOf('#L');
+  if (hash > 0) {
+    const tail = target.slice(hash + 2);
+    const range = /^(\d{1,7})(?:C(\d{1,5}))?(?:-L(\d{1,7})(?:C\d{1,5})?)?$/.exec(tail);
+    if (range) {
+      const line = Number(range[1]);
+      const col = range[2] ? Number(range[2]) : undefined;
+      const end = range[3] ? Number(range[3]) : undefined;
+      const path = target.slice(0, hash);
+      if (line >= 1) {
+        const position: FilePosition = {
+          line,
+          ...(end !== undefined && end > line ? { endLine: end } : {}),
+          ...(col !== undefined && col >= 1 ? { column: col } : {}),
+        };
+        return { path, position };
+      }
+      return { path };
+    }
+  }
+  const nums: number[] = [];
+  let end = target.length;
+  for (let part = 0; part < 2; part++) {
+    let at = end;
+    while (at > 0 && target[at - 1] >= '0' && target[at - 1] <= '9') at--;
+    if (at === end || at < 2 || target[at - 1] !== ':') break;
+    nums.unshift(Number(target.slice(at, end)));
+    end = at - 1;
+  }
+  const path = target.slice(0, end);
+  if (nums.length >= 1 && nums[0]! >= 1 && nums[0]! <= 9_999_999) {
+    const position: FilePosition = {
+      line: nums[0]!,
+      ...(nums[1] !== undefined && nums[1] >= 1 && nums[1] <= 99_999 ? { column: nums[1] } : {}),
+    };
+    return { path, position };
+  }
+  return { path };
+}
+
+/** Format a `FilePosition` as `12`, `12:3` or `12-20`. */
+export function formatFilePosition(position: FilePosition): string {
+  if (position.endLine && position.endLine > position.line) return `${position.line}-${position.endLine}`;
+  if (position.column) return `${position.line}:${position.column}`;
+  return String(position.line);
+}
+
+/** Read a `FilePosition` back from a clicked `[data-gc-file]` element. */
+export function readFileLinkPosition(element: Element): FilePosition | undefined {
+  const line = Number(element.getAttribute('data-gc-line'));
+  if (!Number.isInteger(line) || line < 1) return undefined;
+  const endLine = Number(element.getAttribute('data-gc-end-line'));
+  const column = Number(element.getAttribute('data-gc-column'));
+  return {
+    line,
+    ...(Number.isInteger(endLine) && endLine > line ? { endLine } : {}),
+    ...(Number.isInteger(column) && column >= 1 ? { column } : {}),
+  };
+}
+
+/** Extract unique local paths referenced by `![alt](path)` outside fenced code blocks. */
+export function extractLocalImagePaths(text: string): string[] {
+  const found: string[] = [];
+  const lines = text.split('\n');
+  let activeFence: { marker: string } | undefined;
+  for (const line of lines) {
+    if (activeFence) {
+      const t = line.trim();
+      if (t.length >= activeFence.marker.length && t === activeFence.marker[0].repeat(t.length)) {
+        activeFence = undefined;
+      }
+      continue;
+    }
+    const open = fence(line);
+    if (open) {
+      activeFence = open;
+      continue;
+    }
+    for (const match of line.matchAll(LOCAL_IMAGE)) {
+      const { path } = parseFileTarget(match[1]!);
+      if (path && !found.includes(path)) found.push(path);
+    }
+  }
+  return found;
+}
+
+function remoteLabel(src: string): string {
+  try {
+    const parsed = new URL(src);
+    const rest = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
+    const full = `${parsed.host}${rest}`;
+    return full.length > 48 ? `${full.slice(0, 47)}…` : full;
+  } catch {
+    return src.length > 48 ? `${src.slice(0, 47)}…` : src;
+  }
+}
+
+function RemoteImage({ src, alt, autoLoad }: { src: string; alt: string; autoLoad: boolean }) {
+  // Consent is bound to the exact URL so a later update to a different src requires a fresh click.
+  const [approvedSrc, setApprovedSrc] = useState<string>();
+  const loaded = autoLoad || approvedSrc === src;
+  const label = remoteLabel(src);
+  if (!loaded) {
+    return (
+      <span className="gc-md-image-chip" title={alt ? `${alt} — ${src}` : src}>
+        <span className="gc-md-image-chip-label">Image: {label}</span>
+        <button type="button" className="gc-md-image-load" onClick={() => setApprovedSrc(src)}>
+          Load
+        </button>
+      </span>
+    );
+  }
+  return (
+    <a className="gc-md-image-link" href={src} target="_blank" rel="noopener noreferrer" title={alt || src}>
+      <img className="gc-md-image" src={src} alt={alt || label} loading="lazy" referrerPolicy="no-referrer" />
+    </a>
+  );
+}
 
 function link(href: string, label: ReactNode, key: number) {
   return (
@@ -17,18 +169,11 @@ function link(href: string, label: ReactNode, key: number) {
   );
 }
 
-/** The path without the place in the file that follows it: `:12`, `:12:3` or `#L12-L20`. */
-function withoutPosition(path: string): string {
-  const anchor = path.lastIndexOf('#L');
-  if (anchor > 0 && /^\d/.test(path.slice(anchor + 2))) return path.slice(0, anchor);
-  let end = path.length;
-  for (let part = 0; part < 2; part++) {
-    let at = end;
-    while (at > 0 && path[at - 1] >= '0' && path[at - 1] <= '9') at--;
-    if (at === end || at < 2 || path[at - 1] !== ':') break;
-    end = at - 1;
-  }
-  return path.slice(0, end);
+interface InlineOptions {
+  imageUrl?: (path: string) => string | undefined;
+  remoteImages?: 'click' | 'load';
+  fileBase?: string;
+  fileRoot?: string | readonly string[];
 }
 
 /** Trim trailing `/` or `\` linearly (no regex backtracking). */
@@ -77,15 +222,48 @@ export function isPathWithin(target: string, root: string): boolean {
   return b === '/' ? a.startsWith('/') : a.startsWith(`${b}/`);
 }
 
-interface FileLinkScope {
-  /** Base directory for resolving relative file links (`./...`, `../...`). */
-  fileBase?: string;
-  /** When set, only file links resolving inside `fileRoot` render as clickable `data-gc-file` buttons. */
-  fileRoot?: string;
+function isWithinFileRoots(target: string, fileRoot: string | readonly string[] | undefined): boolean {
+  if (fileRoot === undefined) return true;
+  if (typeof fileRoot === 'string') return isPathWithin(target, fileRoot);
+  return fileRoot.some((root) => isPathWithin(target, root));
 }
 
-/** `links` is false inside a link label, so no <a> ends up inside another. */
-function inline(text: string, links = true, files?: FileLinkScope): ReactNode[] {
+function fileButton(
+  target: string,
+  label: ReactNode,
+  key: number,
+  options: InlineOptions,
+  extra?: { className?: string; title?: string },
+): ReactNode {
+  const { path: rawPath, position } = parseFileTarget(target);
+  const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
+  const title = extra?.title ?? (position ? `${path}:${formatFilePosition(position)}` : path);
+  const openable = isWithinFileRoots(path, options.fileRoot);
+  if (!openable) {
+    return (
+      <span key={key} className={extra?.className ?? 'gc-file-link'} title={title}>
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      key={key}
+      type="button"
+      className={extra?.className ?? 'gc-file-link'}
+      data-gc-file={path}
+      data-gc-line={position ? String(position.line) : undefined}
+      data-gc-end-line={position?.endLine ? String(position.endLine) : undefined}
+      data-gc-column={position?.column ? String(position.column) : undefined}
+      title={title}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** `links` is false inside a link label, so no <a> or <button> ends up inside another. */
+function inline(text: string, options: InlineOptions, links = true): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let key = 0;
@@ -94,32 +272,55 @@ function inline(text: string, links = true, files?: FileLinkScope): ReactNode[] 
     const at = match.index ?? 0;
     if (at > last) out.push(text.slice(last, at));
     if (match[1]) out.push(<code key={key++}>{token.slice(1, -1)}</code>);
-    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), links, files)}</strong>);
-    else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), links, files)}</del>);
-    else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), links, files)}</em>);
+    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), options, links)}</strong>);
+    else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), options, links)}</del>);
+    else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), options, links)}</em>);
     else if (match[5]) {
-      const label = inline(token.slice(1, token.indexOf(']')), false);
-      out.push(links ? link(match[6], label, key++) : <span key={key++}>{label}</span>);
-    } else if (match[8]) {
-      // A link to a file on disk, as agents write them: the label, and the path for the host to open.
-      const label = inline(token.slice(1, token.indexOf(']')), false);
-      const rawPath = withoutPosition(match[9]);
-      const path = files?.fileBase ? resolveFilePath(rawPath, files.fileBase) : rawPath;
-      const openable = files?.fileRoot !== undefined ? isPathWithin(path, files.fileRoot) : true;
+      // Remote image: ![alt](https://...)
+      const alt = token.slice(2, token.indexOf(']'));
+      const src = match[6]!;
       out.push(
-        links && openable ? (
-          <button key={key++} type="button" className="gc-file-link" data-gc-file={path} title={path}>
-            {label}
-          </button>
-        ) : links ? (
-          <span key={key++} className="gc-file-link" title={path}>
-            {label}
-          </span>
+        links ? (
+          <RemoteImage key={`${key++}:${src}`} src={src} alt={alt} autoLoad={options.remoteImages === 'load'} />
         ) : (
-          <span key={key++}>{label}</span>
+          <span key={key++}>{alt || remoteLabel(src)}</span>
         ),
       );
-    } else out.push(links ? link(token, token, key++) : token);
+    } else if (match[7]) {
+      // Local image: ![alt](/abs/or/./rel)
+      const alt = token.slice(2, token.indexOf(']'));
+      const target = match[8]!;
+      const { path: rawPath } = parseFileTarget(target);
+      const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
+      const openable = isWithinFileRoots(path, options.fileRoot);
+      const resolved = openable ? options.imageUrl?.(path) : undefined;
+      if (resolved && links) {
+        out.push(
+          <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
+            <img
+              className="gc-md-image"
+              src={resolved}
+              alt={alt || path.split(/[\\/]/).pop() || path}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          </button>,
+        );
+      } else if (links) {
+        out.push(fileButton(target, alt || path, key++, options));
+      } else {
+        out.push(<span key={key++}>{alt || path}</span>);
+      }
+    } else if (match[9]) {
+      const label = inline(token.slice(1, token.indexOf(']')), options, false);
+      out.push(links ? link(match[10]!, label, key++) : <span key={key++}>{label}</span>);
+    } else if (match[12]) {
+      // A link to a file on disk, as agents write them: the label, path, and optional line position.
+      const label = inline(token.slice(1, token.indexOf(']')), options, false);
+      out.push(links ? fileButton(match[13]!, label, key++, options) : <span key={key++}>{label}</span>);
+    } else {
+      out.push(links ? link(token, token, key++) : token);
+    }
     last = at + token.length;
   }
   if (last < text.length) out.push(text.slice(last));
@@ -199,25 +400,11 @@ function task(text: string): { done: boolean; text: string } | undefined {
 const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
 /** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
-export function Markdown({
-  text,
-  streaming,
-  className,
-  fileBase,
-  fileRoot,
-}: {
-  text: string;
-  streaming?: boolean;
-  className?: string;
-  /** Resolve relative file links (`./...`, `../...`) against this directory. */
-  fileBase?: string;
-  /** Only render file links as clickable buttons when they resolve inside this project root. */
-  fileRoot?: string;
-}) {
-  const files = fileBase !== undefined || fileRoot !== undefined ? { fileBase, fileRoot } : undefined;
+export function Markdown({ text, streaming, className, imageUrl, remoteImages, fileBase, fileRoot }: MarkdownProps) {
+  const options: InlineOptions = { imageUrl, remoteImages, fileBase, fileRoot };
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
-      {blocks(text.trimEnd().split('\n'), 0, files)}
+      {blocks(text.trimEnd().split('\n'), options)}
     </div>
   );
 }
@@ -225,7 +412,7 @@ export function Markdown({
 // Deeper quotes render as plain text, so a reply full of '>' cannot exhaust the stack.
 const MAX_QUOTE_DEPTH = 8;
 
-function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] {
+function blocks(lines: string[], options: InlineOptions, depth = 0): ReactNode[] {
   const quote = (line: string) => depth < MAX_QUOTE_DEPTH && isQuote(line);
   const out: ReactNode[] = [];
   let i = 0;
@@ -263,7 +450,7 @@ function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] 
     if (title) {
       // h1 in a reply would outrank the host page's own headings.
       const Tag = `h${Math.min(6, title.level + 1)}` as 'h2';
-      out.push(<Tag key={key++}>{inline(title.text, true, files)}</Tag>);
+      out.push(<Tag key={key++}>{inline(title.text, options)}</Tag>);
       i += 1;
       continue;
     }
@@ -277,7 +464,7 @@ function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] 
       const row = (values: string[], Cell: 'th' | 'td') =>
         aligns.map((align, n) => (
           <Cell key={n} style={align ? { textAlign: align } : undefined}>
-            {inline(values[n] ?? '', true, files)}
+            {inline(values[n] ?? '', options)}
           </Cell>
         ));
       out.push(
@@ -301,7 +488,7 @@ function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] 
     if (quote(line)) {
       const quoted: string[] = [];
       while (i < lines.length && quote(lines[i])) quoted.push(unquote(lines[i++]));
-      out.push(<blockquote key={key++}>{blocks(quoted, depth + 1, files)}</blockquote>);
+      out.push(<blockquote key={key++}>{blocks(quoted, options, depth + 1)}</blockquote>);
       continue;
     }
     if (item(line) !== undefined) {
@@ -322,10 +509,10 @@ function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] 
         return box ? (
           <li key={n} className="gc-md-task">
             <input type="checkbox" checked={box.done} disabled />
-            {inline(box.text, true, files)}
+            {inline(box.text, options)}
           </li>
         ) : (
-          <li key={n}>{inline(text, true, files)}</li>
+          <li key={n}>{inline(text, options)}</li>
         );
       });
       out.push(
@@ -352,7 +539,7 @@ function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] 
     ) {
       para.push(lines[i++]);
     }
-    out.push(<p key={key++}>{inline(para.join('\n'), true, files)}</p>);
+    out.push(<p key={key++}>{inline(para.join('\n'), options)}</p>);
   }
   return out;
 }

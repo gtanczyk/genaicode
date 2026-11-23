@@ -43,12 +43,16 @@ export function SessionRelayCard({
   cwd,
   now,
   toolName,
+  imageUrl,
+  remoteImages,
 }: {
   relay: ChatSessionRelay;
-  /** Active chat's project root, used to scope clickable file links in replies. */
+  /** Active chat's project root, used alongside `relay.cwd` to scope clickable file links in replies. */
   cwd: string;
   now: number;
   toolName: (name: string) => string;
+  imageUrl?: (path: string) => string | undefined;
+  remoteImages?: 'click' | 'load';
 }) {
   const project = relayProjectName(relay.cwd);
   const subtitle = relay.title || shortId(relay.sessionId);
@@ -120,7 +124,13 @@ export function SessionRelayCard({
       {relay.status === 'answered' ? (
         relay.reply ? (
           <div className="gc-relay-body">
-            <Markdown text={relay.reply} fileBase={relay.cwd} fileRoot={cwd} />
+            <Markdown
+              text={relay.reply}
+              fileBase={relay.cwd}
+              fileRoot={[relay.cwd, cwd].filter(Boolean)}
+              imageUrl={imageUrl}
+              remoteImages={remoteImages}
+            />
           </div>
         ) : (
           <div className="gc-relay-live">Took the message.</div>

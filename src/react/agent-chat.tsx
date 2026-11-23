@@ -9,6 +9,7 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type CSSProperties,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
@@ -32,9 +33,17 @@ import {
   turnFooter,
   type ToolDiff,
 } from './format.js';
-import { Markdown } from './markdown.js';
+import { Markdown, readFileLinkPosition, type FilePosition } from './markdown.js';
 import { PackTasks, type PackActionHandler } from './pack-tasks.js';
 import { SessionRelayCard, type ChatSessionRelay } from './session-relay.js';
+import {
+  artifactKindLabel,
+  ArtifactSubmitBar,
+  canPreviewArtifact,
+  useArtifactSubmit,
+  withDownloadParam,
+  type SubmitArtifact,
+} from './artifact-panel.js';
 
 /** A line from the host itself (not the agent), shown between turns. */
 export interface ChatNotice {
@@ -106,9 +115,15 @@ export interface AgentChatProps {
   renderPrompt?(text: string, turn?: SessionTurn): ReactNode;
   /**
    * Makes the file paths in the transcript (edited files, the file a tool step read or changed,
-   * a link to a file in a reply) buttons: called with the path as the agent gave it, usually absolute. The host shows the file.
+   * a link to a file in a reply) buttons: called with the path as the agent gave it, usually absolute,
+   * and an optional `:line` / `#L12-L20` position when the link carried one. The host shows the file.
    */
-  onOpenFile?(path: string): void;
+  onOpenFile?(path: string, position?: FilePosition): void;
+  /**
+   * Adds a right-click **Reveal** action on file links in the transcript (e.g. Reveal in Finder in
+   * the desktop app).
+   */
+  onRevealFile?(path: string): void;
   /** Tool name as shown, e.g. without an MCP server prefix. Default: friendlier names for common tools. */
   formatToolName?(name: string): string;
   /**
@@ -117,6 +132,22 @@ export interface AgentChatProps {
    * with no preview. Put `artifact.version` in the URL so a new version reloads.
    */
   artifactUrl?(artifact: Artifact): string | undefined;
+  /**
+   * Opens an artifact in the host's viewer panel when **Open** is clicked on the card, instead of
+   * expanding a preview inline in the transcript. Without it the card previews inline as before.
+   */
+  onOpenArtifact?(artifact: Artifact): void;
+  /**
+   * Resolve a local path referenced by `![alt](path)` in an agent reply to an image URL (e.g. a
+   * capability URL for image files only). Clicking the thumbnail opens it through `onOpenFile`.
+   * Without it, or when undefined is returned, the image renders as a file link.
+   */
+  imageUrl?(path: string): string | undefined;
+  /**
+   * How remote `![alt](https://...)` images in replies load: `'click'` (default, click-to-load
+   * chip so replies cannot trigger unsolicited requests) or `'load'`.
+   */
+  remoteImages?: 'click' | 'load';
   /** Replaces the default artifact card. Return undefined to keep the default. */
   renderArtifact?(artifact: Artifact, url: string | undefined): ReactNode;
   /**
@@ -177,6 +208,11 @@ export interface AgentChatProps {
 const OpenFile = createContext<AgentChatProps['onOpenFile']>(undefined);
 /** The host's `onAnswer`, for the question cards deep in the transcript. */
 const AnswerQuestion = createContext<AgentChatProps['onAnswer']>(undefined);
+/** Image options for Markdown replies deep in the transcript. */
+const MarkdownConfig = createContext<{
+  imageUrl?: AgentChatProps['imageUrl'];
+  remoteImages?: AgentChatProps['remoteImages'];
+}>({});
 
 export function AgentChat(props: AgentChatProps) {
   const state = props.state ?? NO_SESSION;
@@ -200,9 +236,28 @@ export function AgentChat(props: AgentChatProps) {
       ? undefined
       : (onArtifactSubmit ?? ((artifact, data) => onSend(artifactSubmission(artifact, data))));
   const rootClass = ['gc-chat', props.onOpenFile && 'gc-opens-files', props.className].filter(Boolean).join(' ');
-  const { onOpenFile } = props;
+  const { onOpenFile, onRevealFile } = props;
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const agentName = state.agent || 'the agent';
+  const [fileMenu, setFileMenu] = useState<{ path: string; position?: FilePosition; x: number; y: number }>();
+  useEffect(() => {
+    if (!fileMenu) return;
+    const dismiss = () => setFileMenu(undefined);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      event.preventDefault();
+      dismiss();
+    };
+    window.addEventListener('click', dismiss);
+    window.addEventListener('blur', dismiss);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('click', dismiss);
+      window.removeEventListener('blur', dismiss);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [fileMenu]);
 
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);
@@ -312,7 +367,15 @@ export function AgentChat(props: AgentChatProps) {
       const notice = notices.shift()!;
       items.push(
         notice.relay ? (
-          <SessionRelayCard key={`n${notice.id}`} relay={notice.relay} cwd={state.cwd} now={now} toolName={toolName} />
+          <SessionRelayCard
+            key={`n${notice.id}`}
+            relay={notice.relay}
+            cwd={state.cwd}
+            now={now}
+            toolName={toolName}
+            imageUrl={props.imageUrl}
+            remoteImages={props.remoteImages}
+          />
         ) : (
           <div key={`n${notice.id}`} className={`gc-notice${notice.tone === 'error' ? ' gc-err' : ''}`}>
             {notice.text}
@@ -336,6 +399,7 @@ export function AgentChat(props: AgentChatProps) {
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
+        onOpenArtifact={props.onOpenArtifact}
         renderArtifact={props.renderArtifact}
         submitArtifact={submitArtifact}
         fold={props.foldSteps ?? false}
@@ -422,154 +486,210 @@ export function AgentChat(props: AgentChatProps) {
     </>
   ) : null;
 
+  const onFileContextMenu = onRevealFile
+    ? (event: ReactMouseEvent<HTMLDivElement>) => {
+        const el = (event.target as Element).closest?.('[data-gc-file]');
+        const path = el?.getAttribute('data-gc-file');
+        if (!el || !path) return;
+        event.preventDefault();
+        setFileMenu({
+          path,
+          position: readFileLinkPosition(el),
+          x: Math.min(event.clientX, Math.max(8, window.innerWidth - 200)),
+          y: Math.min(event.clientY, Math.max(8, window.innerHeight - 96)),
+        });
+      }
+    : undefined;
+
   return (
-    <AnswerQuestion.Provider value={props.onAnswer}>
-      <OpenFile.Provider value={props.onOpenFile}>
-        <div
-          className={rootClass}
-          data-theme={theme}
-          data-status={state.status}
-          style={props.style}
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          // A file link in a reply (`data-gc-file`, from the Markdown) opens like any other path.
-          onClick={
-            onOpenFile
-              ? (event) => {
-                  const path = (event.target as Element).closest?.('[data-gc-file]')?.getAttribute('data-gc-file');
-                  if (path) onOpenFile(path);
-                }
-              : undefined
-          }
-        >
-          {props.header !== undefined ? (
-            props.header
-          ) : (
-            <div className="gc-header">
-              {state.agent ? (
-                <span className="gc-avatar" aria-hidden="true">
-                  {state.agent.slice(0, 2)}
-                </span>
-              ) : null}
-              <b className="gc-agent">{state.agent || 'Agent'}</b>
-              {state.model ? <span className="gc-model">{state.model}</span> : null}
-              {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
-              <span className="gc-spacer" />
-              {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
-              {usage ? <span className="gc-chip">{usage}</span> : null}
-              {limits.map((chip) => (
-                <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
-                  {chip.text}
-                </span>
-              ))}
-              {props.headerExtras}
-            </div>
-          )}
-          <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
-            <div className="gc-thread" role="log" aria-live="polite">
-              {state.turns.length === 0
-                ? (props.emptyState ?? (
-                    <div className="gc-empty">
-                      <div className="gc-empty-title">What should {agentName} work on?</div>
-                    </div>
-                  ))
-                : null}
-              {items}
-              {footer !== undefined && footer !== null && footer !== false ? (
-                <div className="gc-footer-slot">{footer}</div>
-              ) : null}
-            </div>
-          </div>
-          <div className="gc-composer">
-            {state.queued.length ? (
-              <div className="gc-queued">
-                {state.queued.map((prompt, i) => {
-                  const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
-                  return shown === null || shown === undefined || shown === false ? null : (
-                    <span key={i}>⏸ {shown}</span>
-                  );
-                })}
-              </div>
-            ) : null}
-            {choice ? (
-              <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
-                {offered.map((one, index) => (
-                  <li
-                    key={one.name}
-                    id={optionId(index)}
-                    ref={one === choice ? chosen : undefined}
-                    role="option"
-                    aria-selected={one === choice}
-                    // Before the box loses focus.
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      complete(one);
-                    }}
-                  >
-                    <span className="gc-completion-name">
-                      <b>{one.name}</b>
-                      {one.args ? <code>{one.args}</code> : null}
-                    </span>
-                    {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
-                  </li>
+    <MarkdownConfig.Provider value={{ imageUrl: props.imageUrl, remoteImages: props.remoteImages }}>
+      <AnswerQuestion.Provider value={props.onAnswer}>
+        <OpenFile.Provider value={props.onOpenFile}>
+          <div
+            className={rootClass}
+            data-theme={theme}
+            data-status={state.status}
+            style={props.style}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onContextMenu={onFileContextMenu}
+            // A file link or local image thumbnail (`data-gc-file`, from Markdown) opens like any other path.
+            onClick={
+              onOpenFile
+                ? (event) => {
+                    const el = (event.target as Element).closest?.('[data-gc-file]');
+                    const path = el?.getAttribute('data-gc-file');
+                    if (!el || !path) return;
+                    const position = readFileLinkPosition(el);
+                    if (position) onOpenFile(path, position);
+                    else onOpenFile(path);
+                  }
+                : undefined
+            }
+          >
+            {props.header !== undefined ? (
+              props.header
+            ) : (
+              <div className="gc-header">
+                {state.agent ? (
+                  <span className="gc-avatar" aria-hidden="true">
+                    {state.agent.slice(0, 2)}
+                  </span>
+                ) : null}
+                <b className="gc-agent">{state.agent || 'Agent'}</b>
+                {state.model ? <span className="gc-model">{state.model}</span> : null}
+                {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
+                <span className="gc-spacer" />
+                {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
+                {usage ? <span className="gc-chip">{usage}</span> : null}
+                {limits.map((chip) => (
+                  <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
+                    {chip.text}
+                  </span>
                 ))}
-              </ul>
-            ) : null}
-            {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
-            {attached.problem ? (
-              <div className="gc-attach-problem" role="alert">
-                {attached.problem}
-              </div>
-            ) : null}
-            <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
-              <textarea
-                ref={input}
-                rows={1}
-                autoFocus={props.autoFocus}
-                value={draft}
-                placeholder={placeholder}
-                title={props.composerTitle}
-                aria-label="Message"
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  setPicked(0);
-                  setClosedAt(undefined);
-                }}
-                aria-autocomplete={props.completions ? 'list' : undefined}
-                role={props.completions ? 'combobox' : undefined}
-                aria-expanded={props.completions ? !!choice : undefined}
-                aria-controls={choice ? listId : undefined}
-                aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
-                onKeyDown={onKeyDown}
-                onPaste={onPaste}
-              />
-              {hasExtras ? null : attachButtons}
-              {stacked ? <span className="gc-grow" /> : null}
-              {(running || props.canStop) && props.onStop ? (
-                <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
-                  Stop
-                </button>
-              ) : null}
-              <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
-                {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
-              </button>
-            </div>
-            {hasExtras ? (
-              <div className="gc-under">
-                {attachButtons}
-                <span className="gc-grow" />
-                {extras}
-              </div>
-            ) : null}
-            {props.hint === null ? null : (
-              <div className="gc-hint">
-                {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+                {props.headerExtras}
               </div>
             )}
+            <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
+              <div className="gc-thread" role="log" aria-live="polite">
+                {state.turns.length === 0
+                  ? (props.emptyState ?? (
+                      <div className="gc-empty">
+                        <div className="gc-empty-title">What should {agentName} work on?</div>
+                      </div>
+                    ))
+                  : null}
+                {items}
+                {footer !== undefined && footer !== null && footer !== false ? (
+                  <div className="gc-footer-slot">{footer}</div>
+                ) : null}
+              </div>
+            </div>
+            <div className="gc-composer">
+              {state.queued.length ? (
+                <div className="gc-queued">
+                  {state.queued.map((prompt, i) => {
+                    const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
+                    return shown === null || shown === undefined || shown === false ? null : (
+                      <span key={i}>⏸ {shown}</span>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {choice ? (
+                <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+                  {offered.map((one, index) => (
+                    <li
+                      key={one.name}
+                      id={optionId(index)}
+                      ref={one === choice ? chosen : undefined}
+                      role="option"
+                      aria-selected={one === choice}
+                      // Before the box loses focus.
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        complete(one);
+                      }}
+                    >
+                      <span className="gc-completion-name">
+                        <b>{one.name}</b>
+                        {one.args ? <code>{one.args}</code> : null}
+                      </span>
+                      {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
+              {attached.problem ? (
+                <div className="gc-attach-problem" role="alert">
+                  {attached.problem}
+                </div>
+              ) : null}
+              <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
+                <textarea
+                  ref={input}
+                  rows={1}
+                  autoFocus={props.autoFocus}
+                  value={draft}
+                  placeholder={placeholder}
+                  title={props.composerTitle}
+                  aria-label="Message"
+                  onChange={(event) => {
+                    setDraft(event.target.value);
+                    setPicked(0);
+                    setClosedAt(undefined);
+                  }}
+                  aria-autocomplete={props.completions ? 'list' : undefined}
+                  role={props.completions ? 'combobox' : undefined}
+                  aria-expanded={props.completions ? !!choice : undefined}
+                  aria-controls={choice ? listId : undefined}
+                  aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
+                  onKeyDown={onKeyDown}
+                  onPaste={onPaste}
+                />
+                {hasExtras ? null : attachButtons}
+                {stacked ? <span className="gc-grow" /> : null}
+                {(running || props.canStop) && props.onStop ? (
+                  <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
+                    Stop
+                  </button>
+                ) : null}
+                <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
+                  {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
+                </button>
+              </div>
+              {hasExtras ? (
+                <div className="gc-under">
+                  {attachButtons}
+                  <span className="gc-grow" />
+                  {extras}
+                </div>
+              ) : null}
+              {props.hint === null ? null : (
+                <div className="gc-hint">
+                  {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+                </div>
+              )}
+            </div>
+            {fileMenu && onRevealFile ? (
+              <div
+                className="gc-context-menu"
+                role="menu"
+                style={{ left: fileMenu.x, top: fileMenu.y }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                {onOpenFile ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      const { path, position } = fileMenu;
+                      setFileMenu(undefined);
+                      if (position) onOpenFile(path, position);
+                      else onOpenFile(path);
+                    }}
+                  >
+                    Open
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const { path } = fileMenu;
+                    setFileMenu(undefined);
+                    onRevealFile(path);
+                  }}
+                >
+                  {/Mac/.test(navigator.platform) ? 'Reveal in Finder' : 'Reveal in file manager'}
+                </button>
+              </div>
+            ) : null}
           </div>
-        </div>
-      </OpenFile.Provider>
-    </AnswerQuestion.Provider>
+        </OpenFile.Provider>
+      </AnswerQuestion.Provider>
+    </MarkdownConfig.Provider>
   );
 }
 
@@ -606,11 +726,13 @@ function Turn({
   prompt,
   toolName,
   artifactUrl,
+  onOpenArtifact,
   renderArtifact,
   submitArtifact,
   fold,
 }: {
   artifactUrl?: AgentChatProps['artifactUrl'];
+  onOpenArtifact?: AgentChatProps['onOpenArtifact'];
   renderArtifact?: AgentChatProps['renderArtifact'];
   submitArtifact?: SubmitArtifact;
   turn: SessionTurn;
@@ -644,6 +766,7 @@ function Turn({
       prompt={prompt}
       toolName={toolName}
       artifactUrl={artifactUrl}
+      onOpenArtifact={onOpenArtifact}
       renderArtifact={renderArtifact}
       submitArtifact={submitArtifact}
     />
@@ -762,10 +885,12 @@ function Entry({
   prompt,
   toolName,
   artifactUrl,
+  onOpenArtifact,
   renderArtifact,
   submitArtifact,
 }: {
   artifactUrl?: AgentChatProps['artifactUrl'];
+  onOpenArtifact?: AgentChatProps['onOpenArtifact'];
   renderArtifact?: AgentChatProps['renderArtifact'];
   submitArtifact?: SubmitArtifact;
   entry: SessionEntry;
@@ -779,9 +904,17 @@ function Entry({
 }) {
   const openFile = useContext(OpenFile);
   const onAnswer = useContext(AnswerQuestion);
+  const mdConfig = useContext(MarkdownConfig);
   switch (entry.kind) {
     case 'text':
-      return <Markdown text={entry.text} streaming={entry.streaming} />;
+      return (
+        <Markdown
+          text={entry.text}
+          streaming={entry.streaming}
+          imageUrl={mdConfig.imageUrl}
+          remoteImages={mdConfig.remoteImages}
+        />
+      );
     case 'tool': {
       const argument = toolArgument(entry.input, cwd);
       const diff = toolDiff(entry.input);
@@ -798,7 +931,15 @@ function Entry({
             {diff ? <DiffStat diff={diff} /> : null}
           </summary>
           {file ? (
-            <button type="button" className="gc-open-file" onClick={() => openFile?.(file)}>
+            <button
+              type="button"
+              className="gc-open-file"
+              data-gc-file={file}
+              onClick={(event) => {
+                event.stopPropagation();
+                openFile?.(file);
+              }}
+            >
               Open {relativePath(file, cwd)}
             </button>
           ) : null}
@@ -816,7 +957,16 @@ function Entry({
           <span>✎ Edited</span>
           {entry.paths.map((path) =>
             openFile ? (
-              <button key={path} type="button" className="gc-open-file" onClick={() => openFile(path)}>
+              <button
+                key={path}
+                type="button"
+                className="gc-open-file"
+                data-gc-file={path}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openFile(path);
+                }}
+              >
                 {relativePath(path, cwd)}
               </button>
             ) : (
@@ -847,7 +997,7 @@ function Entry({
       return custom !== undefined ? (
         custom
       ) : (
-        <ArtifactCard artifact={entry.artifact} url={url} onSubmit={submitArtifact} />
+        <ArtifactCard artifact={entry.artifact} url={url} onOpen={onOpenArtifact} onSubmit={submitArtifact} />
       );
     }
     case 'approval': {
@@ -937,21 +1087,6 @@ function Entry({
   }
 }
 
-const ARTIFACT_KIND: Record<Artifact['kind'], string> = {
-  html: 'Page',
-  image: 'Image',
-  audio: 'Audio',
-  video: 'Video',
-  text: 'Document',
-  file: 'File',
-};
-
-type SubmitArtifact = (artifact: Artifact, data: unknown) => void;
-
-// Larger than any form needs; a page cannot flood the conversation.
-const SUBMIT_MAX = 20_000;
-
-/** What a page's `postMessage` asks to send, as JSON text; undefined when it is not a submit. */
 function DiffStat({ diff }: { diff: ToolDiff }) {
   return (
     <span className="gc-diff-stat" aria-label={`${diff.added} lines added, ${diff.removed} removed`}>
@@ -974,20 +1109,6 @@ function DiffLines({ diff }: { diff: ToolDiff }) {
   );
 }
 
-function submitted(message: unknown): { data: unknown; json: string } | { tooLarge: true } | undefined {
-  if (typeof message !== 'object' || message === null) return undefined;
-  if ((message as { genaicode?: unknown }).genaicode !== 'submit') return undefined;
-  const data = (message as { data?: unknown }).data;
-  let json: string | undefined;
-  try {
-    json = JSON.stringify(data, null, 2);
-  } catch {
-    return undefined;
-  }
-  if (json === undefined) return undefined;
-  return json.length > SUBMIT_MAX ? { tooLarge: true } : { data: JSON.parse(json) as unknown, json };
-}
-
 /**
  * The message that carries what the user sent from an artifact (`onArtifactSubmit`) to the
  * agent: it names the artifact and holds `data` as JSON.
@@ -1008,41 +1129,31 @@ export function artifactSubmission(artifact: Pick<Artifact, 'title' | 'name'>, d
 /**
  * An artifact the agent published. Agent-written content never joins this page: HTML and text
  * load in a sandboxed frame with an origin of their own, images, audio and video as plain media.
- * The one thing a page can do to this one is ask (`postMessage`) to send data to the agent,
- * and that waits for the user to confirm what is sent.
+ * When `onOpen` is provided, clicking **Open** opens the artifact in the host's viewer panel
+ * instead of expanding inline.
  */
 function ArtifactCard({
   artifact,
   url,
+  onOpen,
   onSubmit,
 }: {
   artifact: Artifact;
   url: string | undefined;
+  onOpen?: (artifact: Artifact) => void;
   onSubmit?: SubmitArtifact;
 }) {
   const [open, setOpen] = useState(false);
-  const [asked, setAsked] = useState<ReturnType<typeof submitted>>();
   const frame = useRef<HTMLIFrameElement>(null);
-  const canPreview = !!url && artifact.kind !== 'file';
-  const listening = open && !!onSubmit && artifact.kind === 'html';
-  useEffect(() => {
-    if (!listening) return;
-    const listen = (event: MessageEvent) => {
-      // Only the frame of this card, whatever origin it claims.
-      if (!frame.current || event.source !== frame.current.contentWindow) return;
-      const next = submitted(event.data);
-      if (next) setAsked(next);
-    };
-    window.addEventListener('message', listen);
-    return () => window.removeEventListener('message', listen);
-  }, [listening]);
-  const confirm = useRef<HTMLDivElement>(null);
-  // The confirmation sits under the page, often below the fold.
-  useEffect(() => {
-    if (asked) confirm.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [asked]);
-  // What a page asked belongs to that version, and to the frame while it is open.
-  useEffect(() => setAsked(undefined), [open, artifact.id, artifact.version]);
+  const canPreview = !!url && canPreviewArtifact(artifact);
+  const inlineOpen = !onOpen && open && !!url;
+  const [asked, clearAsked] = useArtifactSubmit(
+    frame,
+    inlineOpen && !!onSubmit && artifact.kind === 'html',
+    artifact.id,
+    artifact.version,
+  );
+  const isPdf = artifact.mimeType === 'application/pdf';
   return (
     <div className="gc-artifact">
       <div className="gc-artifact-head">
@@ -1053,27 +1164,40 @@ function ArtifactCard({
           {artifact.title}
         </span>
         <span className="gc-artifact-meta">
-          {ARTIFACT_KIND[artifact.kind]} · {formatBytes(artifact.bytes)}
+          {artifactKindLabel(artifact)} · {formatBytes(artifact.bytes)}
           {artifact.version > 1 ? ` · v${artifact.version}` : ''}
         </span>
         {canPreview ? (
-          <button type="button" className="gc-btn" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? 'Hide' : 'Open'}
+          <button
+            type="button"
+            className="gc-btn"
+            aria-expanded={onOpen ? undefined : open}
+            onClick={() => (onOpen ? onOpen(artifact) : setOpen(!open))}
+          >
+            {!onOpen && open ? 'Hide' : 'Open'}
           </button>
         ) : null}
         {url ? (
-          <a className="gc-btn" href={url} target="_blank" rel="noopener noreferrer">
-            {artifact.kind === 'file' ? 'Download' : 'New tab'}
-          </a>
+          artifact.kind === 'file' && !isPdf ? (
+            <a className="gc-btn" href={withDownloadParam(url)} download>
+              Download
+            </a>
+          ) : (
+            <a className="gc-btn" href={url} target="_blank" rel="noopener noreferrer">
+              New tab
+            </a>
+          )
         ) : null}
       </div>
-      {open && url ? (
+      {inlineOpen ? (
         artifact.kind === 'image' ? (
           <img className="gc-artifact-view" src={url} alt={artifact.title} />
         ) : artifact.kind === 'audio' ? (
           <audio className="gc-artifact-view" src={url} controls preload="metadata" />
         ) : artifact.kind === 'video' ? (
           <video className="gc-artifact-view" src={url} controls preload="metadata" playsInline />
+        ) : isPdf ? (
+          <iframe className="gc-artifact-view" title={artifact.title} src={url} referrerPolicy="no-referrer" />
         ) : (
           <iframe
             ref={frame}
@@ -1087,34 +1211,8 @@ function ArtifactCard({
           />
         )
       ) : null}
-      {open && asked && onSubmit ? (
-        <div ref={confirm} className="gc-artifact-submit" role="group" aria-label="Send to the agent">
-          {'tooLarge' in asked ? (
-            <span className="gc-artifact-submit-text">This page tried to send more than fits in a message.</span>
-          ) : (
-            <>
-              <span className="gc-artifact-submit-text">This page wants to send the agent:</span>
-              <pre className="gc-artifact-submit-data">{asked.json}</pre>
-            </>
-          )}
-          <span className="gc-artifact-submit-actions">
-            {'tooLarge' in asked ? null : (
-              <button
-                type="button"
-                className="gc-btn gc-primary"
-                onClick={() => {
-                  setAsked(undefined);
-                  onSubmit(artifact, asked.data);
-                }}
-              >
-                Send to agent
-              </button>
-            )}
-            <button type="button" className="gc-btn" onClick={() => setAsked(undefined)}>
-              {'tooLarge' in asked ? 'Dismiss' : 'Discard'}
-            </button>
-          </span>
-        </div>
+      {inlineOpen && asked && onSubmit ? (
+        <ArtifactSubmitBar artifact={artifact} asked={asked} onSubmit={onSubmit} onDismiss={clearAsked} />
       ) : null}
     </div>
   );

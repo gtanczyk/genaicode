@@ -787,17 +787,28 @@ app.get('/artifacts/:id', (req, res) => {
 
 Artifacts are agent-written content, so they are handled as untrusted:
 
-- **Files**: only regular files inside `cwd` after resolving symlinks; `.git`, `.genaicode`,
-  `.ssh` and similar folders, `.env*`, key and certificate files are refused. This guards
-  against a confused or prompt-injected agent, not against one with a shell, which can read
-  those files anyway.
+- **Files**: only regular files inside allowed roots after resolving symlinks (`cwd` accepts a single
+  directory, a list of roots, or a function returning them — e.g. the session's `cwd`, opened session
+  directories, and pack worktrees); `.git`, `.genaicode`, `.ssh` and similar folders, `.env*`, key and
+  certificate files are refused. This guards against a confused or prompt-injected agent, not against
+  one with a shell, which can read those files anyway.
 - **Types**: the MIME type comes from the file extension or `format`, never from the agent,
   and everything is sent with `nosniff`. Unknown types download instead of rendering.
 - **HTML**: `artifactResponse()` sends a Content-Security-Policy with `sandbox allow-scripts`
   and `default-src 'none'`: the page runs its own inline code in an origin of its own (no
   cookies, storage or DOM of your app, also when its URL is opened directly) and loads
-  nothing from the network, so no CDN scripts either. `<AgentChat>` adds the same sandbox on
-  the frame. SVG is shown as an image, or with scripts off when opened directly.
+  nothing from the network by default. To opt in to specific library CDNs, pass
+  `allowScriptHosts: ['cdn.jsdelivr.net', 'unpkg.com']` to `createArtifactStore` /
+  `startArtifactChannel` (and to `artifactResponse`, or `store.allowScriptHosts()`): those hosts are
+  added to `script-src`, `style-src` and `font-src` only while `connect-src`, `img-src`, `media-src`
+  and `form-action` stay closed, and the `publish_artifact` tool description tells the agent which
+  hosts are allowed and recommends Subresource Integrity. **Residual risk**: a script loaded from an
+  allowed CDN executes with access to the artifact's data, so choosing hosts is a trust decision.
+  `<AgentChat>` adds the same sandbox on the frame. SVG is shown as an image, or with scripts off
+  when opened directly.
+- **Versions**: `store.read(id, version?)` retains previous versions of republished artifacts within
+  `maxTotalBytes` (dropping superseded versions before whole artifacts), and `artifactResponse`
+  supports `{ download: true }` to force `Content-Disposition: attachment`.
 - **Answers from a page** are data from agent-written code: they reach the agent only after
   the user saw and confirmed them, at most 20 KB of JSON at a time.
 - **What is left**: a page can still navigate its own frame to another site and carry data in

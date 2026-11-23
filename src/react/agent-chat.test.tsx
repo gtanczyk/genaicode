@@ -3,7 +3,14 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionState } from '../agents/session.js';
-import { AgentChat, artifactSubmission, Markdown, type AgentChatProps } from '../react.js';
+import {
+  AgentChat,
+  ArtifactPanel,
+  artifactSubmission,
+  Markdown,
+  parseFileTarget,
+  type AgentChatProps,
+} from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -402,7 +409,7 @@ describe('AgentChat', () => {
     const link = $<HTMLButtonElement>('.gc-file-link');
     expect(link.textContent).toBe('a.txt');
     act(() => link.click());
-    expect(onOpenFile).toHaveBeenCalledWith('/w/a.txt');
+    expect(onOpenFile).toHaveBeenCalledWith('/w/a.txt', { line: 1 });
     expect(document.querySelector('a[href="https://example.com"]')).not.toBeNull();
   });
 
@@ -738,10 +745,14 @@ describe('AgentChat', () => {
     expect(failed.querySelector('[role="alert"]')?.textContent).toBe('Session could not be found.');
   });
 
-  it('scopes Markdown file links in relay replies to the target project and active workspace', () => {
+  it('scopes Markdown file links and local images in relay replies to the target project and active workspace', () => {
     const onOpenFile = vi.fn();
+    const imageUrl = vi.fn((path: string) =>
+      path.endsWith('.png') ? `/files/${encodeURIComponent(path)}` : undefined,
+    );
     render({
       onOpenFile,
+      imageUrl,
       state: fixture({ cwd: '/work/app' }),
       notices: [
         {
@@ -771,7 +782,8 @@ describe('AgentChat', () => {
             status: 'answered',
             startedAt: 1000,
             endedAt: 2000,
-            reply: 'See [result](./src/result.ts) and [abs](/work/other/README.md).',
+            reply:
+              'See [result](./src/result.ts#L12-L20), [app](/work/app/src/index.ts), ![shot](./shot.png), and [escape](../../etc/passwd).',
           },
         },
       ],
@@ -782,19 +794,29 @@ describe('AgentChat', () => {
     expect(inButton?.getAttribute('data-gc-file')).toBe('/work/app/packages/ui/src/button.tsx');
     act(() => inButton!.click());
     expect(onOpenFile).toHaveBeenCalledWith('/work/app/packages/ui/src/button.tsx');
-    // Traversal escaping /work/app is rendered as plain non-clickable text.
+    // Traversal escaping both relay.cwd and /work/app renders as plain non-clickable text.
     expect(inWorkspace!.querySelectorAll('button.gc-file-link')).toHaveLength(1);
     expect(inWorkspace!.querySelector('span.gc-file-link')?.getAttribute('title')).toBe('/work/other/secret.ts');
 
-    // Foreign project links never render clickable buttons or open local files.
-    expect(foreign!.querySelectorAll('button.gc-file-link')).toHaveLength(0);
-    const foreignLinks = Array.from(foreign!.querySelectorAll('span.gc-file-link'));
-    expect(foreignLinks.map((el) => el.getAttribute('title'))).toEqual([
+    // Foreign project links resolve against relay.cwd (never the active workspace) and preserve line ranges.
+    const foreignButtons = Array.from(foreign!.querySelectorAll<HTMLButtonElement>('button.gc-file-link'));
+    expect(foreignButtons.map((el) => el.getAttribute('data-gc-file'))).toEqual([
       '/work/other/src/result.ts',
-      '/work/other/README.md',
+      '/work/app/src/index.ts',
     ]);
-    act(() => (foreignLinks[0] as HTMLElement).click());
-    expect(onOpenFile).toHaveBeenCalledTimes(1);
+    act(() => foreignButtons[0]!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/other/src/result.ts', { line: 12, endLine: 20 });
+
+    // Local image in the foreign relay resolves against relay.cwd too.
+    const imgBtn = foreign!.querySelector<HTMLButtonElement>('button.gc-md-image-btn');
+    expect(imgBtn?.getAttribute('data-gc-file')).toBe('/work/other/shot.png');
+    expect(imageUrl).toHaveBeenCalledWith('/work/other/shot.png');
+
+    // Escaped path outside both relay.cwd and state.cwd stays non-clickable.
+    const escaped = foreign!.querySelector('span.gc-file-link');
+    expect(escaped?.getAttribute('title')).toBe('/etc/passwd');
+    act(() => (escaped as HTMLElement).click());
+    expect(onOpenFile).toHaveBeenCalledTimes(2);
   });
 
   it('replaces or drops the header, sets the theme', () => {
@@ -1092,5 +1114,222 @@ describe('AgentChat', () => {
     const sent = (props.onSend as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(sent[0]).toBe('just text');
     expect(sent[1] ?? []).toEqual([]);
+  });
+
+  it('passes file-link line and range positions to onOpenFile and parses targets cleanly', () => {
+    expect(parseFileTarget('/w/a.ts:12')).toEqual({ path: '/w/a.ts', position: { line: 12 } });
+    expect(parseFileTarget('/w/a.ts:12:3')).toEqual({ path: '/w/a.ts', position: { line: 12, column: 3 } });
+    expect(parseFileTarget('./src/b.ts#L12-L20')).toEqual({ path: './src/b.ts', position: { line: 12, endLine: 20 } });
+    expect(parseFileTarget('C:\\work\\c.ts:5:2')).toEqual({ path: 'C:\\work\\c.ts', position: { line: 5, column: 2 } });
+    expect(parseFileTarget('/w/plain.ts')).toEqual({ path: '/w/plain.ts' });
+
+    const onOpenFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [
+            {
+              kind: 'text',
+              text: 'See [one](/w/a.ts:12:3), [range](./b.ts#L5-L9) and [plain](/w/c.ts).',
+              streaming: false,
+            },
+          ],
+        },
+      ],
+    });
+    render({ state, onOpenFile });
+    const links = $$('.gc-file-link');
+    expect(links).toHaveLength(3);
+    click(links[0]!);
+    click(links[1]!);
+    click(links[2]!);
+    expect(onOpenFile.mock.calls).toEqual([
+      ['/w/a.ts', { line: 12, column: 3 }],
+      ['./b.ts', { line: 5, endLine: 9 }],
+      ['/w/c.ts'],
+    ]);
+  });
+
+  it('renders Markdown images safely: local thumbnails, click-to-load remote chips, no data: URIs, linear time', () => {
+    const onOpenFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [
+            {
+              kind: 'text',
+              text: [
+                '![Chart](/work/chart.png)',
+                '![Unresolved](./missing.png)',
+                '![Tracker](https://cdn.example/pixel.png?secret=1)',
+                '![Inline](data:image/svg+xml,<svg/>)',
+                '![Nested](https://a.example/x.png) [![Inner](https://b.example/y.png)](https://outer.example)',
+              ].join('\n\n'),
+              streaming: false,
+            },
+          ],
+        },
+      ],
+    });
+    render({
+      state,
+      onOpenFile,
+      imageUrl: (path) => (path === '/work/chart.png' ? '/files/deadbeef' : undefined),
+    });
+
+    // Local resolved image becomes a clickable thumbnail with lazy + no-referrer.
+    const thumb = $<HTMLImageElement>('.gc-md-image-btn img.gc-md-image');
+    expect(thumb.getAttribute('src')).toBe('/files/deadbeef');
+    expect(thumb.getAttribute('loading')).toBe('lazy');
+    expect(thumb.getAttribute('referrerpolicy')).toBe('no-referrer');
+    click($('.gc-md-image-btn'));
+    expect(onOpenFile).toHaveBeenCalledWith('/work/chart.png');
+
+    // Unresolved local image falls back to a file link.
+    const fallback = $<HTMLButtonElement>('.gc-file-link[data-gc-file="./missing.png"]');
+    expect(fallback.textContent).toBe('Unresolved');
+
+    // Remote images NEVER render an <img> before clicking Load.
+    expect($$('img').map((el) => el.getAttribute('src'))).toEqual(['/files/deadbeef']);
+    const chips = $$('.gc-md-image-chip');
+    expect(chips.length).toBe(3);
+    expect(chips[0]!.textContent).toContain('Image: cdn.example/pixel.png');
+    expect(chips[0]!.textContent).not.toContain('secret=1');
+    // No nested links around images.
+    expect($$('a a')).toHaveLength(0);
+
+    // Clicking Load loads that specific remote image with no-referrer.
+    click(chips[0]!.querySelector('button.gc-md-image-load')!);
+    expect($$('img').map((el) => el.getAttribute('src'))).toEqual([
+      '/files/deadbeef',
+      'https://cdn.example/pixel.png?secret=1',
+    ]);
+
+    // data: URI is never rendered as an image; kept as plain text.
+    expect(container.textContent).toContain('![Inline](data:image/svg+xml,<svg/>)');
+    expect($$('img[src^="data:"]')).toHaveLength(0);
+
+    // Clicking Load authorizes only that exact URL: replacing it at the same position requires a fresh click.
+    act(() => root.render(<Markdown text="![First](https://img.example/one.png)" />));
+    click($('button.gc-md-image-load'));
+    expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/one.png');
+    act(() => root.render(<Markdown text="![Second](https://img.example/two.png)" />));
+    expect($$('img')).toHaveLength(0);
+    expect($('.gc-md-image-chip').textContent).toContain('img.example/two.png');
+
+    // remoteImages="load" loads remote images immediately.
+    act(() => root.render(<Markdown text="![Photo](https://img.example/pic.jpg)" remoteImages="load" />));
+    expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/pic.jpg');
+
+    // Bounded regex stays fast on hostile unclosed image tokens.
+    const started = Date.now();
+    act(() => root.render(<Markdown text={`${'!['.repeat(20_000)}${'('.repeat(20_000)}`} />));
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('delegates artifact Open to onOpenArtifact and exports a working ArtifactPanel', () => {
+    const v1 = {
+      id: 'a'.repeat(32),
+      name: 'survey',
+      title: 'Survey',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 120,
+      version: 1,
+    };
+    const v2 = { ...v1, bytes: 180, version: 2 };
+    const state = fixture();
+    state.turns[0].entries.push({ kind: 'artifact', artifact: v2 });
+    const onOpenArtifact = vi.fn();
+    render({ state, artifactUrl: (a) => `/artifacts/${a.id}?v=${a.version}`, onOpenArtifact });
+    click($$('.gc-artifact button')[0]!);
+    expect(onOpenArtifact).toHaveBeenCalledWith(v2);
+    // Inline iframe is NOT expanded when onOpenArtifact is set.
+    expect($('iframe')).toBeNull();
+
+    // Exported <ArtifactPanel>: version switching, full size Esc order, and submit confirmation.
+    const onSelectVersion = vi.fn();
+    const onSubmit = vi.fn();
+    const onClose = vi.fn();
+    act(() =>
+      root.render(
+        <ArtifactPanel
+          artifact={v2}
+          versions={[v1, v2]}
+          url={`/artifacts/${v2.id}?v=2`}
+          onSelectVersion={onSelectVersion}
+          onSubmit={onSubmit}
+          onClose={onClose}
+        />,
+      ),
+    );
+    const select = $<HTMLSelectElement>('select[aria-label="Version"]');
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['2', '1']);
+    act(() => {
+      select.value = '1';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(onSelectVersion).toHaveBeenCalledWith(v1);
+
+    // Esc exits full size first, then closes panel.
+    click(button('Full size')!);
+    expect($('.gc-panel').getAttribute('data-full-size')).toBe('true');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect($('.gc-panel').getAttribute('data-full-size')).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Submit flow stays attached to the panel's frame.
+    const frame = $<HTMLIFrameElement>('iframe.gc-panel-frame');
+    const page = {};
+    Object.defineProperty(frame, 'contentWindow', { value: page, configurable: true });
+    act(() => {
+      const event = new MessageEvent('message', { data: { genaicode: 'submit', data: { ok: true } } });
+      Object.defineProperty(event, 'source', { value: page });
+      window.dispatchEvent(event);
+    });
+    click(button('Send to agent')!);
+    expect(onSubmit).toHaveBeenCalledWith(v2, { ok: true });
+  });
+
+  it('offers a right-click Reveal context menu on file links when onRevealFile is provided', () => {
+    const onOpenFile = vi.fn();
+    const onRevealFile = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [{ kind: 'text', text: 'Check [notes.md](/w/notes.md).', streaming: false }],
+        },
+      ],
+    });
+    render({ state, onOpenFile, onRevealFile });
+    act(() => {
+      $('.gc-file-link').dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }),
+      );
+    });
+    const menu = $('[role="menu"]');
+    expect(menu).not.toBeNull();
+    const revealBtn = Array.from(menu.querySelectorAll('button')).find((b) => b.textContent?.startsWith('Reveal'))!;
+    click(revealBtn);
+    expect(onRevealFile).toHaveBeenCalledWith('/w/notes.md');
+    expect($('[role="menu"]')).toBeNull();
   });
 });

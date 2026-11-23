@@ -11,6 +11,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Genaicode",
         "width": 1100,
         "height": 800,
