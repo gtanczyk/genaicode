@@ -198,6 +198,42 @@ describe('codexApprovals', () => {
     expect(onApproval.mock.calls[0]![1]).toBeInstanceOf(AbortSignal);
   });
 
+  describe('MCP tool approvals', () => {
+    const method = 'mcpServer/elicitation/request';
+    const params = {
+      threadId: 'th-1',
+      turnId: 'tu-1',
+      serverName: 'sessions',
+      mode: 'form',
+      message: 'Allow sessions to run sessions_list?',
+      requestedSchema: { type: 'object', properties: {} },
+      _meta: { codex_approval_kind: 'mcp_tool_call', persist: ['session', 'always'] },
+    };
+
+    it('requests a decision per call and answers once, including when auto-approved', async () => {
+      const handler = vi.fn<ApprovalHandler>().mockResolvedValueOnce('approve').mockResolvedValueOnce('deny');
+      const h = codex(handler);
+      expect((await h.request(method, params)).result).toEqual({ action: 'accept', content: {}, _meta: null });
+      expect((await h.request(method, params)).result).toEqual({ action: 'decline', content: null, _meta: null });
+      expect(handler.mock.calls[0]![0]).toMatchObject({ kind: 'other', scope: 'once', summary: params.message });
+      expect(handler.mock.calls[1]![0].id).not.toBe(handler.mock.calls[0]![0].id);
+    });
+
+    it('declines forms asking for input and URL requests without passing them to auto-approve', async () => {
+      const handler = vi.fn<ApprovalHandler>(() => 'approve');
+      const h = codex(handler);
+      for (const change of [
+        { _meta: null },
+        { mode: 'url' },
+        { requestedSchema: { type: 'object', properties: { answer: { type: 'string' } } } },
+      ]) {
+        expect((await h.request(method, { ...params, ...change })).result).toMatchObject({ action: 'decline' });
+      }
+      expect((await h.request(method, { ...params, turnId: 'old' })).error).toMatchObject({ code: -32602 });
+      expect(handler).not.toHaveBeenCalled();
+    });
+  });
+
   it('answers file changes, and the legacy protocol in its own vocabulary', async () => {
     const h = codex(() => 'approve');
     const change = { threadId: 'th-1', turnId: 'tu-1', itemId: 'f1', reason: null, grantRoot: null };
@@ -310,7 +346,6 @@ describe('codexApprovals', () => {
     ).toMatchObject({
       code: -32602,
     });
-    expect(h.approvals.request('mcpServer/elicitation/request', command)).toBeUndefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
