@@ -164,6 +164,8 @@ export {
   findTopic,
   inRunDirectory,
   isAsking,
+  isStalled,
+  attentionOf,
   isTopicsRun,
   folderTopics,
   projectTopics,
@@ -199,6 +201,7 @@ export type {
   SessionReadOptions,
   SessionSource,
   SessionActivity,
+  Attention,
   StoreOptions,
   HookAgent,
   HooksOptions,
@@ -228,9 +231,21 @@ export type { VerifyAttempt, VerifyLoopOptions, VerifyLoopResult, VerifyReport }
 export type { PrepareContext, PreparedRun } from './agents/prepare.js';
 export { claudeMcpConfig } from './agents/drivers/claude.js';
 export { codexMcpOverrides } from './agents/drivers/codex.js';
-export { createGeminiParser, gemini, geminiArgs, geminiPermissionFlags } from './agents/drivers/gemini.js';
+export {
+  createGeminiParser,
+  gemini,
+  geminiArgs,
+  geminiMcpConfig,
+  geminiPermissionFlags,
+} from './agents/drivers/gemini.js';
 export type { GeminiAgentOptions, GeminiApprovalMode } from './agents/drivers/gemini.js';
-export { createCursorParser, cursor, cursorArgs, cursorPermissionFlags } from './agents/drivers/cursor.js';
+export {
+  createCursorParser,
+  cursor,
+  cursorArgs,
+  cursorMcpConfig,
+  cursorPermissionFlags,
+} from './agents/drivers/cursor.js';
 export type { CursorAgentOptions } from './agents/drivers/cursor.js';
 export { createOpencodeParser, opencode, opencodeArgs, opencodePermissionFlags } from './agents/drivers/opencode.js';
 export type { OpencodeAgentOptions } from './agents/drivers/opencode.js';

@@ -3,6 +3,7 @@ import { RpcError } from '../rpc.js';
 import type { ApprovalDecision, ApprovalRequest } from '../types.js';
 import { isObject, stringField, type JsonObject } from './json.js';
 import { anySignal } from '../runtime.js';
+import { isTrustedMcpTool, trustedMcpServers } from './trusted-tool.js';
 
 export interface MuseApprovalOptions {
   /** How long to wait for the server to acknowledge `approval/decide`. Default 60 s. */
@@ -35,6 +36,7 @@ export function museApprovals(
 ): LiveApprovals {
   const timeout = options.requestTimeoutMs ?? 60_000;
   const fail = options.onError ?? ((message: string) => session.emit({ type: 'error', message }));
+  const { servers, trusted } = trustedMcpServers(session.task.mcpServers);
   const turn = new AbortController();
   const requests = new Map<string, JsonObject>();
   const decided = new Set<string>();
@@ -68,19 +70,25 @@ export function museApprovals(
     const choices = Array.isArray(params.availableChoices)
       ? (structuredClone(params.availableChoices) as unknown[]).filter(isChoice)
       : [];
-    const question = new AbortController();
-    questions.set(approvalId, question);
     let decision: ApprovalDecision;
-    try {
-      decision = await session.approve(
-        museApprovalRequest(params, stage === 1 ? approvalId : `${approvalId}/${stage}`),
-        anySignal([turn.signal, question.signal]),
-      );
-    } finally {
-      if (questions.get(approvalId) === question) questions.delete(approvalId);
+    // A tool of a trusted server (genaicode's own `ask_user`) runs without a permission prompt.
+    if (museTrustedTool(params, trusted, servers)) {
+      decision = 'approve';
+    } else {
+      const question = new AbortController();
+      questions.set(approvalId, question);
+      try {
+        decision = await session.approve(
+          museApprovalRequest(params, stage === 1 ? approvalId : `${approvalId}/${stage}`),
+          anySignal([turn.signal, question.signal]),
+        );
+      } finally {
+        if (questions.get(approvalId) === question) questions.delete(approvalId);
+      }
+      // Withdrawn, decided elsewhere, or the turn is over: there is nothing left to answer.
+      if (question.signal.aborted) return;
     }
-    // Withdrawn, decided elsewhere, or the turn is over: there is nothing left to answer.
-    if (question.signal.aborted || closed.has(approvalId) || turn.signal.aborted || session.signal.aborted) return;
+    if (closed.has(approvalId) || turn.signal.aborted || session.signal.aborted) return;
     if (!ownTurn(params)) return;
 
     let choice = pickChoice(choices, decision);
@@ -154,6 +162,21 @@ export function museApprovals(
 
 function isChoice(value: unknown): value is MuseChoice {
   return isObject(value) && typeof value.choiceId === 'string' && typeof value.decision === 'string';
+}
+
+/**
+ * Whether a Muse approval request is strictly for a tool of a `trusted` MCP server.
+ * Only `subject.kind === 'tool'` (never shell, fileAccess, network, process, unixSocket,
+ * computerUseTakeover, protectedWrite, or unknown kinds) may auto-approve.
+ */
+export function museTrustedTool(params: JsonObject, trusted: readonly string[], servers: readonly string[]): boolean {
+  if (!trusted.length || params.protectedWrite === true) return false;
+  const subject = isObject(params.subject) ? params.subject : undefined;
+  if (stringField(subject, 'kind') !== 'tool') return false;
+  const subjectTool = stringField(subject, 'toolName');
+  const paramTool = stringField(params, 'toolName');
+  if (subjectTool && paramTool && subjectTool !== paramTool) return false;
+  return isTrustedMcpTool([subjectTool ?? paramTool], trusted, servers, { separator: '__' });
 }
 
 /** Approve once and never for the session; deny once where offered, else as the server offers. */

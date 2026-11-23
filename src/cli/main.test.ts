@@ -894,7 +894,7 @@ describe('genaicode sessions --waiting', () => {
     const again = await answer('approve', open.id);
     expect(again.code).toBe(EXIT_FAILED);
     expect(again.err).toContain('No open question 0123456789ab');
-    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval, 1 asks you something:/);
+    expect(out).toMatch(/^2 sessions wait for you in the last 7d, 1 for approval, 1 asks you something now:/);
     expect(out.indexOf('asks to use Bash')).toBeLessThan(out.indexOf('Add CSV export'));
     expect(out).toContain('  asks: Done. Push it?\n  genaicode chat -a alpha -C /work/app -r reply\n');
     expect(out).not.toContain('Working on it');
@@ -1017,7 +1017,7 @@ describe('genaicode sessions --waiting', () => {
     expect(agent.tasks).toHaveLength(1);
 
     const shown = (await run()).out.split('\n');
-    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 ask you$/);
+    expect(shown[0]).toMatch(/^● Pack mode\s+t1\s+alpha 2\s+1m ago\s+1 needs you$/);
     expect(shown[1]).toMatch(/^ {2}Desktop app\s+t2\s+alpha 1\s+1h ago$/);
     expect((await run('show', 'pack')).out).toMatch(
       /^Pack mode \(t1\): 2 sessions in the last 30d\n● alpha .* one\n {2}alpha .* three\n$/,
@@ -1178,7 +1178,7 @@ describe('genaicode sessions --waiting', () => {
       ['one', 'Pack mode'],
       ['two', undefined],
     ]);
-    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 1, active: 0 }]);
+    expect(line.topics).toEqual([{ id: 't1', name: 'Pack mode', sessions: 1, asking: 1, stalled: 0, active: 0 }]);
 
     // Ctrl-C ends it too, and lets go of a stdin that is still open.
     const open = new PassThrough();
