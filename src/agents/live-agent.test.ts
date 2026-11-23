@@ -415,15 +415,17 @@ describe('codexLive', () => {
       }),
     ).toEqual({ init: { experimentalApi: true } });
 
-    // Resuming a thread in Plan mode with mode omitted inherits Plan mode without sending collaborationMode.
-    expect(
-      await ask({
-        prompt: 'keep planning',
-        cwd: dir,
-        resume: 'th-1',
-        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'plan' },
-      }),
-    ).toEqual({});
+    // Resuming a thread in Plan mode with mode omitted inherits Plan mode without sending collaborationMode,
+    // and reports mode: 'plan' on the session event so AgentSession keeps state in sync.
+    const inheritedRun = codexLive({ command: codexBin }).run({
+      prompt: 'keep planning',
+      cwd: dir,
+      resume: 'th-1',
+      env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'plan' },
+    });
+    const inheritedEvents = await collect(inheritedRun);
+    expect(inheritedEvents).toContainEqual({ type: 'session', sessionId: 'th-1', mode: 'plan' });
+    expect(JSON.parse((await inheritedRun.result).text!)).toEqual({});
   });
 
   it('masks secret requestUserInput answers in events while sending the real value to Codex', async () => {

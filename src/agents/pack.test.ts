@@ -762,4 +762,63 @@ describe('pack chat turns', () => {
       await team.close();
     }
   });
+
+  it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
+    const cwd = repo();
+    const seenWorkerModes: Array<string | undefined> = [];
+    const plannerWorker = fake(
+      'codex',
+      async (task) => {
+        seenWorkerModes.push(task.mode);
+        return { text: `mode:${task.mode}` };
+      },
+      { plan: true },
+    );
+    const plainWorker = fake('opencode', async (task) => {
+      seenWorkerModes.push(task.mode);
+      return { text: 'edited' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const listed = JSON.parse(await tool(task, 'agents')) as { name: string; plan?: boolean }[];
+        expect(listed.map((m) => [m.name, m.plan])).toEqual([
+          ['codex', true],
+          ['opencode', undefined],
+        ]);
+        await expect(tool(task, 'delegate', { agent: 'opencode', prompt: 'research', mode: 'shared' })).rejects.toThrow(
+          /does not support Plan mode/,
+        );
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'research', mode: 'shared' }),
+        ) as { id: string };
+        await tool(task, 'wait', { ids: [started.id] });
+        await expect(tool(task, 'merge', { id: started.id })).rejects.toThrow(
+          /Cannot merge changes while in Plan mode/,
+        );
+        return { text: 'planned' };
+      },
+      { mcp: true, plan: true },
+    );
+    const team = pack({ lead, members: [plannerWorker, plainWorker] });
+    try {
+      const result = await team.run({ prompt: 'plan it', cwd, mode: 'plan' }).result;
+      expect(result).toMatchObject({ status: 'completed', ok: true, text: 'planned' });
+      expect(seenWorkerModes).toEqual(['plan']);
+    } finally {
+      await team.close();
+    }
+
+    const nonPlanLead = fake('plain-lead', async () => ({ text: 'should not run' }), { mcp: true });
+    const plainTeam = pack({ lead: nonPlanLead, members: [plannerWorker] });
+    try {
+      const refused = await plainTeam.run({ prompt: 'plan it', cwd, mode: 'plan' }).result;
+      expect(refused).toMatchObject({
+        status: 'failed',
+        error: 'plain-lead does not support Plan mode in this driver.',
+      });
+    } finally {
+      await plainTeam.close();
+    }
+  });
 });

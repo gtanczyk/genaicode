@@ -742,4 +742,25 @@ describe('managedAgent resume cursor', () => {
     expect(two).toMatchObject({ status: 'completed', text: 'two' });
     expect(answers).toEqual(['a-1']);
   });
+
+  it('forwards mode when capabilities.plan is declared and refuses Plan mode otherwise', async () => {
+    const seen: Array<string | undefined> = [];
+    const { provider } = fake([], {
+      capabilities: { plan: true },
+      async start(request) {
+        seen.push(request.mode);
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn' };
+      },
+    });
+    const planner = managedAgent(provider, { pollIntervalMs: 1 });
+    expect((await planner.run({ prompt: 'p', cwd: '.', mode: 'plan' }).result).status).toBe('completed');
+    expect((await planner.run({ prompt: 'q', cwd: '.', mode: 'default' }).result).status).toBe('completed');
+    expect(seen).toEqual(['plan', 'default']);
+
+    const { provider: plain, calls } = fake([], { capabilities: {} });
+    const refused = await managedAgent(plain, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.', mode: 'plan' })
+      .result;
+    expect(refused).toMatchObject({ status: 'failed', error: 'cloud does not support Plan mode in this driver.' });
+    expect(calls).toEqual([]);
+  });
 });

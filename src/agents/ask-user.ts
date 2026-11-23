@@ -6,8 +6,21 @@ import type { AgentQuestion, ApprovalRequest, McpServer, QuestionAnswers, Questi
 /** The tool an agent calls to ask the person to choose. */
 export const ASK_USER_TOOL = 'ask_user';
 
-/** Default MCP server name for `startQuestionChannel()`. Drivers with a mode-specific native question tool drop it in those modes. */
+/** Default MCP server name for `startQuestionChannel()`. */
 export const QUESTION_SERVER_NAME = 'genaicode_ask';
+
+// Shared across bundles in the same process (CLI and bundled UI).
+const QUESTION_CHANNEL = Symbol.for('genaicode.questionChannel');
+
+/** Mark an MCP server as a session-injected `ask_user` fallback, independent of its name. */
+export function markQuestionChannelServer<T extends McpServer>(server: T): T {
+  return Object.assign({ ...server }, { [QUESTION_CHANNEL]: true as const });
+}
+
+/** Whether `server` is a question-channel MCP server (`startQuestionChannel()` or session `questions`). */
+export function isQuestionChannelServer(server: McpServer): boolean {
+  return Boolean((server as Record<symbol, unknown>)[QUESTION_CHANNEL]);
+}
 
 const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 8;
@@ -145,7 +158,7 @@ export async function startQuestionChannel(options: { name?: string } = {}): Pro
   return {
     // The call waits for a person: agents that can be told so wait up to a day (Codex: 60 s by default).
     // Its tool only asks the person: agents need no permission prompt in front of the question.
-    mcpServer: { ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true },
+    mcpServer: markQuestionChannelServer({ ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true }),
     bind(next) {
       handler = next;
     },

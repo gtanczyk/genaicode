@@ -6,6 +6,7 @@ import { findExecutable } from './discovery.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { ownMcpServers } from './agent-mcp.js';
 import { startLocalMcpServer } from './mcp-server.js';
+import { unsupportedMode } from './prepare.js';
 import { isReadOnlyApproval } from './read-only.js';
 import type { McpTool } from './mcp-tools.js';
 import {
@@ -86,6 +87,8 @@ export interface PackMember {
   /** Delegated tasks it is running now. */
   running: number;
   steer: boolean;
+  /** Supports Plan mode (`AgentTask.mode: 'plan'`). */
+  plan?: boolean;
   /** `effort` values `delegate` accepts for it. Absent: effort is not configurable. */
   effort?: readonly string[];
   /** The latest plan limits it reported, by window. */
@@ -412,6 +415,7 @@ export function pack(options: PackOptions): Pack {
             (sub.reviewer === member && sub.checks?.review?.status === 'running'),
         ).length,
         steer: !!member.capabilities.steer,
+        ...(member.capabilities.plan ? { plan: true } : {}),
         ...(member.capabilities.effort?.length ? { effort: member.capabilities.effort } : {}),
         ...(known.length ? { limits: known } : {}),
         ...(failure ? { lastFailure: failure } : {}),
@@ -572,6 +576,14 @@ export function pack(options: PackOptions): Pack {
         if (!agent)
           throw new Error(`No agent ${String(args.agent)}. Available: ${members.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
+        if (task.mode === 'plan' && !agent.capabilities.plan) {
+          const capable = members.filter((member) => member.capabilities.plan).map((member) => member.name);
+          throw new Error(
+            capable.length
+              ? `${agent.name} does not support Plan mode. Plan-capable agents: ${capable.join(', ')}.`
+              : `${agent.name} does not support Plan mode.`,
+          );
+        }
         if (ended.signal.aborted) throw new Error('The run has ended.');
         const running = occupied();
         if (running >= maxParallel)
@@ -696,6 +708,7 @@ export function pack(options: PackOptions): Pack {
           cwd: sub.cwd,
           ...(extra.model ? { model: extra.model } : {}),
           ...(extra.effort ? { effort: extra.effort } : {}),
+          ...(task.mode !== undefined ? { mode: task.mode } : {}),
           ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           ...(task.env ? { env: task.env } : {}),
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
@@ -1106,8 +1119,14 @@ export function pack(options: PackOptions): Pack {
             },
             required: ['id'],
           },
-          call: (args) =>
-            merge(find(args.id), args.threeWay === true, typeof args.revision === 'string' ? args.revision : undefined),
+          call: (args) => {
+            if (task.mode === 'plan') throw new Error('Cannot merge changes while in Plan mode.');
+            return merge(
+              find(args.id),
+              args.threeWay === true,
+              typeof args.revision === 'string' ? args.revision : undefined,
+            );
+          },
         },
         {
           name: 'discard',
@@ -1128,6 +1147,8 @@ export function pack(options: PackOptions): Pack {
 
       const result = (async (): Promise<AgentResult> => {
         if (!lead.capabilities.mcp) return failed(`${lead.name} cannot attach MCP servers, so it cannot lead a pack.`);
+        const refusedMode = unsupportedMode(lead.name, lead.capabilities, task);
+        if (refusedMode) return failed(refusedMode);
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {

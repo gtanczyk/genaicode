@@ -236,6 +236,23 @@ describe('withFallback', () => {
     await both.run({ prompt: 'b', cwd: dir }).result;
     expect(claude.tasks.map((task) => task.prompt)).toEqual(['a', 'b']);
   });
+
+  it('skips non-plan agents when failing over a Plan mode task', async () => {
+    const primary = fake('claude', [out('quota')]);
+    primary.agent.capabilities.plan = true;
+    const noPlan = fake('opencode');
+    const backup = fake('codex', [{ text: 'planned' }]);
+    backup.agent.capabilities.plan = true;
+
+    const result = await withFallback([primary.agent, noPlan.agent, backup.agent]).run({
+      prompt: 'plan auth',
+      cwd: dir,
+      mode: 'plan',
+    }).result;
+    expect(result).toMatchObject({ status: 'completed', ok: true, text: 'planned' });
+    expect(noPlan.tasks).toHaveLength(0);
+    expect(backup.tasks[0]?.mode).toBe('plan');
+  });
 });
 
 describe('session failover', () => {

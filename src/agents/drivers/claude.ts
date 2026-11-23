@@ -12,6 +12,7 @@ import {
   claudeApprovalEnv,
   claudePermissionFlags,
   claudeSandboxRefuses,
+  isClaudeExitPlanMode,
   startClaudeApprovalServer,
 } from './claude-approvals.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
@@ -252,6 +253,8 @@ async function prepareClaude(
   context: PrepareContext,
   stdinPrompt: boolean,
 ): Promise<PreparedRun> {
+  if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
+    throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   const permissions = resolvePermissions(task.permissions);
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
   const asks = permissions.approval ? permissions.approval !== 'deny' : !!task.onApproval;
@@ -263,25 +266,25 @@ async function prepareClaude(
     hasClaudeDefaultMode(task.env ?? process.env, options.settings, task.extraArgs);
   if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt, inheritMode) };
   let dir: string | undefined;
-  let file: string;
   try {
     dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
-    file = join(dir, 'mcp.json');
+    const file = join(dir, 'mcp.json');
     writeFileSync(file, JSON.stringify(claudeMcpConfig(servers)), { mode: 0o600 });
+    const args = claudeArgs(task, options, file, approvals?.args, stdinPrompt, inheritMode);
+    const created = dir;
+    return {
+      args,
+      ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
+      cleanup: () => {
+        void approvals?.close();
+        rmSync(created, { recursive: true, force: true });
+      },
+    };
   } catch (error) {
     if (dir) rmSync(dir, { recursive: true, force: true });
     void approvals?.close();
     throw error;
   }
-  const created = dir;
-  return {
-    args: claudeArgs(task, options, file, approvals?.args, stdinPrompt, inheritMode),
-    ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
-    cleanup: () => {
-      void approvals?.close();
-      rmSync(created, { recursive: true, force: true });
-    },
-  };
 }
 
 /** The task's approval endpoint: decides under `task.permissions`, with the run's approval events. */
@@ -294,8 +297,9 @@ async function claudeApprovals(task: AgentTask, context: PrepareContext) {
     async (request, signal) => {
       const ended = signal ? anySignal([signal, context.signal]) : context.signal;
       return reportApproval(context.emit, request, ended, async () =>
-        // Outside the sandbox: denied by policy, whoever would have answered.
-        sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)
+        // Outside the sandbox, or leaving an explicitly requested Plan turn: denied by policy.
+        (sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)) ||
+        (task.mode === 'plan' && isClaudeExitPlanMode(request.detail))
           ? { decision: 'deny', automatic: true }
           : decideApproval(task, request, ended),
       );

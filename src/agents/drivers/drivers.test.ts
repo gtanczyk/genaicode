@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { claudeArgs, createClaudeParser } from './claude.js';
-import { codexArgs, createCodexParser } from './codex.js';
+import { codex, codexArgs, createCodexParser } from './codex.js';
 import { codexChangesDiff, codexNotification } from './codex-live.js';
 import { createMuseParser, museArgs } from './muse.js';
 import { museNotification } from './muse-live.js';
@@ -312,6 +312,15 @@ describe('codex driver', () => {
     expect(codexNotification('item/completed', { item: { id: 'p1', type: 'plan', text: '## Plan\nDo X.' } })).toEqual([
       { type: 'message', text: '## Plan\nDo X.' },
     ]);
+  });
+
+  it('refuses Plan mode on headless codex() before spawning', async () => {
+    const result = await codex({ command: '/nonexistent/codex' }).run({
+      prompt: 'design it',
+      cwd: process.cwd(),
+      mode: 'plan',
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'codex does not support Plan mode in this driver.' });
   });
 });
 

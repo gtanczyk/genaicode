@@ -64,6 +64,7 @@ export function fromHosted(provider: HostedAgentProvider): ManagedProvider {
         cwd: request.workspace ?? '.',
         ...(request.model !== undefined ? { model: request.model } : {}),
         ...(request.effort !== undefined ? { effort: request.effort } : {}),
+        ...(request.mode !== undefined ? { mode: request.mode } : {}),
         ...(request.maxTurns !== undefined ? { maxTurns: request.maxTurns } : {}),
         ...(request.resume !== undefined ? { resume: request.resume } : {}),
         ...(request.extraArgs !== undefined ? { extraArgs: request.extraArgs } : {}),

@@ -391,7 +391,7 @@ describe('chat controller', () => {
     expect(planner.tasks[0].mode).toBe('plan');
 
     chat.submit('/plan off');
-    expect(chat.get().session.mode).toBeUndefined();
+    expect(chat.get().session.mode).toBe('default');
     expect(statusParts(chat.get().session)).not.toContain('plan');
     chat.submit('build it');
     await chat.session.idle();

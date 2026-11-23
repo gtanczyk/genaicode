@@ -1,5 +1,6 @@
 import type { TokenUsage } from '../../core/types.js';
 import type { SessionTurn } from '../session.js';
+import type { AgentMode } from '../types.js';
 
 /**
  * - `active`: written to in the last couple of minutes; an agent is probably working in it.
@@ -51,6 +52,8 @@ export interface SessionInfo {
   /** Short read-only previews of shell commands currently asking for approval. */
   waitingCommands?: Array<{ tool: string; command: string }>;
   model?: string;
+  /** Collaboration mode of the last turn, when the session store records it (e.g. Codex Plan mode). */
+  mode?: AgentMode;
   usage?: TokenUsage;
   costUsd?: number;
   /** The file holding it (local). */

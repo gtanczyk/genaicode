@@ -395,7 +395,7 @@ export function createChatController(options: ChatOptions): ChatController {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
       }
-      if (!session.adopt(turns, own ? { sessionId: theirs.id } : {})) {
+      if (!session.adopt(turns, own ? { sessionId: theirs.id, ...(theirs.mode ? { mode: theirs.mode } : {}) } : {})) {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }

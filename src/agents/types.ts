@@ -253,7 +253,7 @@ export type ApprovalDecision = 'approve' | 'deny';
  * are dropped; non-JSON stdout lines arrive as `raw`.
  */
 export type AgentEvent =
-  | { type: 'session'; sessionId: string; model?: string }
+  | { type: 'session'; sessionId: string; model?: string; mode?: AgentMode }
   | { type: 'text-delta'; text: string }
   | { type: 'message'; text: string }
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }

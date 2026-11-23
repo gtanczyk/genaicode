@@ -128,7 +128,16 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
       let current: AgentRun | undefined;
       let stopped = false;
       const result = (async (): Promise<AgentResult> => {
-        const order = ordered();
+        const all = ordered();
+        const order = task.mode === 'plan' ? all.filter((agent) => agent.capabilities.plan) : all;
+        if (!order.length) {
+          const message = `${first.name} does not support Plan mode in this driver.`;
+          const failed: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
+          events.push({ type: 'error', message });
+          events.push({ type: 'done', result: failed });
+          events.close();
+          return failed;
+        }
         let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;

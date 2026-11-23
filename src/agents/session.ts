@@ -4,6 +4,7 @@ import { shouldFailOver } from './failover.js';
 import { packApproval, PackActionError, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
+import { markQuestionChannelServer } from './ask-user.js';
 import { shownAnswers } from './live-agent.js';
 import type {
   AgentBudget,
@@ -247,9 +248,10 @@ export interface AgentSession {
    * agent's session). The turns join the transcript, and the next turn hands them over to the
    * current agent the way a switch does. With `sessionId`, the turns are the current agent's own
    * session: the next turn resumes it instead (`capabilities.resume`), with nothing to hand over.
+   * With `mode: 'plan'`, restores Plan mode when the agent supports it and no mode is set yet.
    * Returns false while a turn is running.
    */
-  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string }): boolean;
+  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string; mode?: AgentMode }): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
   /** Stop everything and drop subscribers. */
@@ -261,12 +263,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const maxTurns = options.maxTurns ?? 200;
   const toAgent = (prompt: string) => (options.transformPrompt ? options.transformPrompt(prompt) : prompt);
   let agent = options.agent;
+  if (options.mode !== undefined && options.mode !== 'default' && options.mode !== 'plan')
+    throw new Error(`Unknown mode "${String(options.mode)}". Expected 'plan' or 'default'.`);
+  if (options.mode === 'plan' && !agent.capabilities.plan) throw new Error(`${agent.name} has no Plan mode.`);
   let state: SessionState = {
     agent: agent.name,
     cwd: options.cwd,
     model: options.model,
     effort: options.effort,
-    ...(options.mode === 'plan' ? { mode: 'plan' as const } : {}),
+    ...(options.mode !== undefined ? { mode: options.mode } : {}),
     sessionId: options.resume,
     status: 'idle',
     turns: [],
@@ -307,6 +312,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningAgent: CodingAgent | undefined;
   /** The effort the running turn started with. */
   let runningEffort: string | undefined;
+  /** The mode the running turn started with (or inherited from a resumed session). */
+  let runningMode: AgentMode | undefined;
+  /** Whether the running turn's driver itself accepts steering. */
+  let runCanSteer = false;
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
@@ -320,14 +329,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
               sessionId: options.resume,
               upTo: 0,
               effort: options.effort,
-              ...(options.mode === 'plan' ? { mode: 'plan' as const } : {}),
+              ...(options.mode !== undefined ? { mode: options.mode } : {}),
             },
           ],
         ]
       : [],
   );
-  // Set when `setMode('default' | undefined)` explicitly leaves Plan mode on an existing session.
-  let explicitDefault = false;
   // Turns after this id are news to the current agent; undefined: it knows everything.
   let missedAfter: number | undefined;
   // `reset()` drops the turns up to here from every later handoff.
@@ -420,7 +427,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       }
       case 'session':
-        if (!forgetAfterTurn && own()) set({ sessionId: event.sessionId });
+        if (!forgetAfterTurn && own()) {
+          const patch: Partial<SessionState> = { sessionId: event.sessionId };
+          if (event.mode && agent.capabilities.plan) {
+            if (runningAgent === agent) runningMode = event.mode;
+            if (state.mode === undefined) patch.mode = event.mode;
+            else if (state.status === 'running') patch.canSteer = runCanSteer && state.mode === runningMode;
+          }
+          set(patch);
+        }
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
@@ -630,17 +645,22 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
             ? state.effort
             : undefined;
-    const mode = state.mode === 'plan' && next.capabilities.plan ? 'plan' : undefined;
-    explicitDefault = false;
+    const mode = state.mode !== undefined && next.capabilities.plan ? state.mode : undefined;
     set({ agent: next.name, sessionId, rateLimits: [], effort, mode });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
-  const failOver = (turnId: number, result: AgentResult): boolean => {
+  const failOver = (turnId: number, result: AgentResult, turnMode: AgentMode | undefined): boolean => {
     const failed = state.turns.find((turn) => turn.id === turnId);
     if (closed || !failed || failed.agent !== agent.name || !shouldFailOver(result)) return false;
+    // Do not retry a Plan turn if the user already changed mode while it was running.
+    if (turnMode === 'plan' && state.mode !== 'plan') return false;
+    const needsPlan = turnMode === 'plan' || state.mode === 'plan';
     tried.add(agent.name);
-    const next = fallback.find((candidate) => candidate.name !== agent.name && !tried.has(candidate.name));
+    const next = fallback.find(
+      (candidate) =>
+        candidate.name !== agent.name && !tried.has(candidate.name) && (!needsPlan || candidate.capabilities.plan),
+    );
     if (!next) return false;
     addEntry(turnId, { kind: 'failover', from: agent.name, to: next.name, failure: result.failure! });
     const changed = [...new Set(failed.entries.flatMap((entry) => (entry.kind === 'files' ? entry.paths : [])))];
@@ -708,6 +728,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     const turnMode = state.mode;
     runningEffort = turnEffort;
     runningAgent = turnAgent;
+    runningMode = turnMode;
+    runCanSteer = false;
     const own = () => agent === turnAgent;
     let preamble = '';
     let handoff: SessionTurn['handoff'];
@@ -750,11 +772,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       canSteer: false,
     });
     const leavingPlan =
-      !turnMode &&
+      turnMode === undefined &&
       resume !== undefined &&
       Boolean(turnAgent.capabilities.plan) &&
-      (known.get(turnAgent)?.mode === 'plan' || explicitDefault);
-    const taskMode: AgentMode | undefined = turnMode === 'plan' ? 'plan' : leavingPlan ? 'default' : undefined;
+      known.get(turnAgent)?.mode === 'plan';
+    const taskMode: AgentMode | undefined =
+      turnMode === 'plan'
+        ? 'plan'
+        : (turnMode === 'default' && Boolean(turnAgent.capabilities.plan)) || leavingPlan
+          ? 'default'
+          : undefined;
     let current: AgentRun;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
@@ -764,7 +791,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         ? [
             ...(options.artifacts?.mcpServer ? [options.artifacts.mcpServer] : []),
             ...(options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote
-              ? [options.questions.mcpServer]
+              ? [markQuestionChannelServer(options.questions.mcpServer)]
               : []),
           ]
         : [];
@@ -799,12 +826,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       current = failedRun(error instanceof Error ? error.message : String(error));
     }
     run = current;
-    if (current.steer && turnAgent.capabilities.steer) set({ canSteer: true });
+    runCanSteer = Boolean(current.steer && turnAgent.capabilities.steer);
+    if (runCanSteer && state.mode === runningMode) set({ canSteer: true });
     let turnSession: string | undefined;
+    let turnSessionMode: AgentMode | undefined;
     void (async () => {
       try {
         for await (const event of current) {
-          if (event.type === 'session') turnSession = event.sessionId;
+          if (event.type === 'session') {
+            turnSession = event.sessionId;
+            if (event.mode) turnSessionMode = event.mode;
+          }
           onEvent(turnId, event, own);
         }
       } catch (error) {
@@ -816,6 +848,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       denyPending();
       run = undefined;
       controller = undefined;
+      runCanSteer = false;
+      runningMode = undefined;
       updateTurn(turnId, (done) => ({
         ...done,
         entries: closeStreaming(done.entries),
@@ -830,6 +864,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (result.ok && state.rateLimits?.some((limit) => limit.window === 'quota'))
         set({ rateLimits: state.rateLimits.filter((limit) => limit.window !== 'quota') });
       runningAgent = undefined;
+      const effectiveMode = turnSessionMode ?? turnMode;
       // A resumed turn that names no new session continued the one it resumed.
       const sessionId = result.sessionId ?? turnSession ?? (result.ok ? resume : undefined);
       if (forgetAfterTurn) {
@@ -838,14 +873,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       } else {
         // The agent heard everything up to this turn, through its session or this turn's handoff.
         if (sessionId || result.ok)
-          known.set(turnAgent, { sessionId, upTo: turnId, effort: turnEffort, mode: turnMode });
-        if (leavingPlan && result.ok && own()) explicitDefault = false;
+          known.set(turnAgent, { sessionId, upTo: turnId, effort: turnEffort, mode: effectiveMode });
         if (own()) {
           if (sessionId || result.ok) missedAfter = undefined;
           if (sessionId) set({ sessionId });
         }
       }
-      if (failOver(turnId, result)) {
+      if (failOver(turnId, result, effectiveMode)) {
         // The same prompt again, on the next agent; a note stays a note.
         if (finished && noteTurnWas) nextIsNote = true;
         return startTurn(finished!.prompt, true);
@@ -895,7 +929,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const turnController = controller;
       // Transform only what is steered now; a queued prompt is transformed when its turn starts.
       let steerText: string | undefined;
-      if (current?.steer && state.canSteer && turnId !== undefined && !sendOptions?.queue) {
+      if (
+        current?.steer &&
+        state.canSteer &&
+        state.mode === runningMode &&
+        turnId !== undefined &&
+        !sendOptions?.queue
+      ) {
         try {
           steerText = toAgent(prompt);
         } catch {
@@ -1041,16 +1081,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (mode !== undefined && mode !== 'default' && mode !== 'plan')
         throw new Error(`Unknown mode "${String(mode)}". Expected 'plan' or 'default'.`);
       if (mode === 'plan' && !agent.capabilities.plan) throw new Error(`${agent.name} has no Plan mode.`);
-      const next = mode === 'plan' ? 'plan' : undefined;
-      explicitDefault = !next && (state.sessionId !== undefined || (runningAgent === agent && !forgetAfterTurn));
-      set({ mode: next });
+      const patch: Partial<SessionState> = { mode };
+      if (state.status === 'running') patch.canSteer = runCanSteer && mode === runningMode;
+      set(patch);
     },
     setBudget(budget) {
       set({ budget });
     },
     reset() {
       explicitResume = undefined;
-      explicitDefault = false;
       known.clear();
       missedAfter = undefined;
       resetAt = state.turns.at(-1)?.id ?? 0;
@@ -1060,7 +1099,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     clear() {
       if (state.status === 'running' || closed) return false;
       explicitResume = undefined;
-      explicitDefault = false;
       known.clear();
       missedAfter = undefined;
       resetAt = nextTurnId - 1;
@@ -1079,17 +1117,28 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         delete copy.handoff;
         return copy;
       });
+      let inheritedMode: AgentMode | undefined;
       if (own) {
         // Its own session holds these turns; what it missed before them is left behind.
         explicitResume = undefined;
-        explicitDefault = false;
         missedAfter = undefined;
-        known.set(agent, { sessionId: own, upTo: nextTurnId - 1, effort: state.effort, mode: state.mode });
+        if (state.mode === undefined && adoptOptions?.mode === 'plan' && agent.capabilities.plan)
+          inheritedMode = 'plan';
+        known.set(agent, {
+          sessionId: own,
+          upTo: nextTurnId - 1,
+          effort: state.effort,
+          mode: inheritedMode ?? state.mode ?? adoptOptions?.mode,
+        });
       } else {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
       }
-      set({ turns: keepTurns([...state.turns, ...adopted]), ...(own ? { sessionId: own } : {}) });
+      set({
+        turns: keepTurns([...state.turns, ...adopted]),
+        ...(own ? { sessionId: own } : {}),
+        ...(inheritedMode ? { mode: inheritedMode } : {}),
+      });
       return true;
     },
     idle() {

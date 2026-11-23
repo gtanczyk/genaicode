@@ -108,6 +108,10 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       if (line.type === 'turn_context') {
         if (typeof payload.cwd === 'string' && !info.cwd) info.cwd = payload.cwd;
         if (typeof payload.model === 'string') info.model = payload.model;
+        if (isRecord(payload.collaboration_mode)) {
+          const mode = payload.collaboration_mode.mode;
+          if (mode === 'plan' || mode === 'default') info.mode = mode;
+        }
       }
       let prompt: string | undefined;
       let reply: string | undefined;
@@ -303,6 +307,7 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
+    if (read.mode) info.mode = read.mode;
     if (read.automated) info.automated = true;
     // A state the app server reported (it asks for approval) is not the rollout's to change.
     if (info.state !== 'active' && !info.waitingFor) info.state = read.state;

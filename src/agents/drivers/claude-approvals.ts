@@ -185,6 +185,11 @@ function claudeAnswers(request: ApprovalRequest, answers: QuestionAnswers): Reco
 // Tools that only read, which `read-only` may still grant.
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead', 'WebFetch', 'WebSearch', 'TodoWrite']);
 
+/** Whether a Claude permission prompt asks to leave Plan mode (`ExitPlanMode`). */
+export function isClaudeExitPlanMode(args: unknown): boolean {
+  return stringField(args, 'tool_name') === 'ExitPlanMode';
+}
+
 /**
  * Whether a permission prompt asks for something outside `sandbox`, so neither a person nor
  * `auto-approve` may grant it. `read-only`: anything but a reading tool, `ExitPlanMode`
