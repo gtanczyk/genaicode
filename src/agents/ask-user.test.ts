@@ -133,7 +133,7 @@ describe('question channel in a session', () => {
       expect(replies).toEqual(['The user answered:\nWhich database? Postgres\n(1 left unanswered.)']);
       expect(tasks[0]!.mcpServers?.map((server) => server.name)).toEqual(['genaicode_ask']);
       // A person may take minutes: Codex is told to wait (its own default is 60 s).
-      expect(tasks[0]!.mcpServers?.[0]?.toolTimeoutSec).toBe(86_400);
+      expect(tasks[0]!.mcpServers?.[0]).toMatchObject({ toolTimeoutSec: 86_400, trusted: true });
       expect(session.get().turns[0]!.entries).toContainEqual({
         kind: 'approval',
         request,

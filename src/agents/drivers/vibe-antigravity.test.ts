@@ -11,6 +11,7 @@ import {
   antigravityInput,
   antigravityMcpServers,
   antigravityToolName,
+  antigravityTrustedTool,
   antigravityUpdateEvents,
   createAntigravityParser,
 } from './antigravity.js';
@@ -511,6 +512,20 @@ describe('antigravity driver', () => {
     expect(antigravityToolName('mcp_my_docs_search', ['my', 'my_docs'])).toBe('mcp__my_docs__search');
     expect(antigravityToolName('mcp_other_x', ['diorama'])).toBe('mcp_other_x');
     expect(antigravityToolName('read_file', ['diorama'])).toBe('read_file');
+  });
+
+  it('runs tools of trusted servers without a permission prompt, and nothing else', () => {
+    const servers = ['genaicode_ask', 'genaicode_ask_x', 'docs'];
+    const trusted = ['genaicode_ask'];
+    const ask = (toolCall: Record<string, unknown>) => antigravityTrustedTool(toolCall, trusted, servers);
+    expect(ask({ title: 'Run mcp_genaicode_ask_ask_user' })).toBe(true);
+    expect(ask({ title: 'mcp_genaicode_ask_ask_user', kind: 'other' })).toBe(true);
+    // Another server whose name starts the same, an untrusted one, a command that mentions the tool.
+    expect(ask({ title: 'Run mcp_genaicode_ask_x_tool' })).toBe(false);
+    expect(ask({ title: 'Run mcp_docs_search' })).toBe(false);
+    expect(ask({ title: 'Run echo mcp_genaicode_ask_ask_user' })).toBe(false);
+    expect(ask({ title: 'mcp_genaicode_ask_ask_user', kind: 'execute' })).toBe(false);
+    expect(antigravityTrustedTool({ title: 'Run mcp_genaicode_ask_ask_user' }, [], servers)).toBe(false);
   });
 
   it('adds the usual input keys to Antigravity arguments', () => {

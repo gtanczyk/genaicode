@@ -141,7 +141,8 @@ export async function startQuestionChannel(options: { name?: string } = {}): Pro
   });
   return {
     // The call waits for a person: agents that can be told so wait up to a day (Codex: 60 s by default).
-    mcpServer: { ...server.mcpServer, toolTimeoutSec: 86_400 },
+    // Its tool only asks the person: agents need no permission prompt in front of the question.
+    mcpServer: { ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true },
     bind(next) {
       handler = next;
     },

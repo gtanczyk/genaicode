@@ -330,6 +330,9 @@ describe('createAgentSession', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(session.get().approvals).toEqual([{ id: 'a1', kind: 'command', summary: 'rm -rf build' }]);
     expect(session.approve('nope', 'approve')).toBe(false);
+    // A decision the agent does not know leaves the request waiting.
+    expect(session.approve('a1', 'allow' as 'approve')).toBe(false);
+    expect(session.get().approvals).toHaveLength(1);
     expect(session.approve('a1', 'approve')).toBe(true);
     await session.idle();
     expect(decisions).toEqual(['approve']);
