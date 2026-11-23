@@ -16,6 +16,7 @@ const KINDS: Record<string, ApprovalRequest['kind']> = {
 const LEGACY = new Set(['execCommandApproval', 'applyPatchApproval']);
 /** Codex's `request_user_input` tool: questions with options for the person (experimental in Codex). */
 const QUESTION = 'item/tool/requestUserInput';
+const ELICITATION = 'mcpServer/elicitation/request';
 
 /**
  * Codex app-server approvals (`codex app-server`, v2 protocol). Commands and file changes
@@ -49,6 +50,30 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
   const stillOpen = (params: unknown) => !turn.signal.aborted && !session.signal.aborted && ownTurn(params);
 
   const answer = async (method: string, params: JsonObject, signal: AbortSignal): Promise<unknown> => {
+    if (method === ELICITATION) {
+      // Only the marked, empty form is a tool approval. Other forms and URLs need user input.
+      const schema = params.requestedSchema;
+      const summary = stringField(params, 'message');
+      const toolApproval =
+        params.mode === 'form' &&
+        stringField(params._meta, 'codex_approval_kind') === 'mcp_tool_call' &&
+        isObject(schema) &&
+        schema.type === 'object' &&
+        isObject(schema.properties) &&
+        Object.keys(schema.properties).length === 0;
+      if (toolApproval && summary) {
+        const request: ApprovalRequest = {
+          id: `mcp-approval-${++count}`,
+          kind: 'other',
+          scope: 'once',
+          summary,
+          detail: params,
+        };
+        if ((await session.approve(request, signal)) === 'approve' && !signal.aborted && stillOpen(params))
+          return { action: 'accept', content: {}, _meta: null };
+      }
+      return { action: 'decline', content: null, _meta: null };
+    }
     if (method === QUESTION) {
       const itemId = stringField(params, 'itemId');
       const questions = codexQuestions(params.questions);
@@ -109,7 +134,7 @@ export function codexApprovals(session: LiveSession, ids: () => LiveApprovalIds)
 
   return {
     request(method, params, context) {
-      if (!KINDS[method] && method !== QUESTION) return undefined;
+      if (!KINDS[method] && method !== QUESTION && method !== ELICITATION) return undefined;
       if (!isObject(params) || !ownTurn(params))
         return Promise.reject(new RpcError('This approval does not belong to the running turn.', -32602));
       const signal = context ? anySignal([turn.signal, context.signal]) : turn.signal;

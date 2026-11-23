@@ -268,18 +268,7 @@ export function createCodexParser(): AgentOutputParser {
             ...(output !== undefined ? { output } : {}),
           });
         } else if (itemType === 'mcp_tool_call') {
-          // A successful call carries `error: null` and the tool's answer in `result.content`.
-          const failed = item.status === 'failed' || (item.error !== undefined && item.error !== null);
-          const output = failed
-            ? (stringField(item.error, 'message') ?? stringOrNone(item.error))
-            : mcpResultText(item.result);
-          events.push({
-            type: 'tool-end',
-            ...withId,
-            name: mcpName(item),
-            isError: failed,
-            ...(output ? { output } : {}),
-          });
+          events.push(codexMcpToolEnd(item));
         } else if (itemType === 'file_change') {
           const paths = Array.isArray(item.changes)
             ? item.changes.map((change) => stringField(change, 'path')).filter((path): path is string => !!path)
@@ -334,7 +323,20 @@ function mcpResultText(result: unknown): string | undefined {
   return texts.length ? texts.join('\n') : undefined;
 }
 
-function mcpName(item: Record<string, unknown>): string {
+/** Both exec and app-server report MCP output in result.content or error.message. */
+export function codexMcpToolEnd(item: Record<string, unknown>): AgentEvent {
+  const id = stringField(item, 'id');
+  const output = stringField(item.error, 'message') ?? stringOrNone(item.error) ?? mcpResultText(item.result);
+  return {
+    type: 'tool-end',
+    ...(id ? { id } : {}),
+    name: mcpName(item),
+    isError: item.status === 'failed' || item.error != null,
+    ...(output ? { output } : {}),
+  };
+}
+
+export function mcpName(item: Record<string, unknown>): string {
   return [stringField(item, 'server'), stringField(item, 'tool')].filter(Boolean).join('/') || 'mcp';
 }
 
