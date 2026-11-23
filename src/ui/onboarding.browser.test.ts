@@ -5,6 +5,7 @@ import { PassThrough } from 'node:stream';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { expect, it, vi } from 'vitest';
+import { BUG_REPORT_URL, SUPPORT_URL } from '../support.js';
 import type { AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
 import { runWeb } from './index.js';
@@ -93,6 +94,9 @@ it('shows onboarding with no agents, moves through signed-out to Ready on Check 
     // Onboarding screen is shown and prompt box is disabled with the setup hint in both tabs.
     await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
     await secondTab.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
+    const support = page.getByRole('navigation', { name: 'Support' });
+    expect(await support.getByRole('link', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
+    expect(await support.getByRole('link', { name: 'Report a bug' }).getAttribute('href')).toBe(BUG_REPORT_URL);
     const claudeCard = page.locator('li[data-agent="claude"]');
     await claudeCard.waitFor();
     expect(await claudeCard.getAttribute('data-state')).toBe('missing');

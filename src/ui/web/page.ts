@@ -90,6 +90,9 @@ button.chip.update:disabled { cursor: default; opacity: 0.7; }
 .release-heading h2 { margin: 0; font-size: 20px; }
 .release-dialog a { color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
+.support-links { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.support-links a { color: var(--muted); text-underline-offset: 2px; }
+.support-links a:hover { color: var(--accent); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .conv-head { display: flex; flex-direction: column; min-width: 0; max-width: 42vw; line-height: 1.25; }
 .conv-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

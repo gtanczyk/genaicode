@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { supportHelp } from '../support.js';
 import { detectAgents } from '../agents/discovery.js';
 import type { AgentBudget, AgentEvent, AgentResult, AgentTask, CodingAgent, McpServer } from '../agents/types.js';
 import { withFallback } from '../agents/failover.js';
@@ -423,6 +424,7 @@ ACP options:
 The agent uses its own login, billing, and permission defaults. GenAIcode adds no agent
 loop or sandbox of its own, and no prompts but embed's instructions.
 Library API: https://github.com/gtanczyk/genaicode#readme
+${supportHelp}
 
 Looking for the legacy 1.x coding agent?
   Run it:  npx genaicode@1
