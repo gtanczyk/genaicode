@@ -4,6 +4,7 @@ import { shouldFailOver } from './failover.js';
 import { packApproval, PackActionError, type PackAction, type PackControls, type PackTask } from './pack.js';
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
+import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
   AgentBudget,
@@ -171,6 +172,11 @@ export interface AgentSessionOptions {
    * `approvals` like the agent's own, for `answer()`, in the turn that is running.
    */
   questions?: { mcpServer: McpServer; bind(handler: QuestionHandler | undefined): void };
+  /**
+   * Give local MCP agents `open_project` while `enabled()` is true (neutral home or unresolved
+   * directory), so the agent can offer to move the conversation into a project via a question card.
+   */
+  openProject?: { mcpServer: McpServer; enabled(): boolean; bind(handler: QuestionHandler | undefined): void };
   /** Longest tool output kept per call, in characters. Default 4,000. */
   maxToolOutput?: number;
   /** Most turns kept in state. Older turns are dropped. Default 200. */
@@ -234,21 +240,28 @@ export interface AgentSession {
   setFallback(agents: readonly CodingAgent[] | undefined): void;
   /** Change the session budget. It applies from the next turn. */
   setBudget(budget: AgentBudget | undefined): void;
+  /**
+   * Move the conversation to another working directory. Agent sessions cannot change `cwd`
+   * mid-session, so the next turn starts a fresh agent session in `cwd`, handing over the
+   * conversation so far unless `{ handoff: false }`. May be called during a running turn (e.g.
+   * from `open_project`): the running turn's session id is forgotten when it ends.
+   */
+  setCwd(cwd: string, options?: { handoff?: boolean }): boolean;
   /** Forget the agent sessions so the next turn starts fresh, without a handoff. Keeps the transcript. */
   reset(): void;
   /**
    * Start a new conversation: `reset()`, and the transcript and what waits for a turn are dropped
    * too. Usage and the budget stay. Returns false while a turn is running.
    */
-  clear(): boolean;
+  clear(options?: { cwd?: string }): boolean;
   /**
    * Take over a conversation that happened elsewhere (`readSession()` gives the turns of another
-   * agent's session). The turns join the transcript, and the next turn hands them over to the
-   * current agent the way a switch does. With `sessionId`, the turns are the current agent's own
-   * session: the next turn resumes it instead (`capabilities.resume`), with nothing to hand over.
-   * Returns false while a turn is running.
+   * agent's session). The turns join the transcript (or replace it when `replace` is true), and
+   * the next turn hands them over to the current agent the way a switch does. With `sessionId`,
+   * the turns are the current agent's own session: the next turn resumes it instead
+   * (`capabilities.resume`), with nothing to hand over. Returns false while a turn is running.
    */
-  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string }): boolean;
+  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string; cwd?: string; replace?: boolean }): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
   /** Stop everything and drop subscribers. */
@@ -548,7 +561,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     addApproval(turnId, request);
     if (signal?.aborted) return Promise.resolve('deny');
     // Publishing changes nothing on disk, and the store has its own checks: no question for it.
-    if (!request.subtaskId && isPublishRequest(request, options.artifacts?.mcpServer))
+    if (!request.subtaskId && isServerToolRequest(request, options.artifacts?.mcpServer, PUBLISH_ARTIFACT_TOOL))
+      return Promise.resolve('approve');
+    // `open_project` shows its own confirmation card; no separate tool permission prompt ahead of it.
+    if (!request.subtaskId && isServerToolRequest(request, options.openProject?.mcpServer, OPEN_PROJECT_TOOL))
       return Promise.resolve('approve');
     const automatic = options.autoApprove?.(request);
     if (automatic) return Promise.resolve(automatic);
@@ -595,8 +611,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
   };
 
-  // `ask_user` calls land in the turn that is running; between turns nobody is asked.
-  options.questions?.bind(async (request) => {
+  // `ask_user` and `open_project` calls land in the turn that is running; between turns nobody is asked.
+  const bindQuestion: QuestionHandler = async (request) => {
     const turn = state.turns.at(-1);
     if (closed || !run || !turn || turn.result) return undefined;
     const answers = await onQuestion(turn.id, request, controller?.signal);
@@ -611,7 +627,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       ),
     }));
     return answers;
-  });
+  };
+  options.questions?.bind(bindQuestion);
+  options.openProject?.bind(bindQuestion);
 
   const denyPending = () => {
     for (const resolve of waiting.values()) resolve('deny');
@@ -771,6 +789,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             ...(options.artifacts?.mcpServer ? [options.artifacts.mcpServer] : []),
             ...(options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote
               ? [options.questions.mcpServer]
+              : []),
+            ...(options.openProject && !turnAgent.capabilities.remote && options.openProject.enabled()
+              ? [options.openProject.mcpServer]
               : []),
           ]
         : [];
@@ -1064,6 +1085,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     setBudget(budget) {
       set({ budget });
     },
+    setCwd(cwd, moveOptions) {
+      if (closed) return false;
+      if (cwd === state.cwd) return true;
+      const carry = handoffOn && moveOptions?.handoff !== false;
+      if (!carry) clearContext();
+      explicitResume = undefined;
+      known.clear();
+      missedAfter = carry && state.turns.length ? resetAt : undefined;
+      if (state.status === 'running') forgetAfterTurn = true;
+      set({ cwd, sessionId: undefined });
+      return true;
+    },
     reset() {
       clearContext();
       explicitResume = undefined;
@@ -1073,22 +1106,40 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.status === 'running') forgetAfterTurn = true;
       set({ sessionId: undefined });
     },
-    clear() {
+    clear(clearOptions) {
       if (state.status === 'running' || closed) return false;
       clearContext();
       explicitResume = undefined;
       known.clear();
       missedAfter = undefined;
       resetAt = nextTurnId - 1;
-      set({ sessionId: undefined, turns: [], queued: [], notes: [] });
+      set({
+        sessionId: undefined,
+        turns: [],
+        queued: [],
+        notes: [],
+        ...(clearOptions?.cwd !== undefined ? { cwd: clearOptions.cwd } : {}),
+      });
       return true;
     },
     adopt(turns, adoptOptions) {
       if (state.status === 'running' || closed) return false;
       const own = adoptOptions?.sessionId && agent.capabilities.resume ? adoptOptions.sessionId : undefined;
-      if (!turns.length && !own) return true;
+      const nextCwd = adoptOptions?.cwd;
+      const cwdChanged = nextCwd !== undefined && nextCwd !== state.cwd;
+      const replace = adoptOptions?.replace === true;
+      if (!turns.length && !own && !cwdChanged && !replace) return true;
       clearContext();
-      const before = state.turns.at(-1)?.id ?? 0;
+      if (cwdChanged || replace) {
+        explicitResume = undefined;
+        known.clear();
+      }
+      if (replace) {
+        missedAfter = undefined;
+        resetAt = nextTurnId - 1;
+      }
+      const baseTurns = replace ? [] : state.turns;
+      const before = baseTurns.at(-1)?.id ?? 0;
       const adopted = turns.map((turn) => {
         // A handoff of its own belongs to the session it came from.
         const copy: SessionTurn = { ...turn, id: nextTurnId++ };
@@ -1101,11 +1152,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         explicitResume = undefined;
         missedAfter = undefined;
         known.set(agent, { sessionId: own, upTo: nextTurnId - 1, effort: state.effort });
-      } else {
+      } else if (adopted.length) {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
       }
-      set({ turns: keepTurns([...state.turns, ...adopted]), ...(own ? { sessionId: own } : {}) });
+      set({
+        turns: keepTurns([...baseTurns, ...adopted]),
+        ...(replace
+          ? { queued: [], notes: [], sessionId: own }
+          : own
+            ? { sessionId: own }
+            : cwdChanged
+              ? { sessionId: undefined }
+              : {}),
+        ...(cwdChanged ? { cwd: nextCwd } : {}),
+      });
       return true;
     },
     idle() {
@@ -1118,6 +1179,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
       options.questions?.bind(undefined);
+      options.openProject?.bind(undefined);
       if (state.notes?.length) set({ notes: [] });
       this.stop();
       listeners.clear();
@@ -1127,14 +1189,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 }
 
-/** Claude's permission prompt for the session's own `publish_artifact` tool. */
-function isPublishRequest(request: ApprovalRequest, server: McpServer | undefined): boolean {
+/** Claude's permission prompt for one of the session's own MCP tools (`publish_artifact`, `open_project`). */
+function isServerToolRequest(request: ApprovalRequest, server: McpServer | undefined, tool: string): boolean {
   const detail = request.detail;
   return (
     !!server &&
     typeof detail === 'object' &&
     detail !== null &&
-    (detail as { tool_name?: unknown }).tool_name === `mcp__${server.name}__${PUBLISH_ARTIFACT_TOOL}`
+    (detail as { tool_name?: unknown }).tool_name === `mcp__${server.name}__${tool}`
   );
 }
 

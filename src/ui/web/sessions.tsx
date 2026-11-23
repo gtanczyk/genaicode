@@ -17,6 +17,7 @@ import {
   groupByTopic,
   groupInOrder,
   resumeCommand,
+  UNSORTED_TOPIC,
   type SessionTopic,
 } from '../sessions.js';
 
@@ -32,6 +33,7 @@ const MARK: Record<string, string> = {
 /** What a session's last message asked, as the row's mark says it. */
 const ENDING_TITLE: Record<string, string> = {
   question: 'asked a question',
+  request: 'asked you to confirm or decide',
   command: 'gave you a command to run',
   offer: 'offered to go on',
   unreported: 'could not report back',
@@ -79,7 +81,9 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 export function Sessions({
   token,
   cwd,
+  home,
   onContinue,
+  onNewTopicChat,
   topic,
   onAllTopics,
   own,
@@ -88,13 +92,17 @@ export function Sessions({
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
   cwd: string;
+  /** True in `--home` mode: any local readable session can be continued, and topics get New chat. */
+  home?: boolean;
   /** Take the session over in the chat. */
   onContinue(session: SessionInfo): void;
+  /** Start a new conversation in the resolved directory of a topic (`--home` mode). */
+  onNewTopicChat?(topicId: string): void;
   /** Show only this topic (its id), as picked on the start screen. */
   topic?: string;
   /** Back to every topic. */
   onAllTopics?(): void;
-  /** Show only the conversations this chat had itself: those that ran in `cwd`. */
+  /** Show only the conversations this chat had itself. */
   own?: boolean;
   /** Back to every agent's sessions. */
   onAllSessions?(): void;
@@ -135,10 +143,18 @@ export function Sessions({
 
   const everyones = listing?.sessions ?? [];
   const all = useMemo(() => {
-    if (!own) return everyones;
+    if (!own || home) return everyones;
     const here = cwd.replace(/[\\/]+$/, '');
     return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
-  }, [everyones, own, cwd]);
+  }, [everyones, own, home, cwd]);
+  const topicNames = useMemo(
+    () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
+    [listing?.topics],
+  );
+  const topicNameOf = (session: SessionInfo) => {
+    const id = listing?.topicOf?.[`${session.source}:${session.id}`];
+    return id ? topicNames.get(id) : undefined;
+  };
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
   const needs = useMemo(() => all.filter((session) => attentionOf(session) === 'now'), [all]);
   const stalled = useMemo(() => all.filter((session) => attentionOf(session) === 'stalled'), [all]);
@@ -178,15 +194,23 @@ export function Sessions({
   const sorted = !!listing?.topics?.length;
   // Its own conversations are one list: no topics among them.
   const by = sorted && !own ? (chosen ?? 'topic') : 'project';
-  const projects = useMemo(
-    () =>
-      by === 'topic'
-        ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
-        : inbox
-          ? groupInOrder(shown)
-          : groupSessions(shown),
-    [shown, inbox, by, listing],
-  );
+  const projects = useMemo(() => {
+    if (own && home) {
+      if (!shown.length) return [];
+      const counts: Record<string, number> = {};
+      let updatedAt = 0;
+      for (const session of shown) {
+        counts[session.agent] = (counts[session.agent] ?? 0) + 1;
+        updatedAt = Math.max(updatedAt, session.updatedAt);
+      }
+      return [{ key: 'own', name: 'Chats of this app', sessions: shown, updatedAt, agents: counts }];
+    }
+    return by === 'topic'
+      ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
+      : inbox
+        ? groupInOrder(shown)
+        : groupSessions(shown);
+  }, [shown, inbox, by, listing, own, home]);
 
   const [answering, setAnswering] = useState<string>();
   const [answerFailed, setAnswerFailed] = useState<string>();
@@ -240,9 +264,16 @@ export function Sessions({
           </button>
         ) : null}
         {topic ? (
-          <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
-            {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
-          </button>
+          <>
+            <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
+              {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
+            </button>
+            {onNewTopicChat ? (
+              <button className="chip off" onClick={() => onNewTopicChat(topic)}>
+                New chat
+              </button>
+            ) : null}
+          </>
         ) : null}
         <input
           type="search"
@@ -350,24 +381,49 @@ export function Sessions({
           : project.sessions;
         const whole = open.has(project.key) || listed.length <= FOLD;
         const rows = whole ? listed : listed.slice(0, FOLD);
+        const topicId =
+          by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
+            ? project.key.slice('topic:'.length)
+            : undefined;
         return (
           <details key={project.key} className="project" open>
             <summary>
               <b>{project.name}</b>
               <span className="path">
-                {by === 'topic' ? asksOf(project) : project.key.startsWith('cloud:') ? 'cloud' : project.key}
+                {own && home
+                  ? ''
+                  : by === 'topic'
+                    ? asksOf(project)
+                    : project.key.startsWith('cloud:')
+                      ? 'cloud'
+                      : project.key}
               </span>
               <span className="counts">
                 {Object.entries(project.agents)
                   .map(([name, count]) => `${name} ${count}`)
                   .join(' · ')}
               </span>
+              {topicId && onNewTopicChat ? (
+                <button
+                  type="button"
+                  className="topic-new"
+                  aria-label={`New chat in ${project.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNewTopicChat(topicId);
+                  }}
+                >
+                  New chat
+                </button>
+              ) : null}
             </summary>
             {rows.map((session) => {
               const sender =
                 acceptsSessionPrompt(session) &&
                 listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
               const replying = replyTo?.source === session.source && replyTo.id === session.id;
+              const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
               return [
                 <div key={`${session.source}:${session.id}`} className="session-row">
                   <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
@@ -379,6 +435,7 @@ export function Sessions({
                   </span>
                   <span className="label" title={session.lastPrompt ?? session.title}>
                     {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
                     {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
                     {session.branch ? <small>{session.branch}</small> : null}
                   </span>
@@ -396,7 +453,7 @@ export function Sessions({
                         {session.archived ? 'Unarchive' : 'Archive'}
                       </button>
                     ) : null}
-                    {canContinueHere(session, cwd, listing?.readable ?? []) ? (
+                    {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) ? (
                       <button
                         title="Bring this conversation into the chat: the agent chosen there continues it"
                         onClick={() => onContinue(session)}

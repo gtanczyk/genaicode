@@ -84,6 +84,7 @@ import {
   writeTopics,
   type TopicStore,
 } from '../agents/sessions/topics.js';
+import { ensureNeutralHome, readConversations } from '../agents/sessions/workspace.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -174,6 +175,8 @@ export interface UiLaunch {
   exitWithStdin?: boolean;
   /** `ui --no-project`: the page names no project. */
   noProject?: boolean;
+  /** `ui --home`: no fixed project folder; conversations resolve their own working directory. */
+  home?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
   /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -340,7 +343,9 @@ Chat and UI options:
       --restore           (ui) Open on the conversation the chat in this directory had last,
                           with its agent, unless --from or --resume names another
       --no-project        (ui) The page names no project: for a chat about the sessions of
-                          every project, as the desktop app runs it
+                          every project
+      --home              (ui) No fixed project folder: each conversation resolves its own
+                          directory (home starts in ~/.genaicode/home), as the desktop app runs it
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --agent-mcp         Codex keeps its plugins and the MCP servers of its own config. Without
@@ -694,6 +699,30 @@ async function lastSessionIn(
 }
 
 /**
+ * The newest conversation recorded in `--home` mode whose agent can still resume it.
+ * Falls back to `lastSessionIn(homeDir)` when no recorded conversation is available.
+ */
+async function lastHomeSession(
+  homeDir: string,
+  sources: readonly SessionSource[],
+  agents: readonly CodingAgent[],
+  only: string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<{ id: string; agent: string } | undefined> {
+  const installed = new Set(
+    detectAgents(agents, env)
+      .filter(({ agent, path }) => path && agent.capabilities.resume && (!only || agent.name === only))
+      .map(({ agent }) => agent.name),
+  );
+  const recorded = await readConversations(env).catch(() => []);
+  for (const conv of recorded) {
+    if (!conv.sessionId || !conv.agent || !installed.has(conv.agent)) continue;
+    return { id: conv.sessionId, agent: conv.agent };
+  }
+  return lastSessionIn(homeDir, sources, agents, only, env);
+}
+
+/**
  * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
  * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
  * the headless ones. Codex gets the chat's MCP servers only, unless `agentMcp` keeps its own.
@@ -784,7 +813,7 @@ async function runUi(
       sessionAgents = packAgents;
       towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
-    const project = resolve(cli.cwd, options.cwd ?? '.');
+    const project = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
     const projectDir = await fs.realpath(project).catch(() => project);
     const command = options.verify ?? (await npmTestCommand(projectDir));
     const team = pack({
@@ -839,10 +868,13 @@ async function runUi(
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
-  // `--restore`: the conversation this directory's chat had last, so a restart loses nothing.
+  const launchCwd = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
+  // `--restore`: the conversation this directory's (or app's) chat had last, so a restart loses nothing.
   let restored: string | undefined;
   if (options.kind === 'ui' && options.restore && !options.from && !options.resume && !options.pack) {
-    const last = await lastSessionIn(resolve(cli.cwd, options.cwd ?? '.'), indexed, agents, options.agent, cli.env);
+    const last = options.home
+      ? await lastHomeSession(launchCwd, indexed, agents, options.agent, cli.env)
+      : await lastSessionIn(launchCwd, indexed, agents, options.agent, cli.env);
     if (last) {
       restored = last.id;
       initial ??= last.agent;
@@ -878,7 +910,7 @@ async function runUi(
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
     agent: initial,
-    cwd: resolve(cli.cwd, options.cwd ?? '.'),
+    cwd: launchCwd,
     model: options.model,
     effort: options.effort,
     resume: options.resume,
@@ -895,6 +927,7 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.noProject ? { noProject: true } : {}),
+    ...(options.home ? { home: true } : {}),
     ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
     ...(options.budget ? { budget: options.budget } : {}),
@@ -948,6 +981,7 @@ const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 /** How a waiting session's last words are introduced, by what they ask (`SessionInfo.ending`). */
 const ENDING_SAYS = {
   question: 'asks',
+  request: 'asks you',
   command: 'wants you to run',
   offer: 'offers',
   unreported: 'could not report back',
