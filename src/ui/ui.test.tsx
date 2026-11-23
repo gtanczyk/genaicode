@@ -1178,6 +1178,59 @@ describe('terminal UI', () => {
     await chat.session.idle();
     expect(agent.tasks.at(-1)!.prompt).toBe('Fresh turn');
 
+    // `/continue` retains visible live relay cards so they still settle, while suppressing context delivery.
+    const adoptedSource: SessionSource = {
+      name: 'adopted',
+      where: 'local',
+      list: async () => [
+        {
+          source: 'adopted',
+          agent: 'echo',
+          id: 'adopt-1',
+          cwd: '/work/genaicode',
+          where: 'local',
+          state: 'waiting',
+          updatedAt: 1,
+          title: 'Adopted session',
+        },
+      ],
+      read: async () => [
+        {
+          id: 1,
+          agent: 'echo',
+          prompt: 'Earlier prompt',
+          entries: [{ kind: 'text', text: 'Earlier answer', streaming: false }],
+          startedAt: 1,
+          result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Earlier answer' },
+        },
+      ],
+    };
+    const contAgent = echoAgent();
+    const contGate = new SessionSendGate();
+    const contChat = createChatController({
+      agents: [contAgent],
+      cwd: '/work/genaicode',
+      env,
+      sessionSend: contGate,
+      sessionSources: [adoptedSource],
+    });
+    contGate.update({ id: 20, target, text: 'Before continue', status: 'working', startedAt: 8100 });
+    expect(await contChat.continueSession('adopt-1')).toBe(true);
+    contGate.update({
+      id: 20,
+      target,
+      text: 'Before continue',
+      status: 'answered',
+      startedAt: 8100,
+      endedAt: 8500,
+      reply: 'Done after continue.',
+    });
+    expect(contChat.get().notices.at(-1)?.relay).toMatchObject({ status: 'answered', reply: 'Done after continue.' });
+    contChat.submit('Continue here');
+    await contChat.session.idle();
+    expect(contAgent.tasks.at(-1)!.prompt).not.toContain('<session-updates>');
+    contChat.close();
+
     // `/clear` drops pending notices and ignores late updates from earlier sends.
     gate.update({ id: 3, target, text: 'Old task', status: 'working', startedAt: 10_000 });
     chat.submit('/clear');

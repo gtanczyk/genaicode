@@ -427,9 +427,8 @@ export function createChatController(options: ChatOptions): ChatController {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }
-      conversationEpoch += 1;
+      // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
       contextEpoch += 1;
-      relayNotices.clear();
       pendingRelayContext = [];
       const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
       notice(
