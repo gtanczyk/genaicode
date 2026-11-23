@@ -267,6 +267,10 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
         // A restart, for an update or not, comes back to the conversation it left.
         "--restore",
     ]);
+    command.env(
+        "GENAICODE_DESKTOP_VERSION",
+        app.package_info().version.to_string(),
+    );
     let cdn_hosts: Vec<&str> = settings
         .artifact_cdn
         .iter()

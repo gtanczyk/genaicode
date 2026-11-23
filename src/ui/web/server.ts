@@ -26,6 +26,7 @@ import {
   type TranscriptFormat,
   type TranscriptMeta,
 } from '../transcript.js';
+import type { UiRelease } from './release.js';
 import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
@@ -114,6 +115,7 @@ export interface WebUiOptions {
   >;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
+  release?: () => UiRelease;
   /** Live settings that the page can read and update (e.g. opt-in CDN hosts for HTML artifacts). */
   settings?: WebSettings;
 }
@@ -651,6 +653,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       res.write(`event: view\ndata: ${JSON.stringify(controller.get())}\n\n`);
       res.write(configEvent());
+      if (options.release) res.write(`event: release\ndata: ${JSON.stringify(options.release())}\n\n`);
       streams.add(res);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {

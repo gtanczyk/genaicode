@@ -4,7 +4,7 @@ import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { formatBytes } from '../../react/format.js';
-import { extractLocalImagePaths } from '../../react/markdown.js';
+import { extractLocalImagePaths, Markdown } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
@@ -18,6 +18,7 @@ import {
   SLASH_COMMANDS,
   splitAttached,
 } from '../format.js';
+import type { UiRelease } from './release.js';
 import type { WebCommand } from './server.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
@@ -183,9 +184,11 @@ interface PageConfig {
 function useView(onToast?: (text: string) => void): {
   view?: ChatView;
   config?: PageConfig;
+  release?: UiRelease;
   connected: boolean;
   rejected: boolean;
 } {
+  const [release, setRelease] = useState<UiRelease>();
   const [view, setView] = useState<ChatView>();
   const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
@@ -234,6 +237,8 @@ function useView(onToast?: (text: string) => void): {
             if (event === 'view') {
               setView(JSON.parse(payload) as ChatView);
               setConnected(true);
+            } else if (event === 'release') {
+              setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
               setConfig(JSON.parse(payload) as PageConfig);
             } else if (event === 'toast') {
@@ -254,7 +259,7 @@ function useView(onToast?: (text: string) => void): {
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, []);
-  return { view, config, connected, rejected };
+  return { view, config, release, connected, rejected };
 }
 
 /**
@@ -609,6 +614,44 @@ const IDEAS = ['Explain how this project is organized', 'Find and fix a failing 
 /** Without a project the chat is about the work of every agent. */
 const IDEAS_ANYWHERE = ['What is waiting for me?', 'What are my agents working on?', 'Sum up what got done today'];
 
+function WhatsNew({ release }: { release: UiRelease }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (release.announce && !dialog.current?.open) dialog.current?.showModal();
+  }, [release]);
+
+  return (
+    <>
+      <button className="chip off" aria-haspopup="dialog" onClick={() => dialog.current?.showModal()}>
+        What’s new · {release.version}
+      </button>
+      <dialog ref={dialog} className="release-dialog" aria-labelledby="release-heading">
+        <div className="release-heading">
+          <h2 id="release-heading">What’s new in Genaicode {release.version}</h2>
+          <form method="dialog">
+            <button className="chip" autoFocus>
+              Close
+            </button>
+          </form>
+        </div>
+        {release.previous && (
+          <p>
+            Updated from {release.previous} to <strong>{release.version}</strong>.
+          </p>
+        )}
+        {release.notes ? <Markdown text={release.notes} /> : <p>No release notes bundled for this version.</p>}
+        <a
+          href={`https://github.com/gtanczyk/genaicode/releases/tag/v${encodeURIComponent(release.version)}`}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View release on GitHub
+        </a>
+      </dialog>
+    </>
+  );
+}
+
 function App() {
   const root = document.getElementById('root')!;
   const [toast, setToast] = useState<{ text: string; error?: boolean }>();
@@ -619,7 +662,7 @@ function App() {
     toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-  const { view, config, connected, rejected } = useView((text) => showToast(text));
+  const { view, config, release, connected, rejected } = useView((text) => showToast(text));
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
   // Said at once: installing takes a few seconds before the app goes away.
   const [relaunching, setRelaunching] = useState(false);
@@ -832,7 +875,8 @@ function App() {
       {/* In the desktop app the header is the window's title bar: it moves the window. */}
       <header className="bar" data-tauri-drag-region="deep">
         <div className="brand">
-          <img src="/assets/wolf-64.png" alt="" /> genaicode <small>{root.dataset.version}</small>
+          <img src="/assets/wolf-64.png" alt="" /> genaicode{' '}
+          {release ? <WhatsNew release={release} /> : <small>{root.dataset.version}</small>}
         </div>
         {cwd && hasProject ? (
           <span className="cwd" title={cwd}>
@@ -992,7 +1036,7 @@ function App() {
             {relaunching || config.update.installing
               ? 'Relaunching…'
               : config.update.ready
-                ? 'Relaunch to update'
+                ? `Install ${config.update.version} and relaunch`
                 : 'Downloading update…'}
           </button>
         ) : null}
