@@ -15,7 +15,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Desktop app: the loading screen shows the Genaicode wolf with a soft glow and a progress bar, in the chat page's light or dark colors, instead of plain "Genaicode / Starting…" text (#PRNUM)
+- Desktop app: the loading screen shows the Genaicode wolf with a soft glow and a progress bar, in the chat page's light or dark colors, instead of plain "Genaicode / Starting…" text (#305)
 
 ## 2.53.0 — 2026-11-22
 
