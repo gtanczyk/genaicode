@@ -23,8 +23,11 @@ import {
   agentSessionSources,
   answerAsk,
   archiveSessions,
+  isSameDir,
   listSessions,
   pendingAsks,
+  readConversations,
+  startProjectChannel,
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
@@ -80,6 +83,11 @@ export interface WebRunOptions extends UiRunOptions {
    * project, and the directory it runs in is only where its own agent starts.
    */
   noProject?: boolean;
+  /**
+   * Per-conversation working directory mode (`ui --home`): no fixed project folder; each
+   * conversation resolves its own cwd, starting in `~/.genaicode/home`.
+   */
+  home?: boolean;
 }
 
 const ASSET_TYPES: Record<string, string> = {
@@ -100,35 +108,60 @@ export function loadAssets(dir: URL): Map<string, WebAsset> {
 }
 
 /** The agent's way to publish artifacts. A port that will not open only means no artifacts. */
-async function openArtifacts(options: ChatOptions): Promise<ArtifactChannel | undefined> {
+async function openArtifacts(
+  options: ChatOptions,
+  getController?: () => ChatController | undefined,
+): Promise<ArtifactChannel | undefined> {
   if (options.artifacts === false) return undefined;
-  return startArtifactChannel({ cwd: options.cwd }).catch(() => undefined);
+  return startArtifactChannel({ cwd: () => getController?.()?.get().session.cwd ?? options.cwd }).catch(
+    () => undefined,
+  );
 }
 
 /**
- * The session's MCP servers: artifacts, and `ask_user` for agents that cannot ask on their own.
- * A port that will not open only means the agent goes without that one.
+ * The session's MCP servers: artifacts, `ask_user` for agents that cannot ask on their own, and
+ * `open_project` in `--home` mode. A port that will not open only means the agent goes without that one.
  */
-async function openChannels(options: ChatOptions) {
-  const [artifactChannel, questionChannel] = await Promise.all([
-    openArtifacts(options),
+async function openChannels(options: ChatOptions, getController?: () => ChatController | undefined) {
+  const [artifactChannel, questionChannel, openProjectChannel] = await Promise.all([
+    openArtifacts(options, getController),
     startQuestionChannel().catch(() => undefined),
+    options.home
+      ? startProjectChannel({
+          env: options.env,
+          loadSessions: async () => {
+            const sources = options.sessionSources ?? agentSessionSources(options.agents);
+            return (await listSessions(sources, { env: options.env, readOnly: true, live: false })).sessions;
+          },
+          enabled: () => {
+            const conversation = getController?.()?.get().conversation;
+            return !conversation || conversation.origin === 'home' || conversation.origin === 'unresolved';
+          },
+          onMove: (target) => {
+            getController?.()?.moveProject(target);
+          },
+        }).catch(() => undefined)
+      : Promise.resolve(undefined),
   ]);
   return {
     artifactChannel,
     questionChannel,
+    openProjectChannel,
     closeChannels: async () => {
-      await Promise.all([artifactChannel?.close(), questionChannel?.close()]);
+      await Promise.all([artifactChannel?.close(), questionChannel?.close(), openProjectChannel?.close()]);
     },
   };
 }
 
 export async function runChat(options: WebRunOptions): Promise<number> {
-  let controller: ChatController;
-  const web = webLink(options, () => controller);
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
+  let controller: ChatController | undefined;
+  const web = webLink(options, () => controller!);
+  const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
+    options,
+    () => controller,
+  );
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
+    controller = createChatController({ ...options, web, artifactChannel, questionChannel, openProjectChannel });
   } catch (error) {
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
@@ -193,6 +226,8 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
 
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
+/** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
+const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
 
@@ -201,9 +236,10 @@ export const RELAUNCH_LINE = 'Relaunch to update';
  * says `update-downloading <version>` on stdin while it downloads a newer version of itself,
  * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
  * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
- * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr.
+ * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr. `open-session <id>`
+ * brings a session from the menu bar directly into the chat.
  */
-function hostApp(options: WebRunOptions): HostApp {
+function hostApp(options: WebRunOptions, onOpenSession?: (id: string) => void): HostApp {
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
@@ -211,7 +247,13 @@ function hostApp(options: WebRunOptions): HostApp {
     const lines = (rest + chunk.toString()).split('\n');
     rest = (lines.pop() ?? '').slice(-200);
     for (const line of lines) {
-      const found = UPDATE_LINE.exec(line.trim());
+      const trimmed = line.trim();
+      const openMatch = OPEN_SESSION_LINE.exec(trimmed);
+      if (openMatch?.[1]) {
+        onOpenSession?.(openMatch[1]);
+        continue;
+      }
+      const found = UPDATE_LINE.exec(trimmed);
       if (!found) continue;
       // `update-none`: a download that failed, so there is nothing to show any more.
       const next: HostUpdate | undefined = found[3]
@@ -237,18 +279,26 @@ function hostApp(options: WebRunOptions): HostApp {
 }
 
 export async function runWeb(options: WebRunOptions): Promise<number> {
+  let controller: ChatController | undefined;
+  let pendingOpen: string | undefined;
+  const openSession = (id: string) => {
+    if (controller) void controller.continueSession(id);
+    else pendingOpen = id;
+  };
   // Before anything waits: what the app says while the welcome page shows is kept for the chat.
   if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
-    options = { ...options, hostApp: hostApp(options) };
+    options = { ...options, hostApp: hostApp(options, openSession) };
   const welcomed = await welcome(options);
   if (welcomed === null) return 0;
   // The chat answers on the link the welcome page had, which the browser already shows.
   if (welcomed) options = { ...options, ...welcomed, open: false };
-  let controller: ChatController;
-  const web = webLink(options, () => controller);
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
+  const web = webLink(options, () => controller!);
+  const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
+    options,
+    () => controller,
+  );
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
+    controller = createChatController({ ...options, web, artifactChannel, questionChannel, openProjectChannel });
   } catch (error) {
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
@@ -270,7 +320,9 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
-  const taken = !options.continueFrom || (await controller.continueSession(options.continueFrom));
+  const initialSession = pendingOpen ?? options.continueFrom;
+  pendingOpen = undefined;
+  const taken = !initialSession || (await controller.continueSession(initialSession));
   if (options.firstPrompt && taken) controller.submit(options.firstPrompt);
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
@@ -334,9 +386,14 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
     (running ??= startWebUi({
       controller: controller(),
       clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
-      title: { version: options.version, cwd: options.cwd, ...(options.noProject ? { project: false } : {}) },
-      uploads: createUploads(options.cwd),
-      files: createProjectFiles(options.cwd),
+      title: {
+        version: options.version,
+        cwd: options.cwd,
+        ...(options.noProject ? { project: false } : {}),
+        ...(options.home ? { home: true } : {}),
+      },
+      uploads: createUploads(() => controller().get().session.cwd),
+      files: createProjectFiles(() => controller().get().session.cwd),
       host: options.host,
       port: options.port,
       token: options.token,
@@ -345,24 +402,52 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async ({ own, ...query }) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
+        const recorded = options.home ? await readConversations(options.env).catch(() => []) : [];
+        const recordedIds = new Set(recorded.flatMap((conv) => (conv.sessionId ? [conv.sessionId] : [])));
         const listing = await listSessions(sources, {
           ...query,
-          // The chat's own conversations: asked for its directory, with the one-prompt ones too.
-          ...(own ? { cwd: options.cwd, automated: true, live: false } : {}),
+          // In `--cwd`/`--no-project` mode, own conversations live in `options.cwd`.
+          // In `--home` mode, own conversations can run in any project directory and are tracked in `conversations.json`.
+          ...(own
+            ? options.home
+              ? { automated: true, live: false }
+              : { cwd: options.cwd, automated: true, live: false }
+            : {}),
           ...(options.env ? { env: options.env } : {}),
         });
+        const sessions =
+          own && options.home
+            ? listing.sessions.filter(
+                (session) =>
+                  recordedIds.has(session.id) ||
+                  (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
+              )
+            : listing.sessions;
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);
         // The topics the sessions were sorted into, for the view to group by.
         const store = await readTopics(options.env).catch(() => undefined);
+        const topics = [...(store?.topics ?? [])];
         const topicOf: Record<string, string> = {};
-        for (const session of listing.sessions) {
-          const topic = store?.sessions[`${session.source}:${session.id}`];
-          if (topic) topicOf[`${session.source}:${session.id}`] = topic;
+        const recordedById = new Map(
+          recorded.flatMap((conv) => (conv.sessionId ? [[conv.sessionId, conv] as const] : [])),
+        );
+        for (const session of sessions) {
+          const key = `${session.source}:${session.id}`;
+          const topic = store?.sessions[key];
+          if (topic) {
+            topicOf[key] = topic;
+          } else {
+            const conv = recordedById.get(session.id);
+            if (conv?.topicId && conv.topicName) {
+              topicOf[key] = conv.topicId;
+              if (!topics.some((t) => t.id === conv.topicId)) topics.push({ id: conv.topicId, name: conv.topicName });
+            }
+          }
         }
-        const sorted = store?.topics.length ? { topics: store.topics, topicOf } : {};
-        return { ...listing, readable, asks, senders, ...sorted };
+        const sorted = topics.length ? { topics, topicOf } : {};
+        return { ...listing, sessions, readable, asks, senders, ...sorted };
       },
       sendPrompt: (source, id, prompt, sandbox, signal) =>
         sendSession(agents, id, prompt, {

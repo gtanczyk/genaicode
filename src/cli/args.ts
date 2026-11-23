@@ -103,6 +103,8 @@ export type CliCommand =
       exitWithStdin?: boolean;
       /** `ui --no-project`: the page names no project, for a chat about the sessions of every one. */
       noProject?: true;
+      /** `ui --home`: no fixed project folder; each conversation resolves its own cwd, starting in `~/.genaicode/home`. */
+      home?: true;
       /** `ui --restore`: open on the conversation this directory's chat had last. */
       restore?: true;
       /** `--mcp name=url`: HTTP MCP servers attached to every prompt. */
@@ -530,6 +532,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
             'no-open': { type: 'boolean' as const },
             'exit-with-stdin': { type: 'boolean' as const },
             'no-project': { type: 'boolean' as const },
+            home: { type: 'boolean' as const },
             restore: { type: 'boolean' as const },
           }
         : { web: { type: 'boolean' as const } }),
@@ -550,6 +553,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       web?: boolean;
       'exit-with-stdin'?: boolean;
       'no-project'?: boolean;
+      home?: boolean;
       restore?: boolean;
     };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
@@ -573,7 +577,9 @@ export function parseCli(argv: readonly string[]): CliCommand {
       throw new UsageError('--delegate and --pack do not go together: a pack already delegates.');
     if (values.verify !== undefined && (!pack || !values.verify.trim()))
       throw new UsageError('--verify needs --pack and a nonempty test command.');
-    if (extra['no-project'] && values.sessions !== true)
+    if (extra.home && values.cwd !== undefined)
+      throw new UsageError('--home and --cwd do not go together: --home resolves the directory per conversation.');
+    if (extra['no-project'] && !extra.home && values.sessions !== true)
       throw new UsageError('--no-project goes with --sessions: without a project the chat is about the sessions.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
@@ -593,12 +599,13 @@ export function parseCli(argv: readonly string[]): CliCommand {
       open: extra['no-open'] !== true,
       web: extra.web === true,
       exitWithStdin: extra['exit-with-stdin'] === true,
-      ...(extra['no-project'] === true ? { noProject: true as const } : {}),
+      ...(extra['no-project'] === true || extra.home === true ? { noProject: true as const } : {}),
+      ...(extra.home === true ? { home: true as const } : {}),
       ...(extra.restore === true ? { restore: true as const } : {}),
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
       ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),
-      ...(command === 'tower' || values.sessions === true ? { sessions: true } : {}),
+      ...(command === 'tower' || values.sessions === true || extra.home === true ? { sessions: true } : {}),
       ...budgetOf(values),
       ...fallbackOf(values.fallback),
     };

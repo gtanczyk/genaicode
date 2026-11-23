@@ -36,20 +36,32 @@ const ID = /^[0-9a-f]{16}$/;
 
 /**
  * Uploads kept in `dir` under `cwd` (default `.genaicode/uploads`): inside the project, so an
- * agent confined to it can read them, owner-only and out of git.
+ * agent confined to it can read them, owner-only and out of git. Pass a function when the
+ * working directory changes per conversation (`ui --home`).
  */
-export function createUploads(cwd: string, dir = join('.genaicode', 'uploads')): Uploads {
-  const folder = resolve(cwd, dir);
+export function createUploads(cwd: string | (() => string), dir = join('.genaicode', 'uploads')): Uploads {
+  const folders = new Set<string>();
+  const currentFolder = () => {
+    const folder = resolve(typeof cwd === 'function' ? cwd() : cwd, dir);
+    folders.add(folder);
+    return folder;
+  };
   const find = (id: string): Upload | undefined => {
-    if (!ID.test(id) || !existsSync(folder)) return undefined;
-    const file = readdirSync(folder).find((entry) => entry.startsWith(`${id}-`));
-    if (!file) return undefined;
-    const path = join(folder, file);
-    return { id, name: file.slice(id.length + 1), size: statSync(path).size, path };
+    if (!ID.test(id)) return undefined;
+    const latest = currentFolder();
+    for (const folder of [latest, ...folders]) {
+      if (!existsSync(folder)) continue;
+      const file = readdirSync(folder).find((entry) => entry.startsWith(`${id}-`));
+      if (!file) continue;
+      const path = join(folder, file);
+      return { id, name: file.slice(id.length + 1), size: statSync(path).size, path };
+    }
+    return undefined;
   };
   return {
     save(name, body) {
       if (body.length > MAX_UPLOAD_BYTES) throw new Error('The file is too large.');
+      const folder = currentFolder();
       // What users attach can be private: owner-only, and never committed.
       mkdirSync(folder, { recursive: true, mode: 0o700 });
       const ignore = join(folder, '.gitignore');

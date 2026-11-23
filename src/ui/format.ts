@@ -52,6 +52,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   },
   { name: '/new', help: 'start a fresh agent session (keeps the transcript)' },
   { name: '/clear', help: 'start a new conversation: a fresh agent session and an empty transcript' },
+  { name: '/where', help: 'show the working directory of this conversation' },
   { name: '/stop', help: 'stop the running turn, drop queued prompts, end !commands' },
   { name: '/web', args: '[off]', help: 'open this session in the browser (same agent, same transcript)' },
   { name: '/auto', args: '[on|off]', help: 'approve every permission request the agent asks for, or ask again' },
@@ -69,6 +70,7 @@ export type SlashCommand =
   | { kind: 'fallback'; names?: string[]; off?: boolean }
   | { kind: 'new' }
   | { kind: 'clear' }
+  | { kind: 'where' }
   | { kind: 'continue'; id?: string }
   | { kind: 'waiting'; project?: string }
   | { kind: 'read'; id?: string }
@@ -150,6 +152,8 @@ export function parseSlash(text: string): SlashCommand | undefined {
       return { kind: 'new' };
     case '/clear':
       return { kind: 'clear' };
+    case '/where':
+      return { kind: 'where' };
     case '/stop':
       return { kind: 'stop' };
     case '/bark':

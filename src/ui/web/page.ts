@@ -7,6 +7,7 @@ export function pageHtml(title: {
   version: string;
   cwd: string;
   project?: boolean;
+  home?: boolean;
   sessions?: boolean;
   stripToken?: boolean;
 }): string {
@@ -23,7 +24,7 @@ export function pageHtml(title: {
 <style>${STYLES}</style>
 </head>
 <body>
-<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"${title.project === false ? ' data-no-project="1"' : ''}${title.sessions ? ' data-sessions="1"' : ''}></div>
+<div id="root" data-version="${escape(title.version)}" data-cwd="${escape(title.cwd)}"${title.project === false ? ' data-no-project="1"' : ''}${title.home ? ' data-home="1"' : ''}${title.sessions ? ' data-sessions="1"' : ''}></div>
 <script type="module" src="/app.js"></script>
 </body>
 </html>`;
@@ -67,6 +68,9 @@ button.chip.update { color: var(--accent); border-color: currentColor; }
 button.chip.update:disabled { cursor: default; opacity: 0.7; }
 .brand small { font-weight: 400; color: var(--faint); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+.conv-head { display: flex; flex-direction: column; min-width: 0; max-width: 42vw; line-height: 1.25; }
+.conv-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conv-topic { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 .gc-under .run-with :is(select, input, button) { background: transparent; border: 0; border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 28px; }
 .run-with select, .run-with button { cursor: pointer; }
@@ -115,13 +119,18 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .home .went button { cursor: pointer; }
 .home .went button:hover { text-decoration: underline; }
 .home .went b { font-weight: 500; color: var(--muted); }
-.home .topic { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; cursor: pointer; color: var(--text); }
+.home .topic { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; color: var(--text); }
 .home .topic:hover { border-color: var(--accent); }
-.home .topic span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.home .topic-open { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; background: none; border: 0; padding: 3px 2px; cursor: pointer; color: inherit; }
+.home .topic-open span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.home .topic-new { flex-shrink: 0; }
 .home details.stalled { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .home details.stalled > summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 2px; list-style-position: inside; }
 .home details.stalled > summary small { text-transform: none; letter-spacing: 0; margin-left: 8px; opacity: .8; }
 .home details.stalled[open] > .topic { margin-top: 6px; width: 100%; box-sizing: border-box; opacity: .85; }
+.project > summary .topic-new { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.project > summary .topic-new:hover { border-color: var(--accent); color: var(--text); }
+.session-row .label small.topic-tag { color: var(--accent); }
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
 .sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .sessions .tools input[type='search'] { flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
