@@ -366,6 +366,55 @@ describe('parseCli', () => {
     expect(await main(noMcp.cli)).toBe(EXIT_USAGE);
     expect(noMcp.err()).toContain('No installed agent with MCP support found for --pack');
   });
+  it('shares the app’s saved roster between project pack entries and keeps explicit choices', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-project-team-'));
+    dirs.push(root);
+    const cwd = join(root, 'project');
+    mkdirSync(cwd);
+    const agents = ['first', 'second', 'worker'].map((name) => ({
+      ...fakeAgent(name, []),
+      command: process.execPath,
+      capabilities: { mcp: true },
+    }));
+    let last: UiLaunch;
+    const capture = async (launch: UiLaunch) => {
+      last = launch;
+      return 0;
+    };
+    const start = async (argv: string[]) => {
+      const { cli, err } = environment({
+        cwd,
+        agents,
+        env: { HOME: root },
+        interactive: true,
+        argv,
+        loadUi: async () => ({ runWeb: capture, runChat: capture }),
+      });
+      const code = await main(cli);
+      return { code, error: err(), launch: last };
+    };
+    const desktop = await start(['ui', '--delegate', '--sessions', '--no-project']);
+    expect(desktop.code, desktop.error).toBe(EXIT_OK);
+    await desktop.launch.projectTeams!.save(cwd, { lead: 'second', members: ['worker'] });
+    for (const command of ['ui', 'chat']) {
+      const { launch } = await start([command, '--pack']);
+      expect(launch.startupNotice).toBe('Project pack: second leads · members: worker.');
+    }
+    expect((await start(['ui', '--delegate'])).launch.agent).toBe('second');
+    expect((await start(['ui', '--pack', '-a', 'first'])).launch.startupNotice).toBe(
+      'Project pack: first leads · members: worker.',
+    );
+    expect((await start(['ui', '--pack', 'first:second'])).launch.agents[0].name).toBe('pack');
+    const file = join(cwd, '.genaicode', 'pack.json');
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ lead: 'second', members: ['worker'] });
+    writeFileSync(file, 'broken');
+    expect(await start(['ui', '--pack'])).toMatchObject({
+      code: EXIT_USAGE,
+      error: expect.stringContaining('Invalid JSON'),
+    });
+    expect((await start(['ui', '--pack', 'first:worker'])).code).toBe(EXIT_OK);
+  });
+
   it('parses run options', () => {
     expect(
       parseCli(['run', '-a', 'codex', '--timeout', '90', '--max-turns', '5', '--verify', 'npm test', 'fix', 'it']),

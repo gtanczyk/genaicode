@@ -22,6 +22,7 @@ import type { WebCommand } from './server.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
+import { ProjectTeamDialog } from './project-team.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -167,6 +168,7 @@ interface PageConfig {
   home?: boolean;
   sessions: boolean;
   uploads?: boolean;
+  projectTeams?: boolean;
   files?: boolean;
   reveal?: boolean;
   artifactCdn?: string[];
@@ -610,6 +612,7 @@ function App() {
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
   const [model, setModel] = useState<string>();
+  const [showTeam, setShowTeam] = useState(false);
   // The Sessions view takes the chat's place; the chat keeps running behind it.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
   const showSessions = panel === 'sessions';
@@ -620,6 +623,7 @@ function App() {
   const session = view?.session;
   const conversation = view?.conversation;
   const activeCwd = conversation?.cwd || session?.cwd || cwd;
+  const teamFolder = hasProject || (isHome && activeCwd !== cwd) ? activeCwd : undefined;
   const running = session?.status === 'running';
   const startTopicChat = (topicId: string) => {
     dropWaiting();
@@ -908,6 +912,11 @@ function App() {
             )}
           </>
         ) : null}
+        {config?.projectTeams && (
+          <button type="button" className="chip off" aria-haspopup="dialog" onClick={() => setShowTeam(true)}>
+            Project team
+          </button>
+        )}
         {config?.canConfigureCdn ? (
           <div className="popover-anchor">
             <button
@@ -953,6 +962,16 @@ function App() {
         ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
+      {showTeam && (
+        <ProjectTeamDialog
+          token={token}
+          key={activeCwd}
+          chooseProject={!teamFolder}
+          cwd={teamFolder}
+          sessions={hasSessions}
+          onClose={() => setShowTeam(false)}
+        />
+      )}
       {showSessions ? (
         <Sessions
           token={token}

@@ -2,7 +2,7 @@ import { Box, Text, useInput } from 'ink';
 import { useRef, useState } from 'react';
 import type { PackAction, PackTask } from '../../agents/pack.js';
 import type { SessionTurn } from '../../agents/session.js';
-import { packCheckLabel, packTaskStatus } from '../../react/format.js';
+import { packQuotaText, packCheckLabel, packTaskStatus } from '../../react/format.js';
 import { plainSessionText, type ChatController } from '../controller.js';
 
 export interface TaskSelection {
@@ -149,6 +149,7 @@ export function PackInspector({
             {task.mode} · {plainSessionText(task.cwd)}
           </Text>
           {task.text && <Text>{plainSessionText(task.text)}</Text>}
+          {task.quotaHint && <Text color="yellow">{plainSessionText(packQuotaText(task.agent, task.quotaHint))}</Text>}
           {task.error && <Text color="red">{plainSessionText(task.error)}</Text>}
           {task.changes?.length ? <Text>{plainSessionText(task.changes.join(' · '))}</Text> : null}
           {checks && !running && (review || checks.review || checks.verify) && (
