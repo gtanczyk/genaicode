@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from 'node:util';
 import type { McpTool } from '../mcp-tools.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../types.js';
+import { acceptsSessionPrompt } from './group.js';
 import { agentSessionSources, findSession } from './index.js';
 import { sessionWithLive } from './live.js';
 import { sendSession, sessionRecipient, SessionSendError } from './send.js';
@@ -293,11 +294,12 @@ export function sessionSendTool(
         try {
           // The session can start a turn, or another sender take it, after the check: then it waits too.
           const result = await whenFree(send, options, {
-            // A refusal for its state waits only while the session is in a turn, not when it was archived.
+            // A refusal for its state retries while the session is still working or just became ready, not when archived.
             retry: async (error) => {
               if (error.reason !== 'state') return true;
               const now = await findSession(stores, target.id, query);
-              return !!now && (await isWorking(error, now.session, options.env));
+              if (!now || now.session.archived) return false;
+              return (await isWorking(error, now.session, options.env)) || acceptsSessionPrompt(now.session);
             },
             onWait: () => {
               if (status !== 'queued') {
