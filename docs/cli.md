@@ -392,11 +392,21 @@ you did not ask for, and a plugin's server cannot be switched off alone. The plu
 them. `--agent-mcp` keeps both. A Codex too old to list its servers (`codex mcp list --json`) keeps
 them too, with a note.
 The agent can publish artifacts: a report, chart or mockup as a self-contained HTML page, an
-image, a Markdown document. The browser UI shows each as a card that opens a preview; the
-terminal shows a line, and `/web` opens the browser on the same session. Pages run in a
-sandboxed frame with no network and no access to the UI (see
-[agents.md](agents.md#artifacts)). Agents that take MCP servers get the tool;
+image, audio, video, PDF or Markdown document. The browser UI opens both artifacts and project files
+in one resizable side panel beside the chat (with full-size toggle, version switcher, download,
+session **Artifacts** list, line jumping for `:line` / `#L12-L20` links, and rich viewers for
+Markdown, images, audio, video, PDF and sandboxed HTML); the terminal shows a line, and `/web` opens
+the browser on the same session. Pages run in a sandboxed frame with no network and no access to the
+UI by default (see [agents.md](agents.md#artifacts)); `--artifact-cdn <host>[,<host>]` opts in to
+specific CDN hosts for scripts, stylesheets and fonts while keeping fetch, images and forms blocked
+(also configurable in the desktop app's **Settings**). Agents that take MCP servers get the tool;
 `--no-artifacts` leaves it out.
+In `--sessions` and desktop mode, file viewing and `publish_artifact` paths follow the directories
+of the active session, opened/sent sessions and pack worktrees rather than only the server's own
+`cwd`, while still refusing out-of-root paths, escaping symlinks and credential files. In the desktop
+app, external links (`http(s)` and `mailto`) and artifact **New tab** open in the system default
+browser, downloads prompt with a Save dialog and **Show in Finder / File Manager**, and file links
+and out-of-project notices offer **Reveal**.
 An app that starts `genaicode ui` itself can add `--exit-with-stdin` and stop it by closing
 its stdin, which also reaches the server when a launcher such as npx sits in between.
 Such an app can also write `update-downloading <version>` to that stdin while it downloads a newer

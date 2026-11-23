@@ -157,6 +157,11 @@ export interface UiLaunch {
   approveAll?: boolean;
   /** `--no-artifacts`: false. */
   artifacts?: boolean;
+  /** `--artifact-cdn`: opt-in CDN hosts HTML artifacts may load scripts/styles/fonts from. */
+  artifactCdn?: readonly string[];
+  /** Extra allowed roots from opened sessions (`--sessions`). */
+  extraRoots?: ReadonlySet<string>;
+  onRoot?(dir: string): void;
   env: NodeJS.ProcessEnv;
   version: string;
   stdout: NodeJS.WriteStream;
@@ -352,6 +357,9 @@ Chat and UI options:
                           it, a chat gives Codex only the servers above and its own tools
       --no-artifacts      Do not give the agent the publish_artifact tool (pages, images and
                           documents it shows in the chat)
+      --artifact-cdn <h>  Allow HTML artifacts to load scripts, styles and fonts from these CDN
+                          hosts (comma-separated or repeatable, e.g. cdn.jsdelivr.net,unpkg.com);
+                          fetch, images and forms stay blocked. Off by default
       --sessions          Give the agent read access to the session index. Ask what needs your
                           attention across agents with sessions_waiting
       --max-tokens <n>    Token budget for the whole session; prompts stop starting once it is used
@@ -883,12 +891,16 @@ async function runUi(
   const ui = await (cli.loadUi ?? loadBundledUi)();
   // `--sessions`: the index of every agent's sessions, as tools of the agent in this chat.
   // ...and a way to pass a message to one of them, which the person allows first.
+  const extraRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    if (dir) extraRoots.add(dir);
+  };
   const sends = options.sessions ? new AbortController() : undefined;
   const sendGate = sends ? new SessionSendGate() : undefined;
   const tools =
     options.sessions && sendGate
       ? [
-          ...sessionTools(indexed, { env: cli.env }),
+          ...sessionTools(indexed, { env: cli.env, onSession: (session) => session.cwd && addRoot(session.cwd) }),
           sessionSendTool(sessionAgents, sendGate, { env: cli.env, signal: sends!.signal }),
         ]
       : undefined;
@@ -930,6 +942,9 @@ async function runUi(
     ...(options.home ? { home: true } : {}),
     ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
+    ...(options.artifactCdn ? { artifactCdn: options.artifactCdn } : {}),
+    extraRoots,
+    onRoot: addRoot,
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback ? { fallback: options.fallback } : {}),
     ...extra,

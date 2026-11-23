@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
+import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
@@ -23,6 +24,7 @@ import {
   agentSessionSources,
   answerAsk,
   archiveSessions,
+  findSession,
   isSameDir,
   listSessions,
   pendingAsks,
@@ -31,7 +33,14 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
-import { startWebUi, type HostApp, type HostUpdate, type WebAsset, type WebUi } from './web/server.js';
+import {
+  startWebUi,
+  type HostApp,
+  type HostUpdate,
+  type WebAsset,
+  type WebSettings,
+  type WebUi,
+} from './web/server.js';
 import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
@@ -55,6 +64,10 @@ export interface UiRunOptions extends ChatOptions {
   firstPrompt?: string;
   /** A session to take over before anything is sent (`ChatController.continueSession`). */
   continueFrom?: string;
+  /** Additional allowed roots added as sessions are opened or sent to (`--sessions`). */
+  extraRoots?: ReadonlySet<string>;
+  /** Opt-in CDN hosts allowed in HTML artifacts (`--artifact-cdn`). */
+  artifactCdn?: readonly string[];
 }
 
 export interface WebRunOptions extends UiRunOptions {
@@ -107,24 +120,54 @@ export function loadAssets(dir: URL): Map<string, WebAsset> {
   return assets;
 }
 
+/** Build the dynamic list of allowed roots: session cwd first, server cwd, pack task worktrees, opened sessions. */
+function makeRoots(
+  options: UiRunOptions,
+  getController: () => ChatController | undefined,
+  localRoots: ReadonlySet<string>,
+): () => string[] {
+  return () => {
+    const out: string[] = [];
+    const push = (dir: string | undefined) => {
+      if (dir && !out.includes(dir)) out.push(dir);
+    };
+    const session = getController()?.get().session;
+    push(session?.cwd);
+    push(options.cwd);
+    for (const turn of session?.turns ?? []) {
+      for (const task of turn.pack?.tasks ?? []) push(task.cwd);
+    }
+    for (const dir of options.extraRoots ?? []) push(dir);
+    for (const dir of localRoots) push(dir);
+    return out;
+  };
+}
+
 /** The agent's way to publish artifacts. A port that will not open only means no artifacts. */
 async function openArtifacts(
   options: ChatOptions,
-  getController?: () => ChatController | undefined,
+  cwd: RootsInput,
+  allowScriptHosts?: () => readonly string[],
 ): Promise<ArtifactChannel | undefined> {
   if (options.artifacts === false) return undefined;
-  return startArtifactChannel({ cwd: () => getController?.()?.get().session.cwd ?? options.cwd }).catch(
-    () => undefined,
-  );
+  return startArtifactChannel({
+    cwd,
+    ...(allowScriptHosts ? { allowScriptHosts } : {}),
+  }).catch(() => undefined);
 }
 
 /**
  * The session's MCP servers: artifacts, `ask_user` for agents that cannot ask on their own, and
  * `open_project` in `--home` mode. A port that will not open only means the agent goes without that one.
  */
-async function openChannels(options: ChatOptions, getController?: () => ChatController | undefined) {
+async function openChannels(
+  options: ChatOptions,
+  getController: () => ChatController | undefined,
+  cwd: RootsInput,
+  allowScriptHosts?: () => readonly string[],
+) {
   const [artifactChannel, questionChannel, openProjectChannel] = await Promise.all([
-    openArtifacts(options, getController),
+    openArtifacts(options, cwd, allowScriptHosts),
     startQuestionChannel().catch(() => undefined),
     options.home
       ? startProjectChannel({
@@ -155,13 +198,29 @@ async function openChannels(options: ChatOptions, getController?: () => ChatCont
 
 export async function runChat(options: WebRunOptions): Promise<number> {
   let controller: ChatController | undefined;
-  const web = webLink(options, () => controller!);
+  const localRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    localRoots.add(dir);
+    options.onRoot?.(dir);
+  };
+  const roots = makeRoots(options, () => controller, localRoots);
+  const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
+  const web = webLink(options, () => controller!, roots, addRoot);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     options,
     () => controller,
+    roots,
+    () => cdnHosts,
   );
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel, openProjectChannel });
+    controller = createChatController({
+      ...options,
+      onRoot: addRoot,
+      web,
+      artifactChannel,
+      questionChannel,
+      openProjectChannel,
+    });
   } catch (error) {
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
@@ -228,8 +287,14 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
 /** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
 const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;
+/** What the host app writes to stdin when settings change from its native menu. */
+const SETTINGS_IN_PREFIX = 'settings ';
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
+/** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
+export const REVEAL_PREFIX = 'Reveal ';
+/** What the host app reads from stderr when the page saves desktop settings. */
+export const SETTINGS_PREFIX = 'Settings ';
 
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
@@ -237,23 +302,38 @@ export const RELAUNCH_LINE = 'Relaunch to update';
  * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
  * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
  * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr. `open-session <id>`
- * brings a session from the menu bar directly into the chat.
+ * brings a session from the menu bar directly into the chat, and the app listens for
+ * `Reveal <json-path>` and `Settings <json>` lines on stderr.
  */
-function hostApp(options: WebRunOptions, onOpenSession?: (id: string) => void): HostApp {
+function hostApp(
+  options: WebRunOptions,
+  handlers: { onOpenSession?: (id: string) => void; onSettings?: (hosts: readonly string[]) => void } = {},
+): HostApp {
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
   options.stdin.on('data', (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
-    rest = (lines.pop() ?? '').slice(-200);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const openMatch = OPEN_SESSION_LINE.exec(trimmed);
+    rest = (lines.pop() ?? '').slice(-4096);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      const openMatch = OPEN_SESSION_LINE.exec(line);
       if (openMatch?.[1]) {
-        onOpenSession?.(openMatch[1]);
+        handlers.onOpenSession?.(openMatch[1]);
         continue;
       }
-      const found = UPDATE_LINE.exec(trimmed);
+      if (line.startsWith(SETTINGS_IN_PREFIX) && handlers.onSettings) {
+        try {
+          const parsed = JSON.parse(line.slice(SETTINGS_IN_PREFIX.length)) as { artifactCdn?: unknown };
+          if (Array.isArray(parsed?.artifactCdn) && parsed.artifactCdn.every((item) => typeof item === 'string')) {
+            handlers.onSettings(normalizeScriptHosts(parsed.artifactCdn as string[]));
+          }
+        } catch {
+          // Malformed settings line ignored.
+        }
+        continue;
+      }
+      const found = UPDATE_LINE.exec(line);
       if (!found) continue;
       // `update-none`: a download that failed, so there is nothing to show any more.
       const next: HostUpdate | undefined = found[3]
@@ -275,6 +355,8 @@ function hostApp(options: WebRunOptions, onOpenSession?: (id: string) => void): 
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    reveal: (path) => void options.stderr.write(`${REVEAL_PREFIX}${JSON.stringify(path)}\n`),
+    saveSettings: (settings) => void options.stderr.write(`${SETTINGS_PREFIX}${JSON.stringify(settings)}\n`),
   };
 }
 
@@ -285,20 +367,54 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     if (controller) void controller.continueSession(id);
     else pendingOpen = id;
   };
+  let cdnHosts: readonly string[] = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
+  const settingsListeners = new Set<() => void>();
+  const setArtifactCdn = (hosts: readonly string[]) => {
+    const next = normalizeScriptHosts(hosts);
+    if (JSON.stringify(cdnHosts) === JSON.stringify(next)) return;
+    cdnHosts = next;
+    for (const listener of settingsListeners) listener();
+  };
   // Before anything waits: what the app says while the welcome page shows is kept for the chat.
   if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
-    options = { ...options, hostApp: hostApp(options, openSession) };
+    options = { ...options, hostApp: hostApp(options, { onOpenSession: openSession, onSettings: setArtifactCdn }) };
   const welcomed = await welcome(options);
   if (welcomed === null) return 0;
   // The chat answers on the link the welcome page had, which the browser already shows.
   if (welcomed) options = { ...options, ...welcomed, open: false };
-  const web = webLink(options, () => controller!);
+  const localRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    localRoots.add(dir);
+    options.onRoot?.(dir);
+  };
+  const roots = makeRoots(options, () => controller, localRoots);
+  const settings: WebSettings | undefined =
+    options.hostApp && options.artifacts !== false
+      ? {
+          artifactCdn: () => cdnHosts,
+          setArtifactCdn,
+          subscribe(listener) {
+            settingsListeners.add(listener);
+            return () => settingsListeners.delete(listener);
+          },
+        }
+      : undefined;
+  const web = webLink(options, () => controller!, roots, addRoot, settings);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     options,
     () => controller,
+    roots,
+    () => cdnHosts,
   );
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel, openProjectChannel });
+    controller = createChatController({
+      ...options,
+      onRoot: addRoot,
+      web,
+      artifactChannel,
+      questionChannel,
+      openProjectChannel,
+    });
   } catch (error) {
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
@@ -374,7 +490,13 @@ async function runTerminal(controller: ChatController, options: UiRunOptions) {
  * The browser UI on the terminal's session, started on demand (`/web`, `genaicode chat --web`)
  * or up front (`genaicode ui`). Both front ends drive one controller, so they stay in step.
  */
-function webLink(options: WebRunOptions, controller: () => ChatController): WebHandoff & { start(): Promise<string> } {
+function webLink(
+  options: WebRunOptions,
+  controller: () => ChatController,
+  roots: RootsInput,
+  addRoot: (dir: string) => void,
+  settings?: WebSettings,
+): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
   const senders = detectAgents(agents, options.env).flatMap(({ agent, path }) =>
@@ -393,11 +515,12 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         ...(options.home ? { home: true } : {}),
       },
       uploads: createUploads(() => controller().get().session.cwd),
-      files: createProjectFiles(() => controller().get().session.cwd),
+      files: createProjectFiles(roots),
       host: options.host,
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
+      settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async ({ own, ...query }) => {
@@ -449,13 +572,21 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders, ...sorted };
       },
-      sendPrompt: (source, id, prompt, sandbox, signal) =>
-        sendSession(agents, id, prompt, {
+      sendPrompt: async (source, id, prompt, sandbox, signal) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const found = await findSession(
+          sources.filter((s) => s.name === source),
+          id,
+          { env: options.env, signal },
+        ).catch(() => undefined);
+        if (found?.session.cwd) addRoot(found.session.cwd);
+        return sendSession(agents, id, prompt, {
           source,
           env: options.env,
           signal,
           permissions: sandbox ? { sandbox } : undefined,
-        }),
+        });
+      },
       limits: () => knownLimits(options.env),
       // Automatic runs too: they use the plan like everything else.
       shares: async (query) => {
@@ -511,7 +642,7 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options, options.cwd);
   let controller: ChatController;
   try {
     controller = createChatController({ ...options, artifactChannel, questionChannel });

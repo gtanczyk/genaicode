@@ -1,4 +1,5 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
@@ -7,6 +8,7 @@ import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.j
 import { parseQuestionAnswers } from '../../agents/question-answers.js';
 import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
+import { contentHeaders, normalizeScriptHosts, parseByteRange } from '../../agents/media.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
@@ -15,7 +17,7 @@ import type { TowerDecision } from '../../agents/sessions/tower.js';
 import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
-import type { ProjectFiles } from '../files.js';
+import type { FileRaw, ProjectFiles } from '../files.js';
 
 export interface WebUiOptions {
   controller: ChatController;
@@ -83,11 +85,19 @@ export interface WebUiOptions {
   assets?: ReadonlyMap<string, WebAsset>;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
+  /** Live settings that the page can read and update (e.g. opt-in CDN hosts for HTML artifacts). */
+  settings?: WebSettings;
+}
+
+export interface WebSettings {
+  artifactCdn(): readonly string[];
+  setArtifactCdn(hosts: readonly string[]): void;
+  subscribe?(listener: () => void): () => void;
 }
 
 /**
- * What a host app tells the page and takes from it. Today one thing: a newer version of the app
- * is downloaded, and the page's "Relaunch to update" asks the app to install it.
+ * What a host app tells the page and takes from it: update state for "Relaunch to update",
+ * revealing a file in the OS file manager, and persisting desktop settings.
  */
 export interface HostUpdate {
   version: string;
@@ -104,6 +114,10 @@ export interface HostApp {
   subscribe(listener: () => void): () => void;
   /** The person asked for the relaunch. */
   relaunch(): void;
+  /** Reveal an existing file on disk in Finder / the OS file manager. */
+  reveal?(path: string): void;
+  /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
+  saveSettings?(settings: { artifactCdn: readonly string[] }): void;
 }
 
 /**
@@ -325,6 +339,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const unsubscribe = controller.subscribe(broadcast);
   const configEvent = () => {
     const update = options.hostApp?.update();
+    const artifactCdn = options.settings?.artifactCdn() ?? controller.artifacts?.allowScriptHosts?.() ?? [];
     const config = {
       cwd: options.title.cwd,
       project: options.title.project !== false,
@@ -332,14 +347,19 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       sessions: !!options.sessions,
       uploads: !!options.uploads,
       files: !!options.files,
+      reveal: !!options.hostApp?.reveal,
+      artifactCdn,
+      canConfigureCdn: !!options.settings,
       ...(update ? { update } : {}),
     };
     return `event: config\ndata: ${JSON.stringify(config)}\n\n`;
   };
-  const unsubscribeHost = options.hostApp?.subscribe(() => {
+  const broadcastConfig = () => {
     const data = configEvent();
     for (const stream of streams) stream.write(data);
-  });
+  };
+  const unsubscribeHost = options.hostApp?.subscribe(broadcastConfig);
+  const unsubscribeSettings = options.settings?.subscribe?.(broadcastConfig);
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     if (!allowedHost(req.headers.host)) return send(res, 403, 'text/plain', 'Forbidden host');
@@ -389,11 +409,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {
       // No token: the frame that shows an artifact would see it in its own URL. The id is
       // unguessable and opens that one artifact only.
-      const found = controller.artifacts?.read(url.pathname.slice('/artifacts/'.length));
+      const rawVersion = url.searchParams.get('v');
+      const version = rawVersion !== null && /^\d+$/.test(rawVersion) ? Number(rawVersion) : undefined;
+      const found = controller.artifacts?.read(url.pathname.slice('/artifacts/'.length), version);
       if (!found) return send(res, 404, 'text/plain', 'Not found');
-      const response = artifactResponse(found.artifact, found.body, { range: req.headers.range });
+      const response = artifactResponse(found.artifact, found.body, {
+        range: req.headers.range,
+        allowScriptHosts: options.settings?.artifactCdn() ?? controller.artifacts?.allowScriptHosts?.(),
+        download: url.searchParams.get('download') === '1',
+      });
       res.writeHead(response.status, response.headers);
       return res.end(response.body);
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
+      // No token: capability URL minted by /api/file or /api/file/images, single-path and short-lived.
+      const found = options.files?.fromCapability(url.pathname.slice('/files/'.length));
+      if (!found) return send(res, 404, 'text/plain', 'Not found');
+      return streamRawFile(
+        req,
+        res,
+        found,
+        options.settings?.artifactCdn() ?? controller.artifacts?.allowScriptHosts?.(),
+        url.searchParams.get('download') === '1',
+      );
     }
     if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
       // No token, as for artifacts: the id is unguessable and shows that one image only.
@@ -435,12 +473,122 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
-      const found = options.files.read(url.searchParams.get('path') ?? '');
+      const targetPath = url.searchParams.get('path') ?? '';
+      const found = options.files.read(targetPath);
       if (typeof found === 'string') {
-        const status = found === 'outside' ? 403 : found === 'binary' ? 415 : 404;
+        const status = found === 'outside' || found === 'secret' ? 403 : 404;
         return send(res, status, 'application/json', JSON.stringify({ error: found }));
       }
-      return send(res, 200, 'application/json', JSON.stringify(found), { 'cache-control': 'no-store' });
+      const cap = options.files.capability(targetPath);
+      const payload = cap ? { ...found, rawUrl: `/files/${cap.id}` } : found;
+      return send(res, 200, 'application/json', JSON.stringify(payload), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/file/raw') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      const found = options.files.raw(url.searchParams.get('path') ?? '');
+      if (typeof found === 'string') {
+        const status = found === 'outside' || found === 'secret' ? 403 : 404;
+        return send(res, status, 'application/json', JSON.stringify({ error: found }));
+      }
+      return streamRawFile(
+        req,
+        res,
+        found,
+        options.settings?.artifactCdn() ?? controller.artifacts?.allowScriptHosts?.(),
+        url.searchParams.get('download') === '1',
+      );
+    }
+    if (req.method === 'POST' && url.pathname === '/api/file/images') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let paths: string[] | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { paths?: unknown };
+        if (
+          Array.isArray(body?.paths) &&
+          body.paths.length <= 100 &&
+          body.paths.every((p: unknown) => typeof p === 'string' && p.length <= 4096)
+        ) {
+          paths = body.paths as string[];
+        }
+      } catch {
+        paths = undefined;
+      }
+      if (!paths) return send(res, 400, 'application/json', '{"error":"bad paths"}');
+      const urls: Record<string, string> = {};
+      for (const item of paths) {
+        const cap = options.files.capability(item, { onlyKind: 'image' });
+        if (cap) urls[item] = `/files/${cap.id}`;
+      }
+      return send(res, 200, 'application/json', JSON.stringify({ urls }), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/reveal') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.hostApp?.reveal || !options.files) {
+        return send(res, 404, 'application/json', '{"error":"reveal unavailable"}');
+      }
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let targetPath: string | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { path?: unknown };
+        if (typeof body?.path === 'string' && body.path.length > 0 && body.path.length <= 4096) {
+          targetPath = body.path;
+        }
+      } catch {
+        targetPath = undefined;
+      }
+      if (!targetPath) return send(res, 400, 'application/json', '{"error":"bad path"}');
+      const resolved = options.files.revealPath(targetPath);
+      if (!resolved.ok) {
+        const status = resolved.reason === 'missing' ? 404 : 403;
+        return send(res, status, 'application/json', JSON.stringify({ error: resolved.reason }));
+      }
+      options.hostApp.reveal(resolved.realPath);
+      return send(res, 200, 'application/json', '{"ok":true}');
+    }
+    if (req.method === 'POST' && url.pathname === '/api/settings') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.settings) return send(res, 404, 'application/json', '{"error":"settings unavailable"}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let hosts: string[] | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { artifactCdn?: unknown };
+        if (
+          Array.isArray(body?.artifactCdn) &&
+          body.artifactCdn.length <= 32 &&
+          body.artifactCdn.every((item: unknown) => typeof item === 'string')
+        ) {
+          hosts = normalizeScriptHosts(body.artifactCdn as string[]);
+        }
+      } catch (error) {
+        return send(
+          res,
+          400,
+          'application/json',
+          JSON.stringify({ error: error instanceof Error ? error.message : 'invalid settings' }),
+        );
+      }
+      if (!hosts) return send(res, 400, 'application/json', '{"error":"bad settings"}');
+      options.settings.setArtifactCdn(hosts);
+      options.hostApp?.saveSettings?.({ artifactCdn: hosts });
+      broadcastConfig();
+      return send(res, 200, 'application/json', JSON.stringify({ ok: true, artifactCdn: hosts }));
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];
@@ -661,6 +809,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         lifetime.abort();
         unsubscribe();
         unsubscribeHost?.();
+        unsubscribeSettings?.();
         if (pending) clearTimeout(pending);
         for (const stream of streams) stream.end();
         streams.clear();
@@ -728,4 +877,53 @@ async function readBytes(req: IncomingMessage, max: number): Promise<Buffer> {
     chunks.push(chunk as Buffer);
   }
   return Buffer.concat(chunks);
+}
+
+/** Stream a verified file with shared CSP headers and HTTP `Range` support. */
+function streamRawFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  file: FileRaw,
+  allowScriptHosts: readonly string[] | undefined,
+  download: boolean,
+): void {
+  const headers = contentHeaders({
+    kind: file.contentKind,
+    mimeType: file.mimeType,
+    filename: file.filename,
+    size: file.size,
+    allowScriptHosts,
+    download,
+  });
+  const parsed = parseByteRange(req.headers.range, file.size);
+  if (parsed?.status === 416) {
+    res.writeHead(416, { ...headers, 'content-range': `bytes */${file.size}`, 'content-length': '0' });
+    res.end();
+    return;
+  }
+  if (file.size === 0) {
+    res.writeHead(200, headers);
+    res.end();
+    return;
+  }
+  let streamOptions: { start?: number; end?: number } | undefined;
+  if (parsed?.status === 206) {
+    const { start, end } = parsed;
+    res.writeHead(206, {
+      ...headers,
+      'content-range': `bytes ${start}-${end}/${file.size}`,
+      'content-length': String(end - start + 1),
+    });
+    streamOptions = { start, end };
+  } else {
+    res.writeHead(200, headers);
+  }
+  const stream = createReadStream(file.realPath, streamOptions);
+  const cleanup = () => stream.destroy();
+  res.once('close', cleanup);
+  stream.on('error', () => {
+    if (!res.headersSent) res.writeHead(404, { 'content-type': 'text/plain' });
+    res.end();
+  });
+  stream.pipe(res);
 }

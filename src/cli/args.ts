@@ -1,4 +1,5 @@
 import { parseArgs } from 'node:util';
+import { normalizeScriptHosts } from '../agents/media.js';
 import { isSandboxPolicy } from '../agents/permissions.js';
 import type { AgentBudget, McpServer, SandboxPolicy } from '../agents/types.js';
 
@@ -113,6 +114,8 @@ export type CliCommand =
       agentMcp?: true;
       /** `--no-artifacts`. */
       artifacts?: false;
+      /** `--artifact-cdn host[,host]`: opt-in CDN hosts HTML artifacts may load scripts/styles/fonts from. */
+      artifactCdn?: string[];
       /** `--sessions`: give the agent the session index (`sessions_list`, `sessions_read`...). */
       sessions?: true;
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -525,6 +528,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       'max-cost': { type: 'string' as const },
       fallback: { type: 'string' as const, multiple: true as const },
       'no-artifacts': { type: 'boolean' as const },
+      'artifact-cdn': { type: 'string' as const, multiple: true as const },
       'agent-mcp': { type: 'boolean' as const },
       sessions: { type: 'boolean' as const },
       ...(command === 'ui'
@@ -581,6 +585,8 @@ export function parseCli(argv: readonly string[]): CliCommand {
       throw new UsageError('--home and --cwd do not go together: --home resolves the directory per conversation.');
     if (extra['no-project'] && !extra.home && values.sessions !== true)
       throw new UsageError('--no-project goes with --sessions: without a project the chat is about the sessions.');
+    if (values['no-artifacts'] === true && values['artifact-cdn']?.length)
+      throw new UsageError('--artifact-cdn does not go with --no-artifacts.');
     const port = optionalNumber(values.port, '--port');
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
@@ -604,6 +610,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       ...(extra.restore === true ? { restore: true as const } : {}),
       mcpServers: (values.mcp ?? []).map(parseMcp),
       ...(values['no-artifacts'] === true ? { artifacts: false } : {}),
+      ...artifactCdnOf(values['artifact-cdn']),
       ...(values['agent-mcp'] === true ? { agentMcp: true } : {}),
       ...(command === 'tower' || values.sessions === true || extra.home === true ? { sessions: true } : {}),
       ...budgetOf(values),
@@ -749,6 +756,19 @@ function fallbackOf(values: readonly string[] | undefined): { fallback?: string[
   const names = values.flatMap((value) => value.split(/[\s,]+/)).filter(Boolean);
   if (!names.length) throw new UsageError('--fallback expects agent names, e.g. --fallback codex,gemini.');
   return { fallback: [...new Set(names)] };
+}
+
+/** `--artifact-cdn cdn.jsdelivr.net,unpkg.com` (repeatable) validated and normalized. */
+function artifactCdnOf(values: readonly string[] | undefined): { artifactCdn?: string[] } {
+  if (!values) return {};
+  const raw = values.flatMap((value) => value.split(/[\s,]+/)).filter(Boolean);
+  if (!raw.length)
+    throw new UsageError('--artifact-cdn expects hostnames, e.g. --artifact-cdn cdn.jsdelivr.net,unpkg.com.');
+  try {
+    return { artifactCdn: normalizeScriptHosts(raw) };
+  } catch (error) {
+    throw new UsageError(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** `--max-tokens <n>` and `--max-cost <usd>` as a budget, when either is given. */
