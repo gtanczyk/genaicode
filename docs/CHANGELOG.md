@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `genaicode ui` and the desktop app: developer transcript export in the chat header (`session …` menu), in **Chats** / **Sessions** rows (`⋯`), and in the desktop app's **Developer** menu — copy the full session ID, the session file path on disk, the Markdown transcript (metadata, turns, tool calls, diffs, approvals, questions, pack tasks, notices) or raw JSON state, or save/download `.md` and `.json` files (with a native Save dialog in the desktop app)
+- `genaicode ui` and the desktop app: developer transcript export in the chat header (`session …` menu), in **Chats** / **Sessions** rows (`⋯`), and in the desktop app's **Developer** menu — copy the full session ID, the session file path on disk, the Markdown transcript (metadata, turns, tool calls, diffs, approvals, questions, pack tasks, notices) or raw JSON state, or save/download `.md` and `.json` files (with a native Save dialog in the desktop app) (#322)
 
 ## 3.1.0 — 2026-11-23
 
