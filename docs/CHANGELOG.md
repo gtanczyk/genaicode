@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 2.54.0 — 2026-11-23
+
 ### Added
 
 - Pack `delegate` takes `model`, `effort`, a short `title` and `mcpServers`: names of the lead's MCP servers to give the task (servers the task was given, plus those in Claude Code's own config: user, `.mcp.json` and local scope). `agents` lists each member's effort values. New `ownMcpServers()` / `claudeMcpServers()` and `PackOptions.shareableMcpServers`. Before, a delegated agent ran on its default model and without the lead's servers, so a task that needed e.g. the gamedevpl server failed (#303)
