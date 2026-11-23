@@ -15,6 +15,8 @@ type StaticItem =
 
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+const isLiveRelay = (notice: Notice) => notice.relay?.status === 'queued' || notice.relay?.status === 'working';
+
 /** Split the transcript into what is final (printed once, scrolls away) and what is still live. */
 export function splitTranscript(view: ChatView): { done: StaticItem[]; live: SessionTurn[]; pending: Notice[] } {
   const { turns } = view.session;
@@ -29,14 +31,16 @@ export function splitTranscript(view: ChatView): { done: StaticItem[]; live: Ses
   }
   const done: StaticItem[] = [{ key: 'header', kind: 'header' }];
   const notices = [...view.notices];
+  const held: Notice[] = [];
   for (let k = 0; k <= finished; k += 1) {
     while (notices.length && notices[0].afterTurn <= k) {
       const notice = notices.shift()!;
-      done.push({ key: `n${notice.id}`, kind: 'notice', notice });
+      if (isLiveRelay(notice)) held.push(notice);
+      else done.push({ key: `n${notice.id}`, kind: 'notice', notice });
     }
     if (k < finished) done.push({ key: `t${turns[k].id}`, kind: 'turn', turn: turns[k] });
   }
-  return { done, live: turns.slice(finished), pending: notices };
+  return { done, live: turns.slice(finished), pending: [...held, ...notices] };
 }
 
 /** Visible slice of the draft around the cursor, for one terminal row. */
@@ -102,25 +106,26 @@ export function ChatApp({
     // The tower's initial read can finish between rendering and subscribing.
     const current = controller.get();
     setView(current);
-    let seen = current.session;
+    let seen = current;
     return controller.subscribe((next) => {
-      // The terminal's bark: ring the bell when an approval waits or a turn finishes.
-      if (next.bark && needsAttention(seen, next.session)) stdout.write('\x07');
+      // The terminal's bark: ring the bell when an approval waits, a turn finishes, or a relay settles.
+      if (next.bark && needsAttention(seen.session, next.session, seen.notices, next.notices)) stdout.write('\x07');
       // `/clear`: what the terminal already printed goes too, and the header prints again.
-      if (seen.turns.length && !next.session.turns.length) {
+      if (seen.session.turns.length && !next.session.turns.length) {
         if (stdout.isTTY) stdout.write('\x1b[2J\x1b[3J\x1b[H');
         setCleared((count) => count + 1);
       }
-      seen = next.session;
+      seen = next;
       setView(next);
     });
   }, [controller, stdout]);
   const running = view.session.status === 'running';
+  const relayWorking = view.notices.some((notice) => notice.relay?.status === 'working');
   useEffect(() => {
-    if (!running) return;
+    if (!running && !relayWorking) return;
     const timer = setInterval(() => setNow(Date.now()), 120);
     return () => clearInterval(timer);
-  }, [running]);
+  }, [running, relayWorking]);
 
   const quit = () => {
     controller.close();
@@ -350,7 +355,7 @@ export function ChatApp({
           />
         ))}
         {pending.map((notice) => (
-          <NoticeView key={notice.id} notice={notice} />
+          <NoticeView key={notice.id} notice={notice} now={now} />
         ))}
         {currentTask ? (
           <PackInspector current={currentTask} tasks={tasks} controller={controller} select={selectTask} rows={rows} />

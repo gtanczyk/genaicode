@@ -44,6 +44,8 @@ export interface SessionSendOptions extends Pick<AgentTask, 'env' | 'permissions
   expectedTarget?: Pick<SessionInfo, 'agent' | 'cwd'>;
   /** Only a session waiting for a reply takes it. Default: when `expectedTarget` is given (a reviewed proposal). */
   waitingOnly?: boolean;
+  /** Called once the target session's turn actually starts running (after lock and recipient checks). */
+  onStart?(session: SessionInfo): void;
   onEvent?(event: AgentEvent, session: SessionInfo): void;
 }
 
@@ -116,6 +118,7 @@ export async function sendSession(
     signal?.throwIfAborted();
     const run = agent.run(task);
     try {
+      options.onStart?.(session);
       if (onEvent) {
         for await (const event of run) onEvent(event, session);
       }

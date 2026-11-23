@@ -35,6 +35,7 @@ import {
 } from './format.js';
 import { Markdown, readFileLinkPosition, type FilePosition } from './markdown.js';
 import { PackTasks, type PackActionHandler } from './pack-tasks.js';
+import { SessionRelayCard, type ChatSessionRelay } from './session-relay.js';
 import {
   artifactKindLabel,
   ArtifactSubmitBar,
@@ -52,6 +53,8 @@ export interface ChatNotice {
   afterTurn: number;
   text: ReactNode;
   tone?: 'info' | 'error';
+  /** Live card for a message relayed to another session (`sessions_send`). */
+  relay?: ChatSessionRelay;
 }
 
 /** A command the composer offers to complete. */
@@ -221,7 +224,8 @@ export function AgentChat(props: AgentChatProps) {
   const [draft, setDraft] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
   const running = state?.status === 'running';
-  const now = useNow(running);
+  const relayWorking = !!props.notices?.some((notice) => notice.relay?.status === 'working');
+  const now = useNow(running || relayWorking);
 
   useLayoutEffect(() => {
     const el = input.current;
@@ -361,14 +365,27 @@ export function AgentChat(props: AgentChatProps) {
 
   // Notices sit after the turn that was last when they were posted.
   const items: ReactNode[] = [];
+  const toolName = props.formatToolName ?? toolLabel;
   const notices = [...(props.notices ?? [])].sort((a, b) => a.afterTurn - b.afterTurn);
   const flush = (upTo: number) => {
     while (notices.length && notices[0].afterTurn <= upTo) {
       const notice = notices.shift()!;
       items.push(
-        <div key={`n${notice.id}`} className={`gc-notice${notice.tone === 'error' ? ' gc-err' : ''}`}>
-          {notice.text}
-        </div>,
+        notice.relay ? (
+          <SessionRelayCard
+            key={`n${notice.id}`}
+            relay={notice.relay}
+            cwd={state.cwd}
+            now={now}
+            toolName={toolName}
+            imageUrl={props.imageUrl}
+            remoteImages={props.remoteImages}
+          />
+        ) : (
+          <div key={`n${notice.id}`} className={`gc-notice${notice.tone === 'error' ? ' gc-err' : ''}`}>
+            {notice.text}
+          </div>
+        ),
       );
     }
   };

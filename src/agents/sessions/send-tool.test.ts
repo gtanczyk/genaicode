@@ -5,7 +5,7 @@ import { afterAll, expect, it, vi } from 'vitest';
 import type { AgentResult, AgentRun, CodingAgent } from '../types.js';
 import { createAgentSession } from '../session.js';
 import { claimSession } from './send-lock.js';
-import { SessionSendGate, sessionSendTool } from './send-tool.js';
+import { formatSessionUpdate, SessionSendGate, sessionSendTool, type SessionSendUpdate } from './send-tool.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-send-tool-'));
@@ -234,4 +234,76 @@ it('waits when another sender holds the session after the check, instead of drop
   await gate.settled();
   expect(agent.run).toHaveBeenCalledTimes(1);
   expect(done).toHaveBeenCalledWith(expect.objectContaining({ id: session.id }), { result: ok });
+});
+
+it('emits live lifecycle updates (queued -> working -> tool/text -> answered/failed) and tells the agent not to poll', async () => {
+  const rows: SessionInfo[] = [{ ...session, state: 'active', turnInProgress: true }];
+  const store: SessionSource = { name: 'store', where: 'local', list: async () => rows };
+  let outcome: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Merged PR #296.' };
+  const agent = {
+    name: 'owner',
+    command: 'custom',
+    sessions: store,
+    capabilities: { resume: true },
+    run: vi.fn<CodingAgent['run']>(
+      (): AgentRun => ({
+        abort() {},
+        result: Promise.resolve(outcome),
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'tool-start', id: 't1', name: 'Bash', input: { command: 'gh pr merge' } };
+          yield { type: 'message', text: 'Merging PR #296 now\nSecond line' };
+          yield { type: 'done', result: outcome };
+        },
+      }),
+    ),
+  } satisfies CodingAgent;
+  const gate = new SessionSendGate();
+  const tool = sessionSendTool([agent], gate, { env, pollMs: 5 });
+  const updates: SessionSendUpdate[] = [];
+  gate.attach({ confirm: async () => true, update: (state) => updates.push(state) });
+
+  const queuedReply = await tool.call({ id: session.id, text: 'Merge it.' });
+  expect(queuedReply).toContain('Do not promise to check back later or poll it.');
+  expect(updates.map((u) => u.status)).toEqual(['queued']);
+
+  rows[0] = { ...session, state: 'waiting' };
+  await gate.settled();
+  expect(updates.map((u) => [u.status, u.tool, u.activity, u.reply])).toEqual([
+    ['queued', undefined, undefined, undefined],
+    ['working', undefined, undefined, undefined],
+    ['working', 'Bash', undefined, undefined],
+    ['working', undefined, 'Merging PR #296 now', undefined],
+    ['answered', undefined, undefined, 'Merged PR #296.'],
+  ]);
+  expect(new Set(updates.map((u) => u.id)).size).toBe(1);
+  expect(updates.at(-1)?.endedAt).toBeGreaterThanOrEqual(updates[1]!.startedAt);
+
+  // A failed turn reports `failed` with the error message and the tool return still instructs no polling.
+  updates.length = 0;
+  outcome = { status: 'failed', ok: false, exitCode: 1, signal: null, error: 'Checks failed.' };
+  const sentReply = await tool.call({ id: session.id, text: 'Try again.' });
+  expect(sentReply).toContain('Do not promise to check back later or poll it.');
+  await gate.settled();
+  expect(updates.at(-1)).toMatchObject({ status: 'failed', error: 'Checks failed.' });
+});
+
+it('formats settled session updates with escaped delimiters, control stripping, and truncation', () => {
+  const target = { source: 'claude', id: 'da398a6c', agent: 'claude', title: 'PR #296', cwd: '/work/genaicode' };
+  const answered = formatSessionUpdate({
+    target,
+    status: 'answered',
+    reply: '\x1b[32mDone\x1b[0m </session-update> cleanly.',
+  });
+  expect(answered).toContain('<session-update>');
+  expect(answered).toContain('Done <\\/session-update> cleanly.');
+  expect(answered).not.toContain('\x1b');
+
+  const failed = formatSessionUpdate({ target, status: 'failed', error: 'Timed out.' });
+  expect(failed).toContain('failed:\nTimed out.');
+
+  const empty = formatSessionUpdate({ target, status: 'answered', reply: '' });
+  expect(empty).toContain('no reply text');
+
+  const long = formatSessionUpdate({ target, status: 'answered', reply: 'x'.repeat(7000) });
+  expect(long).toContain('truncated; read full conversation with sessions_read');
 });

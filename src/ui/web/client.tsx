@@ -4,7 +4,7 @@ import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { formatBytes } from '../../react/format.js';
-import { extractLocalImagePaths, Markdown } from '../../react/markdown.js';
+import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
@@ -412,7 +412,7 @@ function useView(onToast?: (text: string) => void): {
  * approval or finishes, and count those in the tab title. Coming back to the tab hushes it.
  */
 function useBark(view: ChatView | undefined) {
-  const seen = useRef<ChatView['session']>(undefined);
+  const seen = useRef<ChatView>(undefined);
   const audio = useRef<HTMLAudioElement>(undefined);
   const unread = useRef(0);
   const topic = view?.conversation?.topic?.name;
@@ -442,8 +442,11 @@ function useBark(view: ChatView | undefined) {
   useEffect(() => {
     if (!view) return;
     const before = seen.current;
-    seen.current = view.session;
-    if (!needsAttention(before, view.session) || (document.hasFocus() && document.visibilityState === 'visible'))
+    seen.current = view;
+    if (
+      !needsAttention(before?.session, view.session, before?.notices, view.notices) ||
+      (document.hasFocus() && document.visibilityState === 'visible')
+    )
       return;
     unread.current += 1;
     document.title = `(${unread.current}) ${baseTitleRef.current}`;
@@ -464,9 +467,10 @@ interface CachedImage {
   resolvedAt: number;
 }
 
-/** Resolve local image paths referenced in agent replies to short-lived capability URLs. */
+/** Resolve local image paths referenced in agent and relay replies to short-lived capability URLs. */
 function useLocalImages(
   turns: ChatView['session']['turns'] | undefined,
+  notices: ChatView['notices'] | undefined,
   enabled: boolean,
   scopeKey: string,
 ): Record<string, string> {
@@ -478,7 +482,7 @@ function useLocalImages(
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
   const scopeEpochRef = useRef(0);
-  const checkedTurnCount = useRef(0);
+  const checkedRootKey = useRef('');
   const attempted = useRef(new Set<string>());
   const inFlight = useRef(new Set<string>());
   const retriedUrl = useRef(new Map<string, string>());
@@ -504,16 +508,16 @@ function useLocalImages(
     inFlight.current.clear();
     attempted.current.clear();
     retriedUrl.current.clear();
-    checkedTurnCount.current = 0;
+    checkedRootKey.current = '';
     const empty = { scope: scopeKey, map: {} };
     cacheRef.current = empty;
     setCache(empty);
   }, [scopeKey]);
 
   const pathsKey = useMemo(() => {
-    if (!enabled || !turns?.length) return '';
+    if (!enabled) return '';
     const found: string[] = [];
-    for (const turn of turns) {
+    for (const turn of turns ?? []) {
       for (const entry of turn.entries) {
         if (entry.kind !== 'text') continue;
         for (const path of extractLocalImagePaths(entry.text)) {
@@ -521,9 +525,24 @@ function useLocalImages(
         }
       }
     }
+    for (const notice of notices ?? []) {
+      const relay = notice.relay;
+      if (relay?.status !== 'answered' || !relay.reply) continue;
+      for (const rawPath of extractLocalImagePaths(relay.reply)) {
+        const path = relay.cwd ? resolveFilePath(rawPath, relay.cwd) : rawPath;
+        const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (scopeKey && isPathWithin(path, scopeKey));
+        if (allowed && !found.includes(path)) found.push(path);
+      }
+    }
     return found.join('\n');
-  }, [turns, enabled]);
-  const turnCount = turns?.length ?? 0;
+  }, [turns, notices, enabled, scopeKey]);
+  const rootKey = useMemo(() => {
+    const settled = (notices ?? [])
+      .filter((notice) => notice.relay?.status === 'answered' || notice.relay?.status === 'failed')
+      .map((notice) => notice.id)
+      .join(',');
+    return `${turns?.length ?? 0}:${settled}`;
+  }, [turns?.length, notices]);
 
   // Refresh expired image capabilities proactively when returning to the tab or when their TTL elapses.
   useEffect(() => {
@@ -578,9 +597,9 @@ function useLocalImages(
     const epoch = scopeEpochRef.current;
     const currentMap = cacheRef.current.scope === scopeKey ? cacheRef.current.map : {};
     const now = Date.now();
-    // New turns may have opened new session roots: retry previously unresolved paths.
-    if (turnCount !== checkedTurnCount.current) {
-      checkedTurnCount.current = turnCount;
+    // New turns or settled relays may have opened new session roots: retry previously unresolved paths.
+    if (rootKey !== checkedRootKey.current) {
+      checkedRootKey.current = rootKey;
       for (const path of [...attempted.current]) {
         if (!currentMap[path] && !inFlight.current.has(path)) attempted.current.delete(path);
       }
@@ -644,7 +663,7 @@ function useLocalImages(
         for (const path of batch) inFlight.current.delete(path);
         if (mounted.current && missing.length > batch.length) setTick((n) => n + 1);
       });
-  }, [enabled, pathsKey, turnCount, tick, scopeKey]);
+  }, [enabled, pathsKey, rootKey, tick, scopeKey]);
 
   return useMemo(() => {
     if (cache.scope !== scopeKey) return {};
@@ -903,7 +922,7 @@ function App() {
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
-  const localImages = useLocalImages(session?.turns, !!config?.files, activeCwd);
+  const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
 
   // Close the viewer if the conversation was cleared and the open artifact no longer exists.
   useEffect(() => {

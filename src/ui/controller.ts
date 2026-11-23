@@ -31,7 +31,14 @@ import {
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
-import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
+import {
+  formatSessionUpdate,
+  label,
+  type SessionSendGate,
+  type SessionSendTarget,
+  type SessionSendUpdate,
+} from '../agents/sessions/send-tool.js';
+import type { ChatSessionRelay } from '../react/session-relay.js';
 import type {
   AgentBudget,
   AgentTask,
@@ -73,6 +80,8 @@ export interface Notice {
   afterTurn: number;
   text: string;
   tone: 'info' | 'error';
+  /** Live card for a message relayed to another session via `sessions_send`. */
+  relay?: ChatSessionRelay;
 }
 
 /** Metadata of the active conversation in `--home` mode. */
@@ -262,6 +271,12 @@ export function createChatController(options: ChatOptions): ChatController {
     return [...new Set(names)].map((name) => byName.get(name)!);
   };
   let autoApprove = options.approveAll === true;
+  let notices: Notice[] = [];
+  let conversationEpoch = 0;
+  let contextEpoch = 0;
+  const relayNotices = new Map<number, number>();
+  const relayEpochs = new Map<number, { conversation: number; context: number }>();
+  let closed = false;
   const session = createAgentSession({
     ...(options.fallback?.length ? { fallback: fallbackAgents(options.fallback) } : {}),
     agent: initial,
@@ -283,8 +298,6 @@ export function createChatController(options: ChatOptions): ChatController {
     ? { id: randomUUID(), cwd: homeDir, origin: 'home' }
     : undefined;
   let lastSavedKey = '';
-  let notices: Notice[] = [];
-  let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
@@ -489,11 +502,13 @@ export function createChatController(options: ChatOptions): ChatController {
     userSelectedAgent = true;
     if (agent.name === session.get().agent) {
       if (selectOptions?.fresh) {
+        contextEpoch += 1;
         session.setAgent(agent, { handoff: false });
         notice(`Still ${name}. New agent session, no context.`);
       }
       return true;
     }
+    if (selectOptions?.fresh) contextEpoch += 1;
     session.setAgent(agent, { handoff: !selectOptions?.fresh });
     const choice = agents.find((candidate) => candidate.name === name);
     const missing = choice?.installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
@@ -556,6 +571,9 @@ export function createChatController(options: ChatOptions): ChatController {
     try {
       ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
       if (ok) {
+        conversationEpoch += 1;
+        contextEpoch += 1;
+        relayNotices.clear();
         notices = [];
         if (homeMode) {
           conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
@@ -620,6 +638,9 @@ export function createChatController(options: ChatOptions): ChatController {
       try {
         ok = session.clear({ cwd: resolved.cwd });
         if (ok) {
+          conversationEpoch += 1;
+          contextEpoch += 1;
+          relayNotices.clear();
           if (lead) session.setAgent(lead, { handoff: false });
           notices = [];
           conversation = {
@@ -697,6 +718,8 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Stop the running turn before taking over another session.', 'error');
           return false;
         }
+        // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
+        contextEpoch += 1;
         const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
         const count = turns.length ? ` (${turns.length} turns)` : '';
         notice(
@@ -749,6 +772,9 @@ export function createChatController(options: ChatOptions): ChatController {
           replace: true,
         });
         if (ok) {
+          conversationEpoch += 1;
+          contextEpoch += 1;
+          relayNotices.clear();
           notices = [];
           conversation = {
             id: saved?.id ?? randomUUID(),
@@ -808,6 +834,86 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
   let sends = 0;
+  const isLiveRelay = (item: Notice) => item.relay?.status === 'queued' || item.relay?.status === 'working';
+  const upsertRelay = (update: SessionSendUpdate) => {
+    if (closed) return;
+    let epochs = relayEpochs.get(update.id);
+    if (!epochs) {
+      epochs = { conversation: conversationEpoch, context: contextEpoch };
+      relayEpochs.set(update.id, epochs);
+    } else if (epochs.conversation !== conversationEpoch) {
+      return;
+    }
+    const reply =
+      update.reply !== undefined
+        ? plainSessionText(
+            update.reply.length > MAX_RELAY_REPLY
+              ? `${update.reply.slice(0, MAX_RELAY_REPLY).trimEnd()}\n\n… (reply truncated)`
+              : update.reply,
+          )
+        : undefined;
+    const error = update.error !== undefined ? plainSessionText(update.error) : undefined;
+    const relay: ChatSessionRelay = {
+      agent: plainSessionText(update.target.agent),
+      sessionId: update.target.id,
+      ...(update.target.title ? { title: plainSessionText(update.target.title) } : {}),
+      cwd: plainSessionText(update.target.cwd),
+      prompt: plainSessionText(update.text),
+      status: update.status,
+      startedAt: update.startedAt,
+      ...(update.endedAt !== undefined ? { endedAt: update.endedAt } : {}),
+      ...(update.tool ? { tool: plainSessionText(update.tool) } : {}),
+      ...(update.activity ? { activity: plainSessionText(update.activity) } : {}),
+      ...(reply !== undefined ? { reply } : {}),
+      ...(error !== undefined ? { error } : {}),
+    };
+    const tone: Notice['tone'] = update.status === 'failed' ? 'error' : 'info';
+    const text = relayFallbackText(update.target, relay);
+    const currentTurns = session.get().turns.length;
+    const settled = update.status === 'answered' || update.status === 'failed';
+    if (update.status === 'answered' || update.status === 'failed') {
+      if (update.target.cwd) options.onRoot?.(update.target.cwd);
+      relayEpochs.delete(update.id);
+      if (epochs.context === contextEpoch) {
+        session.addContext(
+          formatSessionUpdate({
+            target: update.target,
+            status: update.status,
+            ...(update.reply !== undefined ? { reply: update.reply } : {}),
+            ...(update.error !== undefined ? { error: update.error } : {}),
+          }),
+        );
+      }
+    }
+    const existingId = relayNotices.get(update.id);
+    if (existingId !== undefined) {
+      const index = notices.findIndex((item) => item.id === existingId);
+      if (index >= 0) {
+        const prior = notices[index]!;
+        // Keep settled notices append-only (Ink <Static> prints newly appended items by index)
+        // and land chronologically at the bottom if turns or other settled notices came after.
+        const hasSettledAfter = notices.slice(index + 1).some((item) => !isLiveRelay(item));
+        const moved = settled && (currentTurns > prior.afterTurn || hasSettledAfter);
+        const nextItem: Notice = {
+          id: prior.id,
+          afterTurn: moved ? Math.max(prior.afterTurn, currentTurns) : prior.afterTurn,
+          text,
+          tone,
+          relay,
+        };
+        notices = moved
+          ? [...notices.slice(0, index), ...notices.slice(index + 1), nextItem]
+          : notices.map((item, i) => (i === index ? nextItem : item));
+        if (settled) relayNotices.delete(update.id);
+        publish();
+        return;
+      }
+    }
+    const id = nextNotice++;
+    if (!settled) relayNotices.set(update.id, id);
+    notices = [...notices, { id, afterTurn: currentTurns, text, tone, relay }].slice(-200);
+    publish();
+  };
   const offSend = options.sessionSend?.attach({
     confirm: async (target, text, { queued } = {}) => {
       const ok =
@@ -822,15 +928,7 @@ export function createChatController(options: ChatOptions): ChatController {
       if (ok && target.cwd) options.onRoot?.(target.cwd);
       return ok;
     },
-    queued: (target) =>
-      notice(plainSessionText(`${label(target)} is working: the message goes when its current turn ends.`)),
-    done: (target, { result, error }) => {
-      if (target.cwd) options.onRoot?.(target.cwd);
-      const failed = error ?? (result && !result.ok ? (result.error ?? result.status) : undefined);
-      if (failed) return notice(plainSessionText(`${label(target)} did not take the message: ${failed}`), 'error');
-      const reply = result?.text?.trim().slice(0, 800);
-      notice(plainSessionText(reply ? `${label(target)} answered:\n${reply}` : `${label(target)} took the message.`));
-    },
+    update: upsertRelay,
   });
   if (options.startupNotice) notice(options.startupNotice);
   if (options.waitingOnStart) {
@@ -990,6 +1088,7 @@ export function createChatController(options: ChatOptions): ChatController {
           else notice('Use /read <session id>. /waiting shows the IDs.', 'error');
           return 'ok';
         case 'new':
+          contextEpoch += 1;
           session.reset();
           notice('Next prompt starts a new agent session.');
           return 'ok';
@@ -1066,6 +1165,8 @@ export function createChatController(options: ChatOptions): ChatController {
       clearInterval(inboxTimer);
       offInbox?.();
       inbox?.close();
+      relayNotices.clear();
+      relayEpochs.clear();
       offSend?.();
       stopShells();
       unsubscribe();
@@ -1073,6 +1174,22 @@ export function createChatController(options: ChatOptions): ChatController {
       session.close();
     },
   };
+}
+
+const MAX_RELAY_REPLY = 16_000;
+
+function relayFallbackText(target: SessionSendTarget, relay: ChatSessionRelay): string {
+  const who = plainSessionText(label(target));
+  switch (relay.status) {
+    case 'queued':
+      return `${who} is working: the message goes when its current turn ends.`;
+    case 'working':
+      return `${who} is working on the message.`;
+    case 'failed':
+      return `${who} did not take the message: ${relay.error ?? 'failed'}`;
+    case 'answered':
+      return relay.reply ? `${who} answered:\n${relay.reply}` : `${who} took the message.`;
+  }
 }
 
 /** Stored transcripts may contain terminal controls. Keep only display text, tabs and newlines. */

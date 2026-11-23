@@ -689,6 +689,180 @@ describe('AgentChat', () => {
     expect(order).toEqual(['gc-turn', 'gc-after-turn', 'gc-notice gc-err', 'gc-turn', 'gc-footer-slot']);
   });
 
+  it('renders live cross-session relay cards with status, collapsible prompt, and Markdown replies', () => {
+    const startedAt = Date.now() - 42_000;
+    render({
+      formatToolName: (name) => (name === 'Bash' ? 'Shell' : name),
+      notices: [
+        {
+          id: 'r1',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'da398a6c-9f2e-48a6-b766-b329efe401b3',
+            title: 'Merge PR #296',
+            cwd: '/work/genaicode',
+            prompt: 'Check CI and merge PR #296\nNo admin bypass.',
+            status: 'answered',
+            startedAt,
+            endedAt: startedAt + 42_000,
+            reply:
+              '[PR #296](https://github.com/gtanczyk/genaicode/pull/296) merged as `2be53b1`.\n\n- **Checks:** all green',
+          },
+        },
+        {
+          id: 'r2',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'ab12cd34',
+            cwd: '/work/genaicode',
+            prompt: 'Check release PR',
+            status: 'working',
+            startedAt: Date.now() - 5_000,
+            tool: 'Bash',
+          },
+        },
+        {
+          id: 'r3',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 'ff99ee88',
+            cwd: '/work/genaicode',
+            prompt: 'Run npm run check',
+            status: 'queued',
+            startedAt: Date.now(),
+          },
+        },
+        {
+          id: 'r4',
+          afterTurn: 1,
+          text: 'fallback',
+          tone: 'error',
+          relay: {
+            agent: 'claude',
+            sessionId: 'deadbeef',
+            cwd: '/work/genaicode',
+            prompt: 'Inspect logs',
+            status: 'failed',
+            startedAt,
+            endedAt: startedAt + 1_000,
+            error: 'Session could not be found.',
+          },
+        },
+      ],
+    });
+    const cards = $$('.gc-relay');
+    expect(cards).toHaveLength(4);
+
+    // Answered: avatar, project chip, duration pill, collapsible sent prompt, rendered Markdown.
+    const answered = cards[0]!;
+    expect(answered.querySelector('.gc-relay-avatar')?.textContent).toBe('cl');
+    expect(answered.querySelector('.gc-relay-project')?.textContent).toBe('genaicode');
+    expect(answered.querySelector('.gc-relay-status')?.textContent).toBe('Answered · 42s');
+    expect(answered.querySelector('.gc-relay-sent-preview')?.textContent).toBe('Check CI and merge PR #296');
+    expect(answered.querySelector('.gc-relay-sent-full')?.textContent).toContain('No admin bypass.');
+    expect(answered.querySelector('.gc-relay-body a')?.getAttribute('href')).toBe(
+      'https://github.com/gtanczyk/genaicode/pull/296',
+    );
+    expect(answered.querySelector('.gc-relay-body code')?.textContent).toBe('2be53b1');
+    expect(answered.querySelector('.gc-relay-body strong')?.textContent).toBe('Checks:');
+
+    // Working: spinner + formatted tool name.
+    const working = cards[1]!;
+    expect(working.querySelector('.gc-relay-status .gc-spin')).toBeTruthy();
+    expect(working.querySelector('.gc-relay-status')?.textContent).toContain('Working ·');
+    expect(working.querySelector('.gc-relay-live')?.textContent).toBe('NowShell');
+
+    // Queued: waiting hint.
+    const queued = cards[2]!;
+    expect(queued.querySelector('.gc-relay-status')?.textContent).toBe('Queued');
+    expect(queued.querySelector('.gc-relay-live')?.textContent).toContain('Waiting for its current turn');
+
+    // Failed: error alert.
+    const failed = cards[3]!;
+    expect(failed.querySelector('.gc-relay-status')?.textContent).toBe('Failed');
+    expect(failed.querySelector('[role="alert"]')?.textContent).toBe('Session could not be found.');
+  });
+
+  it('scopes Markdown file links and local images in relay replies to the target project and active workspace', () => {
+    const onOpenFile = vi.fn();
+    const imageUrl = vi.fn((path: string) =>
+      path.endsWith('.png') ? `/files/${encodeURIComponent(path)}` : undefined,
+    );
+    render({
+      onOpenFile,
+      imageUrl,
+      state: fixture({ cwd: '/work/app' }),
+      notices: [
+        {
+          id: 'same-sub',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 's1',
+            cwd: '/work/app/packages/ui',
+            prompt: 'Check file',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply: 'See [button](./src/button.tsx) and [outside](../../../other/secret.ts).',
+          },
+        },
+        {
+          id: 'foreign',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 's2',
+            cwd: '/work/other',
+            prompt: 'Check result',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply:
+              'See [result](./src/result.ts#L12-L20), [app](/work/app/src/index.ts), ![shot](./shot.png), and [escape](../../etc/passwd).',
+          },
+        },
+      ],
+    });
+    const [inWorkspace, foreign] = $$('.gc-relay');
+    // Subdirectory link resolves against relay.cwd and opens inside /work/app.
+    const inButton = inWorkspace!.querySelector<HTMLButtonElement>('button.gc-file-link');
+    expect(inButton?.getAttribute('data-gc-file')).toBe('/work/app/packages/ui/src/button.tsx');
+    act(() => inButton!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/app/packages/ui/src/button.tsx');
+    // Traversal escaping both relay.cwd and /work/app renders as plain non-clickable text.
+    expect(inWorkspace!.querySelectorAll('button.gc-file-link')).toHaveLength(1);
+    expect(inWorkspace!.querySelector('span.gc-file-link')?.getAttribute('title')).toBe('/work/other/secret.ts');
+
+    // Foreign project links resolve against relay.cwd (never the active workspace) and preserve line ranges.
+    const foreignButtons = Array.from(foreign!.querySelectorAll<HTMLButtonElement>('button.gc-file-link'));
+    expect(foreignButtons.map((el) => el.getAttribute('data-gc-file'))).toEqual([
+      '/work/other/src/result.ts',
+      '/work/app/src/index.ts',
+    ]);
+    act(() => foreignButtons[0]!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/other/src/result.ts', { line: 12, endLine: 20 });
+
+    // Local image in the foreign relay resolves against relay.cwd too.
+    const imgBtn = foreign!.querySelector<HTMLButtonElement>('button.gc-md-image-btn');
+    expect(imgBtn?.getAttribute('data-gc-file')).toBe('/work/other/shot.png');
+    expect(imageUrl).toHaveBeenCalledWith('/work/other/shot.png');
+
+    // Escaped path outside both relay.cwd and state.cwd stays non-clickable.
+    const escaped = foreign!.querySelector('span.gc-file-link');
+    expect(escaped?.getAttribute('title')).toBe('/etc/passwd');
+    act(() => (escaped as HTMLElement).click());
+    expect(onOpenFile).toHaveBeenCalledTimes(2);
+  });
+
   it('replaces or drops the header, sets the theme', () => {
     render({ header: <div className="mine">Console agent</div>, theme: 'dark' });
     expect($('.gc-header')).toBeNull();

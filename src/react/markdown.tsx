@@ -27,6 +27,10 @@ export interface MarkdownProps {
    * a reply cannot make the page call a URL on its own) or `'load'`.
    */
   remoteImages?: 'click' | 'load';
+  /** Resolve relative file links (`./...`, `../...`) against this directory. */
+  fileBase?: string;
+  /** Only render file links as clickable buttons when they resolve inside one of these project roots. */
+  fileRoot?: string | readonly string[];
 }
 
 // Every repetition is bounded, so text full of unclosed markers stays linear to scan.
@@ -188,16 +192,80 @@ function link(href: string, label: ReactNode, key: number) {
 interface InlineOptions {
   imageUrl?: (path: string) => string | undefined;
   remoteImages?: 'click' | 'load';
+  fileBase?: string;
+  fileRoot?: string | readonly string[];
+}
+
+/** Trim trailing `/` or `\` linearly (no regex backtracking). */
+export function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && (path[end - 1] === '/' || path[end - 1] === '\\')) end -= 1;
+  return path.slice(0, end);
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+/** Resolve a POSIX or Windows file path against `base` (handling `.` and `..`) without `node:path`. */
+export function resolveFilePath(path: string, base: string): string {
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
+  const raw = isAbsolutePath(path) ? path : `${trimTrailingSlashes(base)}/${path}`;
+  const drive = /^[A-Za-z]:/.exec(raw)?.[0] ?? '';
+  const rest = drive ? raw.slice(2) : raw;
+  const rooted = rest.startsWith('/') || rest.startsWith('\\');
+  const parts: string[] = [];
+  for (const segment of rest.split(/[\\/]/)) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (parts.length && parts.at(-1) !== '..') parts.pop();
+      else if (!rooted) parts.push('..');
+    } else {
+      parts.push(segment);
+    }
+  }
+  const joined = parts.join(sep);
+  return drive ? `${drive}${rooted ? sep : ''}${joined}` : `${rooted ? sep : ''}${joined || (rooted ? '' : '.')}`;
+}
+
+/** Whether `target` equals `root` or lies inside it (browser-safe string check). */
+export function isPathWithin(target: string, root: string): boolean {
+  if (!root || !target) return false;
+  const norm = (value: string) => {
+    const clean = trimTrailingSlashes(value.replace(/\\/g, '/'));
+    return clean || (value.startsWith('/') || value.startsWith('\\') ? '/' : '');
+  };
+  const a = norm(target);
+  const b = norm(root);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return b === '/' ? a.startsWith('/') : a.startsWith(`${b}/`);
+}
+
+function isWithinFileRoots(target: string, fileRoot: string | readonly string[] | undefined): boolean {
+  if (fileRoot === undefined) return true;
+  if (typeof fileRoot === 'string') return isPathWithin(target, fileRoot);
+  return fileRoot.some((root) => isPathWithin(target, root));
 }
 
 function fileButton(
   target: string,
   label: ReactNode,
   key: number,
+  options: InlineOptions,
   extra?: { className?: string; title?: string },
 ): ReactNode {
-  const { path, position } = parseFileTarget(target);
+  const { path: rawPath, position } = parseFileTarget(target);
+  const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
   const title = extra?.title ?? (position ? `${path}:${formatFilePosition(position)}` : path);
+  const openable = isWithinFileRoots(path, options.fileRoot);
+  if (!openable) {
+    return (
+      <span key={key} className={extra?.className ?? 'gc-file-link'} title={title}>
+        {label}
+      </span>
+    );
+  }
   return (
     <button
       key={key}
@@ -242,8 +310,10 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       // Local image: ![alt](/abs/or/./rel)
       const alt = token.slice(2, token.indexOf(']'));
       const target = unwrapDestination(match.groups.localImage);
-      const { path } = parseFileTarget(target);
-      const resolved = options.imageUrl?.(path);
+      const { path: rawPath } = parseFileTarget(target);
+      const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
+      const openable = isWithinFileRoots(path, options.fileRoot);
+      const resolved = openable ? options.imageUrl?.(path) : undefined;
       if (resolved && links) {
         out.push(
           <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
@@ -257,7 +327,7 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
           </button>,
         );
       } else if (links) {
-        out.push(fileButton(target, alt || path, key++));
+        out.push(fileButton(target, alt || path, key++, options));
       } else {
         out.push(<span key={key++}>{alt || path}</span>);
       }
@@ -268,7 +338,11 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       // A link to a file on disk, as agents write them: the label, path, and optional line position.
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
       out.push(
-        links ? fileButton(unwrapDestination(match.groups.file), label, key++) : <span key={key++}>{label}</span>,
+        links ? (
+          fileButton(unwrapDestination(match.groups.file), label, key++, options)
+        ) : (
+          <span key={key++}>{label}</span>
+        ),
       );
     } else {
       out.push(links ? link(token, token, key++) : token);
@@ -352,8 +426,8 @@ function task(text: string): { done: boolean; text: string } | undefined {
 const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
 /** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
-export function Markdown({ text, streaming, className, imageUrl, remoteImages }: MarkdownProps) {
-  const options: InlineOptions = { imageUrl, remoteImages };
+export function Markdown({ text, streaming, className, imageUrl, remoteImages, fileBase, fileRoot }: MarkdownProps) {
+  const options: InlineOptions = { imageUrl, remoteImages, fileBase, fileRoot };
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
       {blocks(text.trimEnd().split('\n'), options)}

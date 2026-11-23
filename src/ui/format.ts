@@ -183,14 +183,27 @@ export function parseSlash(text: string): SlashCommand | undefined {
 
 /**
  * Whether the change from `before` to `after` needs the person at the keyboard: a new approval
- * request, or a turn finished. The front ends bark (or ring the terminal bell) on it.
+ * request, a turn finished, or a relayed session message settled. The front ends bark (or ring the
+ * terminal bell) on it.
  */
-export function needsAttention(before: SessionState | undefined, after: SessionState): 'approval' | 'done' | undefined {
+export function needsAttention(
+  before: SessionState | undefined,
+  after: SessionState,
+  beforeNotices?: ReadonlyArray<{ id: string | number; relay?: { status: string } }>,
+  afterNotices?: ReadonlyArray<{ id: string | number; relay?: { status: string } }>,
+): 'approval' | 'done' | undefined {
   if (!before) return undefined;
   const seen = new Set(before.approvals.map((request) => request.id));
   if (after.approvals.some((request) => !seen.has(request.id))) return 'approval';
   // Compare finished turns rather than status: a quick turn can start and end between two views.
   const finished = new Set(before.turns.filter((turn) => turn.result).map((turn) => turn.id));
   if (after.turns.some((turn) => turn.result && !finished.has(turn.id))) return 'done';
+  if (beforeNotices && afterNotices) {
+    const isSettled = (status: string) => status === 'answered' || status === 'failed';
+    const settled = new Set(
+      beforeNotices.filter((item) => item.relay && isSettled(item.relay.status)).map((item) => item.id),
+    );
+    if (afterNotices.some((item) => item.relay && isSettled(item.relay.status) && !settled.has(item.id))) return 'done';
+  }
   return undefined;
 }
