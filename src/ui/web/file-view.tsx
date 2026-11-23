@@ -610,7 +610,7 @@ export function ViewerPanel({
   return (
     <aside
       ref={panelRef}
-      className={`viewer-panel${fullSize ? ' full-size' : ''}`}
+      className={`viewer-panel file-panel${fullSize ? ' full-size' : ''}`}
       data-viewer-kind="file"
       data-file-kind={file?.kind}
       data-full-size={fullSize ? 'true' : undefined}

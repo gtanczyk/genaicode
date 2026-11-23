@@ -594,13 +594,13 @@ function App() {
   const running = session?.status === 'running';
   const startTopicChat = (topicId: string) => {
     dropWaiting();
-    setOpenFile(undefined);
+    setViewer(undefined);
     void command({ type: 'topic-chat', topic: topicId });
     setPanel('chat');
   };
   const startHomeChat = () => {
     dropWaiting();
-    setOpenFile(undefined);
+    setViewer(undefined);
     void command(isHome ? { type: 'home-chat' } : { type: 'submit', text: '/clear' });
     setPanel('chat');
   };
@@ -938,7 +938,7 @@ function App() {
             // The chat says what happened, also when it could not.
             // What still waits here was meant for the conversation that is left.
             dropWaiting();
-            setOpenFile(undefined);
+            setViewer(undefined);
             void command({ type: 'continue', id: found.id });
             setPanel('chat');
           }}

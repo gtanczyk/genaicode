@@ -162,7 +162,7 @@ async function openArtifacts(
  */
 async function openChannels(
   options: ChatOptions,
-  getController: () => ChatController | undefined,
+  getController: (() => ChatController | undefined) | undefined,
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
 ) {
@@ -642,7 +642,7 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options, options.cwd);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options, undefined, options.cwd);
   let controller: ChatController;
   try {
     controller = createChatController({ ...options, artifactChannel, questionChannel });
