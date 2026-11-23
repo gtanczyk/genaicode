@@ -371,8 +371,11 @@ describe('session sources', () => {
         'Then press Escape mid-game to confirm it drops you out.',
         'Mogę ją usunąć, jeśli napiszesz.',
         'If a line sounds wrong, tell me which one and I will regenerate it.',
+        'If you need to adjust anything else, I can also help.',
+        'Jeśli musisz to zmienić, daj znać.',
       ),
-    ).toEqual([undefined, undefined, undefined, 'offer', 'offer']);
+    ).toEqual([undefined, undefined, undefined, 'offer', 'offer', 'offer', 'offer']);
+    expect(endings('The token expired, so you need to sign in again before I continue.')).toEqual(['request']);
     expect(endings('Wszystkie zadania zakończone, raport dotarł do koordynatora.', '')).toEqual([undefined, undefined]);
     expect(replyEnding(undefined)).toBeUndefined();
     expect(endings('Should I proceed? \u26A0\uFE0F', '   \t  🙂  ', 'Let me know. Done.', 'Let me know!')).toEqual([

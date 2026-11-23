@@ -32,14 +32,17 @@ const OFFER = new RegExp(
   String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}`,
   'iu',
 );
+// "If you need to…", "jeśli musisz…": a condition of an offer, not something asked of the user.
+const NOT_IF = String.raw`(?<!${B}(if|when|in case|jeśli|jeżeli|gdy|kiedy|skoro),?\s+)`;
 // A request put as a statement, or a yes/no gate dressed as an offer: an answer is waited for.
 const REQUEST = new RegExp(
   [
     String.raw`${B}(daj znać|napisz|powiedz|let me know|tell me),?\s+(czy|whether)${E}`,
     String.raw`${B}(czy mam|should i|shall i|do you want me to)${E}`,
-    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|musisz|czekam na (twoj|ciebie|decyzj|odpowied))`,
+    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|czekam na (twoj|ciebie|decyzj|odpowied))`,
+    String.raw`${NOT_IF}${B}musisz`,
     String.raw`${B}(twoja decyzja|decyzja należy do ciebie|your call|up to you|please confirm|waiting (for|on) (you|your))${E}`,
-    String.raw`${B}you(('ll| will)? need to| have to| must)${E}`,
+    String.raw`${NOT_IF}${B}you(('ll| will)? need to| have to| must)${E}`,
   ].join('|'),
   'iu',
 );
