@@ -4,6 +4,7 @@ import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
 import {
+  firstLine,
   formatUsage,
   limitChips,
   needsAttention,
@@ -157,8 +158,10 @@ function usePlanLimits(agent: string | undefined, running: boolean): RateLimit[]
 
 interface PageConfig {
   cwd: string;
-  /** False when the page names no project (`ui --no-project`). */
+  /** False when the page names no project (`ui --no-project` or `ui --home`). */
   project?: boolean;
+  /** True in `--home` mode: per-conversation working directory, no fixed project folder. */
+  home?: boolean;
   sessions: boolean;
   uploads?: boolean;
   projectTeams?: boolean;
@@ -242,11 +245,18 @@ function useBark(view: ChatView | undefined) {
   const seen = useRef<ChatView['session']>(undefined);
   const audio = useRef<HTMLAudioElement>(undefined);
   const unread = useRef(0);
+  const topic = view?.conversation?.topic?.name;
+  const baseTitle = topic ? `${topic} · genaicode` : 'genaicode';
+  const baseTitleRef = useRef(baseTitle);
+  baseTitleRef.current = baseTitle;
+  useEffect(() => {
+    document.title = unread.current ? `(${unread.current}) ${baseTitle}` : baseTitle;
+  }, [baseTitle]);
   useEffect(() => {
     const hush = () => {
       if (document.visibilityState !== 'visible') return;
       unread.current = 0;
-      document.title = 'genaicode';
+      document.title = baseTitleRef.current;
       if (audio.current) {
         audio.current.pause();
         audio.current.currentTime = 0;
@@ -266,7 +276,7 @@ function useBark(view: ChatView | undefined) {
     if (!needsAttention(before, view.session) || (document.hasFocus() && document.visibilityState === 'visible'))
       return;
     unread.current += 1;
-    document.title = `(${unread.current}) genaicode`;
+    document.title = `(${unread.current}) ${baseTitleRef.current}`;
     if (!view.bark) return;
     audio.current ??= new Audio('/assets/bark.mp3');
     audio.current.currentTime = 0;
@@ -295,6 +305,7 @@ function App() {
     if (waits?.ready) setRelaunching(false);
   }, [waits]);
   const hasProject = config ? config.project !== false : !root.dataset.noProject;
+  const isHome = config ? config.home === true : !!root.dataset.home;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
   const [model, setModel] = useState<string>();
@@ -307,7 +318,25 @@ function App() {
   // The topic picked on the start screen: the Sessions view shows only it.
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
+  const conversation = view?.conversation;
+  const activeCwd = conversation?.cwd || session?.cwd || cwd;
+  const teamFolder = hasProject || (isHome && activeCwd !== cwd) ? activeCwd : undefined;
   const running = session?.status === 'running';
+  const startTopicChat = (topicId: string) => {
+    dropWaiting();
+    setOpenFile(undefined);
+    void command({ type: 'topic-chat', topic: topicId });
+    setPanel('chat');
+  };
+  const startHomeChat = () => {
+    dropWaiting();
+    setOpenFile(undefined);
+    void command(isHome ? { type: 'home-chat' } : { type: 'submit', text: '/clear' });
+    setPanel('chat');
+  };
+  const convTopic = conversation?.topic?.name;
+  const convTitle =
+    conversation?.title || (session?.turns.length ? firstLine(session.turns[0]!.prompt) : undefined) || convTopic;
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
@@ -433,20 +462,22 @@ function App() {
           <span className="cwd" title={cwd}>
             {cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd}
           </span>
+        ) : !hasProject && (convTitle || convTopic) ? (
+          <div className="conv-head" title={activeCwd || undefined}>
+            <span className="conv-title">{convTitle ?? convTopic}</span>
+            {convTopic && convTopic !== convTitle ? <small className="conv-topic">{convTopic}</small> : null}
+          </div>
         ) : null}
         <span className="spacer" />
         {view && session ? (
           <>
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
-            {session.turns.length && !showSessions ? (
+            {(session.turns.length || (isHome && conversation && conversation.origin !== 'home')) && !showSessions ? (
               <button
                 className="chip off"
                 title="Start a new conversation: a fresh agent session and an empty screen. This one stays in the list."
-                onClick={() => {
-                  dropWaiting();
-                  void command({ type: 'submit', text: '/clear' });
-                }}
+                onClick={startHomeChat}
               >
                 New chat
               </button>
@@ -524,8 +555,9 @@ function App() {
       {showTeam && (
         <ProjectTeamDialog
           token={token}
-          chooseProject={!hasProject}
-          cwd={hasProject ? (session?.cwd ?? cwd) : session?.cwd !== config?.cwd ? session?.cwd : undefined}
+          key={activeCwd}
+          chooseProject={!teamFolder}
+          cwd={teamFolder}
           sessions={hasSessions}
           onClose={() => setShowTeam(false)}
         />
@@ -533,15 +565,18 @@ function App() {
       {showSessions ? (
         <Sessions
           token={token}
-          cwd={cwd}
+          cwd={activeCwd}
+          home={isHome}
           topic={topic}
           onAllTopics={() => setTopic(undefined)}
           own={own}
           onAllSessions={() => setOwn(false)}
+          onNewTopicChat={isHome ? startTopicChat : undefined}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
             // What still waits here was meant for the conversation that is left.
             dropWaiting();
+            setOpenFile(undefined);
             void command({ type: 'continue', id: found.id });
             setPanel('chat');
           }}
@@ -598,14 +633,28 @@ function App() {
             <div className="gc-empty">
               <div className="wolf" role="img" aria-label="genaicode wolf" />
               <h1>
-                {hasProject ? `What should ${session.agent} work on?` : `What should ${session.agent} look into?`}
+                {hasProject
+                  ? `What should ${session.agent} work on?`
+                  : isHome && conversation?.topic
+                    ? conversation.origin === 'unresolved'
+                      ? `Where should ${session.agent} work for ${conversation.topic.name}?`
+                      : `What should ${session.agent} work on in ${conversation.topic.name}?`
+                    : isHome && conversation?.origin === 'project'
+                      ? `What should ${session.agent} work on?`
+                      : `What should ${session.agent} look into?`}
               </h1>
               <div>
                 {hasProject
                   ? `It works in ${cwd}, with its own login, tools and permissions.`
-                  : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+                  : isHome && conversation?.topic
+                    ? conversation.origin === 'unresolved'
+                      ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
+                      : "Working in this topic's workspace. Hover the header or type /where to see the directory."
+                    : isHome && conversation?.origin === 'project'
+                      ? 'Hover the header or type /where to see the directory.'
+                      : 'It sees the sessions of your agents in every project, and can pass them a message.'}
               </div>
-              {hasSessions ? (
+              {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
                 <Home
                   token={token}
                   onTopic={(id) => {
@@ -613,10 +662,14 @@ function App() {
                     setOwn(false);
                     setPanel('sessions');
                   }}
+                  onNewTopicChat={isHome ? startTopicChat : undefined}
                 />
               ) : null}
               <div className="ideas">
-                {(hasProject ? IDEAS : IDEAS_ANYWHERE).map((idea) => (
+                {(hasProject || (isHome && conversation && conversation.origin !== 'home')
+                  ? IDEAS
+                  : IDEAS_ANYWHERE
+                ).map((idea) => (
                   <button key={idea} onClick={() => void submit(idea)}>
                     {idea}
                   </button>

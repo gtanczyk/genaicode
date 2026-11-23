@@ -93,6 +93,7 @@ import {
   writeTopics,
   type TopicStore,
 } from '../agents/sessions/topics.js';
+import { ensureNeutralHome, readConversations } from '../agents/sessions/workspace.js';
 import { HANDOFF_DIR, handoffPreamble, writeHandoff } from '../agents/handoff.js';
 import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionInfo, SessionSource } from '../agents/sessions/types.js';
@@ -151,6 +152,7 @@ export interface UiLaunch {
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
   projectTeams?: ProjectTeams;
+  projectLead?(cwd: string): Promise<string | undefined>;
   sessionSources?: readonly SessionSource[];
   sessionTools?: readonly McpTool[];
   towerInbox?: TowerInbox;
@@ -184,6 +186,8 @@ export interface UiLaunch {
   exitWithStdin?: boolean;
   /** `ui --no-project`: the page names no project. */
   noProject?: boolean;
+  /** `ui --home`: no fixed project folder; conversations resolve their own working directory. */
+  home?: boolean;
   /** `--mcp`: attached to every prompt. */
   task?: { mcpServers?: readonly McpServer[] };
   /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -350,7 +354,9 @@ Chat and UI options:
       --restore           (ui) Open on the conversation the chat in this directory had last,
                           with its agent, unless --from or --resume names another
       --no-project        (ui) The page names no project: for a chat about the sessions of
-                          every project, as the desktop app runs it
+                          every project
+      --home              (ui) No fixed project folder: each conversation resolves its own
+                          directory (home starts in ~/.genaicode/home), as the desktop app runs it
       --mcp <name=url>    Give the agent this MCP server (streamable HTTP); repeatable.
                           Only agents with MCP support (claude, codex, copilot, antigravity) take it
       --agent-mcp         Codex keeps its plugins and the MCP servers of its own config. Without
@@ -704,6 +710,30 @@ async function lastSessionIn(
 }
 
 /**
+ * The newest conversation recorded in `--home` mode whose agent can still resume it.
+ * Falls back to `lastSessionIn(homeDir)` when no recorded conversation is available.
+ */
+async function lastHomeSession(
+  homeDir: string,
+  sources: readonly SessionSource[],
+  agents: readonly CodingAgent[],
+  only: string | undefined,
+  env: NodeJS.ProcessEnv | undefined,
+): Promise<{ id: string; agent: string } | undefined> {
+  const installed = new Set(
+    detectAgents(agents, env)
+      .filter(({ agent, path }) => path && agent.capabilities.resume && (!only || agent.name === only))
+      .map(({ agent }) => agent.name),
+  );
+  const recorded = await readConversations(env).catch(() => []);
+  for (const conv of recorded) {
+    if (!conv.sessionId || !conv.agent || !installed.has(conv.agent)) continue;
+    return { id: conv.sessionId, agent: conv.agent };
+  }
+  return lastSessionIn(homeDir, sources, agents, only, env);
+}
+
+/**
  * The agents of `chat`, `ui` and `tower`: Codex over its live protocol, which asks before a
  * step, takes a message mid-turn and shows the diff of an edit; Muse too in a pack. `run` keeps
  * the headless ones. Codex gets the chat's MCP servers only, unless `agentMcp` keeps its own.
@@ -744,9 +774,9 @@ async function runUi(
   let towerInbox: TowerInbox | undefined;
   let startupNotice: string | undefined;
   let initial = options.agent;
-  const cwd = resolve(cli.cwd, options.cwd ?? '.');
+  const launchCwd = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
   let profiles: ProjectTeams | undefined;
-  let projectLead: (() => Promise<string | undefined>) | undefined;
+  let projectLead: ((directory: string) => Promise<string | undefined>) | undefined;
   if (options.pack) {
     const spec = options.pack;
     if (options.mcpServers.some((server) => server.name === 'pack')) {
@@ -761,7 +791,7 @@ async function runUi(
     if ('auto' in spec) {
       let saved: PackProfile | undefined;
       try {
-        saved = options.noProject ? undefined : await readPackProfile(await packRoot(cwd));
+        saved = options.noProject ? undefined : await readPackProfile(await packRoot(launchCwd));
         if (saved) {
           if (options.agent) saved.lead = options.agent;
           validateTeam(saved, choices);
@@ -811,7 +841,7 @@ async function runUi(
       towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
     profiles = projectTeams(choices, cli.env, { lead: lead.name, members: members.map((agent) => agent.name) });
-    const projectDir = await fs.realpath(cwd).catch(() => cwd);
+    const projectDir = await fs.realpath(launchCwd).catch(() => launchCwd);
     const command = options.verify ?? (await npmTestCommand(projectDir));
     const team = pack({
       lead,
@@ -845,15 +875,14 @@ async function runUi(
     const choices = profileChoices(helpers, cli.env);
     const installed = helpers.filter((_, index) => choices[index].installed);
     profiles = projectTeams(choices, cli.env);
-    const homeCwd = options.noProject ? await fs.realpath(cwd).catch(() => cwd) : undefined;
+    const homeCwd = options.noProject ? await fs.realpath(launchCwd).catch(() => launchCwd) : undefined;
     const projectTeam = async (directory: string) =>
       directory === homeCwd ? undefined : readPackProfile(await packRoot(directory));
-    if (!options.noProject)
-      projectLead = async () => {
-        const saved = await projectTeam(cwd);
-        if (saved) validateTeam(saved, choices);
-        return saved?.lead;
-      };
+    projectLead = async (directory) => {
+      const saved = await projectTeam(directory);
+      if (saved) validateTeam(saved, choices);
+      return saved?.lead;
+    };
     agents = agents.map((agent) =>
       agent.capabilities.mcp
         ? pack({
@@ -887,18 +916,20 @@ async function runUi(
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
-  // `--restore`: the conversation this directory's chat had last, so a restart loses nothing.
+  // `--restore`: the conversation this directory's (or app's) chat had last, so a restart loses nothing.
   let restored: string | undefined;
   if (options.kind === 'ui' && options.restore && !options.from && !options.resume && !options.pack) {
-    const last = await lastSessionIn(resolve(cli.cwd, options.cwd ?? '.'), indexed, agents, options.agent, cli.env);
+    const last = options.home
+      ? await lastHomeSession(launchCwd, indexed, agents, options.agent, cli.env)
+      : await lastSessionIn(launchCwd, indexed, agents, options.agent, cli.env);
     if (last) {
       restored = last.id;
       initial ??= last.agent;
     }
   }
-  if (projectLead && !initial && !options.from && !options.resume) {
+  if (projectLead && !options.noProject && !initial && !options.from && !options.resume) {
     try {
-      initial = await projectLead();
+      initial = await projectLead(launchCwd);
     } catch (error) {
       cli.stderr.write(`${error instanceof Error ? error.message : error}\n`);
       return EXIT_USAGE;
@@ -934,8 +965,9 @@ async function runUi(
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
     ...(profiles ? { projectTeams: profiles } : {}),
+    ...(options.home && !options.agent && projectLead ? { projectLead } : {}),
     agent: initial,
-    cwd: resolve(cli.cwd, options.cwd ?? '.'),
+    cwd: launchCwd,
     model: options.model,
     effort: options.effort,
     resume: options.resume,
@@ -952,6 +984,7 @@ async function runUi(
     openWeb: options.web,
     exitWithStdin: options.exitWithStdin,
     ...(options.noProject ? { noProject: true } : {}),
+    ...(options.home ? { home: true } : {}),
     ...(mcpServers.length ? { task: { mcpServers } } : {}),
     ...(options.artifacts === false ? { artifacts: false } : {}),
     ...(options.budget ? { budget: options.budget } : {}),

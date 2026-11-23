@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createAgentSession } from './session.js';
+import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
 type Script = (task: AgentTask, emit: (event: AgentEvent) => void) => Promise<Partial<AgentResult> | void>;
@@ -902,5 +903,112 @@ describe('createAgentSession', () => {
     session.setAgent(fixed);
     expect(session.get()).toMatchObject({ sessionId: 's-1', effort: 'low' });
     expect(() => session.setEffort('high')).toThrow(/keeps the effort/);
+  });
+
+  it('moves cwd via open_project during a turn, forgets old session, and hands over on the next turn', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-session-cwd-'));
+    const home = join(root, 'home');
+    const target = join(root, 'knights');
+    mkdirSync(home);
+    mkdirSync(target);
+    let inHome = true;
+    const moved: string[] = [];
+    let sessionRef: ReturnType<typeof createAgentSession> | undefined;
+    const channel = await startProjectChannel({
+      env: { HOME: root, GENAICODE_HOME: join(root, '.genaicode') },
+      enabled: () => inHome,
+      onMove: ({ cwd }) => {
+        inHome = false;
+        moved.push(cwd);
+        sessionRef?.setCwd(cwd);
+      },
+    });
+    try {
+      const { agent, tasks } = fakeAgent(
+        [
+          async (task, emit) => {
+            emit({ type: 'session', sessionId: 'home-sess-1' });
+            const server = task.mcpServers?.find((s) => s.name === 'genaicode_project') as
+              | { url: string; headers?: Record<string, string> }
+              | undefined;
+            expect(server).toBeDefined();
+            // Claude's own MCP permission prompt for open_project is auto-approved so only the card shows.
+            expect(
+              await task.onApproval!(
+                {
+                  id: 'perm-1',
+                  kind: 'other',
+                  detail: { tool_name: `mcp__${channel.mcpServer.name}__open_project` },
+                },
+                new AbortController().signal,
+              ),
+            ).toBe('approve');
+            const res = await fetch(server!.url, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', ...server!.headers },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'tools/call',
+                params: { name: 'open_project', arguments: { path: '~/knights' } },
+              }),
+            });
+            const body = (await res.json()) as { result: { content: Array<{ text: string }> } };
+            emit({ type: 'message', text: body.result.content[0]!.text });
+          },
+          async (task, emit) => {
+            emit({ type: 'session', sessionId: 'knights-sess-1' });
+            emit({ type: 'message', text: `in ${task.cwd}` });
+          },
+        ],
+        { resume: true, mcp: true },
+        'claude',
+      );
+      const session = createAgentSession({
+        agent,
+        cwd: home,
+        openProject: channel,
+        // Even with auto-approve on, open_project's confirmation card waits for the person.
+        autoApprove: () => 'approve',
+      });
+      sessionRef = session;
+      session.send('w ~/knights sprawdź kod');
+      await expect.poll(() => session.get().approvals.length).toBe(1);
+      const card = session.get().approvals[0]!;
+      expect(card.kind).toBe('question');
+      expect(card.summary).toBe('Continue this conversation in ~/knights?');
+      expect(session.answer(card.id, { confirm: ['Yes'] })).toBe(true);
+      await session.idle();
+      expect(moved).toEqual([target]);
+      expect(session.get().cwd).toBe(target);
+      // Old session id from home is NOT kept after the turn ends.
+      expect(session.get().sessionId).toBeUndefined();
+
+      // Next turn runs in `target`, gets handoff recap, does NOT resume `home-sess-1`, and no longer gets `open_project`.
+      session.send('teraz zrób zmianę');
+      await session.idle();
+      expect(tasks[1]!.cwd).toBe(target);
+      expect(tasks[1]!.resume).toBeUndefined();
+      expect(tasks[1]!.prompt).toContain('w ~/knights sprawdź kod');
+      expect(tasks[1]!.mcpServers ?? []).toEqual([]);
+      expect(session.get().sessionId).toBe('knights-sess-1');
+
+      // clear({ cwd }) resets to home; adopt({ cwd, replace }) replaces turns and cwd.
+      expect(session.clear({ cwd: home })).toBe(true);
+      expect(session.get()).toMatchObject({ cwd: home, turns: [], sessionId: undefined });
+      expect(
+        session.adopt([{ id: 9, agent: 'claude', prompt: 'older', entries: [], startedAt: 1 }], {
+          cwd: target,
+          sessionId: 'knights-sess-1',
+          replace: true,
+        }),
+      ).toBe(true);
+      expect(session.get()).toMatchObject({ cwd: target, sessionId: 'knights-sess-1' });
+      expect(session.get().turns).toHaveLength(1);
+      session.close();
+    } finally {
+      await channel.close();
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

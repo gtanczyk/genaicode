@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { recordLimits } from '../agents/sessions/limits.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,7 +7,7 @@ import { PassThrough } from 'node:stream';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { expect, it, vi } from 'vitest';
-import { pendingAsks, waitForAnswer, type SessionInfo } from '../agents/sessions/index.js';
+import { pendingAsks, waitForAnswer, writeTopics, type SessionInfo } from '../agents/sessions/index.js';
 import type { AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
 import { runWeb } from './index.js';
@@ -263,10 +264,26 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
 
 it('saves a team from the desktop home, uses it on delegation and on a fresh project launch', async () => {
   const browser = await chromium.launch();
-  const root = mkdtempSync(join(tmpdir(), 'genaicode-project-pack-'));
+  const fixtures = join(process.cwd(), 'node_modules', '.genaicode-test');
+  mkdirSync(fixtures, { recursive: true });
+  const root = mkdtempSync(join(fixtures, 'project-pack-'));
   const project = join(root, 'catalog');
-  mkdirSync(project);
+  execFileSync('git', ['init', '-q', project]);
   const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+  await writeTopics(
+    { topics: [{ id: 'catalog', name: 'Catalog' }], sessions: { 'captain:catalog-work': 'catalog' } },
+    env,
+  );
+  const prior: SessionInfo = {
+    agent: 'captain',
+    source: 'captain',
+    id: 'catalog-work',
+    where: 'local',
+    cwd: project,
+    title: 'Catalog work',
+    state: 'waiting',
+    updatedAt: Date.now(),
+  };
   const ran: string[] = [];
   const rosters: string[][] = [];
   const captain = driver('captain', async (task) => {
@@ -276,7 +293,7 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await callPack(task, 'wait', {});
   });
   const agents = [
-    captain,
+    { ...captain, sessions: { name: 'captain', where: 'local' as const, list: async () => [prior] } },
     ...['worker', 'backup', 'spare'].map((name) =>
       driver(name, async () => {
         ran.push(name);
@@ -326,17 +343,17 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     return page;
   };
   try {
-    const home = await start(root, ['ui', '--sessions', '--delegate', '--no-project', '--no-artifacts']);
+    const home = await start(root, ['ui', '--sessions', '--delegate', '--home', '--no-artifacts']);
     await home.getByRole('button', { name: 'Project team' }).click();
     await home.getByLabel('Project folder').fill(project);
     await home.getByRole('button', { name: 'Open', exact: true }).click();
-    await home.getByLabel('Lead', { exact: true }).selectOption('captain');
+    await home.getByLabel('Lead', { exact: true }).selectOption('backup');
     await home.getByRole('checkbox', { name: 'captain' }).uncheck();
     await home.getByRole('checkbox', { name: 'spare' }).uncheck();
     await home.getByRole('button', { name: 'Remember this team for the project' }).click();
     await home.getByText('Team saved in .genaicode/pack.json', { exact: false }).waitFor();
     expect(JSON.parse(readFileSync(join(project, '.genaicode', 'pack.json'), 'utf8'))).toEqual({
-      lead: 'captain',
+      lead: 'backup',
       members: ['worker', 'backup'],
     });
     await home.getByRole('button', { name: 'Close project team' }).click();
@@ -345,11 +362,17 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
     expect(ran).toEqual(['worker']);
     expect(rosters).toEqual([['worker', 'backup']]);
+    await home.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await home.getByRole('button', { name: 'New chat in Catalog' }).click();
+    await home.getByText('What should backup work on in Catalog?').waitFor();
+    await home.getByRole('button', { name: 'Project team' }).click();
+    expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup');
+    expect(await home.getByLabel('Project folder').count()).toBe(0);
     await home.close();
     stop.abort();
     await running;
     const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
-    await scoped.getByText('Project pack: captain leads · members: worker, backup.').waitFor();
+    await scoped.getByText('Project pack: backup leads · members: worker, backup.').waitFor();
     await scoped.getByRole('button', { name: 'Project team' }).click();
     expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
     expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);

@@ -5,6 +5,7 @@ import { detectAgents } from './discovery.js';
 import { repoRoot } from './pack-git.js';
 import { homeOf, isRecord } from './sessions/files.js';
 import type { CodingAgent } from './types.js';
+import { expandPath, genaicodeHomeDir, isExplicitPath, isSameDir, neutralHomeDir } from './sessions/workspace.js';
 
 export interface PackProfile {
   lead: string;
@@ -124,20 +125,15 @@ export interface ProjectTeams {
 /** Only the standalone operator UI gets these methods, never an agent or an embedded page. */
 export function projectTeams(choices: ProfileChoice[], env: NodeJS.ProcessEnv, current?: PackProfile): ProjectTeams {
   const checkedRoot = async (cwd: string) => {
-    if (!path.isAbsolute(cwd)) throw new Error('Choose an absolute project folder.');
-    const project = await fs.realpath(await packRoot(await fs.realpath(cwd)));
-    const home = await fs.realpath(homeOf(env)).catch(() => path.resolve(homeOf(env)));
-    const appHome = await fs
-      .realpath(env.GENAICODE_HOME ?? path.join(home, '.genaicode'))
-      .catch(() => path.resolve(env.GENAICODE_HOME ?? path.join(home, '.genaicode')));
-    if (
-      project === path.parse(project).root ||
-      project === home ||
-      project === appHome ||
-      project === path.join(appHome, 'home') ||
-      !(await fs.stat(project)).isDirectory()
-    )
+    if (!isExplicitPath(cwd)) throw new Error('Choose an absolute project folder or a path under ~/.');
+    const folder = await fs.realpath(expandPath(cwd, env));
+    const reserved = [homeOf(env), genaicodeHomeDir(env), neutralHomeDir(env)];
+    const protectedDir = (dir: string) =>
+      dir === path.parse(dir).root || reserved.some((location) => isSameDir(dir, location));
+    if (protectedDir(folder) || !(await fs.stat(folder)).isDirectory())
       throw new Error('Choose a project folder to remember its team.');
+    const project = await fs.realpath(await packRoot(folder));
+    if (protectedDir(project)) throw new Error('Choose a project folder to remember its team.');
     return project;
   };
   return {
