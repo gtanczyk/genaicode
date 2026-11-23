@@ -398,7 +398,7 @@ function App() {
           {view.agents.map((agent) => (
             <option key={agent.name} value={agent.name}>
               {agent.name}
-              {agent.installed ? '' : ' (not installed)'}
+              {!agent.installed ? ' (not installed)' : agent.canAsk === false ? ' (no questions)' : ''}
             </option>
           ))}
         </select>

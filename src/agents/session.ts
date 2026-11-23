@@ -108,6 +108,8 @@ export interface SessionState {
   fallback?: string[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
+  /** Whether the current agent can ask the person to choose (own tool, or `ask_user` over MCP). */
+  canAsk?: boolean;
 }
 
 export interface AgentSessionOptions {
@@ -263,6 +265,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const maxToolOutput = options.maxToolOutput ?? 4_000;
   const maxTurns = options.maxTurns ?? 200;
   const toAgent = (prompt: string) => (options.transformPrompt ? options.transformPrompt(prompt) : prompt);
+  const agentCanAsk = (candidate: CodingAgent): boolean =>
+    !!candidate.capabilities.questions ||
+    (!!options.questions && !!candidate.capabilities.mcp && !candidate.capabilities.remote);
   let agent = options.agent;
   let state: SessionState = {
     agent: agent.name,
@@ -279,6 +284,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback?.length ? { fallback: options.fallback.map((candidate) => candidate.name) } : {}),
     canSteer: false,
+    canAsk: agentCanAsk(agent),
   };
   let fallback: readonly CodingAgent[] = options.fallback ?? [];
   // Agents that failed the current prompt; reset when a prompt starts on its own.
@@ -623,7 +629,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           : state.effort !== undefined && next.capabilities.effort?.includes(state.effort)
             ? state.effort
             : undefined;
-    set({ agent: next.name, sessionId, rateLimits: [], effort });
+    set({ agent: next.name, sessionId, rateLimits: [], effort, canAsk: agentCanAsk(next) });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */

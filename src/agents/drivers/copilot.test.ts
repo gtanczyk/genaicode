@@ -53,7 +53,14 @@ describe('copilot driver', () => {
   });
 
   it('points at the MCP config file and pre-allows its servers without --allow-all-tools', () => {
-    const task = { prompt: 'go', cwd: '.', mcpServers: [{ name: 'docs', url: 'https://mcp.example' }] };
+    const task = {
+      prompt: 'go',
+      cwd: '.',
+      mcpServers: [
+        { name: 'docs', url: 'https://mcp.example' },
+        { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true },
+      ],
+    };
     expect(copilotArgs(task, {}, '/tmp/m.json')).toEqual([
       '--output-format',
       'json',
@@ -63,19 +70,38 @@ describe('copilot driver', () => {
       '@/tmp/m.json',
       '--prompt=go',
     ]);
-    expect(copilotArgs(task, { allowAllTools: false }, '/tmp/m.json')).toContain('--allow-tool=docs');
+    const args = copilotArgs(task, { allowAllTools: false }, '/tmp/m.json');
+    expect(args).toContain('--allow-tool=docs');
+    expect(args).toContain('--allow-tool=genaicode_ask');
+    // A trusted server is pre-allowed even when allowMcpTools is off; untrusted servers are not.
+    const strict = copilotArgs(task, { allowAllTools: false, allowMcpTools: false }, '/tmp/m.json');
+    expect(strict).toContain('--allow-tool=genaicode_ask');
+    expect(strict).not.toContain('--allow-tool=docs');
   });
 
   it('builds the MCP config document', () => {
     expect(
       copilotMcpConfig([
-        { name: 'docs', url: 'https://mcp.example', headers: { Authorization: 'Bearer s' } },
-        { name: 'fs', command: 'mcp-fs', args: ['.'], env: { LOG: '1' } },
+        { name: 'docs', url: 'https://mcp.example', headers: { Authorization: 'Bearer s' }, toolTimeoutSec: 86_400 },
+        { name: 'fs', command: 'mcp-fs', args: ['.'], env: { LOG: '1' }, toolTimeoutSec: 300 },
       ]),
     ).toEqual({
       mcpServers: {
-        docs: { type: 'http', url: 'https://mcp.example', tools: ['*'], headers: { Authorization: 'Bearer s' } },
-        fs: { type: 'local', command: 'mcp-fs', args: ['.'], tools: ['*'], env: { LOG: '1' } },
+        docs: {
+          type: 'http',
+          url: 'https://mcp.example',
+          tools: ['*'],
+          headers: { Authorization: 'Bearer s' },
+          timeout: 86_400_000,
+        },
+        fs: {
+          type: 'local',
+          command: 'mcp-fs',
+          args: ['.'],
+          tools: ['*'],
+          env: { LOG: '1' },
+          timeout: 300_000,
+        },
       },
     });
   });

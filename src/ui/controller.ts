@@ -47,6 +47,8 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** Whether the agent can ask the person to choose (own tool, or `ask_user` over MCP). */
+  canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
 }
@@ -194,6 +196,9 @@ export function createChatController(options: ChatOptions): ChatController {
     installed: path !== null,
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    canAsk:
+      !!agent.capabilities.questions ||
+      (!!options.questionChannel && !!agent.capabilities.mcp && !agent.capabilities.remote),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
@@ -765,7 +770,7 @@ export function createChatController(options: ChatOptions): ChatController {
               agents
                 .map(
                   (a) =>
-                    `${a.name === session.get().agent ? '●' : '○'} ${a.name}${a.installed ? '' : ' (not installed)'}`,
+                    `${a.name === session.get().agent ? '●' : '○'} ${a.name}${!a.installed ? ' (not installed)' : a.canAsk === false ? ' (no questions)' : ''}`,
                 )
                 .join('\n'),
             );

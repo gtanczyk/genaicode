@@ -7,6 +7,7 @@ import type {
   ApprovalDecision,
   ApprovalHandler,
   ApprovalRequest,
+  McpServer,
   QuestionHandler,
 } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
@@ -27,11 +28,12 @@ function harness(
   decideAck: (params: Record<string, unknown>) => unknown = () => ({ terminal: true }),
   permissions?: AgentPermissions,
   onQuestion?: QuestionHandler,
+  mcpServers?: readonly McpServer[],
 ) {
   const sent: Sent[] = [];
   const events: AgentEvent[] = [];
   const lifetime = new AbortController();
-  const task = { prompt: 'p', cwd: '.', onApproval, onQuestion, permissions };
+  const task = { prompt: 'p', cwd: '.', onApproval, onQuestion, permissions, ...(mcpServers ? { mcpServers } : {}) };
   const rpc: RpcPeer = new RpcPeer(
     (line) => {
       const message = JSON.parse(line) as Sent;
@@ -380,8 +382,11 @@ describe('museApprovals', () => {
     currentRequirementId: { approvalId: 'ap-1', sourceIndex: 0 },
     availableChoices: choices,
   };
-  const muse = (onApproval?: ApprovalHandler, ack?: (params: Record<string, unknown>) => unknown) =>
-    harness((session) => museApprovals(session, () => ids), onApproval, ack);
+  const muse = (
+    onApproval?: ApprovalHandler,
+    ack?: (params: Record<string, unknown>) => unknown,
+    mcpServers?: readonly McpServer[],
+  ) => harness((session) => museApprovals(session, () => ids), onApproval, ack, undefined, undefined, mcpServers);
 
   it('acknowledges the server request, asks once per stage and decides with the server ids', async () => {
     const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
@@ -516,5 +521,53 @@ describe('museApprovals', () => {
     h.notify('approval/requested', { ...approval, approvalId: 'ap-2' });
     await h.settle();
     expect(asked).toHaveLength(1);
+  });
+
+  it('auto-approves tools of trusted MCP servers once without asking, and still asks for everything else', async () => {
+    const onApproval = vi.fn<ApprovalHandler>(() => 'deny');
+    const h = muse(onApproval, undefined, [
+      { name: 'genaicode_ask', url: 'http://127.0.0.1:1/mcp', trusted: true },
+      { name: 'genaicode_ask_x', url: 'http://127.0.0.1:2/mcp' },
+      { name: 'docs', url: 'https://mcp.example' },
+    ]);
+    // Trusted MCP tool call: approved once without invoking onApproval.
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-trusted',
+      toolName: 'mcp__genaicode_ask__ask_user',
+      subject: { kind: 'tool', toolName: 'mcp__genaicode_ask__ask_user' },
+      currentRequirementId: { approvalId: 'ap-trusted', sourceIndex: 0 },
+    });
+    // Look-alike prefix server, untrusted server, and shell mentioning the trusted tool: all still ask.
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-prefix',
+      toolName: 'mcp__genaicode_ask_x__ask_user',
+      subject: { kind: 'tool', toolName: 'mcp__genaicode_ask_x__ask_user' },
+      currentRequirementId: { approvalId: 'ap-prefix', sourceIndex: 0 },
+    });
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-docs',
+      toolName: 'mcp__docs__search',
+      subject: { kind: 'tool', toolName: 'mcp__docs__search' },
+      currentRequirementId: { approvalId: 'ap-docs', sourceIndex: 0 },
+    });
+    h.notify('approval/requested', {
+      ...approval,
+      approvalId: 'ap-shell',
+      toolName: 'shell',
+      subject: { kind: 'shell', command: 'echo mcp__genaicode_ask__ask_user' },
+      currentRequirementId: { approvalId: 'ap-shell', sourceIndex: 0 },
+    });
+    await h.settle();
+    expect(onApproval).toHaveBeenCalledTimes(3);
+    expect(onApproval.mock.calls.map(([req]) => req.id)).toEqual(['ap-prefix', 'ap-docs', 'ap-shell']);
+    expect(h.decides().map((params) => [params.approvalId, params.choiceId])).toEqual([
+      ['ap-trusted', 'c-once'],
+      ['ap-prefix', 'c-deny'],
+      ['ap-docs', 'c-deny'],
+      ['ap-shell', 'c-deny'],
+    ]);
   });
 });

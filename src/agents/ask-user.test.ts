@@ -149,14 +149,44 @@ describe('question channel in a session', () => {
   it('leaves it out for agents that ask on their own, run remotely or take no MCP servers', async () => {
     const channel = await startQuestionChannel();
     try {
-      for (const capabilities of [{ mcp: true, questions: true }, { mcp: true, remote: true }, {}]) {
+      for (const [capabilities, expectedCanAsk] of [
+        [{ mcp: true, questions: true }, true],
+        [{ mcp: true, remote: true }, false],
+        [{}, false],
+      ] as const) {
         const { agent, tasks } = askingAgent(capabilities);
         const session = createAgentSession({ agent, cwd: '.', questions: channel });
+        expect(session.get().canAsk).toBe(expectedCanAsk);
         session.send('go');
         await session.idle();
         expect(tasks[0]!.mcpServers ?? []).toEqual([]);
         session.close();
       }
+    } finally {
+      await channel.close();
+    }
+  });
+
+  it('reports canAsk accurately on start and across setAgent', async () => {
+    const channel = await startQuestionChannel();
+    try {
+      const mcpOnly = askingAgent({ mcp: true }).agent;
+      const ownTool = askingAgent({ questions: true }).agent;
+      const neither = askingAgent({}).agent;
+
+      const withoutChannel = createAgentSession({ agent: mcpOnly, cwd: '.' });
+      expect(withoutChannel.get().canAsk).toBe(false);
+      withoutChannel.setAgent(ownTool);
+      expect(withoutChannel.get().canAsk).toBe(true);
+      withoutChannel.close();
+
+      const withChannel = createAgentSession({ agent: mcpOnly, cwd: '.', questions: channel });
+      expect(withChannel.get().canAsk).toBe(true);
+      withChannel.setAgent(neither);
+      expect(withChannel.get().canAsk).toBe(false);
+      withChannel.setAgent(ownTool);
+      expect(withChannel.get().canAsk).toBe(true);
+      withChannel.close();
     } finally {
       await channel.close();
     }
