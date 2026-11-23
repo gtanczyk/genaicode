@@ -117,8 +117,8 @@ export async function sendSession(
     if (cwdError) throw new SessionSendError('directory', cwdError);
     signal?.throwIfAborted();
     const run = agent.run(task);
-    options.onStart?.(session);
     try {
+      options.onStart?.(session);
       if (onEvent) {
         for await (const event of run) onEvent(event, session);
       }
