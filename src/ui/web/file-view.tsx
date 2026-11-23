@@ -135,6 +135,7 @@ export function ViewerPanel({
   docImagesRef.current = docImages;
   const retriedDocUrl = useRef(new Map<string, string>());
   const fileFetchedAtRef = useRef(0);
+  const fileEpochRef = useRef(0);
   const retriedRawUrlRef = useRef<string | undefined>(undefined);
   const fileRef = useRef(file);
   fileRef.current = file;
@@ -166,6 +167,7 @@ export function ViewerPanel({
   }, [filePath, fileLine, target.kind, activeArtifact?.id, activeArtifact?.version]);
 
   useEffect(() => {
+    const epoch = ++fileEpochRef.current;
     if (!filePath) {
       setFile(undefined);
       setProblem(undefined);
@@ -184,6 +186,7 @@ export function ViewerPanel({
     })
       .then(async (res) => {
         const body = (await res.json()) as FileView & { error?: string };
+        if (abort.signal.aborted || fileEpochRef.current !== epoch) return;
         if (res.ok) {
           fileFetchedAtRef.current = Date.now();
           setFile(body);
@@ -193,12 +196,18 @@ export function ViewerPanel({
         }
       })
       .catch(() => {
-        if (!abort.signal.aborted) setProblem({ code: 'error', message: 'The file could not be read.' });
+        if (!abort.signal.aborted && fileEpochRef.current === epoch) {
+          setProblem({ code: 'error', message: 'The file could not be read.' });
+        }
       });
-    return () => abort.abort();
+    return () => {
+      fileEpochRef.current += 1;
+      abort.abort();
+    };
   }, [filePath, token]);
 
   const refreshFileCapability = async (signal?: AbortSignal): Promise<string | undefined> => {
+    const epoch = fileEpochRef.current;
     const current = fileRef.current;
     const queryPath = current?.fullPath ?? filePath;
     if (!queryPath || !token) return current?.rawUrl;
@@ -207,9 +216,9 @@ export function ViewerPanel({
         headers: { 'x-genaicode-token': token },
         signal,
       });
-      if (!res.ok) return current?.rawUrl;
+      if (!res.ok || signal?.aborted || fileEpochRef.current !== epoch) return undefined;
       const body = (await res.json()) as FileView;
-      if (signal?.aborted) return body.rawUrl;
+      if (signal?.aborted || fileEpochRef.current !== epoch) return undefined;
       fileFetchedAtRef.current = Date.now();
       if (body.rawUrl && body.rawUrl !== fileRef.current?.rawUrl) {
         if (retriedRawUrlRef.current !== body.rawUrl) retriedRawUrlRef.current = undefined;
@@ -217,7 +226,7 @@ export function ViewerPanel({
       }
       return body.rawUrl;
     } catch {
-      return current?.rawUrl;
+      return fileEpochRef.current === epoch ? current?.rawUrl : undefined;
     }
   };
 
@@ -581,7 +590,9 @@ export function ViewerPanel({
   const handleRawAction = (mode: 'tab' | 'download') => (event: MouseEvent<HTMLAnchorElement>) => {
     if (!rawUrl || Date.now() - fileFetchedAtRef.current < FILE_CAPABILITY_REFRESH_MS) return;
     event.preventDefault();
+    const epoch = fileEpochRef.current;
     void refreshFileCapability().then((fresh) => {
+      if (fileEpochRef.current !== epoch) return;
       const url = fresh ?? rawUrl;
       if (mode === 'tab') {
         window.open(url, '_blank', 'noopener,noreferrer');
