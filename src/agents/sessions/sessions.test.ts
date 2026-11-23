@@ -375,7 +375,14 @@ describe('session sources', () => {
         'Jeśli musisz to zmienić, daj znać.',
       ),
     ).toEqual([undefined, undefined, undefined, 'offer', 'offer', 'offer', 'offer']);
-    expect(endings('The token expired, so you need to sign in again before I continue.')).toEqual(['request']);
+    expect(
+      endings(
+        'The token expired, so you need to sign in again before I continue.',
+        'You still need to set the cover in Studio.',
+        'Czekam na odpowiedź, którą gałąź scalić.',
+        "I'm waiting for your go.",
+      ),
+    ).toEqual(['request', 'request', 'request', 'request']);
     expect(endings('Wszystkie zadania zakończone, raport dotarł do koordynatora.', '')).toEqual([undefined, undefined]);
     expect(replyEnding(undefined)).toBeUndefined();
     expect(endings('Should I proceed? \u26A0\uFE0F', '   \t  🙂  ', 'Let me know. Done.', 'Let me know!')).toEqual([

@@ -39,10 +39,10 @@ const REQUEST = new RegExp(
   [
     String.raw`${B}(daj znać|napisz|powiedz|let me know|tell me),?\s+(czy|whether)${E}`,
     String.raw`${B}(czy mam|should i|shall i|do you want me to)${E}`,
-    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|czekam na (twoj|ciebie|decyzj|odpowied))`,
+    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|czekam na (twoj|ciebie|decyzj|odpowied)|potrzebuję od ciebie)`,
     String.raw`${NOT_IF}${B}musisz`,
     String.raw`${B}(twoja decyzja|decyzja należy do ciebie|your call|up to you|please confirm|waiting (for|on) (you|your))${E}`,
-    String.raw`${NOT_IF}${B}you(('ll| will)? need to| have to| must)${E}`,
+    String.raw`${NOT_IF}${B}you(('ll| will)?( still)? need to| have to| must)${E}`,
   ].join('|'),
   'iu',
 );
