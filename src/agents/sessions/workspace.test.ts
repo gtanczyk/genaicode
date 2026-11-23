@@ -498,8 +498,6 @@ describe('neutral home and conversation store', () => {
     );
     const loaded = await readConversations(env);
     expect(loaded).toHaveLength(10);
-    expect(loaded.map((item) => item.id)).toEqual(
-      Array.from({ length: 10 }, (_, index) => `conv-${9 - index}`),
-    );
+    expect(loaded.map((item) => item.id)).toEqual(Array.from({ length: 10 }, (_, index) => `conv-${9 - index}`));
   });
 });

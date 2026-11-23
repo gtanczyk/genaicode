@@ -67,6 +67,8 @@ export {
   findTopic,
   inRunDirectory,
   isAsking,
+  isStalled,
+  attentionOf,
   isTopicsRun,
   folderTopics,
   projectTopics,
@@ -86,7 +88,7 @@ export {
   withTopicsRun,
   writeTopics,
 } from './topics.js';
-export type { Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
+export type { Attention, Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';

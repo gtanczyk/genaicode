@@ -402,6 +402,24 @@ fn tower_menu(
     for line in &working {
         menu.append(&MenuItem::new(app, line, false, none)?)?;
     }
+    // What was left on an offer or an old question: folded, and not in the count by the icon.
+    if let Some((heading, lines)) = tower::stalled(topics) {
+        if working.is_empty() {
+            menu.append(&PredefinedMenuItem::separator(app)?)?;
+        }
+        let items = lines
+            .iter()
+            .enumerate()
+            .map(|(index, line)| {
+                MenuItem::with_id(app, format!("open:stalled:{index}"), line, true, none)
+            })
+            .collect::<tauri::Result<Vec<_>>>()?;
+        let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = items
+            .iter()
+            .map(|item| item as &dyn tauri::menu::IsMenuItem<Wry>)
+            .collect();
+        menu.append(&Submenu::with_items(app, heading, true, &refs)?)?;
+    }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     menu.append(&MenuItem::with_id(app, SHOW, "Show Genaicode", true, none)?)?;
     menu.append(&MenuItem::with_id(app, QUIT, "Quit Genaicode", true, none)?)?;
@@ -426,7 +444,7 @@ fn show_waiting(app: &AppHandle, snapshot: tower::Snapshot) {
         let count = tower::count(&shell.waiting);
         let _ = tray.set_title(count.as_deref());
         let _ = tray.set_tooltip(Some(match &count {
-            Some(count) => format!("Genaicode: {count} waiting for you"),
+            Some(count) => format!("Genaicode: {count} need you now"),
             None => "Genaicode".to_string(),
         }));
     });

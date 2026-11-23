@@ -124,6 +124,10 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .home .topic-open { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; text-align: left; background: none; border: 0; padding: 3px 2px; cursor: pointer; color: inherit; }
 .home .topic-open span { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .home .topic-new { flex-shrink: 0; }
+.home details.stalled { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.home details.stalled > summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 6px 0 2px; list-style-position: inside; }
+.home details.stalled > summary small { text-transform: none; letter-spacing: 0; margin-left: 8px; opacity: .8; }
+.home details.stalled[open] > .topic { margin-top: 6px; width: 100%; box-sizing: border-box; opacity: .85; }
 .project > summary .topic-new { font-size: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; cursor: pointer; color: var(--muted); white-space: nowrap; }
 .project > summary .topic-new:hover { border-color: var(--accent); color: var(--text); }
 .session-row .label small.topic-tag { color: var(--accent); }
@@ -153,6 +157,8 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .session-row .mark[data-state='active'] { color: var(--ok); }
 .session-row .mark[data-state='unfinished'] { color: #e8590c; }
 .session-row .mark[data-state='approval'] { color: #e03131; }
+.session-row .mark[data-state='now'] { color: #e03131; }
+.session-row .mark[data-state='stalled'] { color: var(--muted); }
 .session-row .label small.asks { color: #e03131; font-weight: 600; }
 .session-row .agent, .session-row .age { color: var(--muted); white-space: nowrap; }
 .session-row .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -177,7 +183,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .session-reply button:disabled { opacity: .55; }
 .session-receipt { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; padding: 8px 12px; font-size: 13px; }
 .session-receipt p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto; margin: 4px 0; }
-.more { padding: 6px 12px; border-top: 1px solid var(--line); }
+.more { padding: 6px 12px; border-top: 1px solid var(--line); display: flex; gap: 16px; }
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 @media (max-width: 640px) {
   .session-row { grid-template-columns: 16px 70px 34px 1fr; }
