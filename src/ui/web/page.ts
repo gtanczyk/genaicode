@@ -84,6 +84,11 @@ button.chip { cursor: pointer; }
 button.chip:hover { border-color: var(--accent); }
 button.chip.update { color: var(--accent); border-color: currentColor; }
 button.chip.update:disabled { cursor: default; opacity: 0.7; }
+.release-dialog { max-height: 78vh; width: min(640px, 92vw); overflow: auto; padding: 20px 24px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); font-weight: 400; letter-spacing: normal; user-select: text; -webkit-user-select: text; }
+.release-dialog::backdrop { background: rgba(0, 0, 0, .4); }
+.release-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.release-heading h2 { margin: 0; font-size: 20px; }
+.release-dialog a { color: var(--accent); }
 .brand small { font-weight: 400; color: var(--faint); }
 .cwd { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
 .conv-head { display: flex; flex-direction: column; min-width: 0; max-width: 42vw; line-height: 1.25; }
