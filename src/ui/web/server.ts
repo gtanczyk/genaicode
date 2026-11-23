@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
+import type { AgentInspection } from '../../agents/status.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
 import { parseQuestionAnswers } from '../../agents/question-answers.js';
@@ -10,10 +11,22 @@ import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import { contentHeaders, normalizeScriptHosts, parseByteRange } from '../../agents/media.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
+import type { SessionInfo } from '../../agents/sessions/types.js';
+import type { SessionTurn } from '../../agents/session.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
+import {
+  activeChatTruncation,
+  chatTranscriptJson,
+  formatChatTranscriptMarkdown,
+  formatStoredSessionMarkdown,
+  storedSessionTranscriptJson,
+  transcriptFilename,
+  type TranscriptFormat,
+  type TranscriptMeta,
+} from '../transcript.js';
 import type { UiRelease } from './release.js';
 import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
@@ -83,8 +96,32 @@ export interface WebUiOptions {
    * as text in the page. Without it paths stay plain.
    */
   files?: ProjectFiles;
+  /**
+   * Local status of each supported agent (installed, version, sign-in, hints), at GET /api/agents.
+   * Never calls a model. `?refresh=1` bypasses the short cache; `?env=1` also refreshes the host shell env.
+   */
+  agents?: (query?: {
+    refresh?: boolean;
+    refreshEnv?: boolean;
+  }) => Promise<{ agents: AgentInspection[]; setup: boolean }>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
+  /** Resolves the current chat session's raw file path on disk (for transcript metadata / Copy path). */
+  sessionFile?: (session: { agent: string; sessionId: string }) => Promise<string | undefined>;
+  /** Reads a stored session and its turns for GET /api/sessions/<source>/<id>/transcript. */
+  sessionTranscript?: (
+    source: string,
+    id: string,
+  ) => Promise<
+    | {
+        session: SessionInfo;
+        turns: SessionTurn[];
+        readable: boolean;
+        truncated?: boolean;
+        truncatedReason?: string;
+      }
+    | undefined
+  >;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
   release?: () => UiRelease;
@@ -100,6 +137,7 @@ export interface WebSettings {
 
 /**
  * What a host app tells the page and takes from it: update state for "Relaunch to update",
+ * native file saving for transcripts, short status toasts triggered from native menu actions,
  * revealing a file in the OS file manager, and persisting desktop settings.
  */
 export interface HostUpdate {
@@ -110,6 +148,13 @@ export interface HostUpdate {
   installing?: true;
 }
 
+export interface HostSaveRequest {
+  format: TranscriptFormat;
+  /** Present when saving a stored session from the Sessions view rather than the active chat. */
+  source?: string;
+  id?: string;
+}
+
 export interface HostApp {
   /** The newer version of the app, once one is known: still downloading, or waiting for a relaunch. */
   update(): HostUpdate | undefined;
@@ -117,6 +162,12 @@ export interface HostApp {
   subscribe(listener: () => void): () => void;
   /** The person asked for the relaunch. */
   relaunch(): void;
+  /** The person asked to save a transcript using the host app's native Save dialog. */
+  saveTranscript?(request: HostSaveRequest): void;
+  /** Calls `listener` when the host app sends a transient status toast (e.g. from a menu action). */
+  onToast?(listener: (text: string) => void): () => void;
+  /** Ask the desktop shell to re-read the user's login shell environment (PATH, API keys). */
+  refreshEnv?(): Promise<void>;
   /** Reveal an existing file on disk in Finder / the OS file manager. */
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
@@ -348,9 +399,11 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       project: options.title.project !== false,
       ...(options.title.home ? { home: true } : {}),
       sessions: !!options.sessions,
+      agents: !!options.agents,
       uploads: !!options.uploads,
       ...(options.projectTeams ? { projectTeams: true } : {}),
       files: !!options.files,
+      ...(options.hostApp?.saveTranscript ? { nativeSave: true } : {}),
       reveal: !!options.hostApp?.reveal,
       artifactCdn,
       canConfigureCdn: !!options.settings,
@@ -364,6 +417,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   const unsubscribeHost = options.hostApp?.subscribe(broadcastConfig);
   const unsubscribeSettings = options.settings?.subscribe?.(broadcastConfig);
+  const unsubscribeToast = options.hostApp?.onToast?.((text) => {
+    const data = `event: toast\ndata: ${JSON.stringify({ text })}\n\n`;
+    for (const stream of streams) stream.write(data);
+  });
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
     if (!allowedHost(req.headers.host)) return send(res, 403, 'text/plain', 'Forbidden host');
@@ -617,6 +674,16 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       return;
     }
+    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/agents') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.agents) return send(res, 404, 'application/json', '{"error":"no agent status here"}');
+      const refresh = req.method === 'POST' || url.searchParams.get('refresh') === '1';
+      const refreshEnv = req.method === 'POST' || url.searchParams.get('env') === '1';
+      const status = await options.agents({ refresh, refreshEnv });
+      return send(res, 200, 'application/json', JSON.stringify(status));
+    }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/pack-profile') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))
         return send(res, 403, 'application/json', '{"error":"bad token"}');
@@ -666,6 +733,207 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         ...(url.searchParams.get('own') === '1' ? { own: true } : {}),
       });
       return send(res, 200, 'application/json', JSON.stringify(listing));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/transcript') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      const format = url.searchParams.get('format') ?? 'md';
+      if (format !== 'md' && format !== 'json' && format !== 'meta') {
+        return send(res, 400, 'application/json', '{"error":"bad format"}');
+      }
+      const view = controller.get();
+      const { session } = view;
+      const sessionPath =
+        session.sessionId && options.sessionFile
+          ? await options.sessionFile({ agent: session.agent, sessionId: session.sessionId }).catch(() => undefined)
+          : undefined;
+      const now = new Date();
+      const exportedAt = now.toISOString();
+      const filenameMd = transcriptFilename({
+        agent: session.agent,
+        sessionId: session.sessionId,
+        format: 'md',
+        exportedAt: now,
+      });
+      const filenameJson = transcriptFilename({
+        agent: session.agent,
+        sessionId: session.sessionId,
+        format: 'json',
+        exportedAt: now,
+      });
+      if (format === 'meta') {
+        const truncatedReason = activeChatTruncation(session);
+        const meta: TranscriptMeta = {
+          version: options.title.version,
+          agent: session.agent,
+          ...(session.model ? { model: session.model } : {}),
+          ...(session.effort ? { effort: session.effort } : {}),
+          ...(session.cwd ? { cwd: session.cwd } : {}),
+          ...(session.sessionId ? { sessionId: session.sessionId } : {}),
+          ...(sessionPath ? { sessionPath } : {}),
+          turns: session.turns.length,
+          ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
+          filenameMd,
+          filenameJson,
+        };
+        const body = JSON.stringify(meta);
+        return send(res, 200, 'application/json; charset=utf-8', body, {
+          'content-length': String(Buffer.byteLength(body)),
+        });
+      }
+      if (format === 'json') {
+        const body = `${JSON.stringify(
+          chatTranscriptJson({ view, version: options.title.version, sessionPath, exportedAt }),
+          null,
+          2,
+        )}\n`;
+        return send(res, 200, 'application/json; charset=utf-8', body, {
+          'content-disposition': `attachment; filename="${filenameJson}"`,
+          'x-genaicode-filename': filenameJson,
+          'content-length': String(Buffer.byteLength(body)),
+        });
+      }
+      const body = formatChatTranscriptMarkdown({
+        view,
+        version: options.title.version,
+        sessionPath,
+        exportedAt,
+        readArtifact: controller.artifacts ? (id) => controller.artifacts!.read(id) : undefined,
+      });
+      return send(res, 200, 'text/markdown; charset=utf-8', body, {
+        'content-disposition': `attachment; filename="${filenameMd}"`,
+        'x-genaicode-filename': filenameMd,
+        'content-length': String(Buffer.byteLength(body)),
+      });
+    }
+    const transcriptTarget = /^\/api\/sessions\/([^/]+)\/([^/]+)\/transcript$/.exec(url.pathname);
+    if (req.method === 'GET' && transcriptTarget) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.sessionTranscript) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
+      const format = url.searchParams.get('format') ?? 'md';
+      if (format !== 'md' && format !== 'json' && format !== 'meta') {
+        return send(res, 400, 'application/json', '{"error":"bad format"}');
+      }
+      let source: string, id: string;
+      try {
+        source = decodeURIComponent(transcriptTarget[1]!);
+        id = decodeURIComponent(transcriptTarget[2]!);
+      } catch {
+        return send(res, 400, 'application/json', '{"error":"invalid session id"}');
+      }
+      let found:
+        | {
+            session: SessionInfo;
+            turns: SessionTurn[];
+            readable: boolean;
+            truncated?: boolean;
+            truncatedReason?: string;
+          }
+        | undefined;
+      try {
+        found = await options.sessionTranscript(source, id);
+      } catch {
+        return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
+      }
+      if (!found) return send(res, 404, 'application/json', '{"error":"session not found"}');
+      const now = new Date();
+      const exportedAt = now.toISOString();
+      const filenameMd = transcriptFilename({
+        agent: found.session.agent,
+        sessionId: found.session.id,
+        format: 'md',
+        exportedAt: now,
+      });
+      const filenameJson = transcriptFilename({
+        agent: found.session.agent,
+        sessionId: found.session.id,
+        format: 'json',
+        exportedAt: now,
+      });
+      if (format === 'meta') {
+        const meta: TranscriptMeta = {
+          version: options.title.version,
+          agent: found.session.agent,
+          source: found.session.source,
+          ...(found.session.model ? { model: found.session.model } : {}),
+          ...(found.session.cwd ? { cwd: found.session.cwd } : {}),
+          sessionId: found.session.id,
+          ...(found.session.path ? { sessionPath: found.session.path } : {}),
+          turns: found.turns.length,
+          readable: found.readable,
+          ...(found.truncated ? { truncated: true, truncatedReason: found.truncatedReason } : {}),
+          filenameMd,
+          filenameJson,
+        };
+        const body = JSON.stringify(meta);
+        return send(res, 200, 'application/json; charset=utf-8', body, {
+          'content-length': String(Buffer.byteLength(body)),
+        });
+      }
+      if (format === 'json') {
+        const body = `${JSON.stringify(
+          storedSessionTranscriptJson({
+            session: found.session,
+            turns: found.turns,
+            readable: found.readable,
+            truncated: found.truncated,
+            truncatedReason: found.truncatedReason,
+            version: options.title.version,
+            exportedAt,
+          }),
+          null,
+          2,
+        )}\n`;
+        return send(res, 200, 'application/json; charset=utf-8', body, {
+          'content-disposition': `attachment; filename="${filenameJson}"`,
+          'x-genaicode-filename': filenameJson,
+          'content-length': String(Buffer.byteLength(body)),
+        });
+      }
+      const body = formatStoredSessionMarkdown({
+        session: found.session,
+        turns: found.turns,
+        readable: found.readable,
+        truncated: found.truncated,
+        truncatedReason: found.truncatedReason,
+        version: options.title.version,
+        exportedAt,
+      });
+      return send(res, 200, 'text/markdown; charset=utf-8', body, {
+        'content-disposition': `attachment; filename="${filenameMd}"`,
+        'x-genaicode-filename': filenameMd,
+        'content-length': String(Buffer.byteLength(body)),
+      });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/save-transcript') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.hostApp?.saveTranscript) return send(res, 404, 'application/json', '{"ok":false}');
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+      let saveRequest: HostSaveRequest | undefined;
+      try {
+        const body = JSON.parse(await readBody(req)) as { format?: unknown; source?: unknown; id?: unknown };
+        if (body.format === 'md' || body.format === 'json') {
+          const validPart = (value: unknown) =>
+            typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\r\n\0]/.test(value);
+          if (body.source === undefined && body.id === undefined) {
+            saveRequest = { format: body.format };
+          } else if (validPart(body.source) && validPart(body.id)) {
+            saveRequest = { format: body.format, source: body.source as string, id: body.id as string };
+          }
+        }
+      } catch {
+        saveRequest = undefined;
+      }
+      if (!saveRequest) return send(res, 400, 'application/json', '{"error":"bad save request"}');
+      options.hostApp.saveTranscript(saveRequest);
+      return send(res, 200, 'application/json', '{"ok":true}');
     }
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
     if (req.method === 'POST' && target) {
@@ -836,6 +1104,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         lifetime.abort();
         unsubscribe();
         unsubscribeHost?.();
+        unsubscribeToast?.();
         unsubscribeSettings?.();
         if (pending) clearTimeout(pending);
         for (const stream of streams) stream.end();

@@ -321,6 +321,101 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('keeps setup turns when an agent becomes usable and preserves canAsk across updateAgents', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-setup-continue-'));
+    try {
+      const claude = { ...echoAgent('claude', 'claude'), capabilities: { questions: true, resume: true } };
+      const codex = { ...echoAgent('codex', 'codex'), capabilities: { resume: true } };
+      const pastSession = {
+        source: 'claude',
+        agent: 'claude',
+        id: 'old-claude-1',
+        where: 'local' as const,
+        cwd: '/w',
+        title: 'Earlier work',
+        firstPrompt: 'Audit the router',
+        lastReply: 'Router looks clean.',
+        updatedAt: Date.now() - 60_000,
+      };
+      const chat = createChatController({
+        agents: [claude, codex],
+        sessionSources: [
+          {
+            name: 'claude',
+            where: 'local',
+            list: async () => [pastSession],
+            read: async () => [
+              {
+                id: 1,
+                agent: 'claude',
+                prompt: 'Audit the router',
+                startedAt: Date.now() - 60_000,
+                endedAt: Date.now() - 59_000,
+                entries: [{ kind: 'text', text: 'Router looks clean.', streaming: false }],
+                result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Router looks clean.' },
+              },
+            ],
+          },
+        ],
+        cwd: '/w',
+        env: { PATH: empty },
+        allowNoAgent: true,
+      });
+      expect(chat.get().setup).toBe(true);
+      expect(await chat.continueSession('old-claude-1')).toBe(true);
+      expect(chat.get().setup).toBe(true);
+      expect(chat.get().session.turns).toHaveLength(1);
+      // Do not bind an uninstalled placeholder's sessionId during setup.
+      expect(chat.get().session.sessionId).toBeUndefined();
+      expect(chat.get().notices.at(-1)?.text).toContain('Connect an agent to continue it');
+
+      // Now codex becomes ready -> leaves setup, switches from placeholder claude to codex, keeps turns + canAsk.
+      chat.updateAgents([
+        {
+          name: 'claude',
+          command: 'claude',
+          installed: false,
+          auth: 'unknown',
+          guide: {
+            name: 'claude',
+            command: 'claude',
+            title: 'Claude Code',
+            maker: 'Anthropic',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+        {
+          name: 'codex',
+          command: 'codex',
+          installed: true,
+          path: '/bin/codex',
+          auth: 'ready',
+          guide: {
+            name: 'codex',
+            command: 'codex',
+            title: 'Codex',
+            maker: 'OpenAI',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+      ]);
+      expect(chat.get().setup).toBeUndefined();
+      expect(chat.get().session.agent).toBe('codex');
+      expect(chat.get().session.turns).toHaveLength(1);
+      expect(chat.get().agents.map((a) => [a.name, a.canAsk])).toEqual([
+        ['claude', true],
+        ['codex', false],
+      ]);
+      chat.close();
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it('/clear empties the conversation and its notices', async () => {
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     chat.submit('hi');
@@ -1764,7 +1859,7 @@ describe('web UI server', () => {
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
   });
 
-  it('says how to get an agent while none is installed, then opens the chat on the same link', async () => {
+  it('starts in setup state with zero agents, serves /api/agents and /api/sessions, and leaves setup once an agent arrives', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
     let errors = '';
     const opened: string[] = [];
@@ -1772,7 +1867,7 @@ describe('web UI server', () => {
     const done = runWeb({
       agents: [echoAgent('claude', 'claude'), echoAgent('other', 'other-agent')],
       cwd: '/w',
-      env: { PATH: empty },
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
       version: '1',
       clientScript: '',
       assets: new Map(),
@@ -1787,27 +1882,136 @@ describe('web UI server', () => {
       expect(errors).toContain('no agent CLI found');
       const url = /Open (\S+)/.exec(errors)![1];
       const token = new URL(url).searchParams.get('token')!;
+      const headers = { 'x-genaicode-token': token };
       expect((await fetch(url.replace(/\?.*$/, ''))).status).toBe(403);
-      const html = await (await fetch(url)).text();
-      expect(html).toContain('Connect a coding agent');
-      expect(html).toContain('curl -fsSL https://claude.ai/install.sh | bash');
-      expect(html).toContain('other-agent');
-      const check = () =>
-        fetch(new URL('/api/agents', url), { method: 'POST', headers: { 'x-genaicode-token': token } });
-      expect((await fetch(new URL('/api/agents', url), { method: 'POST' })).status).toBe(403);
-      expect(await (await check()).json()).toEqual({
-        agents: [
-          { command: 'claude', installed: false },
-          { command: 'other-agent', installed: false },
-        ],
-      });
-      // The agent arrives: the next look finds it and the chat takes the page's place.
-      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\n', { mode: 0o755 });
-      expect((await (await check()).json()).agents[1]).toEqual({ command: 'other-agent', installed: true });
-      await until(() => /· other in \/w/.test(errors));
-      expect(/· other in \/w\nOpen (\S+)/.exec(errors)![1]).toBe(url);
       expect(await (await fetch(url)).text()).toContain('id="root"');
+      // Session tools still work while in setup state.
+      expect((await fetch(new URL('/api/sessions', url), { headers })).status).toBe(200);
+      expect((await fetch(new URL('/api/agents', url))).status).toBe(403);
+      const initial = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; command: string; installed: boolean; auth: string }>;
+      };
+      expect(initial.setup).toBe(true);
+      expect(initial.agents.map(({ name, command, installed, auth }) => ({ name, command, installed, auth }))).toEqual([
+        { name: 'claude', command: 'claude', installed: false, auth: 'unknown' },
+        { name: 'other', command: 'other-agent', installed: false, auth: 'unknown' },
+      ]);
+      // Stream SSE view and verify setup state transitions to false when the agent arrives on the same server.
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const read = async (wanted: string) => {
+        while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await read('"setup":true');
+      // Prompt submitted while in setup does not spawn a missing binary.
+      await fetch(new URL('/api/command', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'submit', text: 'hello' }),
+      });
+      await read('Connect an agent to start.');
+      // The agent arrives: refreshing /api/agents detects it and switches the session to it without restarting.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\necho "1.0.0"\n', { mode: 0o755 });
+      const refreshed = (await (await fetch(new URL('/api/agents?refresh=1', url), { headers })).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; installed: boolean; version?: string; auth: string }>;
+      };
+      expect(refreshed.setup).toBe(false);
+      expect(refreshed.agents[1]).toMatchObject({ name: 'other', installed: true, version: '1.0.0', auth: 'unknown' });
+      await read('"agent":"other"');
+      await reader.cancel();
       expect(opened).toEqual([url]);
+    } finally {
+      abort.abort();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
+  it('asks the desktop shell to refresh login env on Check again and adopts the new PATH', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-env-empty-'));
+    const added = mkdtempSync(join(tmpdir(), 'genaicode-env-added-'));
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent('claude', 'claude')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty, GENAICODE_DESKTOP_SHELL: '1' },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const before = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as { setup: boolean };
+      expect(before.setup).toBe(true);
+      // Install a fake ready claude into a new PATH directory not originally in env.
+      writeFileSync(
+        join(added, 'claude'),
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.0"; exit 0; fi\nif [ "$1" = "auth" ]; then echo \'{"loggedIn":true,"subscriptionType":"pro"}\'; exit 0; fi\n',
+        { mode: 0o755 },
+      );
+      const pending = fetch(new URL('/api/agents?refresh=1&env=1', url), { headers });
+      await until(() => errors.includes('Refresh env\n'));
+      stdin.write(`env ${JSON.stringify({ PATH: added })}\n`);
+      const after = (await (await pending).json()) as {
+        setup: boolean;
+        agents: Array<{ name: string; installed: boolean; auth: string; plan?: string }>;
+      };
+      expect(after.setup).toBe(false);
+      expect(after.agents[0]).toMatchObject({ name: 'claude', installed: true, auth: 'ready', plan: 'Pro' });
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+      rmSync(added, { recursive: true, force: true });
+    }
+  });
+
+  it('holds firstPrompt while in setup state and submits it once an agent becomes ready', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-first-prompt-'));
+    let errors = '';
+    const abort = new AbortController();
+    const done = runWeb({
+      agents: [echoAgent('other', 'other-agent')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      firstPrompt: 'Embed genaicode here',
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const read = async (wanted: string) => {
+        while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await read('"setup":true');
+      expect(seen).not.toContain('Embed genaicode here');
+      // Agent becomes available -> refreshing exits setup and automatically sends the held firstPrompt.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\necho "1.0.0"\n', { mode: 0o755 });
+      await fetch(new URL('/api/agents?refresh=1', url), { headers });
+      await read('You said **Embed genaicode here**');
+      await reader.cancel();
     } finally {
       abort.abort();
       expect(await done).toBe(0);
@@ -1925,6 +2129,225 @@ describe('web UI server', () => {
     expect(errors).not.toContain('Relaunch to update');
     expect((await relaunch()).status).toBe(200);
     expect(errors).toContain('Relaunch to update\n');
+    await reader.cancel();
+    stdin.end();
+    expect(await done).toBe(0);
+  });
+
+  it('serves active chat and stored session transcripts, native save requests, and host toasts', async () => {
+    const stdin = new PassThrough();
+    let errors = '';
+    const stored: SessionInfo = {
+      source: 'echo-store',
+      agent: 'echo',
+      id: 'sess-0195abcdef',
+      where: 'local',
+      cwd: '/w',
+      title: 'Debug chat',
+      path: '/home/me/.echo/sess-0195abcdef.jsonl',
+      state: 'waiting',
+      updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
+    };
+    const longStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195long',
+      title: 'Very long chat',
+    };
+    const brokenStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195broken',
+      title: 'Missing rollout',
+    };
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      sessions: {
+        name: 'echo-store',
+        where: 'local',
+        list: async () => [stored, longStored, brokenStored],
+        read: async (info, readOptions) => {
+          if (info.id === brokenStored.id) throw new Error('ENOENT: rollout missing');
+          if (info.id === longStored.id) {
+            readOptions?.onTruncated?.('tail-bytes');
+            return Array.from({ length: 205 }, (_, i) => ({
+              id: i + 1,
+              agent: 'echo',
+              prompt: `Turn ${i + 1}`,
+              entries: [],
+              startedAt: 1,
+            }));
+          }
+          return [
+            {
+              id: 1,
+              agent: 'echo',
+              prompt: 'Stored question',
+              entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
+              startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
+              endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
+            },
+          ];
+        },
+      },
+    };
+    const done = runWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '2.55.0',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    const token = new URL(url).searchParams.get('token')!;
+    const headers = { 'x-genaicode-token': token };
+
+    // Auth & format validation.
+    expect((await fetch(new URL('/api/transcript', url))).status).toBe(403);
+    expect((await fetch(new URL('/api/transcript?format=xml', url), { headers })).status).toBe(400);
+
+    // Run one turn so active chat has a turn and sessionId ('s-1' from echoAgent).
+    const submitRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: 'Hello transcript' }),
+    });
+    expect(submitRes.status).toBe(200);
+    await until(() => true);
+    let mdText = '';
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const res = await fetch(new URL('/api/transcript?format=md', url), { headers });
+      mdText = await res.text();
+      if (mdText.includes('You said **Hello transcript**')) break;
+      await tick();
+    }
+    expect(mdText).toContain('# Genaicode transcript');
+    expect(mdText).toContain('- **Version:** 2.55.0');
+    expect(mdText).toContain('- **Session ID:** s-1');
+    expect(mdText).toContain('Hello transcript');
+    expect(mdText).toContain('You said **Hello transcript**');
+
+    const jsonRes = await fetch(new URL('/api/transcript?format=json', url), { headers });
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.headers.get('x-genaicode-filename')).toMatch(/^genaicode-echo-s-1\.json$/);
+    const jsonBody = (await jsonRes.json()) as { format: string; sessionId: string; session: { turns: unknown[] } };
+    expect(jsonBody.format).toBe('genaicode-transcript');
+    expect(jsonBody.sessionId).toBe('s-1');
+    expect(jsonBody.session.turns).toHaveLength(1);
+
+    // Stored session transcript (meta, md, json, and 404 on unknown).
+    const storedMeta = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=meta', url), {
+      headers,
+    });
+    expect(storedMeta.status).toBe(200);
+    expect(await storedMeta.json()).toMatchObject({
+      agent: 'echo',
+      source: 'echo-store',
+      sessionId: 'sess-0195abcdef',
+      sessionPath: '/home/me/.echo/sess-0195abcdef.jsonl',
+      turns: 1,
+      readable: true,
+    });
+    const storedMd = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=md', url), {
+      headers,
+    });
+    expect(storedMd.status).toBe(200);
+    const storedMdText = await storedMd.text();
+    expect(storedMdText).toContain('# Session transcript');
+    expect(storedMdText).toContain('Stored question');
+    expect(storedMdText).toContain('Stored answer');
+    expect(
+      (await fetch(new URL('/api/sessions/echo-store/missing/transcript?format=md', url), { headers })).status,
+    ).toBe(404);
+
+    // Truncated stored session discloses incompleteness in meta, JSON, and Markdown.
+    const longJsonRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=json', url), {
+      headers,
+    });
+    expect(longJsonRes.status).toBe(200);
+    const longJson = (await longJsonRes.json()) as {
+      truncated: boolean;
+      truncatedReason?: string;
+      turns: Array<{ id: number; prompt: string }>;
+    };
+    expect(longJson.truncated).toBe(true);
+    expect(longJson.truncatedReason).toContain('8 MB');
+    expect(longJson.truncatedReason).toContain('200 turns');
+    expect(longJson.turns).toHaveLength(200);
+    expect(longJson.turns[0]?.prompt).toBe('Turn 6');
+
+    const longMdRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=md', url), {
+      headers,
+    });
+    expect(longMdRes.status).toBe(200);
+    expect(await longMdRes.text()).toContain('> **Note:** Only the last 8 MB');
+
+    // Read failures surface as HTTP 500 instead of silently exporting empty turns.
+    const brokenRes = await fetch(new URL('/api/sessions/echo-store/sess-0195broken/transcript?format=md', url), {
+      headers,
+    });
+    expect(brokenRes.status).toBe(500);
+    expect(await brokenRes.json()).toEqual({ error: 'Could not read the session transcript.' });
+
+    // Continuing a truncated session preserves truncation metadata on active-chat exports, and /clear resets it.
+    const contRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'continue', id: longStored.id }),
+    });
+    expect(contRes.status).toBe(200);
+    const adoptedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(adoptedMeta).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('latest 100 turns were loaded'),
+    });
+    const adoptedJson = await (await fetch(new URL('/api/transcript?format=json', url), { headers })).json();
+    expect(adoptedJson).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('8 MB'),
+    });
+    const adoptedMd = await (await fetch(new URL('/api/transcript?format=md', url), { headers })).text();
+    expect(adoptedMd).toContain('- **Incomplete:** Only the last 8 MB');
+
+    await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: '/clear' }),
+    });
+    const clearedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(clearedMeta.truncated).toBeUndefined();
+
+    // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
+    const events = await fetch(new URL('/api/events', url), { headers });
+    const reader = events.body!.getReader();
+    let seen = '';
+    const read = async (wanted: string) => {
+      while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+    };
+    await read('event: config');
+    expect(seen).toContain('"nativeSave":true');
+
+    const save = (body: unknown) =>
+      fetch(new URL('/api/save-transcript', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await save({ format: 'xml' })).status).toBe(400);
+    expect((await save({ format: 'md', source: 'only-source' })).status).toBe(400);
+    expect((await save({ format: 'md' })).status).toBe(200);
+    expect(errors).toContain('Save transcript md\n');
+    expect((await save({ format: 'json', source: 'echo-store', id: 'sess-0195abcdef' })).status).toBe(200);
+    expect(errors).toContain('Save session-transcript json echo-store sess-0195abcdef\n');
+
+    stdin.write('toast Copied session ID\n');
+    await read('event: toast\ndata: {"text":"Copied session ID"}');
+
     await reader.cancel();
     stdin.end();
     expect(await done).toBe(0);

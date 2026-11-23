@@ -8,6 +8,8 @@ import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from 
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
+import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
+import type { AgentInspection } from '../../agents/status.js';
 import {
   firstLine,
   formatUsage,
@@ -20,11 +22,14 @@ import {
 } from '../format.js';
 import type { UiRelease } from './release.js';
 import type { WebCommand } from './server.js';
+import { AgentPicker } from './agent-picker.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
+import { Onboarding, SignInCard } from './onboarding.js';
 import { ProjectTeamDialog } from './project-team.js';
 import { TowerInboxPanel } from './tower-inbox.js';
+import { TranscriptMenu } from './transcript-menu.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
 const style = document.createElement('style');
@@ -168,9 +173,12 @@ interface PageConfig {
   /** True in `--home` mode: per-conversation working directory, no fixed project folder. */
   home?: boolean;
   sessions: boolean;
+  agents?: boolean;
   uploads?: boolean;
   projectTeams?: boolean;
   files?: boolean;
+  /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
+  nativeSave?: boolean;
   reveal?: boolean;
   artifactCdn?: string[];
   canConfigureCdn?: boolean;
@@ -178,7 +186,147 @@ interface PageConfig {
   update?: { version: string; ready: boolean; installing?: boolean };
 }
 
-function useView(): {
+function fallbackAgents(choices: ChatView['agents'] | undefined): AgentInspection[] {
+  if (!choices?.length) return [];
+  return choices
+    .map((choice, index) => ({
+      index,
+      item: {
+        name: choice.name,
+        command: choice.command,
+        installed: choice.installed,
+        ...(choice.path ? { path: choice.path } : {}),
+        ...(choice.version ? { version: choice.version } : {}),
+        auth: choice.auth ?? 'unknown',
+        ...(choice.broken ? { broken: true } : {}),
+        ...(choice.plan ? { plan: choice.plan } : {}),
+        ...(choice.hint ? { hint: choice.hint } : {}),
+        guide: agentGuide(choice.name, choice.command),
+      } satisfies AgentInspection,
+    }))
+    .sort(
+      (a, b) => agentOrder(a.item.name, a.item.command) - agentOrder(b.item.name, b.item.command) || a.index - b.index,
+    )
+    .map(({ item }) => item);
+}
+
+/** How often the onboarding screen quietly re-checks PATH / sign-in while visible. */
+const AGENTS_POLL_MS = 4_000;
+
+function useAgents(
+  enabled: boolean,
+  viewAgents: ChatView['agents'] | undefined,
+  pollActive: boolean,
+  viewSetup: boolean,
+): {
+  agents: AgentInspection[];
+  loading: boolean;
+  checking: boolean;
+  inspectedAt: number;
+  checkAgain(options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined>;
+} {
+  const [inspected, setInspected] = useState<AgentInspection[]>();
+  const [loading, setLoading] = useState(enabled);
+  const [checking, setChecking] = useState(false);
+  const [inspectedAt, setInspectedAt] = useState(0);
+  const inFlightRef = useRef(false);
+  const checkingRef = useRef(false);
+
+  const fetchAgents = async (query: string): Promise<AgentInspection[] | undefined> => {
+    if (!token) return undefined;
+    inFlightRef.current = true;
+    try {
+      const res = await fetch(`/api/agents${query}`, { headers: { 'x-genaicode-token': token } });
+      if (!res.ok) return undefined;
+      const body = (await res.json()) as { agents?: AgentInspection[] };
+      if (!Array.isArray(body.agents)) return undefined;
+      setInspected(body.agents);
+      setInspectedAt(Date.now());
+      return body.agents;
+    } catch {
+      return undefined;
+    } finally {
+      inFlightRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!enabled || !token) {
+      setLoading(false);
+      return;
+    }
+    let current = true;
+    setLoading(true);
+    void fetchAgents('').finally(() => {
+      if (current) setLoading(false);
+    });
+    return () => {
+      current = false;
+    };
+  }, [enabled]);
+
+  // When another tab updates the shared controller out of/into setup, refresh the cached inspection list.
+  const prevSetup = useRef(viewSetup);
+  useEffect(() => {
+    if (prevSetup.current === viewSetup) return;
+    prevSetup.current = viewSetup;
+    if (enabled && token && !inFlightRef.current) void fetchAgents('');
+  }, [enabled, viewSetup]);
+
+  useEffect(() => {
+    if (!enabled || !pollActive || !token) return;
+    const timer = window.setInterval(() => {
+      if (!checkingRef.current && !inFlightRef.current) void fetchAgents('?refresh=1');
+    }, AGENTS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [enabled, pollActive]);
+
+  const checkAgain = async (options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined> => {
+    if (!enabled || !token) return undefined;
+    if (options?.quiet) {
+      if (checkingRef.current || inFlightRef.current) return undefined;
+      return fetchAgents(options.env ? '?refresh=1&env=1' : '?refresh=1');
+    }
+    checkingRef.current = true;
+    setChecking(true);
+    try {
+      return await fetchAgents(options?.env ? '?refresh=1&env=1' : '?refresh=1');
+    } finally {
+      checkingRef.current = false;
+      setChecking(false);
+    }
+  };
+
+  return {
+    agents: inspected ?? fallbackAgents(viewAgents),
+    loading: enabled && loading,
+    checking,
+    inspectedAt,
+    checkAgain,
+  };
+}
+
+function useAllLimits(active: boolean): Array<RateLimit & { agent: string }> {
+  const [limits, setLimits] = useState<Array<RateLimit & { agent: string }>>([]);
+  useEffect(() => {
+    if (!active || !token) return;
+    let current = true;
+    fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
+      .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
+      .then(
+        (found: { limits?: Array<RateLimit & { agent: string }> }) => {
+          if (current) setLimits(found.limits ?? []);
+        },
+        () => undefined,
+      );
+    return () => {
+      current = false;
+    };
+  }, [active]);
+  return limits;
+}
+
+function useView(onToast?: (text: string) => void): {
   view?: ChatView;
   config?: PageConfig;
   release?: UiRelease;
@@ -190,6 +338,8 @@ function useView(): {
   const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
   const [rejected, setRejected] = useState(!token);
+  const toastRef = useRef(onToast);
+  toastRef.current = onToast;
   useEffect(() => {
     if (!token) return;
     const abort = new AbortController();
@@ -236,6 +386,9 @@ function useView(): {
               setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
               setConfig(JSON.parse(payload) as PageConfig);
+            } else if (event === 'toast') {
+              const parsed = JSON.parse(payload) as { text?: string };
+              if (parsed.text) toastRef.current?.(parsed.text);
             }
           }
         }
@@ -665,7 +818,15 @@ function WhatsNew({ release }: { release: UiRelease }) {
 
 function App() {
   const root = document.getElementById('root')!;
-  const { view, config, release, connected, rejected } = useView();
+  const [toast, setToast] = useState<{ text: string; error?: boolean }>();
+  const toastTimer = useRef<number>(undefined);
+  const showToast = (text: string, error = false) => {
+    setToast({ text, error });
+    if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
+  };
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  const { view, config, release, connected, rejected } = useView((text) => showToast(text));
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
   // Said at once: installing takes a few seconds before the app goes away.
   const [relaunching, setRelaunching] = useState(false);
@@ -677,12 +838,15 @@ function App() {
   const hasProject = config ? config.project !== false : !root.dataset.noProject;
   const isHome = config ? config.home === true : !!root.dataset.home;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
+  const hasAgentsApi = config?.agents === true;
   useBark(view);
   const [model, setModel] = useState<string>();
   const [showTeam, setShowTeam] = useState(false);
-  // The Sessions view takes the chat's place; the chat keeps running behind it.
-  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
+  // The Sessions / Agents views take the chat's place; the chat keeps running behind them.
+  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'agents'>('chat');
+  const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
+  const showAgents = panel === 'agents';
   // Only the conversations this chat had itself, not every agent's sessions.
   const [own, setOwn] = useState(false);
   // The topic picked on the start screen: the Sessions view shows only it.
@@ -692,6 +856,38 @@ function App() {
   const activeCwd = conversation?.cwd || session?.cwd || cwd;
   const teamFolder = hasProject || (isHome && activeCwd !== cwd) ? activeCwd : undefined;
   const running = session?.status === 'running';
+  const inSetup = view?.setup === true;
+  const {
+    agents: agentList,
+    loading: loadingAgents,
+    checking: checkingAgents,
+    inspectedAt,
+    checkAgain: checkAgents,
+  } = useAgents(hasAgentsApi, view?.agents, inSetup || showAgents, inSetup);
+  const allLimits = useAllLimits(inSetup || showAgents);
+  // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
+  const seenAuthFail = useRef(new Set<number>());
+  useEffect(() => {
+    if (!hasAgentsApi || !session) return;
+    let trigger = false;
+    for (const turn of session.turns) {
+      if (turn.result?.failure?.kind === 'auth' && !seenAuthFail.current.has(turn.id)) {
+        seenAuthFail.current.add(turn.id);
+        trigger = true;
+      }
+    }
+    if (trigger) void checkAgents({ env: false, quiet: true });
+  }, [hasAgentsApi, session?.turns]);
+  const openSetup = (agent?: string) => {
+    setFocusAgent(agent);
+    setPanel('agents');
+  };
+  // When onboarding opened as a panel during setup finishes, return straight to the conversation.
+  const wasSetupRef = useRef(inSetup);
+  useEffect(() => {
+    if (wasSetupRef.current && !inSetup && showAgents) setPanel('chat');
+    wasSetupRef.current = inSetup;
+  }, [inSetup, showAgents]);
   const startTopicChat = (topicId: string) => {
     dropWaiting();
     setViewer(undefined);
@@ -810,24 +1006,39 @@ function App() {
             {chip.text}
           </span>
         ))}
-        <select
-          aria-label="Agent"
-          title="The agent the next prompt goes to"
-          value={session.agent}
-          disabled={running}
-          onChange={(event) => {
-            // What still waits here was meant for the other agent.
-            dropWaiting();
-            void command({ type: 'agent', name: event.target.value });
-          }}
-        >
-          {view.agents.map((agent) => (
-            <option key={agent.name} value={agent.name}>
-              {agent.name}
-              {!agent.installed ? ' (not installed)' : agent.canAsk === false ? ' (no questions)' : ''}
-            </option>
-          ))}
-        </select>
+        {hasAgentsApi ? (
+          <AgentPicker
+            current={session.agent}
+            agents={agentList}
+            noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
+            disabled={running}
+            onSelect={(name) => {
+              // What still waits here was meant for the other agent.
+              dropWaiting();
+              void command({ type: 'agent', name });
+            }}
+            onOpenSetup={openSetup}
+          />
+        ) : (
+          <select
+            aria-label="Agent"
+            title="The agent the next prompt goes to"
+            value={session.agent}
+            disabled={running}
+            onChange={(event) => {
+              // What still waits here was meant for the other agent.
+              dropWaiting();
+              void command({ type: 'agent', name: event.target.value });
+            }}
+          >
+            {view.agents.map((agent) => (
+              <option key={agent.name} value={agent.name}>
+                {agent.name}
+                {!agent.installed ? ' (not installed)' : agent.canAsk === false ? ' (no questions)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           aria-label="Model"
           title="The model id, or empty for the agent's default"
@@ -894,8 +1105,36 @@ function App() {
         <span className="spacer" />
         {view && session ? (
           <>
-            {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
+            {session.sessionId || session.turns.length ? (
+              <TranscriptMenu
+                token={token}
+                endpoint="/api/transcript"
+                sessionId={session.sessionId}
+                nativeSave={config?.nativeSave}
+                label={session.sessionId ? `session ${shortId(session.sessionId)} ▾` : 'Transcript ▾'}
+                title={
+                  session.sessionId
+                    ? `Session ${session.sessionId} — copy ID, file path or transcript`
+                    : 'Copy or save conversation transcript'
+                }
+                buttonClassName="chip"
+                onStatus={showToast}
+              />
+            ) : null}
             {usage ? <span className="chip">{usage}</span> : null}
+            {inSetup && (session.turns.length > 0 || showAgents) ? (
+              <button
+                className={`chip${showAgents ? '' : ' waits'}`}
+                title="Install or sign in to a coding agent to continue"
+                aria-pressed={showAgents}
+                onClick={() => {
+                  setFocusAgent(undefined);
+                  setPanel(showAgents ? 'chat' : 'agents');
+                }}
+              >
+                {showAgents ? '← Chat' : 'Connect agent'}
+              </button>
+            ) : null}
             {sessionArtifacts.length && !showSessions ? (
               <div className="popover-anchor">
                 <button
@@ -1049,6 +1288,8 @@ function App() {
           onAllTopics={() => setTopic(undefined)}
           own={own}
           onAllSessions={() => setOwn(false)}
+          nativeSave={config?.nativeSave}
+          onStatus={showToast}
           onNewTopicChat={isHome ? startTopicChat : undefined}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
@@ -1067,32 +1308,106 @@ function App() {
           decide={(id, decision) => command({ type: 'tower', id, decision })}
         />
       )}
+      {showAgents ? (
+        <main className="agents-panel">
+          <Onboarding
+            agents={agentList}
+            limits={allLimits}
+            loading={loadingAgents}
+            checking={checkingAgents}
+            setup={inSetup}
+            focusAgent={focusAgent}
+            onCheckAgain={() => checkAgents({ env: true })}
+            onSelectAgent={(name) => {
+              dropWaiting();
+              void command({ type: 'agent', name });
+              setPanel('chat');
+            }}
+            onClose={() => setPanel('chat')}
+          />
+        </main>
+      ) : null}
       <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
         <AgentChat
           state={session}
           header={null}
           // The work in one line that opens on click: a long run of tool calls buries the answer.
           foldSteps
-          autoFocus
-          disabled={!connected}
+          autoFocus={!inSetup}
+          disabled={!connected || inSetup}
+          placeholder={inSetup ? 'Connect an agent to start' : undefined}
           notices={view?.notices}
           artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
           onOpenArtifact={openArtifactInPanel}
           imageUrl={config?.files ? (path) => localImages[path] : undefined}
           completions={SLASH_COMMANDS}
-          composerExtras={controls}
-          attachments={config?.uploads ? ATTACH : undefined}
+          composerExtras={inSetup ? null : controls}
+          attachments={config?.uploads && !inSetup ? ATTACH : undefined}
           onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
           onRevealFile={config?.reveal ? revealFile : undefined}
           renderPrompt={promptBubble}
-          renderFooter={() =>
-            unsent ? (
+          renderFailure={(turn) =>
+            turn.result?.failure?.kind === 'auth' ? (
+              <SignInCard
+                agent={turn.agent}
+                inspection={agentList.find((item) => item.name === turn.agent)}
+                inspectedAt={inspectedAt}
+                failedAt={turn.endedAt ?? turn.startedAt}
+                checking={checkingAgents}
+                onCheckAgain={() => checkAgents({ env: true })}
+                onRetry={
+                  turn.prompt
+                    ? () => {
+                        void submit(turn.prompt);
+                      }
+                    : undefined
+                }
+              />
+            ) : undefined
+          }
+          renderFooter={() => {
+            const setupBanner =
+              inSetup && session && session.turns.length > 0 ? (
+                <div className="setup-banner" role="region" aria-label="Connect a coding agent">
+                  <div className="setup-banner-copy">
+                    <strong>Connect an agent to continue this conversation</strong>
+                    <span>
+                      {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
+                        ? 'Sign in to an installed agent in Terminal, then click Check again.'
+                        : 'Install a supported agent CLI in Terminal, then click Check again.'}
+                    </span>
+                  </div>
+                  <div className="setup-banner-actions">
+                    <button type="button" className="btn-primary" onClick={() => openSetup()}>
+                      Connect agent
+                    </button>
+                    {hasAgentsApi ? (
+                      <button
+                        type="button"
+                        className="btn-use"
+                        disabled={checkingAgents}
+                        onClick={() => void checkAgents({ env: true })}
+                      >
+                        {checkingAgents ? 'Checking…' : 'Check again'}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null;
+            const unsentBox = unsent ? (
               <div className="gc-notice gc-err">
                 {unsent.problem}
                 {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
               </div>
-            ) : null
-          }
+            ) : null;
+            if (!setupBanner && !unsentBox) return null;
+            return (
+              <>
+                {setupBanner}
+                {unsentBox}
+              </>
+            );
+          }}
           onSend={submit}
           onStop={() => {
             dropWaiting();
@@ -1107,56 +1422,71 @@ function App() {
             if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
             return reply.text ?? '';
           }}
-          hint={null}
-          composerTitle={`Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`}
+          hint={inSetup ? 'Connect an agent to start' : null}
+          composerTitle={
+            inSetup
+              ? 'Connect an agent to start'
+              : `Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
+          }
           emptyState={
             session ? (
-              <div className="gc-empty">
-                <div className="wolf" role="img" aria-label="genaicode wolf" />
-                <h1>
-                  {hasProject
-                    ? `What should ${session.agent} work on?`
-                    : isHome && conversation?.topic
-                      ? conversation.origin === 'unresolved'
-                        ? `Where should ${session.agent} work for ${conversation.topic.name}?`
-                        : `What should ${session.agent} work on in ${conversation.topic.name}?`
-                      : isHome && conversation?.origin === 'project'
-                        ? `What should ${session.agent} work on?`
-                        : `What should ${session.agent} look into?`}
-                </h1>
-                <div>
-                  {hasProject
-                    ? `It works in ${cwd}, with its own login, tools and permissions.`
-                    : isHome && conversation?.topic
-                      ? conversation.origin === 'unresolved'
-                        ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
-                        : "Working in this topic's workspace. Hover the header or type /where to see the directory."
-                      : isHome && conversation?.origin === 'project'
-                        ? 'Hover the header or type /where to see the directory.'
-                        : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+              inSetup ? (
+                <Onboarding
+                  agents={agentList}
+                  limits={allLimits}
+                  loading={loadingAgents}
+                  checking={checkingAgents}
+                  setup={true}
+                  onCheckAgain={() => checkAgents({ env: true })}
+                />
+              ) : (
+                <div className="gc-empty">
+                  <div className="wolf" role="img" aria-label="genaicode wolf" />
+                  <h1>
+                    {hasProject
+                      ? `What should ${session.agent} work on?`
+                      : isHome && conversation?.topic
+                        ? conversation.origin === 'unresolved'
+                          ? `Where should ${session.agent} work for ${conversation.topic.name}?`
+                          : `What should ${session.agent} work on in ${conversation.topic.name}?`
+                        : isHome && conversation?.origin === 'project'
+                          ? `What should ${session.agent} work on?`
+                          : `What should ${session.agent} look into?`}
+                  </h1>
+                  <div>
+                    {hasProject
+                      ? `It works in ${cwd}, with its own login, tools and permissions.`
+                      : isHome && conversation?.topic
+                        ? conversation.origin === 'unresolved'
+                          ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
+                          : "Working in this topic's workspace. Hover the header or type /where to see the directory."
+                        : isHome && conversation?.origin === 'project'
+                          ? 'Hover the header or type /where to see the directory.'
+                          : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+                  </div>
+                  {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
+                    <Home
+                      token={token}
+                      onTopic={(id) => {
+                        setTopic(id);
+                        setOwn(false);
+                        setPanel('sessions');
+                      }}
+                      onNewTopicChat={isHome ? startTopicChat : undefined}
+                    />
+                  ) : null}
+                  <div className="ideas">
+                    {(hasProject || (isHome && conversation && conversation.origin !== 'home')
+                      ? IDEAS
+                      : IDEAS_ANYWHERE
+                    ).map((idea) => (
+                      <button key={idea} onClick={() => void submit(idea)}>
+                        {idea}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
-                  <Home
-                    token={token}
-                    onTopic={(id) => {
-                      setTopic(id);
-                      setOwn(false);
-                      setPanel('sessions');
-                    }}
-                    onNewTopicChat={isHome ? startTopicChat : undefined}
-                  />
-                ) : null}
-                <div className="ideas">
-                  {(hasProject || (isHome && conversation && conversation.origin !== 'home')
-                    ? IDEAS
-                    : IDEAS_ANYWHERE
-                  ).map((idea) => (
-                    <button key={idea} onClick={() => void submit(idea)}>
-                      {idea}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              )
             ) : rejected ? (
               <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
             ) : (
@@ -1177,12 +1507,17 @@ function App() {
               setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
             }
             onArtifactSubmit={
-              connected ? (artifact, data) => void submit(artifactSubmission(artifact, data)) : undefined
+              connected && !inSetup ? (artifact, data) => void submit(artifactSubmission(artifact, data)) : undefined
             }
             onClose={() => setViewer(undefined)}
           />
         ) : null}
       </div>
+      {toast ? (
+        <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
+          {toast.text}
+        </div>
+      ) : null}
     </>
   );
 }

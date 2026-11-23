@@ -6,6 +6,7 @@ import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
+import { createAgentInspector, type AgentInspector } from '../agents/status.js';
 import { sendSession } from '../agents/sessions/send.js';
 import { knownLimits } from '../agents/sessions/limits.js';
 import { readTopics } from '../agents/sessions/topics.js';
@@ -33,16 +34,17 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
+import { formatTruncationReason } from './transcript.js';
 import {
   startWebUi,
   type HostApp,
+  type HostSaveRequest,
   type HostUpdate,
   type WebAsset,
   type WebSettings,
   type WebUi,
 } from './web/server.js';
-import { uiRelease, type UiRelease } from './web/release.js';
-import { startWelcome } from './web/welcome.js';
+import { uiRelease } from './web/release.js';
 
 export { NoAgentError };
 
@@ -199,29 +201,40 @@ async function openChannels(
 }
 
 export async function runChat(options: WebRunOptions): Promise<number> {
+  const liveEnv = options.env ?? process.env;
   let controller: ChatController | undefined;
+  const inspector = createAgentInspector({
+    agents: options.agents,
+    getEnv: () => liveEnv,
+    onUpdate: (inspections) => controller?.updateAgents(inspections),
+  });
   const localRoots = new Set<string>();
   const addRoot = (dir: string) => {
     localRoots.add(dir);
     options.onRoot?.(dir);
   };
-  const roots = makeRoots(options, () => controller, localRoots);
+  const chatOptions: WebRunOptions = { ...options, env: liveEnv };
+  const roots = makeRoots(chatOptions, () => controller, localRoots);
   const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
-  const web = webLink(options, () => controller!, roots, addRoot);
+  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, undefined, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
-    options,
+    chatOptions,
     () => controller,
     roots,
     () => cdnHosts,
   );
   try {
     controller = createChatController({
-      ...options,
+      ...chatOptions,
       onRoot: addRoot,
       web,
       artifactChannel,
       questionChannel,
       openProjectChannel,
+      onAuthFailure: () => {
+        inspector.invalidate();
+        void inspector.check({ refresh: true });
+      },
     });
   } catch (error) {
     await closeChannels();
@@ -240,89 +253,102 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   return 0;
 }
 
-/**
- * While no agent CLI is installed, `genaicode ui` serves a page that says which ones it can use
- * and how to get one. Resolves with the link the chat then takes over, or `null` when stopped first.
- */
-async function welcome(
-  options: WebRunOptions,
-  release: () => UiRelease,
-): Promise<{ port: number; token: string } | null | undefined> {
-  if (options.agent || detectAgents(options.agents, options.env).some(({ path }) => path)) return undefined;
-  const page = await startWelcome({
-    agents: options.agents,
-    env: options.env,
-    version: options.version,
-    release,
-    host: options.host,
-    port: options.port,
-    assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
-  });
-  options.stderr.write(
-    `genaicode ${options.version} · no agent CLI found on PATH\n` +
-      `Open ${page.url}\n(it says how to install one, and goes on to the chat once one is there; Ctrl-C stops the server)\n`,
-  );
-  if (options.open !== false) (options.openUrl ?? openBrowser)(page.url);
-  const watchEnd = options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY);
-  const found = await new Promise<boolean>((resolve) => {
-    if (options.signal?.aborted) return resolve(false);
-    const settle = (value: boolean) => {
-      options.signal?.removeEventListener('abort', stop);
-      if (watchEnd) {
-        options.stdin.off('end', stop);
-        // A stream left flowing would keep the process alive after a signal.
-        options.stdin.pause();
-      }
-      resolve(value);
-    };
-    const stop = () => settle(false);
-    options.signal?.addEventListener('abort', stop, { once: true });
-    if (watchEnd) {
-      // The host app's listener reads stdin from the start: its end may already be past.
-      if (options.stdin.readableEnded) return stop();
-      options.stdin.once('end', stop);
-      options.stdin.resume();
-    }
-    void page.found.then(() => settle(true));
-  });
-  await page.close();
-  return found ? { port: page.port, token: page.token } : null;
-}
-
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
+/** Short status toast from the host app (e.g. after a native Developer menu action copies or saves). */
+const TOAST_LINE = /^toast ([^\r\n\0]{1,160})$/;
 /** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
 const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;
 /** What the host app writes to stdin when settings change from its native menu. */
 const SETTINGS_IN_PREFIX = 'settings ';
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
+/** Prefixes printed on stderr when the page asks the host app to save a transcript via its native dialog. */
+export const SAVE_TRANSCRIPT_PREFIX = 'Save transcript ';
+export const SAVE_SESSION_TRANSCRIPT_PREFIX = 'Save session-transcript ';
+/** What the host app reads from stderr when Check again asks to re-read the login shell environment. */
+export const REFRESH_ENV_LINE = 'Refresh env';
 /** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
 export const REVEAL_PREFIX = 'Reveal ';
 /** What the host app reads from stderr when the page saves desktop settings. */
 export const SETTINGS_PREFIX = 'Settings ';
+/** Max buffered bytes for one partial stdin line from the host shell (a full login env JSON). */
+const HOST_LINE_MAX = 256 * 1024;
+/** Max wait for the desktop shell to reply with `env <json>` (just above its 5 s login-shell cap). */
+const ENV_REFRESH_TIMEOUT_MS = 6_000;
+
+interface ManagedHostApp extends HostApp {
+  close(): void;
+}
 
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
  * says `update-downloading <version>` on stdin while it downloads a newer version of itself,
- * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
- * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
- * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr. `open-session <id>`
- * brings a session from the menu bar directly into the chat, and the app listens for
- * `Reveal <json-path>` and `Settings <json>` lines on stderr.
+ * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself,
+ * `update-none` when a download failed, `toast <message>` after native actions, and
+ * `open-session <id>` when a waiting session is clicked in the menu bar; the page shows each and
+ * can ask stderr to relaunch, open a native Save dialog for a transcript, `Reveal <json-path>`, or
+ * persist `Settings <json>`.
+ *
+ * When started by the desktop shell (`GENAICODE_DESKTOP_SHELL=1`), clicking Check again prints
+ * `REFRESH_ENV_LINE` on stderr and the shell replies with `env <json>` containing the refreshed
+ * login shell environment, merged into `liveEnv` without restarting the server.
  */
 function hostApp(
   options: WebRunOptions,
+  liveEnv: NodeJS.ProcessEnv,
   handlers: { onOpenSession?: (id: string) => void; onSettings?: (hosts: readonly string[]) => void } = {},
-): HostApp {
+): ManagedHostApp {
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
-  options.stdin.on('data', (chunk: Buffer | string) => {
+  const toastListeners = new Set<(text: string) => void>();
+  let envRefresh: Promise<void> | undefined;
+  let resolveEnv: (() => void) | undefined;
+  let envTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const finishEnvRefresh = () => {
+    if (envTimer) {
+      clearTimeout(envTimer);
+      envTimer = undefined;
+    }
+    const done = resolveEnv;
+    resolveEnv = undefined;
+    envRefresh = undefined;
+    done?.();
+  };
+
+  const applyEnvLine = (payload: string) => {
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof value !== 'string' || key === 'GENAICODE_NO_AUTO_UPDATE') continue;
+          liveEnv[key] = value;
+        }
+      }
+    } catch {
+      // Ignore malformed env payloads and keep the current environment.
+    }
+    finishEnvRefresh();
+  };
+
+  const onData = (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
-    rest = (lines.pop() ?? '').slice(-4096);
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
+    rest = (lines.pop() ?? '').slice(-HOST_LINE_MAX);
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith('env ')) {
+        applyEnvLine(line.slice(4));
+        continue;
+      }
+      const toast = TOAST_LINE.exec(line);
+      if (toast) {
+        const text = toast[1]!.trim();
+        if (text) for (const listener of toastListeners) listener(text);
+        continue;
+      }
       const openMatch = OPEN_SESSION_LINE.exec(line);
       if (openMatch?.[1]) {
         handlers.onOpenSession?.(openMatch[1]);
@@ -353,7 +379,12 @@ function hostApp(
       update = next;
       for (const listener of listeners) listener();
     }
-  });
+  };
+  const onEnd = () => finishEnvRefresh();
+  options.stdin.on('data', onData);
+  options.stdin.once('end', onEnd);
+
+  const canRefreshEnv = liveEnv.GENAICODE_DESKTOP_SHELL === '1';
   return {
     update: () => update,
     subscribe(listener) {
@@ -361,12 +392,48 @@ function hostApp(
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    saveTranscript: (request: HostSaveRequest) => {
+      if (request.source && request.id) {
+        options.stderr.write(
+          `${SAVE_SESSION_TRANSCRIPT_PREFIX}${request.format} ${encodeURIComponent(request.source)} ${encodeURIComponent(request.id)}\n`,
+        );
+      } else {
+        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}\n`);
+      }
+    },
+    onToast(listener) {
+      toastListeners.add(listener);
+      return () => toastListeners.delete(listener);
+    },
     reveal: (path) => void options.stderr.write(`${REVEAL_PREFIX}${JSON.stringify(path)}\n`),
     saveSettings: (settings) => void options.stderr.write(`${SETTINGS_PREFIX}${JSON.stringify(settings)}\n`),
+    ...(canRefreshEnv
+      ? {
+          refreshEnv() {
+            if (envRefresh) return envRefresh;
+            envRefresh = new Promise<void>((resolve) => {
+              resolveEnv = resolve;
+              envTimer = setTimeout(finishEnvRefresh, ENV_REFRESH_TIMEOUT_MS);
+              envTimer.unref?.();
+              options.stderr.write(`${REFRESH_ENV_LINE}\n`);
+            });
+            return envRefresh;
+          },
+        }
+      : {}),
+    close() {
+      finishEnvRefresh();
+      options.stdin.off('data', onData);
+      options.stdin.off('end', onEnd);
+      listeners.clear();
+    },
   };
 }
 
 export async function runWeb(options: WebRunOptions): Promise<number> {
+  const liveEnv = options.env ?? process.env;
+  const terminal = !!(options.stdin.isTTY && options.stdout.isTTY);
+  const watchEnd = !terminal && options.exitWithStdin === true;
   let controller: ChatController | undefined;
   let pendingOpen: string | undefined;
   const openSession = (id: string) => {
@@ -381,24 +448,31 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     cdnHosts = next;
     for (const listener of settingsListeners) listener();
   };
-  // Before anything waits: what the app says while the welcome page shows is kept for the chat.
-  if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
-    options = { ...options, hostApp: hostApp(options, { onOpenSession: openSession, onSettings: setArtifactCdn }) };
-  const desktopVersion = options.hostApp && options.env?.GENAICODE_DESKTOP_VERSION;
-  if (desktopVersion) options = { ...options, version: desktopVersion };
-  const release = uiRelease(options.version, options.env ?? process.env, !!desktopVersion);
-  const welcomed = await welcome(options, release);
-  if (welcomed === null) return 0;
-  // The chat answers on the link the welcome page had, which the browser already shows.
-  if (welcomed) options = { ...options, ...welcomed, open: false };
+  const host = watchEnd
+    ? hostApp(options, liveEnv, { onOpenSession: openSession, onSettings: setArtifactCdn })
+    : undefined;
+  const desktopVersion = host && liveEnv.GENAICODE_DESKTOP_VERSION;
+  const webOptions: WebRunOptions = {
+    ...options,
+    env: liveEnv,
+    ...(desktopVersion ? { version: desktopVersion } : {}),
+    ...(host ? { hostApp: host } : {}),
+  };
+  const release = uiRelease(webOptions.version, liveEnv, !!desktopVersion);
+  const inspector = createAgentInspector({
+    agents: webOptions.agents,
+    getEnv: () => liveEnv,
+    refreshEnv: host?.refreshEnv,
+    onUpdate: (inspections) => controller?.updateAgents(inspections),
+  });
   const localRoots = new Set<string>();
   const addRoot = (dir: string) => {
     localRoots.add(dir);
-    options.onRoot?.(dir);
+    webOptions.onRoot?.(dir);
   };
-  const roots = makeRoots(options, () => controller, localRoots);
+  const roots = makeRoots(webOptions, () => controller, localRoots);
   const settings: WebSettings | undefined =
-    options.hostApp && options.artifacts !== false
+    webOptions.hostApp && webOptions.artifacts !== false
       ? {
           artifactCdn: () => cdnHosts,
           setArtifactCdn,
@@ -408,23 +482,29 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(options, () => controller!, roots, addRoot, settings, release);
+  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
-    options,
+    webOptions,
     () => controller,
     roots,
     () => cdnHosts,
   );
   try {
     controller = createChatController({
-      ...options,
+      ...webOptions,
       onRoot: addRoot,
       web,
       artifactChannel,
       questionChannel,
       openProjectChannel,
+      allowNoAgent: true,
+      onAuthFailure: () => {
+        inspector.invalidate();
+        void inspector.check({ refresh: true });
+      },
     });
   } catch (error) {
+    host?.close();
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
@@ -434,29 +514,56 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   try {
     url = await web.start();
   } catch (error) {
+    host?.close();
     controller.close();
     await closeChannels();
     throw error;
   }
-  // From a terminal, Enter brings the same session into it: the browser stays connected.
-  const terminal = !!(options.stdin.isTTY && options.stdout.isTTY);
+  // Never block page load on sign-in checks; kick off initial inspection in the background.
+  void inspector.check();
+  const inSetup = controller.get().setup === true;
   options.stderr.write(
-    `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n` +
+    (inSetup
+      ? `genaicode ${options.version} · no agent CLI found on PATH (setup mode)\n`
+      : `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n`) +
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
   const initialSession = pendingOpen ?? options.continueFrom;
   pendingOpen = undefined;
   const taken = !initialSession || (await controller.continueSession(initialSession));
-  if (options.firstPrompt && taken) controller.submit(options.firstPrompt);
+  let pendingFirstPrompt = options.firstPrompt && taken ? options.firstPrompt : undefined;
+  let offFirstPrompt: (() => void) | undefined;
+  if (pendingFirstPrompt) {
+    if (!controller.get().setup) {
+      const prompt = pendingFirstPrompt;
+      pendingFirstPrompt = undefined;
+      controller.submit(prompt);
+    } else {
+      // Wait for onboarding to finish (e.g. `genaicode embed --ui` started before an agent is installed).
+      offFirstPrompt = controller.subscribe((view) => {
+        if (view.setup || !pendingFirstPrompt) return;
+        const prompt = pendingFirstPrompt;
+        pendingFirstPrompt = undefined;
+        offFirstPrompt?.();
+        offFirstPrompt = undefined;
+        queueMicrotask(() => {
+          if (!options.signal?.aborted && !controller?.get().setup) controller?.submit(prompt);
+        });
+      });
+    }
+  }
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
-    const watchEnd = !terminal && options.exitWithStdin === true;
     const onAbort = () => {
       options.stdin.off('data', onData);
       options.stdin.off('end', onAbort);
       options.signal?.removeEventListener('abort', onAbort);
+      offFirstPrompt?.();
+      offFirstPrompt = undefined;
+      pendingFirstPrompt = undefined;
+      host?.close();
       if (terminal || watchEnd) options.stdin.pause();
       resolve('stop');
     };
@@ -475,7 +582,10 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       options.stdin.resume();
     }
   });
-  if (next === 'terminal') await runTerminal(controller, options);
+  if (next === 'terminal') await runTerminal(controller, webOptions);
+  offFirstPrompt?.();
+  pendingFirstPrompt = undefined;
+  host?.close();
   await web.close();
   controller.close();
   await closeChannels();
@@ -506,14 +616,16 @@ function webLink(
   addRoot: (dir: string) => void,
   settings?: WebSettings,
   release = uiRelease(options.version, options.env ?? process.env, false),
+  inspector?: AgentInspector,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
-  const senders = detectAgents(agents, options.env).flatMap(({ agent, path }) =>
-    path && agent.capabilities.resume && agent.sessions?.where === 'local'
-      ? [{ agent: agent.name, source: agent.sessions.name, sandboxes: agent.capabilities.permissions?.sandbox ?? [] }]
-      : [],
-  );
+  const currentSenders = () =>
+    detectAgents(agents, options.env).flatMap(({ agent, path }) =>
+      path && agent.capabilities.resume && agent.sessions?.where === 'local'
+        ? [{ agent: agent.name, source: agent.sessions.name, sandboxes: agent.capabilities.permissions?.sandbox ?? [] }]
+        : [],
+    );
   const start = () =>
     (running ??= startWebUi({
       controller: controller(),
@@ -530,6 +642,7 @@ function webLink(
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
+      ...(inspector ? { agents: (query) => inspector.check(query) } : {}),
       release,
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
@@ -581,7 +694,7 @@ function webLink(
           }
         }
         const sorted = topics.length ? { topics, topicOf } : {};
-        return { ...listing, sessions, readable, asks, senders, ...sorted };
+        return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
       },
       sendPrompt: async (source, id, prompt, sandbox, signal) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
@@ -611,6 +724,46 @@ function webLink(
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
+      sessionFile: async ({ agent, sessionId }) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const ownName = agents.find((candidate) => candidate.name === agent)?.sessions?.name;
+        const own = ownName ? sources.filter((source) => source.name === ownName) : [];
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        if (own.length) {
+          const direct = await findSession(own, sessionId, query).catch(() => undefined);
+          if (direct?.session.path) return direct.session.path;
+        }
+        const found = await findSession(sources, sessionId, query).catch(() => undefined);
+        return found?.session.path;
+      },
+      sessionTranscript: async (sourceName, id) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const store = sources.find((candidate) => candidate.name === sourceName);
+        if (!store) return undefined;
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        const found = await findSession([store], id, query);
+        if (!found) return undefined;
+        const readable = typeof store.read === 'function';
+        if (!readable) return { session: found.session, turns: [], readable: false };
+        const maxTurns = 200;
+        const reasons = new Set<'max-turns' | 'tail-bytes'>();
+        let turns = await store.read!(found.session, {
+          maxTurns: maxTurns + 1,
+          maxToolOutput: 8_000,
+          onTruncated: (reason) => reasons.add(reason),
+        });
+        if (turns.length > maxTurns) {
+          reasons.add('max-turns');
+          turns = turns.slice(-maxTurns).map((turn, index) => ({ ...turn, id: index + 1 }));
+        }
+        const truncatedReason = formatTruncationReason(reasons, maxTurns, 'exported');
+        return {
+          session: found.session,
+          turns,
+          readable: true,
+          ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
+        };
+      },
     }).catch((error: unknown) => {
       running = undefined;
       throw error;
