@@ -166,7 +166,7 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
 
     await composer.fill('Zmień README');
     await composer.press('Enter');
-    await page.getByText('Updated').waitFor();
+    await page.getByRole('log').getByText('Updated README.md in Knights.', { exact: true }).waitFor();
     expect(realpathSync(runs[1]!.cwd)).toBe(realpathSync(knights));
     expect(runs[1]!.servers).not.toContain('genaicode_project');
 
@@ -190,7 +190,7 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
 
     await composer.fill('pokaż notes.txt');
     await composer.press('Enter');
-    await page.getByText('Checked').waitFor();
+    await page.getByRole('log').getByText('Checked notes.txt in X.', { exact: true }).waitFor();
     expect(realpathSync(runs[3]!.cwd)).toBe(realpathSync(projectX));
     expect(runs[3]!.resume).toBeUndefined();
     expect(runs[3]!.prompt).toContain('w ~/src/x sprawdź notatki');
