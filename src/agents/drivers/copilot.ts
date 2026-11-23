@@ -93,14 +93,22 @@ function writeCopilotMcp(task: AgentTask, options: CopilotAgentOptions): Prepare
 export function copilotMcpConfig(servers: readonly McpServer[]): { mcpServers: Record<string, unknown> } {
   const mcpServers: Record<string, unknown> = {};
   for (const server of servers) {
+    const timeout = server.toolTimeoutSec ? { timeout: server.toolTimeoutSec * 1000 } : {};
     mcpServers[server.name] = isHttpServer(server)
-      ? { type: 'http', url: server.url, tools: ['*'], ...(server.headers ? { headers: server.headers } : {}) }
+      ? {
+          type: 'http',
+          url: server.url,
+          tools: ['*'],
+          ...(server.headers ? { headers: server.headers } : {}),
+          ...timeout,
+        }
       : {
           type: 'local',
           command: server.command,
           args: [...(server.args ?? [])],
           tools: ['*'],
           ...(server.env ? { env: server.env } : {}),
+          ...timeout,
         };
   }
   return { mcpServers };
@@ -139,11 +147,15 @@ export function copilotArgs(task: AgentTask, options: CopilotAgentOptions = {}, 
   if (!permissions.approval && (options.allowAllTools ?? true)) args.push('--allow-all-tools');
   args.push(...flags.args);
   // `--allow-tool` and `--deny-tool` take several values; the `=` form keeps each one to a single value.
+  // A `trusted` server (genaicode's own `ask_user`) is pre-allowed even when `allowMcpTools` is off.
+  const allowMcp = options.allowMcpTools ?? true;
   const allowed = [
-    ...(options.allowTools ?? []),
-    ...(mcpConfigPath && !(options.allowAllTools ?? true) && (options.allowMcpTools ?? true)
-      ? (task.mcpServers ?? []).map((server) => server.name)
-      : []),
+    ...new Set([
+      ...(options.allowTools ?? []),
+      ...(mcpConfigPath && !permissions.approval && !(options.allowAllTools ?? true)
+        ? (task.mcpServers ?? []).filter((server) => allowMcp || server.trusted).map((server) => server.name)
+        : []),
+    ]),
   ];
   for (const tool of allowed) args.push(`--allow-tool=${tool}`);
   for (const tool of options.denyTools ?? []) args.push(`--deny-tool=${tool}`);

@@ -8,6 +8,18 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `ask_user` and per-run MCP servers (`capabilities.mcp`) on Gemini CLI (`gemini()`, via a temporary `GEMINI_CLI_SYSTEM_SETTINGS_PATH` file) and Cursor CLI (`cursor()`, via a temporary `--plugin-dir`), plus `SessionState.canAsk` and `(no questions)` markers in the UI agent picker and `/agent` (#314)
+
+### Fixed
+
+- `ask_user` runs without a permission prompt on `museLive()` (auto-approving only `trusted` MCP server tools once via a shared trusted-tool matcher) and Copilot (`trusted` servers pre-allowed even with `allowMcpTools: false`, and `toolTimeoutSec` mapped to Copilot's `timeout` ms) (#314)
+
+### Internal
+
+- Added `scripts/ask-user-live.mjs` to live-verify `ask_user` across installed agents at 0 s and past 60 s (#314)
+
 ## 3.0.1 — 2026-11-23
 
 **Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.

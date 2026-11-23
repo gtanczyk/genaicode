@@ -1,7 +1,11 @@
 import { geminiSessions } from '../sessions/stores.js';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
-import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
+import { isHttpServer, type PreparedRun } from '../prepare.js';
+import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export type GeminiApprovalMode = 'default' | 'auto_edit' | 'yolo' | 'plan';
@@ -16,9 +20,15 @@ export interface GeminiAgentOptions {
    * Gemini falls back to approval mode `default`, which a headless run cannot answer.
    */
   trustWorkspace?: boolean;
+  /**
+   * With `task.mcpServers`: mark those servers trusted (`trust: true`) so headless runs can call
+   * their tools without prompting. Default true; `trusted` servers are always marked trusted.
+   */
+  allowMcpTools?: boolean;
 }
 
 const EDIT_TOOLS = new Set(['replace', 'write_file', 'edit']);
+const MAX_SETTINGS_BYTES = 1024 * 1024;
 
 /**
  * Gemini CLI flags for `permissions`. `deny` is approval mode `auto_edit` (edits run, other
@@ -58,15 +68,94 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
     command: options.command ?? 'gemini',
     capabilities: {
       usage: true,
+      mcp: true,
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => geminiArgs(task, options),
-    prepare: (task) => {
-      const { env } = geminiPermissionFlags(resolvePermissions(task.permissions));
-      return { args: geminiArgs(task, options), ...(env ? { env } : {}) };
-    },
+    prepare: (task) => prepareGemini(task, options),
     createParser: createGeminiParser,
   });
+}
+
+/**
+ * The `mcpServers` block for Gemini CLI's `settings.json`.
+ * Streamable HTTP servers use `httpUrl` (`url` is SSE in Gemini CLI); `timeout` is in ms.
+ */
+export function geminiMcpConfig(
+  servers: readonly McpServer[],
+  options: { allowMcpTools?: boolean } = {},
+): { mcpServers: Record<string, unknown> } {
+  const allowMcp = options.allowMcpTools ?? true;
+  const mcpServers: Record<string, unknown> = {};
+  for (const server of servers) {
+    const timeout = server.toolTimeoutSec ? { timeout: server.toolTimeoutSec * 1000 } : {};
+    const trust = allowMcp || server.trusted ? { trust: true } : {};
+    mcpServers[server.name] = isHttpServer(server)
+      ? {
+          httpUrl: server.url,
+          ...(server.headers ? { headers: server.headers } : {}),
+          ...timeout,
+          ...trust,
+        }
+      : {
+          command: server.command,
+          args: [...(server.args ?? [])],
+          ...(server.env ? { env: server.env } : {}),
+          ...timeout,
+          ...trust,
+        };
+  }
+  return { mcpServers };
+}
+
+function defaultGeminiSystemSettingsPath(env: NodeJS.ProcessEnv): string {
+  if (process.platform === 'darwin') return '/Library/Application Support/GeminiCli/settings.json';
+  if (process.platform === 'win32') return join(env.ProgramData || 'C:\\ProgramData', 'gemini-cli', 'settings.json');
+  return '/etc/gemini-cli/settings.json';
+}
+
+function readSettingsFile(file: string): Record<string, unknown> | undefined {
+  try {
+    const stat = statSync(file);
+    if (!stat.isFile() || stat.size > MAX_SETTINGS_BYTES) return undefined;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    return isObject(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Hand Gemini CLI the task's MCP servers via a private temp settings file pointed to by
+ * `GEMINI_CLI_SYSTEM_SETTINGS_PATH`. Gemini merges `mcpServers` with user and project settings
+ * without touching either; any existing system settings file is preserved in the temp copy,
+ * and header/env secrets stay out of argv.
+ */
+function prepareGemini(task: AgentTask, options: GeminiAgentOptions): PreparedRun {
+  const args = geminiArgs(task, options);
+  const { env: permEnv } = geminiPermissionFlags(resolvePermissions(task.permissions));
+  if (!task.mcpServers?.length) return { args, ...(permEnv ? { env: permEnv } : {}) };
+
+  const baseEnv = task.env ?? process.env;
+  const existingPath = baseEnv.GEMINI_CLI_SYSTEM_SETTINGS_PATH || defaultGeminiSystemSettingsPath(baseEnv);
+  const existing = readSettingsFile(existingPath);
+  const existingMcp = isObject(existing?.mcpServers) ? existing.mcpServers : {};
+  const config = geminiMcpConfig(task.mcpServers, { allowMcpTools: options.allowMcpTools });
+  const merged = { ...(existing ?? {}), mcpServers: { ...existingMcp, ...config.mcpServers } };
+
+  const dir = mkdtempSync(join(tmpdir(), 'genaicode-gemini-mcp-'));
+  try {
+    const file = join(dir, 'settings.json');
+    writeFileSync(file, JSON.stringify(merged), { mode: 0o600 });
+    return {
+      args,
+      env: { ...(permEnv ?? {}), GEMINI_CLI_SYSTEM_SETTINGS_PATH: file },
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): string[] {

@@ -340,9 +340,10 @@ export function claudeArgs(
   // Multi-value flags come first: a single-value flag must follow them before the prompt.
   if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
   if (mcpConfigPath && options.strictMcpConfig) args.push('--strict-mcp-config');
+  const allowMcp = options.allowMcpTools ?? true;
   const allowed = [
     ...(options.allowedTools ?? []),
-    ...(mcpConfigPath && (options.allowMcpTools ?? true) ? (task.mcpServers ?? []).map((s) => `mcp__${s.name}`) : []),
+    ...(mcpConfigPath ? (task.mcpServers ?? []).filter((s) => allowMcp || s.trusted).map((s) => `mcp__${s.name}`) : []),
   ];
   if (allowed.length) args.push('--allowedTools', allowed.join(','));
   if (options.disallowedTools?.length) args.push('--disallowedTools', options.disallowedTools.join(','));

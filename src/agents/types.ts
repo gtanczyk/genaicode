@@ -149,12 +149,14 @@ export type McpServer = (
 ) & {
   /**
    * How long the agent waits for one tool call, in seconds, where it can be told (Codex's
-   * `tool_timeout_sec`, default 60). For tools that wait for a person, like `ask_user`.
+   * `tool_timeout_sec`, Copilot's and Gemini's `timeout` in ms). For tools that wait for a
+   * person, like `ask_user`.
    */
   toolTimeoutSec?: number;
   /**
    * A server of genaicode's own whose tools only reach the person (`ask_user`): agents that ask
-   * before an MCP tool call run its tools without asking (Codex, Antigravity).
+   * before an MCP tool call run its tools without asking (Codex, Antigravity, Muse live, Copilot,
+   * Gemini).
    */
   trusted?: boolean;
 };
