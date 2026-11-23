@@ -24,6 +24,21 @@ export function packTaskStatus(task: PackTask, waiting: boolean): string {
   ];
 }
 
+/**
+ * A short name for a delegated task: the title the lead gave it, else the first sentence of its
+ * prompt without a leading "Task:" label, at most 80 characters.
+ */
+export function packTaskTitle(task: Pick<PackTask, 'title' | 'prompt'>): string {
+  if (task.title?.trim()) return task.title.trim();
+  const text = task.prompt
+    .replace(/^\s*(task|zadanie)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const first = /^(.+?[.!?])(\s|$)/.exec(text)?.[1] ?? text;
+  const sentence = first.charAt(0).toUpperCase() + first.slice(1);
+  return sentence.length > 80 ? `${sentence.slice(0, 79).trimEnd()}…` : sentence;
+}
+
 export function packMetrics(turn: SessionTurn): string {
   const pack = turn.pack!;
   const running = pack.tasks.filter((task) => task.status === 'running').length;
