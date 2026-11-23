@@ -22,6 +22,8 @@ export interface FileView {
   truncated?: boolean;
   /** Short-lived capability URL (`/files/<id>`) for raw streaming, attached by the HTTP server. */
   rawUrl?: string;
+  /** Resolved absolute path on disk, attached by `/api/file` so relative links stay anchored to the matched root. */
+  fullPath?: string;
 }
 
 /** Metadata for streaming a verified file from disk (`GET /api/file/raw` and `/files/<id>`). */

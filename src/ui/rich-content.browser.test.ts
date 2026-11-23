@@ -127,6 +127,7 @@ describe('rich content in genaicode ui (browser)', () => {
     mkdirSync(outside, { recursive: true });
 
     mkdirSync(join(home, 'docs'), { recursive: true });
+    mkdirSync(join(otherProject, 'docs'), { recursive: true });
     writeFileSync(join(home, 'code.ts'), 'line1\nline2\nline3\nline4\nline5\n');
     writeFileSync(join(home, 'docs', 'doc.md'), '# Heading\n\nSome **bold** markdown.\n\n![Chart](./chart.png)\n');
     writeFileSync(join(home, 'docs', 'chart.png'), TINY_PNG);
@@ -137,6 +138,10 @@ describe('rich content in genaicode ui (browser)', () => {
     writeFileSync(join(home, 'demo.html'), '<!doctype html><h1>Sandboxed HTML</h1>');
     writeFileSync(join(home, 'archive.bin'), Buffer.from([0, 1, 2, 3]));
     writeFileSync(join(otherProject, 'from-session.ts'), 'export const fromSession = 42;\n');
+    writeFileSync(join(otherProject, 'docs', 'report.md'), '# Secondary\n\n![Secondary chart](./chart.png)\n');
+    // Distinct byte size so we can assert the secondary root's chart.png is served instead of home/docs/chart.png.
+    const secondaryChart = Buffer.concat([TINY_PNG, Buffer.alloc(40)]);
+    writeFileSync(join(otherProject, 'docs', 'chart.png'), secondaryChart);
     writeFileSync(join(outside, 'secret-outside.txt'), 'not in roots');
 
     // Remote image server to spy on requests.
@@ -174,7 +179,7 @@ describe('rich content in genaicode ui (browser)', () => {
           type: 'message',
           text: [
             `Files: [code](./code.ts#L3-L4) [md](./docs/doc.md) [img](./shot.png) [audio](./sound.mp3) [video](./movie.webm) [pdf](./sheet.pdf) [html](./demo.html) [bin](./archive.bin)`,
-            `Other session: [from-session](${join(otherProject, 'from-session.ts')})`,
+            `Other session: [from-session](${join(otherProject, 'from-session.ts')}) [secondary-md](./docs/report.md)`,
             `Outside: [outside](${join(outside, 'secret-outside.txt')})`,
             `![Local shot](./shot.png)`,
             `![Remote tracker](${remoteImgUrl})`,
@@ -264,7 +269,7 @@ describe('rich content in genaicode ui (browser)', () => {
       expect(markedLines).toEqual(['3', '4']);
 
       // Markdown renders formatted HTML, resolves document-relative images not mentioned in chat, and toggles to Source.
-      await page.locator('.gc-file-link', { hasText: 'md' }).click();
+      await page.locator('.gc-file-link', { hasText: /^md$/ }).click();
       await panel.locator('.viewer-markdown h2', { hasText: 'Heading' }).waitFor();
       const docImg = panel.locator('.viewer-markdown img.gc-md-image[alt="Chart"]');
       await docImg.waitFor();
@@ -311,6 +316,15 @@ describe('rich content in genaicode ui (browser)', () => {
       await page.locator('.gc-file-link', { hasText: 'from-session' }).click();
       await panel.locator('.file-text').waitFor();
       expect(await panel.locator('.file-text').textContent()).toContain('fromSession = 42');
+
+      // Relative Markdown file in a secondary root keeps that root when resolving ./chart.png (even when home also has docs/chart.png).
+      await page.locator('.gc-file-link', { hasText: 'secondary-md' }).click();
+      await panel.locator('.viewer-markdown h2', { hasText: 'Secondary' }).waitFor();
+      const secImg = panel.locator('.viewer-markdown img.gc-md-image[alt="Secondary chart"]');
+      await secImg.waitFor();
+      await panel.locator('.viewer-markdown .gc-md-image-btn').click();
+      await panel.locator('.viewer-image-stage img').waitFor();
+      expect(await panel.locator('header small').textContent()).toContain(`${secondaryChart.length} B`);
 
       // Outside file shows path + Reveal button in desktop (--exit-with-stdin) mode, and Reveal prints protocol line!
       await page.locator('.gc-file-link', { hasText: 'outside' }).click();

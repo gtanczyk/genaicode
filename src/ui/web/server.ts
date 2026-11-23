@@ -480,7 +480,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, status, 'application/json', JSON.stringify({ error: found }));
       }
       const cap = options.files.capability(targetPath);
-      const payload = cap ? { ...found, rawUrl: `/files/${cap.id}` } : found;
+      const payload = cap ? { ...found, rawUrl: `/files/${cap.id}`, fullPath: cap.raw.realPath } : found;
       return send(res, 200, 'application/json', JSON.stringify(payload), { 'cache-control': 'no-store' });
     }
     if (req.method === 'GET' && url.pathname === '/api/file/raw') {

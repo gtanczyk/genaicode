@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { Artifact } from '../../agents/types.js';
 import { formatBytes } from '../../react/format.js';
 import {
@@ -50,6 +50,8 @@ const FILE_KIND_LABEL: Record<FileKind, string> = {
 const MIN_WIDTH = 320;
 const DEFAULT_WIDTH = 620;
 const WIDTH_STORAGE_KEY = 'genaicode-viewer-width';
+/** Renew the open file's `/files/<id>` capability before the server's 15-minute inactivity TTL. */
+const FILE_CAPABILITY_REFRESH_MS = 10 * 60_000;
 
 function isAbsoluteFilePath(value: string): boolean {
   return value.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(value);
@@ -132,6 +134,10 @@ export function ViewerPanel({
   const docImagesRef = useRef(docImages);
   docImagesRef.current = docImages;
   const retriedDocUrl = useRef(new Map<string, string>());
+  const fileFetchedAtRef = useRef(0);
+  const retriedRawUrlRef = useRef<string | undefined>(undefined);
+  const fileRef = useRef(file);
+  fileRef.current = file;
 
   const artifactGroup = target.kind === 'artifact' ? artifacts.find((g) => g.id === target.id) : undefined;
   const activeArtifact =
@@ -163,19 +169,25 @@ export function ViewerPanel({
     if (!filePath) {
       setFile(undefined);
       setProblem(undefined);
+      fileFetchedAtRef.current = 0;
+      retriedRawUrlRef.current = undefined;
       return;
     }
     const abort = new AbortController();
     setFile(undefined);
     setProblem(undefined);
+    fileFetchedAtRef.current = 0;
+    retriedRawUrlRef.current = undefined;
     fetch(`/api/file?path=${encodeURIComponent(filePath)}`, {
       headers: { 'x-genaicode-token': token },
       signal: abort.signal,
     })
       .then(async (res) => {
         const body = (await res.json()) as FileView & { error?: string };
-        if (res.ok) setFile(body);
-        else {
+        if (res.ok) {
+          fileFetchedAtRef.current = Date.now();
+          setFile(body);
+        } else {
           const code = body.error ?? 'error';
           setProblem({ code, message: PROBLEMS[code] ?? 'The file could not be read.' });
         }
@@ -186,12 +198,66 @@ export function ViewerPanel({
     return () => abort.abort();
   }, [filePath, token]);
 
-  // Resolve local images referenced inside an open Markdown file relative to that file's directory.
-  const markdownBasePath = filePath && isAbsoluteFilePath(filePath) ? filePath : (file?.path ?? filePath ?? '');
+  const refreshFileCapability = async (signal?: AbortSignal): Promise<string | undefined> => {
+    const current = fileRef.current;
+    const queryPath = current?.fullPath ?? filePath;
+    if (!queryPath || !token) return current?.rawUrl;
+    try {
+      const res = await fetch(`/api/file?path=${encodeURIComponent(queryPath)}`, {
+        headers: { 'x-genaicode-token': token },
+        signal,
+      });
+      if (!res.ok) return current?.rawUrl;
+      const body = (await res.json()) as FileView;
+      if (signal?.aborted) return body.rawUrl;
+      fileFetchedAtRef.current = Date.now();
+      if (body.rawUrl && body.rawUrl !== fileRef.current?.rawUrl) {
+        if (retriedRawUrlRef.current !== body.rawUrl) retriedRawUrlRef.current = undefined;
+        setFile((prev) => (prev ? { ...prev, ...body } : body));
+      }
+      return body.rawUrl;
+    } catch {
+      return current?.rawUrl;
+    }
+  };
+
+  // Proactively keep the open file's `/files/<id>` capability alive before the 15-minute server TTL.
+  const openRawUrl = file?.rawUrl;
+  useEffect(() => {
+    if (!filePath || !openRawUrl || !token) return;
+    const abort = new AbortController();
+    const timer = window.setInterval(() => void refreshFileCapability(abort.signal), FILE_CAPABILITY_REFRESH_MS);
+    const onVisible = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        Date.now() - fileFetchedAtRef.current >= FILE_CAPABILITY_REFRESH_MS
+      ) {
+        void refreshFileCapability(abort.signal);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      abort.abort();
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [filePath, openRawUrl, token]);
+
+  // Switching an HTML or Markdown file from Source back to Preview also renews a stale capability.
+  useEffect(() => {
+    if (showSource || !file?.rawUrl) return;
+    if (Date.now() - fileFetchedAtRef.current >= FILE_CAPABILITY_REFRESH_MS) {
+      void refreshFileCapability();
+    }
+  }, [showSource, file?.rawUrl]);
+
+  // Resolve local images referenced inside an open Markdown file relative to the matched file's real directory.
+  const markdownBasePath =
+    file?.fullPath ?? (filePath && isAbsoluteFilePath(filePath) ? filePath : (file?.path ?? filePath ?? ''));
   useEffect(() => {
     setDocImages({});
     retriedDocUrl.current.clear();
-  }, [filePath, file?.path]);
+  }, [filePath, file?.fullPath, file?.path]);
 
   useEffect(() => {
     if (!file || file.kind !== 'markdown' || !file.text || !token) return;
@@ -512,6 +578,24 @@ export function ViewerPanel({
     </>
   );
 
+  const handleRawAction = (mode: 'tab' | 'download') => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!rawUrl || Date.now() - fileFetchedAtRef.current < FILE_CAPABILITY_REFRESH_MS) return;
+    event.preventDefault();
+    void refreshFileCapability().then((fresh) => {
+      const url = fresh ?? rawUrl;
+      if (mode === 'tab') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = withDownloadParam(url);
+        anchor.download = '';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+    });
+  };
+
   return (
     <aside
       ref={panelRef}
@@ -555,17 +639,17 @@ export function ViewerPanel({
           {fullSize ? 'Restore' : 'Full size'}
         </button>
         {canOpenTab ? (
-          <a className="chip" href={rawUrl} target="_blank" rel="noopener noreferrer">
+          <a className="chip" href={rawUrl} target="_blank" rel="noopener noreferrer" onClick={handleRawAction('tab')}>
             {file?.kind === 'pdf' && hasNoInlinePdfViewer() ? 'Open externally' : 'New tab'}
           </a>
         ) : null}
         {dlUrl ? (
-          <a className="chip" href={dlUrl} download>
+          <a className="chip" href={dlUrl} download onClick={handleRawAction('download')}>
             Download
           </a>
         ) : null}
         {canReveal && onReveal && problem?.code !== 'secret' && problem?.code !== 'missing' ? (
-          <button type="button" className="chip" onClick={() => onReveal(target.path)}>
+          <button type="button" className="chip" onClick={() => onReveal(file?.fullPath ?? target.path)}>
             {revealLabel}
           </button>
         ) : null}
@@ -617,6 +701,11 @@ export function ViewerPanel({
               src={rawUrl}
               alt={file.path}
               onClick={() => setActualSize((v) => !v)}
+              onError={() => {
+                if (retriedRawUrlRef.current === rawUrl) return;
+                retriedRawUrlRef.current = rawUrl;
+                void refreshFileCapability();
+              }}
               onLoad={(event) =>
                 setDims({
                   width: event.currentTarget.naturalWidth,
@@ -645,16 +734,22 @@ export function ViewerPanel({
             <div className="viewer-stage viewer-fallback">
               <p>PDF preview is not built into this webview.</p>
               <div className="viewer-actions">
-                <a className="chip primary" href={rawUrl} target="_blank" rel="noopener noreferrer">
+                <a
+                  className="chip primary"
+                  href={rawUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={handleRawAction('tab')}
+                >
                   Open externally
                 </a>
                 {dlUrl ? (
-                  <a className="chip" href={dlUrl} download>
+                  <a className="chip" href={dlUrl} download onClick={handleRawAction('download')}>
                     Download
                   </a>
                 ) : null}
                 {canReveal && onReveal ? (
-                  <button type="button" className="chip" onClick={() => onReveal(target.path)}>
+                  <button type="button" className="chip" onClick={() => onReveal(file.fullPath ?? target.path)}>
                     {revealLabel}
                   </button>
                 ) : null}
@@ -686,12 +781,12 @@ export function ViewerPanel({
             </p>
             <div className="viewer-actions">
               {dlUrl ? (
-                <a className="chip primary" href={dlUrl} download>
+                <a className="chip primary" href={dlUrl} download onClick={handleRawAction('download')}>
                   Download
                 </a>
               ) : null}
               {canReveal && onReveal ? (
-                <button type="button" className="chip" onClick={() => onReveal(target.path)}>
+                <button type="button" className="chip" onClick={() => onReveal(file.fullPath ?? target.path)}>
                   {revealLabel}
                 </button>
               ) : null}
