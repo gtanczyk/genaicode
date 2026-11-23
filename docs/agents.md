@@ -352,11 +352,13 @@ browser's Sessions view has the same as a "N wait for you" button; in code,
 
 Not every waiting session asks for something: most just ended. `SessionInfo.ending` says what the
 end of the agent's last message asks, read from its shape by `replyEnding(lastReply)`: `question`
-(it ends on a question), `command` (it ends on a shell code block for you to run), `offer` ("I can
-also...", "let me know") or `unreported` (it says it could not report back to the thread that sent
-it). Those come right after the approvals in `--waiting`, marked `●`, and `sessions_list` says
-`[ends with: question]`. It is a guess from the last 200 characters: a request put as a plain
-statement is not seen.
+(it ends on a question), `request` (a request put as a statement: "Confirm…", "Your call
+whether…", "Daj znać, czy mam…", "Musisz jeszcze…"), `command` (it ends on a shell code block for
+you to run), `offer` ("I can also...", "let me know") or `unreported` (it says it could not report
+back to the thread that sent it). `attentionOf(session)` turns that into `now` (an approval, or a
+question, request or command from the last 3 days) or `stalled` (an offer, an unsent report, or
+anything older). `sessions_list` says `[ends with: question]`. It is a guess from the last 200
+characters: a request in words it does not know is not seen.
 
 Sessions nobody typed into are left out of every listing: scheduled tasks and notifications in
 Claude Code (every prompt has `origin.kind` or `turnOrigin` other than `human`, or the session

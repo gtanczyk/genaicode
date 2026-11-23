@@ -24,7 +24,7 @@ pub struct Waiting {
     pub last_reply: Option<String>,
     pub waiting_for: Option<String>,
     pub waiting_tool: Option<String>,
-    /// What the end of its last message asks: `question`, `command`, `offer`, `unreported`.
+    /// What the end of its last message asks: `question`, `request`, `command`, `offer`, `unreported`.
     pub ending: Option<String>,
     /// The name of the topic it belongs to (`genaicode topics`), when it has one.
     pub topic: Option<String>,
@@ -179,6 +179,7 @@ fn one_line(text: &str, most: usize) -> String {
 fn ending_says(ending: &str) -> Option<&'static str> {
     match ending {
         "question" => Some("asks"),
+        "request" => Some("asks you"),
         "command" => Some("wants you to run"),
         "offer" => Some("offers"),
         "unreported" => Some("could not report back"),
