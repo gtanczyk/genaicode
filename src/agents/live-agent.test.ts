@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { startQuestionChannel } from './ask-user.js';
 import { codexLive } from './drivers/codex-live.js';
 import { museLive } from './drivers/muse-live.js';
 import { decideApproval, questionAnswers, reportReply, uuidv7 } from './live-agent.js';
@@ -447,6 +448,23 @@ describe('codexLive', () => {
       's3cret-token-value',
     );
     expect((await run.result).text).toBe('decision:{"answers":{"tok":{"answers":["s3cret-token-value"]}}}');
+  });
+
+  it('routes native requestUserInput to a directly bound startQuestionChannel handler without task.onQuestion', async () => {
+    const channel = await startQuestionChannel({ name: 'choices' });
+    channel.bind(() => ({ tok: ['bound-answer'] }));
+    try {
+      const run = codexLive({ command: codexBin }).run({
+        prompt: 'ask',
+        cwd: dir,
+        mode: 'plan',
+        env: env('question-secret'),
+        mcpServers: [channel.mcpServer],
+      });
+      expect((await run.result).text).toBe('decision:{"answers":{"tok":{"answers":["bound-answer"]}}}');
+    } finally {
+      await channel.close();
+    }
   });
 });
 

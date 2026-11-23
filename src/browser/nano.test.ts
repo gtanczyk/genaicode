@@ -558,4 +558,12 @@ describe('nano', () => {
     expect(result.failure).toEqual({ kind: 'budget' });
     expect(run).not.toHaveBeenCalled();
   });
+
+  it('refuses Plan mode before touching the language model', async () => {
+    const model = fakeLanguageModel(['Hello.']);
+    const agent = nano({ languageModel: model.factory });
+    const result = await agent.run({ prompt: 'plan it', cwd: '', mode: 'plan' }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'nano does not support Plan mode in this driver.' });
+    expect(model.calls).toHaveLength(0);
+  });
 });

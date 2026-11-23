@@ -110,22 +110,52 @@ function isModeDisabled(
   return (from(override, overridePerms) ?? from(user, userPerms)) === 'disable';
 }
 
-function hasDefaultModeInSettings(
+function defaultModeInSettings(
   user: Record<string, unknown> | undefined,
   override: Record<string, unknown> | undefined,
-): boolean {
+): string | undefined {
   const userPerms = user && isObject(user.permissions) ? user.permissions : undefined;
   const overridePerms = override && isObject(override.permissions) ? override.permissions : undefined;
   const mode =
     stringField(overridePerms, 'defaultMode')?.trim() || stringField(userPerms, 'defaultMode')?.trim() || undefined;
-  if (!mode) return false;
-  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return false;
+  if (!mode) return undefined;
+  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return undefined;
   if (
     mode === 'bypassPermissions' &&
     isModeDisabled(user, userPerms, override, overridePerms, 'disableBypassPermissionsMode')
   )
-    return false;
-  return true;
+    return undefined;
+  return mode;
+}
+
+function hasDefaultModeInSettings(
+  user: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+): boolean {
+  return defaultModeInSettings(user, override) !== undefined;
+}
+
+function stripClaudeModeFlags(extraArgs: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const arg = extraArgs[i]!;
+    if (arg === '--') {
+      kept.push(...extraArgs.slice(i));
+      break;
+    }
+    if (arg === '--permission-mode') {
+      i++;
+    } else if (
+      arg.startsWith('--permission-mode=') ||
+      arg === '--dangerously-skip-permissions' ||
+      arg === '--allow-dangerously-skip-permissions'
+    ) {
+      continue;
+    } else {
+      kept.push(arg);
+    }
+  }
+  return kept;
 }
 
 /**
@@ -260,10 +290,13 @@ async function prepareClaude(
   const asks = permissions.approval ? permissions.approval !== 'deny' : !!task.onApproval;
   const approvals = asks ? await claudeApprovals(task, context) : undefined;
   const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
-  const inheritMode =
-    !owned &&
-    options.permissionMode === undefined &&
-    hasClaudeDefaultMode(task.env ?? process.env, options.settings, task.extraArgs);
+  const userSettings =
+    !owned && options.permissionMode === undefined && readsUserSettings(task.extraArgs)
+      ? readClaudeUserSettings(task.env ?? process.env)
+      : undefined;
+  const settingsDefaultMode =
+    !owned && options.permissionMode === undefined ? defaultModeInSettings(userSettings, options.settings) : undefined;
+  const inheritMode = settingsDefaultMode !== undefined && !(task.mode === 'default' && settingsDefaultMode === 'plan');
   if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt, inheritMode) };
   let dir: string | undefined;
   try {
@@ -358,11 +391,15 @@ export function claudeArgs(
     throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   args.push('--output-format', 'stream-json');
   if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
-  const inheritMode = inheritPermissionMode ?? hasDefaultModeInSettings(undefined, options.settings);
+  const settingsMode = defaultModeInSettings(undefined, options.settings);
+  const inheritMode =
+    inheritPermissionMode ?? (settingsMode !== undefined && !(task.mode === 'default' && settingsMode === 'plan'));
+  const configuredMode =
+    task.mode === 'default' && options.permissionMode === 'plan' ? 'acceptEdits' : options.permissionMode;
   const modeArgs = owned
     ? claudePermissionFlags(permissions).args
-    : options.permissionMode !== undefined
-      ? ['--permission-mode', options.permissionMode]
+    : configuredMode !== undefined
+      ? ['--permission-mode', configuredMode]
       : inheritMode
         ? []
         : ['--permission-mode', 'acceptEdits'];
@@ -384,7 +421,7 @@ export function claudeArgs(
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
   if (task.budget?.maxCostUsd !== undefined) args.push('--max-budget-usd', String(task.budget.maxCostUsd));
   if (task.resume) args.push('--resume', task.resume);
-  if (task.extraArgs) args.push(...task.extraArgs);
+  if (task.extraArgs) args.push(...(task.mode !== undefined ? stripClaudeModeFlags(task.extraArgs) : task.extraArgs));
   return stdinPrompt ? args : [...args, ...positionalPrompt(task.prompt)];
 }
 

@@ -252,6 +252,21 @@ describe('withFallback', () => {
     expect(result).toMatchObject({ status: 'completed', ok: true, text: 'planned' });
     expect(noPlan.tasks).toHaveLength(0);
     expect(backup.tasks[0]?.mode).toBe('plan');
+
+    // Inherited Plan mode from a resumed thread's session event also skips non-plan backups and retries in Plan mode.
+    const resumed = fake('codex', [out('quota')], [{ type: 'session', sessionId: 'th-plan', mode: 'plan' }]);
+    resumed.agent.capabilities.plan = true;
+    const noPlan2 = fake('opencode');
+    const backup2 = fake('claude', [{ text: 'planned-backup' }]);
+    backup2.agent.capabilities.plan = true;
+    const inherited = await withFallback([resumed.agent, noPlan2.agent, backup2.agent]).run({
+      prompt: 'continue plan',
+      cwd: dir,
+      resume: 'th-plan',
+    }).result;
+    expect(inherited).toMatchObject({ status: 'completed', ok: true, text: 'planned-backup' });
+    expect(noPlan2.tasks).toHaveLength(0);
+    expect(backup2.tasks[0]?.mode).toBe('plan');
   });
 });
 

@@ -11,15 +11,31 @@ export const QUESTION_SERVER_NAME = 'genaicode_ask';
 
 // Shared across bundles in the same process (CLI and bundled UI).
 const QUESTION_CHANNEL = Symbol.for('genaicode.questionChannel');
+const QUESTION_CHANNEL_HANDLER = Symbol.for('genaicode.questionChannel.handler');
 
 /** Mark an MCP server as a session-injected `ask_user` fallback, independent of its name. */
-export function markQuestionChannelServer<T extends McpServer>(server: T): T {
-  return Object.assign({ ...server }, { [QUESTION_CHANNEL]: true as const });
+export function markQuestionChannelServer<T extends McpServer>(
+  server: T,
+  handler?: () => QuestionHandler | undefined,
+): T {
+  const existing = (server as Record<symbol, unknown>)[QUESTION_CHANNEL_HANDLER];
+  const getter = handler ?? (typeof existing === 'function' ? existing : undefined);
+  return Object.assign(
+    { ...server },
+    { [QUESTION_CHANNEL]: true as const },
+    getter ? { [QUESTION_CHANNEL_HANDLER]: getter } : {},
+  );
 }
 
 /** Whether `server` is a question-channel MCP server (`startQuestionChannel()` or session `questions`). */
 export function isQuestionChannelServer(server: McpServer): boolean {
   return Boolean((server as Record<symbol, unknown>)[QUESTION_CHANNEL]);
+}
+
+/** Live getter for the handler bound on a `startQuestionChannel()` server, when present. */
+export function questionChannelHandler(server: McpServer): (() => QuestionHandler | undefined) | undefined {
+  const getter = (server as Record<symbol, unknown>)[QUESTION_CHANNEL_HANDLER];
+  return typeof getter === 'function' ? (getter as () => QuestionHandler | undefined) : undefined;
 }
 
 const MAX_QUESTIONS = 4;
@@ -158,7 +174,7 @@ export async function startQuestionChannel(options: { name?: string } = {}): Pro
   return {
     // The call waits for a person: agents that can be told so wait up to a day (Codex: 60 s by default).
     // Its tool only asks the person: agents need no permission prompt in front of the question.
-    mcpServer: markQuestionChannelServer({ ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true }),
+    mcpServer: markQuestionChannelServer({ ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true }, () => handler),
     bind(next) {
       handler = next;
     },

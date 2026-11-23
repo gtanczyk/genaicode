@@ -433,6 +433,26 @@ describe('taking a session over', () => {
     await restored.session.idle();
     expect(codexPlanner.tasks[0]).toMatchObject({ resume: planId, mode: 'plan' });
     restored.close();
+
+    // A large (>512 KiB) Codex rollout whose first turn was Plan and whose later turn switched to default
+    // before >256 KiB of tool output reports 'default', never stale 'plan' from head.
+    const bigId = 'bbbb2222-0000-4000-8000-000000000002';
+    const pad = 'x'.repeat(300 * 1024);
+    writeFileSync(
+      join(dayDir, `rollout-2026-11-23T13-00-00-${bigId}.jsonl`),
+      [
+        JSON.stringify({ type: 'session_meta', payload: { id: bigId, cwd: work } }),
+        JSON.stringify({ type: 'turn_context', payload: { cwd: work, collaboration_mode: { mode: 'plan' } } }),
+        JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'Design auth' } }),
+        JSON.stringify({ type: 'response_item', payload: { type: 'function_call_output', output: pad } }),
+        JSON.stringify({ type: 'turn_context', payload: { cwd: work, collaboration_mode: { mode: 'default' } } }),
+        JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'Build auth' } }),
+        JSON.stringify({ type: 'response_item', payload: { type: 'function_call_output', output: pad } }),
+        JSON.stringify({ type: 'event_msg', payload: { type: 'agent_message', message: 'Built.' } }),
+      ].join('\n') + '\n',
+    );
+    const foundBig = await codexSessions({ dir: codexDir, via: 'files' }).find!(bigId);
+    expect(foundBig.find((s) => s.id === bigId)?.mode).toBe('default');
   });
 
   it('gives `run --from` the recap ahead of the prompt', async () => {

@@ -20,14 +20,28 @@ describe('gemini driver', () => {
       'gemini-x',
       '--prompt=-go',
     ]);
-    expect(geminiArgs({ prompt: 'plan it', cwd: '.', mode: 'plan' })).toEqual([
+    expect(
+      geminiArgs({
+        prompt: 'plan it',
+        cwd: '.',
+        mode: 'plan',
+        extraArgs: ['--approval-mode', 'yolo', '-y', '--debug'],
+      }),
+    ).toEqual([
       '--output-format',
       'stream-json',
       '--approval-mode',
       'plan',
       '--skip-trust',
+      '--debug',
       '--prompt=plan it',
     ]);
+    expect(
+      geminiArgs(
+        { prompt: 'build it', cwd: '.', mode: 'default', extraArgs: ['--approval-mode=plan'] },
+        { approvalMode: 'plan' },
+      ),
+    ).toEqual(['--output-format', 'stream-json', '--approval-mode', 'auto_edit', '--skip-trust', '--prompt=build it']);
   });
 
   it('decodes stream-json', () => {

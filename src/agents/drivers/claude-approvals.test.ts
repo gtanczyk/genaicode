@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -465,12 +465,22 @@ describe('claude() with onApproval', () => {
   });
 
   it('leaves no temp MCP config on disk when mode or option validation fails', async () => {
-    const before = new Set(readdirSync(tmpdir()).filter((entry) => entry.startsWith('genaicode-claude-mcp-')));
+    const marker = `cleanup-token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const hasLeakedConfig = () =>
+      readdirSync(tmpdir())
+        .filter((entry) => entry.startsWith('genaicode-claude-mcp-'))
+        .some((entry) => {
+          try {
+            return readFileSync(join(tmpdir(), entry, 'mcp.json'), 'utf8').includes(marker);
+          } catch {
+            return false;
+          }
+        });
     const badMode = await claude({ command: bin }).run({
       prompt: 'go',
       cwd: dir,
       mode: 'bogus' as 'plan',
-      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: 'Bearer secret' } }],
+      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: `Bearer ${marker}` } }],
     }).result;
     expect(badMode.status).toBe('failed');
     expect(badMode.error).toMatch(/Invalid mode/);
@@ -480,15 +490,12 @@ describe('claude() with onApproval', () => {
       cwd: dir,
       permissions: { approval: 'ask' },
       onApproval: () => 'approve',
-      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: 'Bearer secret' } }],
+      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: `Bearer ${marker}` } }],
     }).result;
     expect(conflict.status).toBe('failed');
     expect(conflict.error).toMatch(/permissionMode/);
 
-    const after = readdirSync(tmpdir()).filter(
-      (entry) => entry.startsWith('genaicode-claude-mcp-') && !before.has(entry),
-    );
-    expect(after).toEqual([]);
+    expect(hasLeakedConfig()).toBe(false);
   });
 });
 

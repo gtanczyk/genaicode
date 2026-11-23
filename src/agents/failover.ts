@@ -1,6 +1,15 @@
 import { approximateSize, EventQueue } from './event-queue.js';
 import { addUsage, tokenCount } from './usage.js';
-import type { AgentBudget, AgentEvent, AgentFailure, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
+import type {
+  AgentBudget,
+  AgentEvent,
+  AgentFailure,
+  AgentMode,
+  AgentResult,
+  AgentRun,
+  AgentTask,
+  CodingAgent,
+} from './types.js';
 
 /** Failures another agent can get past: the agent is out, not the task. `budget` is the user's cap. */
 const FAILOVER_KINDS: ReadonlySet<AgentFailure['kind']> = new Set(['quota', 'auth', 'unavailable', 'crash']);
@@ -65,10 +74,16 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
   // The agent whose session the last result named: a `resume` id is only its.
   let sessionOwner: CodingAgent | undefined;
   /** `task` as `agent` can take it: vendor ids only for the agent they belong to. */
-  const taskFor = (agent: CodingAgent, task: AgentTask, budget: AgentBudget | undefined): AgentTask => {
+  const taskFor = (
+    agent: CodingAgent,
+    task: AgentTask,
+    budget: AgentBudget | undefined,
+    mode: AgentMode | undefined,
+  ): AgentTask => {
     const own = agent === (sessionOwner ?? first);
     return {
       ...task,
+      ...(mode !== undefined ? { mode } : {}),
       ...(own ? {} : { resume: undefined }),
       ...(agent === first ? {} : { model: undefined }),
       ...(agent !== first && task.effort !== undefined && !agent.capabilities.effort?.includes(task.effort)
@@ -138,12 +153,13 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           events.close();
           return failed;
         }
+        let effectiveMode: AgentMode | undefined = task.mode;
         let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;
-        for (let i = 0; ; i += 1) {
+        for (let i = 0; ; ) {
           const agent = order[i]!;
-          const run = agent.run(taskFor(agent, task, budget));
+          const run = agent.run(taskFor(agent, task, budget, effectiveMode));
           current = run;
           if (stopped) run.abort();
           let done: AgentResult | undefined;
@@ -153,6 +169,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           for await (const event of run) {
             if (event.type === 'done') done = event.result;
             else {
+              if (event.type === 'session' && event.mode === 'plan') effectiveMode = 'plan';
               events.push(
                 event.type === 'usage' && (priorUsage || priorCost !== undefined)
                   ? {
@@ -177,7 +194,11 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
             ...(costUsd !== undefined ? { costUsd } : {}),
           };
           const left = leftOf(task.budget, usage, costUsd);
-          const to = order[i + 1];
+          let nextIndex = i + 1;
+          while (nextIndex < order.length && effectiveMode === 'plan' && !order[nextIndex]!.capabilities.plan) {
+            nextIndex += 1;
+          }
+          const to = order[nextIndex];
           const isOut = shouldFailOver(ended);
           if (isOut) out.add(agent);
           else if (ended.ok) {
@@ -192,6 +213,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           }
           events.push({ type: 'failover', from: agent.name, to: to.name, failure: ended.failure! });
           if (left) budget = left;
+          i = nextIndex;
         }
       })();
       // Kept for the caller: a driver that throws still ends the run with a result.

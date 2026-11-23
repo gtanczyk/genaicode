@@ -314,8 +314,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningEffort: string | undefined;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
+  /** Whether the caller changed `mode` since the running turn started. */
+  let modeChangedDuringTurn = false;
   /** Whether the running turn's driver itself accepts steering. */
   let runCanSteer = false;
+  /** Prompts waiting for the next turn, paired with the mode selected when each was sent. */
+  let queue: Array<{ text: string; mode: AgentMode | undefined }> = [];
+  const enqueue = (text: string, mode: AgentMode | undefined) => {
+    queue = [...queue, { text, mode }];
+    set({ queued: queue.map((item) => item.text) });
+  };
   const handoffOn = options.handoff !== false;
   const handoffDir = (typeof options.handoff === 'object' && options.handoff.dir) || HANDOFF_DIR;
   const readArtifact = (id: string) => options.artifacts?.store.read(id);
@@ -431,7 +439,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
-            if (state.mode === undefined) patch.mode = event.mode;
+            if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
             else if (state.status === 'running') patch.canSteer = runCanSteer && state.mode === runningMode;
           }
           set(patch);
@@ -653,9 +661,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const failOver = (turnId: number, result: AgentResult, turnMode: AgentMode | undefined): boolean => {
     const failed = state.turns.find((turn) => turn.id === turnId);
     if (closed || !failed || failed.agent !== agent.name || !shouldFailOver(result)) return false;
-    // Do not retry a Plan turn if the user already changed mode while it was running.
-    if (turnMode === 'plan' && state.mode !== 'plan') return false;
-    const needsPlan = turnMode === 'plan' || state.mode === 'plan';
+    const needsPlan = turnMode === 'plan';
     tried.add(agent.name);
     const next = fallback.find(
       (candidate) =>
@@ -708,7 +714,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     return true;
   };
 
-  const startTurn = (prompt: string, retry = false) => {
+  const startTurn = (prompt: string, retry = false, pinnedMode?: { mode: AgentMode | undefined }) => {
     holdNotes = false;
     if (!retry) {
       tried = new Set();
@@ -725,10 +731,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     nextIsNote = false;
     const turnAgent = agent;
     const turnEffort = state.effort;
-    const turnMode = state.mode;
+    const turnMode = pinnedMode ? pinnedMode.mode : state.mode;
     runningEffort = turnEffort;
     runningAgent = turnAgent;
     runningMode = turnMode;
+    modeChangedDuringTurn = false;
     runCanSteer = false;
     const own = () => agent === turnAgent;
     let preamble = '';
@@ -787,17 +794,21 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     try {
       if (left?.spent) throw new Error(left.spent);
       const budget = tighterBudget(left?.budget, options.task?.budget);
-      const extraServers = turnAgent.capabilities.mcp
-        ? [
-            ...(options.artifacts?.mcpServer ? [options.artifacts.mcpServer] : []),
-            ...(options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote
-              ? [markQuestionChannelServer(options.questions.mcpServer)]
-              : []),
-          ]
-        : [];
+      const baseServers = options.task?.mcpServers ?? [];
+      const extraServers: McpServer[] = [];
+      if (turnAgent.capabilities.mcp) {
+        if (options.artifacts?.mcpServer) extraServers.push(options.artifacts.mcpServer);
+        if (options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote) {
+          const taken = new Set([...baseServers, ...extraServers].map((server) => server.name));
+          const baseName = options.questions.mcpServer.name;
+          let name = baseName;
+          for (let n = 2; taken.has(name); n++) name = `${baseName}_${n}`;
+          extraServers.push(markQuestionChannelServer({ ...options.questions.mcpServer, name }));
+        }
+      }
       current = turnAgent.run({
         ...options.task,
-        ...(extraServers.length ? { mcpServers: [...(options.task?.mcpServers ?? []), ...extraServers] } : {}),
+        ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
         ...(budget ? { budget } : {}),
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
@@ -880,13 +891,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }
       }
       if (failOver(turnId, result, effectiveMode)) {
-        // The same prompt again, on the next agent; a note stays a note.
+        // The same prompt again, on the next agent, keeping the mode it ran in; a note stays a note.
         if (finished && noteTurnWas) nextIsNote = true;
-        return startTurn(finished!.prompt, true);
+        return startTurn(finished!.prompt, true, { mode: effectiveMode });
       }
       const next = closed ? undefined : takeNext();
       if (next !== undefined) {
-        startTurn(next);
+        startTurn(next.prompt, false, next.pinnedMode);
       } else {
         set({ status: 'idle', canSteer: false });
         settleIdle();
@@ -894,11 +905,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     })();
   };
 
-  const takeNext = (): string | undefined => {
-    if (state.notes?.length && !holdNotes) return shiftNote();
-    const [next, ...rest] = state.queued;
-    if (next !== undefined) set({ queued: rest });
-    return next;
+  const takeNext = (): { prompt: string; pinnedMode?: { mode: AgentMode | undefined } } | undefined => {
+    if (state.notes?.length && !holdNotes) return { prompt: shiftNote() };
+    const [next, ...rest] = queue;
+    if (!next) return undefined;
+    queue = rest;
+    set({ queued: queue.map((item) => item.text) });
+    return { prompt: next.text, pinnedMode: { mode: next.mode } };
   };
 
   return {
@@ -918,10 +931,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       }
       holdNotes = false;
+      const wantedMode = state.mode;
       if (state.status === 'idle' && !budgetInReview()) {
         // Held notes go first: the agent hears what happened before the user's next words.
         if (!state.notes?.length) return startTurn(prompt);
-        set({ queued: [...state.queued, prompt] });
+        enqueue(prompt, wantedMode);
         return startTurn(shiftNote());
       }
       const current = run;
@@ -948,20 +962,23 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
-          set({ queued: [...state.queued, prompt] });
+          enqueue(prompt, wantedMode);
           if (state.status === 'idle' && !budgetInReview()) {
             const next = takeNext();
-            if (next !== undefined) startTurn(next);
+            if (next !== undefined) startTurn(next.prompt, false, next.pinnedMode);
           }
         });
         return;
       }
-      set({ queued: [...state.queued, prompt] });
+      enqueue(prompt, wantedMode);
     },
     stop() {
       checkLifetime.abort();
       if (!closed) checkLifetime = new AbortController();
-      if (state.queued.length) set({ queued: [] });
+      if (queue.length || state.queued.length) {
+        queue = [];
+        set({ queued: [] });
+      }
       if (noteTurn) {
         set({ notes: [noteTurn.text, ...(state.notes ?? [])] });
         noteTurn = undefined;
@@ -1035,7 +1052,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         syncPackTask(turnId, id);
         if (reviewing && !activeReviews && state.status === 'idle') {
           const next = !closed && takeNext();
-          if (next) startTurn(next);
+          if (next) startTurn(next.prompt, false, next.pinnedMode);
           else settleIdle();
         }
       }
@@ -1082,7 +1099,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         throw new Error(`Unknown mode "${String(mode)}". Expected 'plan' or 'default'.`);
       if (mode === 'plan' && !agent.capabilities.plan) throw new Error(`${agent.name} has no Plan mode.`);
       const patch: Partial<SessionState> = { mode };
-      if (state.status === 'running') patch.canSteer = runCanSteer && mode === runningMode;
+      if (state.status === 'running') {
+        modeChangedDuringTurn = true;
+        patch.canSteer = runCanSteer && mode === runningMode;
+      }
       set(patch);
     },
     setBudget(budget) {
@@ -1102,6 +1122,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       known.clear();
       missedAfter = undefined;
       resetAt = nextTurnId - 1;
+      queue = [];
       set({ sessionId: undefined, turns: [], queued: [], notes: [] });
       return true;
     },

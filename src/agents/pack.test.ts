@@ -796,6 +796,9 @@ describe('pack chat turns', () => {
         await expect(tool(task, 'merge', { id: started.id })).rejects.toThrow(
           /Cannot merge changes while in Plan mode/,
         );
+        await expect(tool(task, 'discard', { id: started.id })).rejects.toThrow(
+          /Cannot discard changes while in Plan mode/,
+        );
         return { text: 'planned' };
       },
       { mcp: true, plan: true },
@@ -807,6 +810,58 @@ describe('pack chat turns', () => {
       expect(seenWorkerModes).toEqual(['plan']);
     } finally {
       await team.close();
+    }
+
+    // Inherited Plan mode (reported by lead's session event when task.mode is omitted) enforces the same guards.
+    const inheritedModes: Array<string | undefined> = [];
+    const inheritedWorker = fake(
+      'codex',
+      async (task) => {
+        inheritedModes.push(task.mode);
+        return { text: 'ok' };
+      },
+      { plan: true },
+    );
+    let editWorktreeId = '';
+    const leadInherited = fake(
+      'lead',
+      async (task, emit) => {
+        if (!task.resume) {
+          const started = JSON.parse(await tool(task, 'delegate', { agent: 'codex', prompt: 'edit' })) as {
+            id: string;
+          };
+          editWorktreeId = started.id;
+          await tool(task, 'wait', { ids: [started.id] });
+          return { text: 'edited', sessionId: 'lead-1' };
+        }
+        emit({ type: 'session', sessionId: 'lead-1', mode: 'plan' });
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await expect(tool(task, 'delegate', { agent: 'opencode', prompt: 'research', mode: 'shared' })).rejects.toThrow(
+          /does not support Plan mode/,
+        );
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'plan helper', mode: 'shared' }),
+        ) as { id: string };
+        await tool(task, 'wait', { ids: [started.id] });
+        await expect(tool(task, 'merge', { id: editWorktreeId })).rejects.toThrow(
+          /Cannot merge changes while in Plan mode/,
+        );
+        await expect(tool(task, 'discard', { id: editWorktreeId })).rejects.toThrow(
+          /Cannot discard changes while in Plan mode/,
+        );
+        return { text: 'inherited-plan' };
+      },
+      { mcp: true, plan: true, resume: true },
+    );
+    const inheritedTeam = pack({ lead: leadInherited, members: [inheritedWorker, plainWorker] });
+    try {
+      expect((await inheritedTeam.run({ prompt: 'turn 1', cwd }).result).ok).toBe(true);
+      const turn2 = await inheritedTeam.run({ prompt: 'turn 2', cwd, resume: 'lead-1' }).result;
+      expect(turn2).toMatchObject({ status: 'completed', ok: true, text: 'inherited-plan' });
+      expect(inheritedModes).toEqual([undefined, 'plan']);
+      expect(inheritedTeam.tasks()[0]?.state).toBe('unmerged');
+    } finally {
+      await inheritedTeam.close();
     }
 
     const nonPlanLead = fake('plain-lead', async () => ({ text: 'should not run' }), { mcp: true });

@@ -1,6 +1,6 @@
 import { codexSessions } from '../sessions/codex.js';
 import type { TokenUsage } from '../../core/types.js';
-import { isQuestionChannelServer } from '../ask-user.js';
+import { isQuestionChannelServer, questionChannelHandler } from '../ask-user.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
 import type { AgentEvent, AgentMode, AgentTask, CodingAgent } from '../types.js';
@@ -44,7 +44,7 @@ export interface CodexLiveOptions {
  * Codex's own (`unrestricted` is `danger-full-access`).
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
-  return liveAgent({
+  const agent = liveAgent({
     sessions: codexSessions(),
     name: 'codex',
     command: options.command ?? 'codex',
@@ -69,9 +69,27 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
     prepare: (task, context) => prepareCodexLive(task, options, context),
     drive: (session) => driveCodex(session, options),
   });
+  return {
+    ...agent,
+    run(task) {
+      if (task.onQuestion) return agent.run(task);
+      // A library caller that bound a question channel directly without `task.onQuestion` still
+      // receives Codex's native `request_user_input` questions when the MCP fallback is stripped.
+      const bound = task.mcpServers?.map(questionChannelHandler).find(Boolean);
+      if (!bound) return agent.run(task);
+      return agent.run({
+        ...task,
+        onQuestion: (request, signal) => bound()?.(request, signal),
+      });
+    },
+  };
 }
 
-const DEFAULT_MODE_INPUT_FLAG = /^features\.default_mode_request_user_input\s*=\s*(true|false)$/;
+const FEATURES_KEY =
+  /^(?:features|"features"|'features')\.(?:default_mode_request_user_input|"default_mode_request_user_input"|'default_mode_request_user_input')\s*=\s*(true|false)$/;
+const FEATURES_TABLE = /^(?:features|"features"|'features')\s*=\s*\{([\s\S]*)\}$/;
+const TABLE_ENTRY =
+  /(?:^|,)\s*(?:default_mode_request_user_input|"default_mode_request_user_input"|'default_mode_request_user_input')\s*=\s*(true|false)(?=\s*(?:,|$))/g;
 
 /** Effective collaboration mode for a turn: `task.mode` overrides `options.collaborationMode`. */
 export function codexCollaborationMode(
@@ -87,7 +105,8 @@ export function codexCollaborationMode(
 /**
  * Whether Codex offers its own `request_user_input` tool for this turn: in Plan mode, or when
  * `extraArgs` enables the `default_mode_request_user_input` feature flag. Matches Codex's CLI
- * precedence: `--disable` overrides `--enable`, which overrides `-c`/`--config` overrides.
+ * precedence: `--disable` overrides `--enable`, which overrides `-c`/`--config` overrides
+ * (including whole-table `features={...}` assignments).
  */
 export function codexHasOwnQuestionTool(
   task: Pick<AgentTask, 'mode' | 'extraArgs'>,
@@ -99,8 +118,19 @@ export function codexHasOwnQuestionTool(
   let configValue: boolean | undefined;
   const extra = task.extraArgs ?? [];
   const readConfig = (raw: string) => {
-    const match = DEFAULT_MODE_INPUT_FLAG.exec(raw.trim());
-    if (match) configValue = match[1] === 'true';
+    const trimmed = raw.trim();
+    const direct = FEATURES_KEY.exec(trimmed);
+    if (direct) {
+      configValue = direct[1] === 'true';
+      return;
+    }
+    const table = FEATURES_TABLE.exec(trimmed);
+    if (table) {
+      // Whole-table `features={...}` replaces earlier `features.*` overrides.
+      let value: boolean | undefined;
+      for (const entry of table[1]!.matchAll(TABLE_ENTRY)) value = entry[1] === 'true';
+      configValue = value;
+    }
   };
   for (let i = 0; i < extra.length; i++) {
     const arg = extra[i]!;
@@ -132,11 +162,16 @@ export function codexHasOwnQuestionTool(
 }
 
 /** Saved collaboration mode of a stored Codex thread, read from its local rollout. */
-async function savedCodexMode(resume: string, env: NodeJS.ProcessEnv | undefined): Promise<AgentMode | undefined> {
+async function savedCodexMode(
+  resume: string,
+  env: NodeJS.ProcessEnv | undefined,
+  signal: AbortSignal | undefined,
+): Promise<AgentMode | undefined> {
   try {
-    const matches = await codexSessions({ via: 'files' }).find?.(resume, { env, limit: 5 });
+    const matches = await codexSessions({ via: 'files' }).find?.(resume, { env, signal, limit: 5 });
     return matches?.find((item) => item.id === resume)?.mode;
   } catch {
+    signal?.throwIfAborted();
     return undefined;
   }
 }
@@ -148,16 +183,19 @@ export async function prepareCodexLive(
   context?: Partial<PrepareContext>,
 ): Promise<PreparedRun> {
   codexThreadPolicy(task, options);
-  // One question tool per turn: drop genaicode's question channel when Codex has `request_user_input`.
-  const hasQuestionServer = Boolean(task.mcpServers?.some(isQuestionChannelServer));
+  // One question tool per turn: drop genaicode's question channel when Codex has `request_user_input`
+  // and native question answers have a route (`task.onQuestion` or a bound channel handler).
+  const canDrop = (server: NonNullable<AgentTask['mcpServers']>[number]) =>
+    isQuestionChannelServer(server) && (Boolean(task.onQuestion) || Boolean(questionChannelHandler(server)));
+  const hasQuestionServer = Boolean(task.mcpServers?.some(canDrop));
   const inheritedPlan =
     hasQuestionServer &&
     codexCollaborationMode(task, options) === undefined &&
     Boolean(task.resume) &&
-    (await savedCodexMode(task.resume!, task.env)) === 'plan';
+    (await savedCodexMode(task.resume!, task.env, context?.signal)) === 'plan';
   const effective =
     (codexHasOwnQuestionTool(task, options) || inheritedPlan) && hasQuestionServer
-      ? { ...task, mcpServers: task.mcpServers!.filter((server) => !isQuestionChannelServer(server)) }
+      ? { ...task, mcpServers: task.mcpServers!.filter((server) => !canDrop(server)) }
       : task;
   const prepared = withCodexMcp(effective, [...(task.extraArgs ?? []), 'app-server']);
   if (!options.onlyTaskMcpServers) return prepared;

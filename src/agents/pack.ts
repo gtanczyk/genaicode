@@ -30,6 +30,7 @@ import { addUsage, remainingBudget, tokenCount } from './usage.js';
 import type {
   AgentEvent,
   AgentFailure,
+  AgentMode,
   AgentResult,
   AgentRun,
   AgentTask,
@@ -503,6 +504,8 @@ export function pack(options: PackOptions): Pack {
       })();
       let leadRun: AgentRun | undefined;
       let stopped = false;
+      // Tracks the lead's effective mode: explicit `task.mode`, or Plan inherited via its `session` event.
+      let effectiveMode: AgentMode | undefined = task.mode;
       let leadUsage: TokenUsage | undefined;
       let leadCost: number | undefined;
       let reviewUsage: TokenUsage | undefined;
@@ -576,7 +579,7 @@ export function pack(options: PackOptions): Pack {
         if (!agent)
           throw new Error(`No agent ${String(args.agent)}. Available: ${members.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
-        if (task.mode === 'plan' && !agent.capabilities.plan) {
+        if (effectiveMode === 'plan' && !agent.capabilities.plan) {
           const capable = members.filter((member) => member.capabilities.plan).map((member) => member.name);
           throw new Error(
             capable.length
@@ -708,7 +711,7 @@ export function pack(options: PackOptions): Pack {
           cwd: sub.cwd,
           ...(extra.model ? { model: extra.model } : {}),
           ...(extra.effort ? { effort: extra.effort } : {}),
-          ...(task.mode !== undefined ? { mode: task.mode } : {}),
+          ...(effectiveMode !== undefined ? { mode: effectiveMode } : {}),
           ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           ...(task.env ? { env: task.env } : {}),
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
@@ -1120,7 +1123,7 @@ export function pack(options: PackOptions): Pack {
             required: ['id'],
           },
           call: (args) => {
-            if (task.mode === 'plan') throw new Error('Cannot merge changes while in Plan mode.');
+            if (effectiveMode === 'plan') throw new Error('Cannot merge changes while in Plan mode.');
             return merge(
               find(args.id),
               args.threeWay === true,
@@ -1132,7 +1135,10 @@ export function pack(options: PackOptions): Pack {
           name: 'discard',
           description: "Drop a finished worktree task's changes and remove its worktree.",
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: (args) => discard(find(args.id)),
+          call: (args) => {
+            if (effectiveMode === 'plan') throw new Error('Cannot discard changes while in Plan mode.');
+            return discard(find(args.id));
+          },
         },
       ];
 
@@ -1173,6 +1179,7 @@ export function pack(options: PackOptions): Pack {
               if (event.costUsd !== undefined) leadCost = event.costUsd;
               usageChanged();
             } else {
+              if (event.type === 'session' && event.mode) effectiveMode = event.mode;
               if (event.type === 'rate-limit') noteLimit(lead.name, event.limit);
               events.push(event);
               await events.room();

@@ -90,12 +90,48 @@ describe('claude driver', () => {
       '--permission-mode',
       'plan',
     ]);
-    // task.mode: 'plan' forces --permission-mode plan even when inheriting defaultMode or setting permissions.
-    const planned = claudeArgs({ prompt: 'hi', cwd: '.', mode: 'plan' }, {}, undefined, undefined, false, true);
+    // task.mode: 'plan' forces --permission-mode plan even when inheriting defaultMode or setting permissions,
+    // and strips conflicting mode flags from extraArgs; task.mode: 'default' leaves a configured plan mode.
+    const planned = claudeArgs(
+      {
+        prompt: 'hi',
+        cwd: '.',
+        mode: 'plan',
+        extraArgs: ['--permission-mode', 'acceptEdits', '--dangerously-skip-permissions', '--verbose'],
+      },
+      {},
+      undefined,
+      undefined,
+      false,
+      true,
+    );
+    expect(planned.filter((arg) => arg === '--permission-mode')).toHaveLength(1);
     expect(planned.slice(planned.indexOf('--permission-mode'), planned.indexOf('--permission-mode') + 2)).toEqual([
       '--permission-mode',
       'plan',
     ]);
+    expect(planned).not.toContain('acceptEdits');
+    expect(planned).not.toContain('--dangerously-skip-permissions');
+
+    const leavingPlan = claudeArgs(
+      { prompt: 'hi', cwd: '.', mode: 'default', extraArgs: ['--permission-mode=plan'] },
+      { permissionMode: 'plan' },
+    );
+    expect(
+      leavingPlan.slice(leavingPlan.indexOf('--permission-mode'), leavingPlan.indexOf('--permission-mode') + 2),
+    ).toEqual(['--permission-mode', 'acceptEdits']);
+    expect(leavingPlan).not.toContain('--permission-mode=plan');
+
+    const leavingSettingsPlan = claudeArgs(
+      { prompt: 'hi', cwd: '.', mode: 'default' },
+      { settings: { permissions: { defaultMode: 'plan' } } },
+    );
+    expect(
+      leavingSettingsPlan.slice(
+        leavingSettingsPlan.indexOf('--permission-mode'),
+        leavingSettingsPlan.indexOf('--permission-mode') + 2,
+      ),
+    ).toEqual(['--permission-mode', 'acceptEdits']);
     const plannedPerms = claudeArgs({
       prompt: 'hi',
       cwd: '.',

@@ -18,6 +18,7 @@ import {
   type SessionFile,
 } from './files.js';
 import type { SessionTurn } from '../session.js';
+import type { AgentMode } from '../types.js';
 import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
 import { number, queryDatabase, tableColumns, text } from './sqlite.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
@@ -65,9 +66,69 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
   return text && !(role === 'user' && text.startsWith('<')) ? text : undefined;
 }
 
+const MODE_SCAN_CHUNK = 256 * 1024;
+
+function turnContextMode(line: string): { found: boolean; mode?: AgentMode } {
+  if (!line.includes('"turn_context"')) return { found: false };
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (!isRecord(parsed) || parsed.type !== 'turn_context' || !isRecord(parsed.payload)) return { found: false };
+    const cm = parsed.payload.collaboration_mode;
+    const mode = isRecord(cm) && (cm.mode === 'plan' || cm.mode === 'default') ? cm.mode : undefined;
+    return { found: true, mode };
+  } catch {
+    return { found: false };
+  }
+}
+
+/** Scan a large rollout backwards to find the last `turn_context`'s collaboration mode. */
+async function lastTurnContextMode(filePath: string, size: number): Promise<AgentMode | undefined> {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    let end = size;
+    let carry = '';
+    while (end > 0) {
+      const start = Math.max(0, end - MODE_SCAN_CHUNK);
+      const length = end - start;
+      const buf = Buffer.alloc(length);
+      await handle.read(buf, 0, length, start);
+      const combined = buf.toString('utf8') + carry;
+      const lines = combined.split('\n');
+      carry = start > 0 ? (lines.shift() ?? '') : '';
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const result = turnContextMode(lines[i]!);
+        if (result.found) return result.mode;
+      }
+      end = start;
+    }
+    if (carry) {
+      const result = turnContextMode(carry);
+      if (result.found) return result.mode;
+    }
+    return undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
+function lastTurnContextModeInBuffer(data: Buffer): AgentMode | undefined {
+  const lines = data.toString('utf8').split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const result = turnContextMode(lines[i]!);
+    if (result.found) return result.mode;
+  }
+  return undefined;
+}
+
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
 export async function readCodexSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
-  return fromLines(file, now, await headAndTail(file));
+  const chunks = await headAndTail(file);
+  const info = fromLines(file, now, chunks);
+  if (info && chunks.head !== chunks.tail && info.mode === undefined) {
+    const mode = await lastTurnContextMode(file.path, file.size).catch(() => undefined);
+    if (mode) info.mode = mode;
+  }
+  return info;
 }
 
 function fromLines(file: SessionFile, now: number, { head, tail }: { head: unknown[]; tail: unknown[] }) {
@@ -108,7 +169,9 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       if (line.type === 'turn_context') {
         if (typeof payload.cwd === 'string' && !info.cwd) info.cwd = payload.cwd;
         if (typeof payload.model === 'string') info.model = payload.model;
-        if (isRecord(payload.collaboration_mode)) {
+        // Only record collaboration mode from `tail` (which is the whole file when small) so a
+        // large rollout's stale `head` turn_context cannot mask a newer one in the middle.
+        if (!first && isRecord(payload.collaboration_mode)) {
           const mode = payload.collaboration_mode.mode;
           if (mode === 'plan' || mode === 'default') info.mode = mode;
         }
@@ -284,12 +347,6 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
   });
 }
 
-/** The lines of a rollout Codex has compressed (`.jsonl.zst`), where this Node can read zstd. */
-async function compressedRollout(file: string): Promise<{ head: unknown[]; tail: unknown[] } | undefined> {
-  const text = await zstdFile(file);
-  return text ? chunksOf(text) : undefined;
-}
-
 /** Add the latest prompt, reply and state from a thread's rollout: a `.jsonl`, or the `.jsonl.zst` Codex made of it. */
 async function fromRollout(info: SessionInfo): Promise<void> {
   if (!info.path) return;
@@ -299,9 +356,14 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     // Whether it is active is the index's to say (its own `updatedAt`), not the file's.
     if (stat) read = await readCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
     else {
-      const chunks = await compressedRollout(`${info.path}.zst`);
-      if (!chunks) return;
-      read = fromLines({ path: info.path, mtimeMs: 0, size: 0 }, Infinity, chunks);
+      const data = await zstdFile(`${info.path}.zst`);
+      if (!data) return;
+      const chunks = chunksOf(data);
+      read = fromLines({ path: info.path, mtimeMs: 0, size: data.length }, Infinity, chunks);
+      if (read && chunks.head !== chunks.tail && read.mode === undefined) {
+        const mode = lastTurnContextModeInBuffer(data);
+        if (mode) read.mode = mode;
+      }
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
@@ -450,7 +512,14 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       return chosen;
     }
     const files = (
-      await findFiles(path.join(dir, 'sessions'), 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'))
+      await findFiles(
+        path.join(dir, 'sessions'),
+        3,
+        (name) =>
+          name.startsWith('rollout-') &&
+          name.endsWith('.jsonl') &&
+          (!prefix || (ROLLOUT_ID.exec(name)?.[1]?.startsWith(prefix) ?? true)),
+      )
     ).filter((file) => query.since === undefined || file.mtimeMs >= query.since);
     const sessions: SessionInfo[] = [];
     const wanted = query.limit ?? Infinity;

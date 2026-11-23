@@ -1,5 +1,6 @@
 import { approximateSize, EventQueue } from '../agents/event-queue.js';
 import { unsupportedPermissions } from '../agents/permissions.js';
+import { unsupportedMode } from '../agents/prepare.js';
 import type {
   AgentCapabilities,
   AgentEvent,
@@ -251,7 +252,7 @@ export function nano(options: NanoOptions = {}): NanoAgent {
       let sessionId: string | undefined;
       let held: string | undefined;
       try {
-        const refused = unsupportedPermissions(name, capabilities, task);
+        const refused = unsupportedMode(name, capabilities, task) ?? unsupportedPermissions(name, capabilities, task);
         if (refused) throw new Error(refused);
         const tools =
           typeof options.tools === 'function'

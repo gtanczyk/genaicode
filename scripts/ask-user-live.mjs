@@ -71,6 +71,10 @@ function pickOption(question, pattern, fallback) {
   return question?.options?.find((opt) => pattern.test(opt.label))?.label ?? fallback;
 }
 
+function baseLabel(label) {
+  return label.replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -86,7 +90,7 @@ const cases = [
       return { [req.questions[0].id]: [choice] };
     },
     check: (text, req, sent) => {
-      const picked = sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Green';
+      const picked = baseLabel(sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Green');
       return new RegExp(escapeRegExp(picked), 'i').test(text);
     },
   },
@@ -105,8 +109,16 @@ const cases = [
       return out;
     },
     check: (text, req, sent) => {
-      const db = sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Postgres';
-      return (req?.questions?.length ?? 0) >= 2 && new RegExp(escapeRegExp(db), 'i').test(text) && /search/i.test(text);
+      const db = baseLabel(sent?.[req?.questions?.[0]?.id]?.[0] ?? 'Postgres');
+      const features = (sent?.[req?.questions?.[1]?.id]?.[0] ?? 'Search, Export')
+        .split(/\s*,\s*/)
+        .map(baseLabel)
+        .filter(Boolean);
+      return (
+        (req?.questions?.length ?? 0) >= 2 &&
+        new RegExp(escapeRegExp(db), 'i').test(text) &&
+        features.every((feature) => new RegExp(escapeRegExp(feature), 'i').test(text))
+      );
     },
   },
   {

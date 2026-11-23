@@ -70,6 +70,25 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
   });
 }
 
+function stripGeminiModeFlags(extraArgs: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const arg = extraArgs[i]!;
+    if (arg === '--') {
+      kept.push(...extraArgs.slice(i));
+      break;
+    }
+    if (arg === '--approval-mode') {
+      i++;
+    } else if (arg.startsWith('--approval-mode=') || arg === '--yolo' || arg === '-y') {
+      continue;
+    } else {
+      kept.push(arg);
+    }
+  }
+  return kept;
+}
+
 export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): string[] {
   const permissions = resolvePermissions(task.permissions);
   const flags = geminiPermissionFlags(permissions);
@@ -85,12 +104,14 @@ export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): s
       else args.push(flags.args[i]!);
     }
   } else {
-    if (!owned) args.push('--approval-mode', options.approvalMode ?? 'auto_edit');
+    const defaultApproval =
+      task.mode === 'default' && options.approvalMode === 'plan' ? 'auto_edit' : (options.approvalMode ?? 'auto_edit');
+    if (!owned) args.push('--approval-mode', defaultApproval);
     args.push(...flags.args);
   }
   if (options.trustWorkspace ?? true) args.push('--skip-trust');
   if (task.model) args.push('--model', task.model);
-  if (task.extraArgs) args.push(...task.extraArgs);
+  if (task.extraArgs) args.push(...(task.mode !== undefined ? stripGeminiModeFlags(task.extraArgs) : task.extraArgs));
   // `--prompt=<text>` keeps a prompt that starts with a dash from reading as a flag.
   return [...args, `--prompt=${task.prompt}`];
 }

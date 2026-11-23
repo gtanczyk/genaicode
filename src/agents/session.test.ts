@@ -1005,9 +1005,13 @@ describe('createAgentSession', () => {
     session.send('plan next');
     expect(steered).toEqual([]);
     expect(session.get().queued).toEqual(['plan next']);
+    // Switching mode back before the queued prompt starts does NOT rewrite the already-queued planning prompt.
+    session.setMode('default');
+    session.send('edit after plan');
+    expect(session.get().queued).toEqual(['plan next', 'edit after plan']);
     finishFirst();
     await session.idle();
-    expect(seenModes).toEqual([undefined, 'plan']);
+    expect(seenModes).toEqual([undefined, 'plan', 'default']);
     session.close();
   });
 
@@ -1086,6 +1090,48 @@ describe('createAgentSession', () => {
     expect(adopted.adopt([], { sessionId: 's-plan', mode: 'plan' })).toBe(true);
     expect(adopted.get()).toMatchObject({ sessionId: 's-plan', mode: 'plan' });
     adopted.close();
+
+    // Clearing mode before the running turn's session event arrives is preserved instead of reverting to 'plan'.
+    let releaseSession!: () => void;
+    const delayed = fakeAgent(
+      [
+        async (_task, emit) => {
+          await new Promise<void>((resolve) => (releaseSession = resolve));
+          emit({ type: 'session', sessionId: 's-late', mode: 'plan' });
+        },
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'codex',
+    );
+    const race = createAgentSession({ agent: delayed.agent, cwd: '/w', mode: 'plan' });
+    race.send('plan it');
+    await expect.poll(() => Boolean(releaseSession)).toBe(true);
+    race.setMode(undefined);
+    expect(race.get().mode).toBeUndefined();
+    releaseSession();
+    await race.idle();
+    expect(race.get().mode).toBeUndefined();
+    race.send('next turn');
+    await race.idle();
+    expect(delayed.tasks[1]!.mode).toBe('default');
+    race.close();
+
+    // A caller-supplied server named `genaicode_ask` does not collide with the injected question channel.
+    const withCollision = fakeAgent([async () => {}], { mcp: true, plan: true }, 'codex');
+    const colliding = createAgentSession({
+      agent: withCollision.agent,
+      cwd: '/w',
+      task: { mcpServers: [{ name: 'genaicode_ask', url: 'https://custom.example/mcp' }] },
+      questions: { mcpServer: { name: 'genaicode_ask', url: 'http://127.0.0.1:9999/mcp' }, bind() {} },
+    });
+    colliding.send('go');
+    await colliding.idle();
+    expect(withCollision.tasks[0]!.mcpServers?.map((s) => [s.name, isQuestionChannelServer(s)])).toEqual([
+      ['genaicode_ask', false],
+      ['genaicode_ask_2', true],
+    ]);
+    colliding.close();
   });
 
   it('never writes a secret question answer into the handoff transcript', async () => {

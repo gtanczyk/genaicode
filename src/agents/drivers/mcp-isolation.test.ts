@@ -207,6 +207,27 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
         ),
       ).toBe(false);
       expect(codexHasOwnQuestionTool({ extraArgs: ['--', '--enable', 'default_mode_request_user_input'] })).toBe(false);
+      // Whole-table `features={...}` overrides replace earlier `features.*` overrides.
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: [
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '-c',
+            'features={default_mode_request_user_input=false}',
+          ],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features.default_mode_request_user_input=true', '-c', 'features={}'],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features = { "default_mode_request_user_input" = true }'],
+        }),
+      ).toBe(true);
 
       // Resuming a saved Codex Plan thread with mode omitted also drops the question channel.
       const codexHome = join(dir, 'codex-home');
@@ -227,6 +248,7 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
           cwd: dir,
           resume: threadId,
           env: { CODEX_HOME: codexHome },
+          onQuestion: () => undefined,
           mcpServers: [app, markQuestionChannelServer({ name: 'genaicode_ask', url: 'http://127.0.0.1:2/mcp' })],
         },
         { command },
@@ -241,11 +263,23 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
           resume: threadId,
           mode: 'default',
           env: { CODEX_HOME: codexHome },
+          onQuestion: () => undefined,
           mcpServers: [app, markQuestionChannelServer({ name: 'genaicode_ask', url: 'http://127.0.0.1:2/mcp' })],
         },
         { command },
       );
       expect(leavingPlan.args.join(' ')).toContain('mcp_servers.genaicode_ask.url=');
+      // Without `onQuestion` or a bound channel handler, a custom marked server is kept so the turn is not left unanswerable.
+      const noNativeRoute = await prepareCodexLive(
+        {
+          prompt: 'plan',
+          cwd: dir,
+          mode: 'plan',
+          mcpServers: [markQuestionChannelServer({ name: 'custom_ask', url: 'http://127.0.0.1:2/mcp' })],
+        },
+        { command },
+      );
+      expect(noNativeRoute.args.join(' ')).toContain('mcp_servers.custom_ask.url=');
     } finally {
       await channel.close();
     }
