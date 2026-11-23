@@ -149,10 +149,11 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     expect(await page.locator('header.bar .cwd').count()).toBe(0);
     expect(await page.locator('header.bar').textContent()).not.toContain('knights');
 
+    const chat = page.getByRole('log');
     const composer = page.locator('textarea');
     await composer.fill('co tam?');
     await composer.press('Enter');
-    await page.getByText('Status from sessions:').waitFor();
+    await chat.getByText('Status from sessions:').waitFor();
     expect(realpathSync(runs[0]!.cwd)).toBe(realpathSync(homeDir));
     expect(runs[0]!.servers).toContain('sessions');
     expect(runs[0]!.servers).toContain('genaicode_project');
@@ -160,43 +161,41 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     // 2. Topic card -> New chat runs in the Knights directory without any folder step; file panel follows cwd.
     await page.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
     await page.getByRole('button', { name: 'New chat in Knights' }).click();
-    await page.getByText('What should helper work on in Knights?').waitFor();
+    await chat.getByText('What should helper work on in Knights?').waitFor();
     expect(await page.locator('header.bar .conv-head').getAttribute('title')).toBe(knights);
     expect(await page.locator('header.bar').textContent()).not.toContain(knights);
 
     await composer.fill('Zmień README');
     await composer.press('Enter');
-    await page.getByText('Updated').waitFor();
+    await chat.getByRole('button', { name: 'README.md', exact: true }).click();
     expect(realpathSync(runs[1]!.cwd)).toBe(realpathSync(knights));
     expect(runs[1]!.servers).not.toContain('genaicode_project');
 
-    await page.getByRole('button', { name: 'README.md' }).click();
     await page.locator('.file-panel').getByText('Tactical game.').waitFor();
     await page.locator('.file-panel').getByRole('button', { name: 'Close' }).click();
 
     await composer.fill('/where');
     await composer.press('Enter');
-    await page.getByText(`Working directory: ${knights} · topic: Knights`).waitFor();
+    await chat.getByText(`Working directory: ${knights} · topic: Knights`).waitFor();
 
     // 3. "w ~/src/x" -> open_project question card -> Yes -> next turn runs in ~/src/x with recap and file root.
     await page.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
-    await page.getByText('What should helper look into?').waitFor();
+    await chat.getByText('What should helper look into?').waitFor();
 
     await composer.fill('w ~/src/x sprawdź notatki');
     await composer.press('Enter');
-    await page.getByText('Continue this conversation in ~/src/x?').waitFor();
-    await page.getByRole('button', { name: /Yes/ }).click();
-    await page.getByText('Moved this conversation to ~/src/x').waitFor();
+    await chat.getByText('Continue this conversation in ~/src/x?').waitFor();
+    await chat.getByRole('button', { name: /Yes/ }).click();
+    await chat.getByText('Moved this conversation to ~/src/x').waitFor();
 
     await composer.fill('pokaż notes.txt');
     await composer.press('Enter');
-    await page.getByText('Checked').waitFor();
+    await chat.getByRole('button', { name: 'notes.txt', exact: true }).click();
     expect(realpathSync(runs[3]!.cwd)).toBe(realpathSync(projectX));
     expect(runs[3]!.resume).toBeUndefined();
     expect(runs[3]!.prompt).toContain('w ~/src/x sprawdź notatki');
     expect(runs[3]!.servers).not.toContain('genaicode_project');
 
-    await page.getByRole('button', { name: 'notes.txt' }).click();
     await page.locator('.file-panel').getByText('Project X notes').waitFor();
   } finally {
     stop.abort();
