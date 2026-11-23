@@ -22,6 +22,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Desktop app links, downloads and Reveal: `tauri-plugin-opener` with strict `http(s)`/`mailto` scheme filtering in `on_new_window` and `on_navigation` (opening external links and tokenless artifact **New tab** links in the system browser), native Save dialog + **Show in Finder / File Manager** in `on_download`, and `POST /api/reveal` / `<AgentChat onRevealFile>` (#317)
 - `genaicode ui` and the desktop app: onboarding when no agent CLI is installed or signed in. The server starts in a `setup` state with `GET /api/agents` (presence, duplicate-install hints, broken-binary detection, and cheap local sign-in checks for Claude Code and Codex), showing per-agent install/sign-in cards with copyable commands, plan limits, and **Check again** while keeping session tools working. In the desktop app, **Check again** re-reads the login shell environment without restarting. The agent picker separates Ready/Installed agents from greyed signed-out ones (**Sign in**) and **More agents** (**Install**), and auth failures on a prompt render as a sign-in card in the conversation. New exports in `genaicode/agents`: `AGENT_GUIDES`, `agentGuide`, `findAllExecutables`, `inspectAgent`, `inspectAgents`, `createAgentInspector`, `isAgentUsable`, `isAuthError`; `<AgentChat renderFailure>` in `genaicode/react` (#316)
 
+### Fixed
+
+- Chat renders Markdown links with angle-delimited destinations, including paths with spaces or parentheses. The desktop file panel offers Reveal for linked project folders (#329)
+
 ### Internal
 
 - A new release becomes the "latest" one on GitHub only after the desktop build has added its downloads, so `releases/latest/download/Genaicode-*` links no longer return 404 for the half hour after each release (#321)
