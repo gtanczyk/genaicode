@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { neutralHomeDir, saveConversation } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
 import {
@@ -133,6 +134,59 @@ describe('parseCli', () => {
     expect((await run('--restore', '--cwd', '/work/other')).continueFrom).toBe('b-elsewhere');
     expect(parseCli(['ui', '--restore'])).toMatchObject({ restore: true });
     expect(() => parseCli(['chat', '--restore'])).toThrow();
+  });
+
+  it('ui --home starts in neutral home and --restore brings back the last recorded conversation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-home-cli-'));
+    dirs.push(root);
+    const env = { PATH: pathWith('alpha-cli'), HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    const alpha = {
+      ...fakeAgent('alpha', []),
+      capabilities: { resume: true, mcp: true },
+      sessions: { name: 'alpha', where: 'local' as const, list: async () => [] },
+    };
+    const seen: UiLaunch[] = [];
+    const loadUi = async () => ({
+      runWeb: async (launch: UiLaunch) => (seen.push(launch), 0),
+      runChat: async (launch: UiLaunch) => (seen.push(launch), 0),
+    });
+
+    expect(
+      await main(environment({ argv: ['ui', '--home'], agents: [alpha], env, cwd: '/unrelated', loadUi }).cli),
+    ).toBe(EXIT_OK);
+    const first = seen.pop()!;
+    expect(first).toMatchObject({
+      home: true,
+      noProject: true,
+      cwd: neutralHomeDir(env),
+    });
+    expect(first.continueFrom).toBeUndefined();
+
+    await saveConversation(
+      {
+        id: 'conv-1',
+        cwd: join(root, 'src', 'knights'),
+        origin: 'topic',
+        topicId: 't1',
+        topicName: 'Knights',
+        agent: 'alpha',
+        source: 'alpha',
+        sessionId: 'alpha-sess-9',
+        updatedAt: Date.now(),
+      },
+      env,
+    );
+    expect(
+      await main(
+        environment({ argv: ['ui', '--home', '--restore'], agents: [alpha], env, cwd: '/unrelated', loadUi }).cli,
+      ),
+    ).toBe(EXIT_OK);
+    expect(seen.pop()).toMatchObject({
+      home: true,
+      cwd: neutralHomeDir(env),
+      agent: 'alpha',
+      continueFrom: 'alpha-sess-9',
+    });
   });
   it('runs Codex over its live driver in chat and ui, with or without a pack', async () => {
     const inspect = async (launch: UiLaunch) => {
@@ -441,6 +495,16 @@ describe('parseCli', () => {
     expect(parseCli(['chat'])).toMatchObject({ mcpServers: [] });
     expect(parseCli(['ui', '--exit-with-stdin'])).toMatchObject({ exitWithStdin: true });
     expect(parseCli(['ui', '--sessions', '--no-project'])).toMatchObject({ noProject: true, sessions: true });
+    expect(parseCli(['ui', '--home'])).toMatchObject({ home: true, noProject: true, sessions: true });
+    expect(parseCli(['ui', '--sessions', '--home', '--no-open', '--exit-with-stdin'])).toMatchObject({
+      home: true,
+      noProject: true,
+      sessions: true,
+      open: false,
+      exitWithStdin: true,
+    });
+    expect(() => parseCli(['ui', '--home', '--cwd', '/tmp'])).toThrow('--home and --cwd do not go together');
+    expect(() => parseCli(['chat', '--home'])).toThrow();
     expect(() => parseCli(['ui', '--no-project'])).toThrow('--no-project goes with --sessions');
     expect(() => parseCli(['chat', '--sessions', '--no-project'])).toThrow();
     expect(() => parseCli(['chat', '--exit-with-stdin'])).toThrow(UsageError);

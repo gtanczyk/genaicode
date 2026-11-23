@@ -1,14 +1,14 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
-import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
+import { sessionTools, writeTopics, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
@@ -85,6 +85,7 @@ describe('format helpers', () => {
     expect(parseSlash('/effort XHigh')).toEqual({ kind: 'effort', effort: 'xhigh' });
     expect(parseSlash('/waiting Harbor Docs')).toEqual({ kind: 'waiting', project: 'Harbor Docs' });
     expect(parseSlash('/read 01234567')).toEqual({ kind: 'read', id: '01234567' });
+    expect(parseSlash('/where')).toEqual({ kind: 'where' });
     expect(parseSlash('/wat')).toEqual({ kind: 'unknown', name: '/wat' });
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
@@ -1629,6 +1630,122 @@ describe('web UI server', () => {
 
   it('names its missing-agent error for hosts that load the bundle', () => {
     expect(new NoAgentError('x').name).toBe('NoAgentError');
+  });
+
+  it('resolves per-conversation cwd in --home mode: topics, /where, continueSession, and host open-session', async () => {
+    mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+    const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'home-ctrl-'));
+    const homeDir = join(root, '.genaicode', 'home');
+    const knights = join(root, 'src', 'knights');
+    const other = join(root, 'src', 'other');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(knights, { recursive: true });
+    mkdirSync(other, { recursive: true });
+    const homeEnv = { ...env, HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    await writeTopics(
+      {
+        topics: [
+          { id: 't1', name: 'Knights' },
+          { id: 't2', name: 'Cloud Only' },
+        ],
+        sessions: { 'echo:k1': 't1', 'echo:c1': 't2' },
+      },
+      homeEnv,
+    );
+    const sessions: SessionInfo[] = [
+      { source: 'echo', agent: 'echo', id: 'k1', where: 'local', cwd: knights, title: 'Knight AI', updatedAt: 5000 },
+      { source: 'echo', agent: 'echo', id: 'o1', where: 'local', cwd: other, title: 'Other task', updatedAt: 4000 },
+      { source: 'echo', agent: 'echo', id: 'c1', where: 'cloud', title: 'Remote idea', updatedAt: 3000 },
+    ];
+    const source: SessionSource = {
+      name: 'echo',
+      where: 'local',
+      list: async () => sessions,
+      read: async (s) => [{ id: 1, agent: 'echo', prompt: `From ${s.title}`, entries: [], startedAt: 1 }],
+    };
+    const agent = { ...echoAgent(), sessions: source };
+    const chat = createChatController({
+      agents: [agent],
+      sessionSources: [source],
+      cwd: homeDir,
+      env: homeEnv,
+      home: true,
+    });
+    try {
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      chat.submit('/where');
+      expect(chat.get().notices.at(-1)?.text).toContain(`${homeDir} (neutral home)`);
+
+      // Opening a topic resolves its most recent non-automated existing session cwd.
+      expect(await chat.startTopicChat('t1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(knights);
+      expect(chat.get().conversation).toMatchObject({
+        cwd: knights,
+        origin: 'topic',
+        topic: { id: 't1', name: 'Knights' },
+      });
+      chat.submit('/where');
+      expect(chat.get().notices.at(-1)?.text).toBe(`Working directory: ${knights} · topic: Knights`);
+
+      // Opening a topic without a local folder falls back to neutral home with origin 'unresolved'.
+      expect(await chat.startTopicChat('t2')).toBe(true);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().conversation).toMatchObject({ origin: 'unresolved', topic: { id: 't2', name: 'Cloud Only' } });
+
+      // Continuing any local session in --home mode switches cwd to that session's directory.
+      expect(await chat.continueSession('o1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(other);
+      expect(chat.get().session.sessionId).toBe('o1');
+      expect(chat.get().conversation).toMatchObject({ cwd: other, origin: 'session', title: 'Other task' });
+
+      // Returning home resets cwd back to neutral home.
+      expect(chat.startHomeChat()).toBe(true);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      expect(chat.get().conversation?.topic).toBeUndefined();
+    } finally {
+      chat.close();
+    }
+
+    // Host app `open-session <id>` over stdin opens that session in its directory.
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [agent],
+      sessionSources: [source],
+      cwd: homeDir,
+      env: homeEnv,
+      home: true,
+      noProject: true,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1]!;
+      const token = new URL(url).searchParams.get('token')!;
+      const events = await fetch(new URL('/api/events', url), { headers: { 'x-genaicode-token': token } });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const waitFor = async (needle: string) => {
+        while (!seen.includes(needle)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await waitFor('"home":true');
+      stdin.write('open-session k1\n');
+      await waitFor('"title":"Knight AI"');
+      expect(seen).toContain(JSON.stringify(knights));
+      await reader.cancel();
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

@@ -100,14 +100,14 @@ const MOST_TOPICS = 6;
 
 /**
  * What to look at first: the topics that ask for you, then those agents work on now and that ask
- * nothing. Sessions no topic has are left out: they have no name to show.
+ * nothing, then recent topics with neither. Sessions no topic has are left out: they have no name to show.
  */
 export function topicsNow(
   sessions: readonly SessionInfo[],
   topics: ReadonlyArray<{ id: string; name: string }>,
   topicOf: Readonly<Record<string, string>>,
   now = Date.now(),
-): { asking: SessionTopic[]; working: SessionTopic[] } {
+): { asking: SessionTopic[]; working: SessionTopic[]; recent: SessionTopic[] } {
   const named = groupByTopic(
     sessions.filter((session) => !session.archived),
     topics,
@@ -117,6 +117,7 @@ export function topicsNow(
   return {
     asking: named.filter((group) => group.asking).slice(0, MOST_TOPICS),
     working: named.filter((group) => !group.asking && group.active).slice(0, MOST_TOPICS),
+    recent: named.filter((group) => !group.asking && !group.active).slice(0, MOST_TOPICS),
   };
 }
 
@@ -137,10 +138,18 @@ export function resumeCommand(session: SessionInfo): string | undefined {
 
 /**
  * Whether the chat working in `cwd` can take a session over: a local one from that directory or
- * below it, in a store whose conversations can be read (`readable` source names).
+ * below it (or any local session when `anyCwd` is true in `--home` mode), in a store whose
+ * conversations can be read (`readable` source names).
  */
-export function canContinueHere(session: SessionInfo, cwd: string, readable: readonly string[]): boolean {
-  if (session.where !== 'local' || !session.cwd || !cwd || !readable.includes(session.source)) return false;
+export function canContinueHere(
+  session: SessionInfo,
+  cwd: string,
+  readable: readonly string[],
+  options?: { anyCwd?: boolean },
+): boolean {
+  if (session.where !== 'local' || !readable.includes(session.source)) return false;
+  if (options?.anyCwd) return true;
+  if (!session.cwd || !cwd) return false;
   let end = cwd.length;
   while (end > 1 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
   const root = cwd.slice(0, end);

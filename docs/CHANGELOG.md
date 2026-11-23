@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Desktop app and `genaicode ui --home`: per-conversation working directories without a fixed project folder. Cross-project chats start in `~/.genaicode/home`; **New chat** on a topic card opens in that topic's most recent non-automated directory; continuing any local session (from Sessions, Chats, the menu bar or `/continue`) resolves its directory or repository root; and `open_project` lets an agent move a conversation into an existing or new directory after one confirmation card. The header shows the conversation title and topic instead of a path (hover or `/where` shows the directory), file panel and upload roots follow the conversation, and Codex asks to trust a new directory via a question card. `genaicode ui --cwd` behaves as before (#310)
+
 ## 3.0.1 — 2026-11-23
 
 **Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.
