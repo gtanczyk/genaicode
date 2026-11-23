@@ -677,6 +677,196 @@
   color: var(--_error);
 }
 
+/* Cross-session relay cards (`sessions_send`) */
+.gc-relay {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--_border);
+  border-left: 3px solid var(--_border);
+  background: var(--_panel);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.gc-relay[data-status='working'] {
+  border-left-color: var(--_accent);
+}
+.gc-relay[data-status='queued'] {
+  border-left-color: var(--_warn);
+}
+.gc-relay[data-status='answered'] {
+  border-left-color: var(--_ok);
+}
+.gc-relay[data-status='failed'] {
+  border-left-color: var(--_error);
+}
+.gc-relay-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+.gc-relay-avatar {
+  background: var(--_bg);
+}
+.gc-relay-who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.gc-relay-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.gc-relay-agent {
+  font-size: 0.93em;
+  font-weight: 600;
+  color: var(--_text);
+  flex: none;
+}
+.gc-relay-project {
+  font-family: var(--_mono);
+  font-size: 0.78em;
+  color: var(--_muted);
+  background: var(--_code-bg);
+  padding: 1px 6px;
+  border-radius: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.gc-relay-title {
+  font-size: 0.82em;
+  color: var(--_muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-relay-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--_accent-soft);
+  color: var(--_accent);
+}
+.gc-relay-status[data-status='queued'] {
+  background: var(--_warn-soft);
+  color: var(--_warn);
+}
+.gc-relay-status[data-status='answered'] {
+  background: color-mix(in srgb, var(--_ok) 16%, transparent);
+  color: var(--_ok);
+}
+.gc-relay-status[data-status='failed'] {
+  background: var(--_error-soft);
+  color: var(--_error);
+}
+.gc-relay-status .gc-spin {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+.gc-relay-sent {
+  border-top: 1px solid var(--_border);
+  padding: 6px 14px;
+  font-size: 0.84em;
+  color: var(--_muted);
+}
+.gc-relay-sent summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.gc-relay-sent summary::-webkit-details-marker {
+  display: none;
+}
+.gc-relay-sent summary::before {
+  content: '▸';
+  flex: none;
+  font-size: 0.95em;
+  line-height: 1;
+  color: var(--_faint);
+  transition: transform 0.12s;
+}
+.gc-relay-sent[open] summary::before {
+  transform: rotate(90deg);
+}
+.gc-relay-sent-label {
+  flex: none;
+  font-weight: 500;
+  color: var(--_faint);
+}
+.gc-relay-sent-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.gc-relay-sent[open] .gc-relay-sent-preview {
+  display: none;
+}
+.gc-relay-sent-full {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--_text);
+  max-height: 16rem;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--_bg);
+  border-radius: 8px;
+}
+.gc-relay-live {
+  border-top: 1px solid var(--_border);
+  padding: 8px 14px;
+  font-size: 0.87em;
+  color: var(--_muted);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.gc-relay-live span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-relay-now {
+  flex: none;
+  color: var(--_accent);
+  font-weight: 600;
+  font-size: 0.9em;
+}
+.gc-relay-body {
+  border-top: 1px solid var(--_border);
+  padding: 12px 14px 14px;
+  color: var(--_text);
+  line-height: 1.55;
+}
+.gc-relay-body.gc-err {
+  color: var(--_error);
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* Buttons and composer */
 .gc-btn {
   border: 1px solid var(--_border);

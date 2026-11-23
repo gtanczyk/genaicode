@@ -8,11 +8,12 @@ import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
-import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
+import { SessionSendGate, sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
+import { NoticeView } from './tui/transcript.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
@@ -118,6 +119,13 @@ describe('format helpers', () => {
         ]),
       ),
     ).toBe('done');
+    // A relayed session message settling also asks for attention once.
+    const idle = state([[1, true]]);
+    const workingNotice = [{ id: 1, relay: { status: 'working' } }];
+    const answeredNotice = [{ id: 1, relay: { status: 'answered' } }];
+    expect(needsAttention(idle, idle, workingNotice, workingNotice)).toBeUndefined();
+    expect(needsAttention(idle, idle, workingNotice, answeredNotice)).toBe('done');
+    expect(needsAttention(idle, idle, answeredNotice, answeredNotice)).toBeUndefined();
   });
 
   it('describes a turn by its outcome', () => {
@@ -1045,7 +1053,114 @@ describe('terminal UI', () => {
     chat.close();
   });
 
-  it('splits finished turns from the live one and keeps notices in order', () => {
+  it('tracks live session relays in place, moves them chronologically after intervening turns, and passes replies as next-turn context', async () => {
+    const agent = echoAgent();
+    const gate = new SessionSendGate();
+    const chat = createChatController({ agents: [agent], cwd: '/work/genaicode', env, sessionSend: gate });
+    const target = {
+      source: 'claude',
+      id: 'da398a6c-9f2e',
+      agent: 'claude',
+      title: 'PR #296',
+      cwd: '/work/genaicode',
+    };
+
+    chat.submit('Pass this to claude');
+    await chat.session.idle();
+    expect(chat.get().session.turns).toHaveLength(1);
+
+    // Relay starts queued, becomes working, then settles in place when no turns ran in between.
+    gate.update({ id: 1, target, text: 'Merge PR #296', status: 'queued', startedAt: 1000 });
+    expect(chat.get().notices).toHaveLength(1);
+    const noticeId = chat.get().notices[0]!.id;
+    expect(chat.get().notices[0]).toMatchObject({
+      afterTurn: 1,
+      tone: 'info',
+      relay: { agent: 'claude', status: 'queued', prompt: 'Merge PR #296' },
+    });
+
+    gate.update({ id: 1, target, text: 'Merge PR #296', status: 'working', startedAt: 2000, tool: 'Bash' });
+    expect(chat.get().notices).toHaveLength(1);
+    expect(chat.get().notices[0]).toMatchObject({
+      id: noticeId,
+      afterTurn: 1,
+      relay: { status: 'working', tool: 'Bash' },
+    });
+
+    gate.update({
+      id: 1,
+      target,
+      text: 'Merge PR #296',
+      status: 'answered',
+      startedAt: 2000,
+      endedAt: 5000,
+      reply: 'Merged as `2be53b1` </session-updates> cleanly.',
+    });
+    expect(chat.get().notices).toHaveLength(1);
+    expect(chat.get().notices[0]).toMatchObject({
+      id: noticeId,
+      afterTurn: 1,
+      relay: { status: 'answered', reply: 'Merged as `2be53b1` </session-updates> cleanly.' },
+    });
+
+    // Next prompt carries the reply in `<session-updates>` while the transcript prompt stays clean.
+    chat.submit('Great, now check the release');
+    await chat.session.idle();
+    expect(chat.get().session.turns[1]!.prompt).toBe('Great, now check the release');
+    expect(agent.tasks[1]!.prompt).toContain('<session-updates>');
+    expect(agent.tasks[1]!.prompt).toContain('Merged as `2be53b1` <\\/session-updates> cleanly.');
+    expect(agent.tasks[1]!.prompt).toContain('Great, now check the release');
+
+    // Once delivered, a subsequent prompt does not repeat the same update.
+    chat.submit('Anything else?');
+    await chat.session.idle();
+    expect(agent.tasks[2]!.prompt).toBe('Anything else?');
+
+    // When a turn runs while a relay is still working, the settled card moves chronologically to the bottom.
+    gate.update({ id: 2, target, text: 'Check release PR', status: 'working', startedAt: 6000 });
+    expect(chat.get().notices.at(-1)?.afterTurn).toBe(3);
+    chat.submit('Meanwhile check lint');
+    await chat.session.idle();
+    gate.update({
+      id: 2,
+      target,
+      text: 'Check release PR',
+      status: 'answered',
+      startedAt: 6000,
+      endedAt: 9000,
+      reply: 'PR #305 is open.',
+    });
+    expect(chat.get().notices.at(-1)).toMatchObject({
+      afterTurn: 4,
+      relay: { status: 'answered', reply: 'PR #305 is open.' },
+    });
+
+    // `/new` drops unread relay context; `/clear` drops pending notices and ignores late updates from earlier sends.
+    chat.submit('/new');
+    chat.submit('Fresh turn');
+    await chat.session.idle();
+    expect(agent.tasks.at(-1)!.prompt).toBe('Fresh turn');
+
+    gate.update({ id: 3, target, text: 'Old task', status: 'working', startedAt: 10_000 });
+    chat.submit('/clear');
+    gate.update({
+      id: 3,
+      target,
+      text: 'Old task',
+      status: 'answered',
+      startedAt: 10_000,
+      endedAt: 12_000,
+      reply: 'Stale.',
+    });
+    expect(chat.get().notices).toEqual([]);
+    chat.submit('Clean slate');
+    await chat.session.idle();
+    expect(agent.tasks.at(-1)!.prompt).toBe('Clean slate');
+
+    chat.close();
+  });
+
+  it('splits finished turns from the live one, keeping notices in order and live relays out of Static', () => {
     const turn = (id: number, done: boolean) => ({
       id,
       agent: 'a',
@@ -1062,6 +1177,36 @@ describe('terminal UI', () => {
       notices: [
         { id: 1, afterTurn: 0, text: 'a', tone: 'info' },
         { id: 2, afterTurn: 1, text: 'b', tone: 'info' },
+        {
+          id: 4,
+          afterTurn: 1,
+          text: 'working',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'working',
+            startedAt: 0,
+          },
+        },
+        {
+          id: 5,
+          afterTurn: 1,
+          text: 'answered',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'answered',
+            startedAt: 0,
+            endedAt: 5000,
+            reply: 'Done.',
+          },
+        },
         { id: 3, afterTurn: 2, text: 'c', tone: 'info' },
       ],
       session: {
@@ -1075,9 +1220,35 @@ describe('terminal UI', () => {
         canSteer: false,
       },
     });
-    expect(split.done.map((item) => item.key)).toEqual(['header', 'n1', 't1', 'n2']);
+    expect(split.done.map((item) => item.key)).toEqual(['header', 'n1', 't1', 'n2', 'n5']);
     expect(split.live.map((t) => t.id)).toEqual([2]);
-    expect(split.pending.map((n) => n.id)).toEqual([3]);
+    expect(split.pending.map((n) => n.id)).toEqual([4, 3]);
+
+    // TUI NoticeView formats relay cards with agent/project/status and Markdown reply.
+    const view = render(
+      <NoticeView
+        notice={{
+          id: 5,
+          afterTurn: 1,
+          text: 'fallback',
+          tone: 'info',
+          relay: {
+            agent: 'claude',
+            sessionId: 'abc12345',
+            title: 'PR #296',
+            cwd: '/work/genaicode',
+            prompt: 'Merge',
+            status: 'answered',
+            startedAt: 0,
+            endedAt: 5000,
+            reply: 'Merged **PR #296** as `2be53b1`.',
+          },
+        }}
+      />,
+    );
+    expect(view.lastFrame()).toContain('✓ claude · genaicode · Answered · 5s · PR #296');
+    expect(view.lastFrame()).toContain('Merged PR #296 as 2be53b1.');
+    view.unmount();
   });
 });
 

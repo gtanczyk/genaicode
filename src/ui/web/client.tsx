@@ -237,7 +237,7 @@ function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; 
  * approval or finishes, and count those in the tab title. Coming back to the tab hushes it.
  */
 function useBark(view: ChatView | undefined) {
-  const seen = useRef<ChatView['session']>(undefined);
+  const seen = useRef<ChatView>(undefined);
   const audio = useRef<HTMLAudioElement>(undefined);
   const unread = useRef(0);
   useEffect(() => {
@@ -260,8 +260,11 @@ function useBark(view: ChatView | undefined) {
   useEffect(() => {
     if (!view) return;
     const before = seen.current;
-    seen.current = view.session;
-    if (!needsAttention(before, view.session) || (document.hasFocus() && document.visibilityState === 'visible'))
+    seen.current = view;
+    if (
+      !needsAttention(before?.session, view.session, before?.notices, view.notices) ||
+      (document.hasFocus() && document.visibilityState === 'visible')
+    )
       return;
     unread.current += 1;
     document.title = `(${unread.current}) genaicode`;

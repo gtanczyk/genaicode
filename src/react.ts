@@ -13,6 +13,7 @@
  */
 export { AgentChat, artifactSubmission } from './react/agent-chat.js';
 export type { AgentChatProps, ChatCompletion, ChatNotice } from './react/agent-chat.js';
+export type { ChatSessionRelay } from './react/session-relay.js';
 export { matchesAccept } from './react/attachments.js';
 export type { ChatAttachments } from './react/attachments.js';
 export { Markdown } from './react/markdown.js';

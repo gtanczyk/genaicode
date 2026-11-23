@@ -638,6 +638,106 @@ describe('AgentChat', () => {
     expect(order).toEqual(['gc-turn', 'gc-after-turn', 'gc-notice gc-err', 'gc-turn', 'gc-footer-slot']);
   });
 
+  it('renders live cross-session relay cards with status, collapsible prompt, and Markdown replies', () => {
+    const startedAt = Date.now() - 42_000;
+    render({
+      formatToolName: (name) => (name === 'Bash' ? 'Shell' : name),
+      notices: [
+        {
+          id: 'r1',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'da398a6c-9f2e-48a6-b766-b329efe401b3',
+            title: 'Merge PR #296',
+            cwd: '/work/genaicode',
+            prompt: 'Check CI and merge PR #296\nNo admin bypass.',
+            status: 'answered',
+            startedAt,
+            endedAt: startedAt + 42_000,
+            reply:
+              '[PR #296](https://github.com/gtanczyk/genaicode/pull/296) merged as `2be53b1`.\n\n- **Checks:** all green',
+          },
+        },
+        {
+          id: 'r2',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 'ab12cd34',
+            cwd: '/work/genaicode',
+            prompt: 'Check release PR',
+            status: 'working',
+            startedAt: Date.now() - 5_000,
+            tool: 'Bash',
+          },
+        },
+        {
+          id: 'r3',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 'ff99ee88',
+            cwd: '/work/genaicode',
+            prompt: 'Run npm run check',
+            status: 'queued',
+            startedAt: Date.now(),
+          },
+        },
+        {
+          id: 'r4',
+          afterTurn: 1,
+          text: 'fallback',
+          tone: 'error',
+          relay: {
+            agent: 'claude',
+            sessionId: 'deadbeef',
+            cwd: '/work/genaicode',
+            prompt: 'Inspect logs',
+            status: 'failed',
+            startedAt,
+            endedAt: startedAt + 1_000,
+            error: 'Session could not be found.',
+          },
+        },
+      ],
+    });
+    const cards = $$('.gc-relay');
+    expect(cards).toHaveLength(4);
+
+    // Answered: avatar, project chip, duration pill, collapsible sent prompt, rendered Markdown.
+    const answered = cards[0]!;
+    expect(answered.querySelector('.gc-relay-avatar')?.textContent).toBe('cl');
+    expect(answered.querySelector('.gc-relay-project')?.textContent).toBe('genaicode');
+    expect(answered.querySelector('.gc-relay-status')?.textContent).toBe('Answered · 42s');
+    expect(answered.querySelector('.gc-relay-sent-preview')?.textContent).toBe('Check CI and merge PR #296');
+    expect(answered.querySelector('.gc-relay-sent-full')?.textContent).toContain('No admin bypass.');
+    expect(answered.querySelector('.gc-relay-body a')?.getAttribute('href')).toBe(
+      'https://github.com/gtanczyk/genaicode/pull/296',
+    );
+    expect(answered.querySelector('.gc-relay-body code')?.textContent).toBe('2be53b1');
+    expect(answered.querySelector('.gc-relay-body strong')?.textContent).toBe('Checks:');
+
+    // Working: spinner + formatted tool name.
+    const working = cards[1]!;
+    expect(working.querySelector('.gc-relay-status .gc-spin')).toBeTruthy();
+    expect(working.querySelector('.gc-relay-status')?.textContent).toContain('Working ·');
+    expect(working.querySelector('.gc-relay-live')?.textContent).toBe('NowShell');
+
+    // Queued: waiting hint.
+    const queued = cards[2]!;
+    expect(queued.querySelector('.gc-relay-status')?.textContent).toBe('Queued');
+    expect(queued.querySelector('.gc-relay-live')?.textContent).toContain('Waiting for its current turn');
+
+    // Failed: error alert.
+    const failed = cards[3]!;
+    expect(failed.querySelector('.gc-relay-status')?.textContent).toBe('Failed');
+    expect(failed.querySelector('[role="alert"]')?.textContent).toBe('Session could not be found.');
+  });
+
   it('replaces or drops the header, sets the theme', () => {
     render({ header: <div className="mine">Console agent</div>, theme: 'dark' });
     expect($('.gc-header')).toBeNull();
