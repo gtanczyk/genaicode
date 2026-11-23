@@ -23,12 +23,20 @@ import {
   agentSessionSources,
   answerAsk,
   archiveSessions,
+  findSession,
   listSessions,
   pendingAsks,
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
-import { startWebUi, type HostApp, type HostUpdate, type WebAsset, type WebUi } from './web/server.js';
+import {
+  startWebUi,
+  type HostApp,
+  type HostSaveRequest,
+  type HostUpdate,
+  type WebAsset,
+  type WebUi,
+} from './web/server.js';
 import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
@@ -193,25 +201,38 @@ async function welcome(options: WebRunOptions): Promise<{ port: number; token: s
 
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
+/** Short status toast from the host app (e.g. after a native Developer menu action copies or saves). */
+const TOAST_LINE = /^toast ([^\r\n\0]{1,160})$/;
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
+/** Prefixes printed on stderr when the page asks the host app to save a transcript via its native dialog. */
+export const SAVE_TRANSCRIPT_PREFIX = 'Save transcript ';
+export const SAVE_SESSION_TRANSCRIPT_PREFIX = 'Save session-transcript ';
 
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
  * says `update-downloading <version>` on stdin while it downloads a newer version of itself,
- * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
- * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
- * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr.
+ * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself,
+ * `update-none` when a download failed, and `toast <message>` after native actions; the page shows
+ * each and can ask stderr to relaunch or open a native Save dialog for a transcript.
  */
 function hostApp(options: WebRunOptions): HostApp {
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
+  const toastListeners = new Set<(text: string) => void>();
   options.stdin.on('data', (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
     rest = (lines.pop() ?? '').slice(-200);
     for (const line of lines) {
-      const found = UPDATE_LINE.exec(line.trim());
+      const trimmed = line.trim();
+      const toast = TOAST_LINE.exec(trimmed);
+      if (toast) {
+        const text = toast[1]!.trim();
+        if (text) for (const listener of toastListeners) listener(text);
+        continue;
+      }
+      const found = UPDATE_LINE.exec(trimmed);
       if (!found) continue;
       // `update-none`: a download that failed, so there is nothing to show any more.
       const next: HostUpdate | undefined = found[3]
@@ -233,6 +254,19 @@ function hostApp(options: WebRunOptions): HostApp {
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    saveTranscript: (request: HostSaveRequest) => {
+      if (request.source && request.id) {
+        options.stderr.write(
+          `${SAVE_SESSION_TRANSCRIPT_PREFIX}${request.format} ${encodeURIComponent(request.source)} ${encodeURIComponent(request.id)}\n`,
+        );
+      } else {
+        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}\n`);
+      }
+    },
+    onToast(listener) {
+      toastListeners.add(listener);
+      return () => toastListeners.delete(listener);
+    },
   };
 }
 
@@ -383,6 +417,31 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
+      sessionFile: async ({ agent, sessionId }) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const ownName = agents.find((candidate) => candidate.name === agent)?.sessions?.name;
+        const own = ownName ? sources.filter((source) => source.name === ownName) : [];
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        if (own.length) {
+          const direct = await findSession(own, sessionId, query).catch(() => undefined);
+          if (direct?.session.path) return direct.session.path;
+        }
+        const found = await findSession(sources, sessionId, query).catch(() => undefined);
+        return found?.session.path;
+      },
+      sessionTranscript: async (sourceName, id) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const store = sources.find((candidate) => candidate.name === sourceName);
+        if (!store) return undefined;
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        const found = await findSession([store], id, query).catch(() => undefined);
+        if (!found) return undefined;
+        const readable = typeof store.read === 'function';
+        const turns = readable
+          ? await store.read!(found.session, { maxTurns: 200, maxToolOutput: 8_000 }).catch(() => [])
+          : [];
+        return { session: found.session, turns, readable };
+      },
     }).catch((error: unknown) => {
       running = undefined;
       throw error;

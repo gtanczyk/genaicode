@@ -55,7 +55,7 @@ body { background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif,
 #root { height: 100%; display: flex; flex-direction: column; }
 #root > .gc-chat { flex: 1; height: auto; background: transparent; position: relative; z-index: 1; }
 button, input, select, textarea { font: inherit; color: inherit; }
-header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; position: relative; z-index: 1; }
+header.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; position: relative; z-index: 10; }
 .mac-app header.bar { padding-left: 88px; min-height: 34px; user-select: none; -webkit-user-select: none; cursor: default; }
 .brand { font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
 .brand img { width: 24px; height: 24px; image-rendering: pixelated; }
@@ -176,6 +176,19 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .session-receipt p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14em; overflow: auto; margin: 4px 0; }
 .more { padding: 6px 12px; border-top: 1px solid var(--line); display: flex; gap: 16px; }
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
+.tm-wrap { position: relative; display: inline-flex; }
+.tm-popover { position: absolute; right: 0; top: calc(100% + 5px); z-index: 30; min-width: 240px; max-width: min(360px, calc(100vw - 24px)); padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .16); display: flex; flex-direction: column; gap: 1px; user-select: text; -webkit-user-select: text; }
+.tm-popover.tm-up { top: auto; bottom: calc(100% + 5px); }
+.tm-head { padding: 5px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 3px; display: flex; flex-direction: column; gap: 3px; }
+.tm-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); min-width: 0; }
+.tm-meta span { flex: 0 0 26px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); }
+.tm-meta code { font-family: var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tm-wrap .tm-popover button { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 6px 8px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.tm-wrap .tm-popover button:hover { background: var(--bg); color: var(--accent); border-color: transparent; }
+.tm-wrap .tm-popover button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tm-popover hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.gc-toast { position: fixed; right: 18px; bottom: 18px; z-index: 40; padding: 8px 13px; border-radius: 9px; background: var(--panel); color: var(--text); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .16); font-size: 13px; max-width: min(380px, calc(100vw - 36px)); }
+.gc-toast.err { color: var(--err); border-color: currentColor; }
 @media (max-width: 640px) {
   .session-row { grid-template-columns: 16px 70px 34px 1fr; }
   .session-row .act { grid-column: 2 / -1; flex-wrap: wrap; }

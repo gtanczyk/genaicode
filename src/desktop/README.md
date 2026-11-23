@@ -35,6 +35,8 @@ directory of the app's own, outside every project) and shows the address that pr
 empty chat opens on your topics: those that wait for you, those agents work on, and each agent's plan limits; a topic opens its sessions. The
 page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the server.
 
+The **Developer** menu (and the session chip in the chat header, plus the `⋯` menu on every row in **Chats** / **Sessions**) lets you copy the full session ID, the session's file path on disk, the formatted Markdown transcript, or the raw JSON state, or save the transcript to a `.md` / `.json` file via the native Save dialog.
+
 It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
 how many. A session shows the window; a question an agent holds open for an answer

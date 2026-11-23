@@ -258,3 +258,182 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it('copies session ID, file path and transcripts and downloads files from chat header and Sessions view', async () => {
+  const browser = await chromium.launch();
+  mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+  const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'transcript-'));
+  const env = { GENAICODE_HOME: root, HOME: root };
+  const stop = new AbortController();
+  const activeSessionId = 'ses_0195active123456';
+  const activeSessionPath = join(root, 'active.jsonl');
+  const storedSession: SessionInfo = {
+    id: 'ses_0195stored654321',
+    source: 'reporter',
+    agent: 'reporter',
+    where: 'local',
+    cwd: root,
+    title: 'Observed conversation',
+    path: join(root, 'stored.jsonl'),
+    state: 'waiting',
+    updatedAt: Date.now(),
+  };
+  const reporter: CodingAgent = {
+    name: 'reporter',
+    command: process.execPath,
+    capabilities: { mcp: true, resume: true },
+    sessions: {
+      name: 'reporter',
+      where: 'local',
+      list: async () => [
+        { ...storedSession, id: activeSessionId, path: activeSessionPath, title: 'Active chat' },
+        storedSession,
+      ],
+      read: async (info) => [
+        {
+          id: 1,
+          agent: 'reporter',
+          prompt: `Prompt in ${info.id}`,
+          entries: [{ kind: 'text', text: `Reply in ${info.id}`, streaming: false }],
+          startedAt: Date.now() - 2000,
+          endedAt: Date.now() - 1000,
+        },
+      ],
+    },
+    run(task) {
+      const result: AgentResult = {
+        status: 'completed',
+        ok: true,
+        exitCode: 0,
+        signal: null,
+        sessionId: activeSessionId,
+        text: `Observed answer for: ${task.prompt}`,
+      };
+      return {
+        result: Promise.resolve(result),
+        abort() {},
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'session', sessionId: activeSessionId };
+          yield { type: 'message', text: result.text! };
+          yield { type: 'done', result };
+        },
+      };
+    },
+  };
+  let running: Promise<number> | undefined;
+  try {
+    const bundle = await build({
+      entryPoints: ['src/ui/web/client.tsx'],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      jsx: 'automatic',
+      loader: { '.css': 'text' },
+      define: { 'process.env.NODE_ENV': '"production"' },
+    });
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript: bundle.outputFiles[0].text,
+        firstPrompt: 'Something weird happened here',
+      });
+    running = main({
+      argv: ['ui', '--sessions', '--no-artifacts'],
+      cwd: root,
+      env,
+      agents: [reporter],
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy());
+    const context = await browser.newContext({
+      permissions: ['clipboard-read', 'clipboard-write'],
+      acceptDownloads: true,
+    });
+    const page = await context.newPage();
+    await page.goto(opened!);
+    await page.getByText('Observed answer for: Something weird happened here').waitFor();
+
+    // Header session chip opens the developer/transcript menu.
+    const chip = page.getByRole('button', { name: /session …ve123456/ });
+    await chip.click();
+    await page.getByText(activeSessionPath).waitFor();
+
+    await page.getByRole('menuitem', { name: 'Copy session ID' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(activeSessionId);
+    await page.getByRole('status').filter({ hasText: 'Copied session ID' }).waitFor();
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy session file path' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(activeSessionPath);
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy transcript (Markdown)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied transcript (Markdown)' }).waitFor();
+    const copiedMd = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copiedMd).toContain('# Genaicode transcript');
+    expect(copiedMd).toContain(activeSessionId);
+    expect(copiedMd).toContain(activeSessionPath);
+    expect(copiedMd).toContain('Something weird happened here');
+    expect(copiedMd).toContain('Observed answer for: Something weird happened here');
+
+    await chip.click();
+    await page.getByRole('menuitem', { name: 'Copy raw state (JSON)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied raw state (JSON)' }).waitFor();
+    const copiedJson = JSON.parse(await page.evaluate(() => navigator.clipboard.readText())) as {
+      format: string;
+      sessionId: string;
+      sessionPath: string;
+    };
+    expect(copiedJson).toMatchObject({
+      format: 'genaicode-transcript',
+      sessionId: activeSessionId,
+      sessionPath: activeSessionPath,
+    });
+
+    await chip.click();
+    const [mdDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('menuitem', { name: 'Download Markdown (.md)' }).click(),
+    ]);
+    expect(mdDownload.suggestedFilename()).toBe('genaicode-reporter-ve123456.md');
+
+    // Sessions view row menu copies ID & downloads stored session transcript.
+    await page.getByRole('button', { name: 'Sessions' }).click();
+    const row = page.locator('.session-row').filter({ hasText: 'Observed conversation' });
+    await row.waitFor();
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await page.getByRole('menuitem', { name: 'Copy session ID' }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(storedSession.id);
+
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await page.getByRole('menuitem', { name: 'Copy transcript (Markdown)' }).click();
+    await page.getByRole('status').filter({ hasText: 'Copied transcript (Markdown)' }).waitFor();
+    const storedMd = await page.evaluate(() => navigator.clipboard.readText());
+    expect(storedMd).toContain('# Session transcript');
+    expect(storedMd).toContain(`Prompt in ${storedSession.id}`);
+    expect(storedMd).toContain(`Reply in ${storedSession.id}`);
+
+    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    const [jsonDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('menuitem', { name: 'Download JSON (.json)' }).click(),
+    ]);
+    expect(jsonDownload.suggestedFilename()).toBe('genaicode-reporter-ed654321.json');
+
+    await context.close();
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);

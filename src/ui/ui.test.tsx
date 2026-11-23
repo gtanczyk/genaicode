@@ -1590,6 +1590,145 @@ describe('web UI server', () => {
     expect(await done).toBe(0);
   });
 
+  it('serves active chat and stored session transcripts, native save requests, and host toasts', async () => {
+    const stdin = new PassThrough();
+    let errors = '';
+    const stored: SessionInfo = {
+      source: 'echo-store',
+      agent: 'echo',
+      id: 'sess-0195abcdef',
+      where: 'local',
+      cwd: '/w',
+      title: 'Debug chat',
+      path: '/home/me/.echo/sess-0195abcdef.jsonl',
+      state: 'waiting',
+      updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
+    };
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      sessions: {
+        name: 'echo-store',
+        where: 'local',
+        list: async () => [stored],
+        read: async () => [
+          {
+            id: 1,
+            agent: 'echo',
+            prompt: 'Stored question',
+            entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
+            startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
+            endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
+          },
+        ],
+      },
+    };
+    const done = runWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '2.55.0',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    const token = new URL(url).searchParams.get('token')!;
+    const headers = { 'x-genaicode-token': token };
+
+    // Auth & format validation.
+    expect((await fetch(new URL('/api/transcript', url))).status).toBe(403);
+    expect((await fetch(new URL('/api/transcript?format=xml', url), { headers })).status).toBe(400);
+
+    // Run one turn so active chat has a turn and sessionId ('s-1' from echoAgent).
+    const submitRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: 'Hello transcript' }),
+    });
+    expect(submitRes.status).toBe(200);
+    await until(() => true);
+    let mdText = '';
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const res = await fetch(new URL('/api/transcript?format=md', url), { headers });
+      mdText = await res.text();
+      if (mdText.includes('You said **Hello transcript**')) break;
+      await tick();
+    }
+    expect(mdText).toContain('# Genaicode transcript');
+    expect(mdText).toContain('- **Version:** 2.55.0');
+    expect(mdText).toContain('- **Session ID:** s-1');
+    expect(mdText).toContain('Hello transcript');
+    expect(mdText).toContain('You said **Hello transcript**');
+
+    const jsonRes = await fetch(new URL('/api/transcript?format=json', url), { headers });
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.headers.get('x-genaicode-filename')).toMatch(/^genaicode-echo-s-1\.json$/);
+    const jsonBody = (await jsonRes.json()) as { format: string; sessionId: string; session: { turns: unknown[] } };
+    expect(jsonBody.format).toBe('genaicode-transcript');
+    expect(jsonBody.sessionId).toBe('s-1');
+    expect(jsonBody.session.turns).toHaveLength(1);
+
+    // Stored session transcript (meta, md, json, and 404 on unknown).
+    const storedMeta = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=meta', url), {
+      headers,
+    });
+    expect(storedMeta.status).toBe(200);
+    expect(await storedMeta.json()).toMatchObject({
+      agent: 'echo',
+      source: 'echo-store',
+      sessionId: 'sess-0195abcdef',
+      sessionPath: '/home/me/.echo/sess-0195abcdef.jsonl',
+      turns: 1,
+      readable: true,
+    });
+    const storedMd = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=md', url), {
+      headers,
+    });
+    expect(storedMd.status).toBe(200);
+    const storedMdText = await storedMd.text();
+    expect(storedMdText).toContain('# Session transcript');
+    expect(storedMdText).toContain('Stored question');
+    expect(storedMdText).toContain('Stored answer');
+    expect(
+      (await fetch(new URL('/api/sessions/echo-store/missing/transcript?format=md', url), { headers })).status,
+    ).toBe(404);
+
+    // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
+    const events = await fetch(new URL('/api/events', url), { headers });
+    const reader = events.body!.getReader();
+    let seen = '';
+    const read = async (wanted: string) => {
+      while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+    };
+    await read('event: config');
+    expect(seen).toContain('"nativeSave":true');
+
+    const save = (body: unknown) =>
+      fetch(new URL('/api/save-transcript', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await save({ format: 'xml' })).status).toBe(400);
+    expect((await save({ format: 'md', source: 'only-source' })).status).toBe(400);
+    expect((await save({ format: 'md' })).status).toBe(200);
+    expect(errors).toContain('Save transcript md\n');
+    expect((await save({ format: 'json', source: 'echo-store', id: 'sess-0195abcdef' })).status).toBe(200);
+    expect(errors).toContain('Save session-transcript json echo-store sess-0195abcdef\n');
+
+    stdin.write('toast Copied session ID\n');
+    await read('event: toast\ndata: {"text":"Copied session ID"}');
+
+    await reader.cancel();
+    stdin.end();
+    expect(await done).toBe(0);
+  });
+
   it('stops when stdin ended while it was still starting', async () => {
     const stdin = new PassThrough();
     stdin.end();

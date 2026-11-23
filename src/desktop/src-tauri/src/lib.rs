@@ -11,6 +11,7 @@
 //! questions that can be answered from outside their agent.
 
 mod tower;
+mod transcript;
 mod update;
 
 use std::{
@@ -31,6 +32,12 @@ use tauri::{
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 const CHECK_UPDATES: &str = "check-updates";
+const DEV_COPY_ID: &str = "dev:copy-id";
+const DEV_COPY_PATH: &str = "dev:copy-path";
+const DEV_COPY_MD: &str = "dev:copy-md";
+const DEV_COPY_JSON: &str = "dev:copy-json";
+const DEV_SAVE_MD: &str = "dev:save-md";
+const DEV_SAVE_JSON: &str = "dev:save-json";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
 /// `deny:<question>` and `open:<index of the session in the last snapshot>`, which shows the window.
 const TRAY: &str = "tower";
@@ -52,6 +59,8 @@ struct Server {
 #[derive(Default)]
 struct Shell {
     server: Option<Server>,
+    /// Address and token of the running `genaicode ui` server, for native Developer menu actions.
+    server_endpoint: Option<transcript::Endpoint>,
     /// Bumped on every start, so the reader of a replaced server stays quiet.
     generation: u64,
     /// The user's login shell environment, read once: where their agent CLIs live, their keys.
@@ -184,6 +193,7 @@ const STOP_GRACE: Duration = Duration::from_secs(5);
 /// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
 /// them running. Kill it only if it has not exited within `STOP_GRACE`.
 fn stop(shell: &mut Shell) {
+    shell.server_endpoint = None;
     let Some(Server { mut child, stdin }) = shell.server.take() else {
         return;
     };
@@ -248,13 +258,16 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             if !opened && line.starts_with(OPEN_PREFIX) {
                 opened = true;
                 let address = line["Open ".len()..].trim().to_string();
+                let endpoint = transcript::parse_endpoint(&address);
                 let handle = app.clone();
                 let _ = app.run_on_main_thread(move || {
                     let state = handle.state::<ShellState>();
-                    let current = state.lock().map(|shell| shell.generation).ok();
-                    if current != Some(generation) {
+                    let Ok(mut shell) = state.lock() else { return };
+                    if shell.generation != generation {
                         return;
                     }
+                    shell.server_endpoint = endpoint;
+                    drop(shell);
                     if let (Some(window), Ok(url)) =
                         (handle.get_webview_window("main"), Url::parse(&address))
                     {
@@ -266,7 +279,11 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             } else if opened && line == RELAUNCH_LINE {
                 // The page's "Relaunch to update": only an update this app downloaded installs.
                 update::relaunch(&app);
-            } else if !opened {
+            } else if opened {
+                if let Some(request) = transcript::parse_save_line(&line) {
+                    save_transcript(&app, request);
+                }
+            } else {
                 said.push(line);
                 if said.len() > 12 {
                     said.remove(0);
@@ -538,6 +555,171 @@ fn answer(app: &AppHandle, ask: &str, allow: bool) {
     });
 }
 
+fn info(app: &AppHandle, message: String) {
+    app.dialog()
+        .message(message)
+        .title("Genaicode")
+        .kind(MessageDialogKind::Info)
+        .show(|_| {});
+}
+
+fn current_endpoint(app: &AppHandle) -> Result<transcript::Endpoint, String> {
+    let state = app.state::<ShellState>();
+    let shell = state.lock().map_err(|_| "the shell state is poisoned")?;
+    shell
+        .server_endpoint
+        .clone()
+        .ok_or_else(|| "Genaicode is still starting.".to_string())
+}
+
+fn send_toast(app: &AppHandle, text: &str) {
+    let line = transcript::format_toast_line(text);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let state = handle.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        if let Some(stdin) = shell
+            .server
+            .as_mut()
+            .and_then(|server| server.stdin.as_mut())
+        {
+            let _ = stdin.write_all(line.as_bytes());
+            let _ = stdin.flush();
+        }
+    });
+}
+
+#[derive(Clone, Copy)]
+enum CopyKind {
+    SessionId,
+    SessionPath,
+    Markdown,
+    Json,
+}
+
+fn copy_transcript_item(app: &AppHandle, kind: CopyKind) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let endpoint = match current_endpoint(&app) {
+            Ok(endpoint) => endpoint,
+            Err(message) => return info(&app, message),
+        };
+        let path = match kind {
+            CopyKind::SessionId | CopyKind::SessionPath => "/api/transcript?format=meta",
+            CopyKind::Markdown => "/api/transcript?format=md",
+            CopyKind::Json => "/api/transcript?format=json",
+        };
+        let response = match transcript::fetch(&endpoint, path) {
+            Ok(response) if response.status == 200 => response,
+            Ok(response) => {
+                return fail(
+                    &app,
+                    format!(
+                        "Could not read conversation transcript (HTTP {}).",
+                        response.status
+                    ),
+                );
+            }
+            Err(message) => return fail(&app, message),
+        };
+        let (text, toast) = match kind {
+            CopyKind::SessionId => {
+                let meta: transcript::Meta = match serde_json::from_slice(&response.body) {
+                    Ok(meta) => meta,
+                    Err(error) => {
+                        return fail(&app, format!("Could not read session info: {error}"))
+                    }
+                };
+                match meta.session_id.filter(|id| !id.is_empty()) {
+                    Some(id) => (id, "Copied session ID"),
+                    None => {
+                        return info(
+                            &app,
+                            "This conversation has no session ID yet. Send a message first.".into(),
+                        );
+                    }
+                }
+            }
+            CopyKind::SessionPath => {
+                let meta: transcript::Meta = match serde_json::from_slice(&response.body) {
+                    Ok(meta) => meta,
+                    Err(error) => {
+                        return fail(&app, format!("Could not read session info: {error}"))
+                    }
+                };
+                match meta.session_path.filter(|path| !path.is_empty()) {
+                    Some(path) => (path, "Copied session file path"),
+                    None => {
+                        return info(
+                            &app,
+                            "No session file was found on disk for this conversation yet.".into(),
+                        );
+                    }
+                }
+            }
+            CopyKind::Markdown => (
+                String::from_utf8_lossy(&response.body).into_owned(),
+                "Copied transcript (Markdown)",
+            ),
+            CopyKind::Json => (
+                String::from_utf8_lossy(&response.body).into_owned(),
+                "Copied raw state (JSON)",
+            ),
+        };
+        match transcript::copy_to_clipboard(&text) {
+            Ok(()) => send_toast(&app, toast),
+            Err(message) => fail(&app, format!("Could not copy to clipboard: {message}")),
+        }
+    });
+}
+
+fn save_transcript(app: &AppHandle, request: transcript::SaveRequest) {
+    let app = app.clone();
+    thread::spawn(move || {
+        let endpoint = match current_endpoint(&app) {
+            Ok(endpoint) => endpoint,
+            Err(message) => return info(&app, message),
+        };
+        let response = match transcript::fetch(&endpoint, &request.api_path()) {
+            Ok(response) if response.status == 200 => response,
+            Ok(response) if response.status == 404 => {
+                return fail(&app, "That session could not be found.".into());
+            }
+            Ok(response) => {
+                return fail(
+                    &app,
+                    format!("Could not read transcript (HTTP {}).", response.status),
+                );
+            }
+            Err(message) => return fail(&app, message),
+        };
+        let filename = response
+            .filename
+            .unwrap_or_else(|| request.format.default_filename().to_string());
+        let bytes = response.body;
+        let handle = app.clone();
+        app.dialog()
+            .file()
+            .set_file_name(&filename)
+            .add_filter(request.format.label(), &[request.format.as_str()])
+            .save_file(move |picked| {
+                let Some(path) = picked.and_then(|file| file.into_path().ok()) else {
+                    return;
+                };
+                match fs::write(&path, &bytes) {
+                    Ok(()) => {
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(&filename);
+                        send_toast(&handle, &format!("Saved {name}"));
+                    }
+                    Err(error) => fail(&handle, format!("Could not save transcript: {error}")),
+                }
+            });
+    });
+}
+
 fn on_menu(app: &AppHandle, id: &str) {
     if id == SHOW || id.starts_with("open:") {
         show(app);
@@ -545,6 +727,30 @@ fn on_menu(app: &AppHandle, id: &str) {
         update::relaunch(app);
     } else if id == CHECK_UPDATES {
         update::check(app, true);
+    } else if id == DEV_COPY_ID {
+        copy_transcript_item(app, CopyKind::SessionId);
+    } else if id == DEV_COPY_PATH {
+        copy_transcript_item(app, CopyKind::SessionPath);
+    } else if id == DEV_COPY_MD {
+        copy_transcript_item(app, CopyKind::Markdown);
+    } else if id == DEV_COPY_JSON {
+        copy_transcript_item(app, CopyKind::Json);
+    } else if id == DEV_SAVE_MD {
+        save_transcript(
+            app,
+            transcript::SaveRequest {
+                format: transcript::Format::Md,
+                session: None,
+            },
+        );
+    } else if id == DEV_SAVE_JSON {
+        save_transcript(
+            app,
+            transcript::SaveRequest {
+                format: transcript::Format::Json,
+                session: None,
+            },
+        );
     } else if id == QUIT {
         app.exit(0);
     } else if let Some(ask) = id.strip_prefix("approve:") {
@@ -595,6 +801,57 @@ pub fn run() {
                 Some(own) if cfg!(target_os = "macos") => own.insert(&updates, 1)?,
                 Some(own) => own.append(&updates)?,
                 None => menu.append(&updates)?,
+            }
+            let developer = Submenu::with_items(
+                handle,
+                "Developer",
+                true,
+                &[
+                    &MenuItem::with_id(handle, DEV_COPY_ID, "Copy Session ID", true, None::<&str>)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_PATH,
+                        "Copy Session File Path",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_MD,
+                        "Copy Transcript (Markdown)",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_COPY_JSON,
+                        "Copy Raw State (JSON)",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(handle)?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_SAVE_MD,
+                        "Save Transcript as Markdown…",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        handle,
+                        DEV_SAVE_JSON,
+                        "Save Transcript as JSON…",
+                        true,
+                        None::<&str>,
+                    )?,
+                ],
+            )?;
+            let menu_count = menu.items()?.len();
+            if menu_count > 1 {
+                menu.insert(&developer, menu_count - 1)?;
+            } else {
+                menu.append(&developer)?;
             }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
