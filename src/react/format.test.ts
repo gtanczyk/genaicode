@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toolDiff } from './format.js';
+import { packTaskTitle, toolDiff } from './format.js';
 
 const shown = (input: unknown) => toolDiff(input)?.lines.map((line) => `${line.sign}${line.text}`);
 
@@ -125,5 +125,15 @@ describe('toolDiff', () => {
     const long = toolDiff({ path: 'big', content: Array.from({ length: 450 }, (_, i) => `l${i}`).join('\n') });
     expect(long).toMatchObject({ added: 450, more: 50 });
     expect(long?.lines).toHaveLength(400);
+  });
+});
+
+describe('packTaskTitle', () => {
+  it('uses the title, else the first sentence of the prompt without a "Task:" label', () => {
+    expect(packTaskTitle({ title: ' Visual uplift ', prompt: 'x' })).toBe('Visual uplift');
+    expect(packTaskTitle({ prompt: 'Task: give the game a visual upgrade. Then stop.' })).toBe(
+      'Give the game a visual upgrade.',
+    );
+    expect(packTaskTitle({ prompt: 'a'.repeat(100) })).toHaveLength(80);
   });
 });
