@@ -407,11 +407,18 @@ export function pack(options: PackOptions): Pack {
   let starting = 0;
   const occupied = () => starting + [...subs.values()].filter((sub) => sub.status === 'running' || sub.checking).length;
 
+  const limitKey = (agent: string, window: string, name?: string) => JSON.stringify([limitsAgent(agent), name, window]);
   const noteLimit = (agent: string, limit: RateLimit) => {
-    limits.set(JSON.stringify([limitsAgent(agent), limit.name, limit.window]), { ...limit, agent, at: Date.now() });
+    const reading = { ...limit, agent, at: Date.now() };
+    limits.set(limitKey(agent, limit.window, limit.name), reading);
+    return reading;
   };
-  const observeAgent = (agent: string, event: AgentEvent) => {
-    if (event.type === 'rate-limit') noteLimit(agent, event.limit);
+  const observeAgent = (agent: string, event: AgentEvent, model?: string) => {
+    if (event.type === 'rate-limit') {
+      const limit = event.limit;
+      // A generic refusal applies to the model the task requested.
+      return noteLimit(agent, limit.window === 'quota' && !limit.name && model ? { ...limit, name: model } : limit);
+    }
     if (event.type === 'session' && event.model) {
       let seen = models.get(agent);
       if (!seen) models.set(agent, (seen = new Set()));
@@ -426,7 +433,9 @@ export function pack(options: PackOptions): Pack {
   ): Promise<PackMember[]> => {
     const stored = (await options.readLimits?.(env).catch(() => [])) ?? [];
     const now = Date.now();
-    const readings = latestPackLimits([...stored, ...limits.values()], now);
+    const readings = latestPackLimits([...stored, ...limits.values()], now).filter(
+      (r) => !(r.window === 'quota' && r.status === 'ok' && r.usedPercent === undefined),
+    );
     const candidates = roster.map((member) => ({
       name: member.name,
       capabilities: member.capabilities,
@@ -762,6 +771,10 @@ export function pack(options: PackOptions): Pack {
           !!repo &&
           repo !== path.parse(repo).root &&
           repo !== projectDirectory(homedir());
+        // A successful retry supersedes a generic refusal for this model. Keep independent
+        // vendor windows and refusals that another concurrent task reports after dispatch.
+        const refusalKey = limitKey(agent.name, 'quota', extra.model);
+        let priorRefusal = limits.get(refusalKey);
         let reportedExhaustion = false;
         const run = startRun(agent, {
           prompt,
@@ -790,7 +803,8 @@ export function pack(options: PackOptions): Pack {
           try {
             for await (const event of run) {
               sub.last = event.type === 'approval-resolved' ? undefined : (activity(event) ?? sub.last);
-              observeAgent(agent.name, event);
+              const reading = observeAgent(agent.name, event, extra.model);
+              if (reading?.window === 'quota' && reading.name === extra.model) priorRefusal = reading;
               if (
                 event.type === 'rate-limit' &&
                 (event.limit.status === 'exceeded' || (event.limit.usedPercent ?? 0) >= 100)
@@ -822,6 +836,15 @@ export function pack(options: PackOptions): Pack {
                 ...(extra.model ? { name: extra.model } : {}),
               });
             }
+            sub.quotaHint = await advice();
+          } else if (
+            result.ok &&
+            priorRefusal?.status === 'exceeded' &&
+            priorRefusal.usedPercent === undefined &&
+            limits.get(refusalKey) === priorRefusal
+          ) {
+            // A newer observation also supersedes an older copy in the persisted readings.
+            noteLimit(agent.name, { window: 'quota', status: 'ok', ...(extra.model ? { name: extra.model } : {}) });
             sub.quotaHint = await advice();
           }
           if (result.failure) lastFailure.set(agent.name, result.failure);
@@ -1269,7 +1292,7 @@ export function pack(options: PackOptions): Pack {
               if (event.costUsd !== undefined) leadCost = event.costUsd;
               usageChanged();
             } else {
-              observeAgent(lead.name, event);
+              observeAgent(lead.name, event, task.model);
               events.push(event);
               await events.room();
             }
