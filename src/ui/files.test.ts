@@ -124,7 +124,8 @@ describe('project files shown in the page', () => {
     mkdirSync(join(cwd, 'dir'));
     writeFileSync(join(cwd, 'long'), 'x'.repeat(MAX_FILE_VIEW_BYTES + 5));
     const files = createProjectFiles(cwd);
-    expect(files.read('dir')).toBe('missing');
+    expect(files.read('dir')).toBe('directory');
+    expect(files.capability('dir')).toBeUndefined();
     if (process.platform !== 'win32') {
       // A pipe nobody writes to: reading it must not wait.
       execFileSync('mkfifo', [join(cwd, 'pipe')]);
