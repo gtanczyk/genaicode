@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { detectAgents } from '../../agents/discovery.js';
 import type { CodingAgent } from '../../agents/types.js';
+import type { UiRelease } from './release.js';
 import { secretOk, type WebAsset } from './server.js';
 
 /** How to get an agent: the command that installs it and what signs it in. Others: its own site. */
@@ -50,6 +51,7 @@ export interface WelcomeOptions {
   host?: string;
   port?: number;
   token?: string;
+  release?: () => UiRelease;
   assets?: ReadonlyMap<string, WebAsset>;
 }
 
@@ -66,7 +68,7 @@ export interface Welcome {
 const escape = (text: string) =>
   text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-function welcomeHtml(version: string, agents: readonly WelcomeAgent[]): string {
+function welcomeHtml(version: string, agents: readonly WelcomeAgent[], release?: UiRelease): string {
   const rows = agents
     .map(
       (agent) => `<li data-command="${escape(agent.command)}">
@@ -120,6 +122,13 @@ ${rows}
 <button id="check" type="button">Check again</button>
 <p id="note"></p>
 <small>genaicode ${escape(version)}</small>
+${
+  release
+    ? `<details${release.announce ? ' open' : ''}><summary>What’s new in ${escape(version)}</summary>
+${release.previous ? `<p>Updated from ${escape(release.previous)} to ${escape(version)}.</p>` : ''}
+<pre style="white-space:pre-wrap">${escape(release.notes || 'No release notes bundled for this version.')}</pre></details>`
+    : ''
+}
 </main>
 <script>
 (() => {
@@ -203,7 +212,7 @@ export async function startWelcome(options: WelcomeOptions): Promise<Welcome> {
     if (req.method === 'GET' && url.pathname === '/') {
       if (!secretOk(url.searchParams.get('token'), token))
         return send(res, 403, 'text/plain', 'Open the link genaicode printed in your terminal (it carries a token).');
-      return send(res, 200, 'text/html; charset=utf-8', welcomeHtml(options.version, look()));
+      return send(res, 200, 'text/html; charset=utf-8', welcomeHtml(options.version, look(), options.release?.()));
     }
     if (req.method === 'POST' && url.pathname === '/api/agents') {
       const header = req.headers['x-genaicode-token'];

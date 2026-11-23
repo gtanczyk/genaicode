@@ -41,6 +41,7 @@ import {
   type WebSettings,
   type WebUi,
 } from './web/server.js';
+import { uiRelease, type UiRelease } from './web/release.js';
 import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
@@ -243,12 +244,16 @@ export async function runChat(options: WebRunOptions): Promise<number> {
  * While no agent CLI is installed, `genaicode ui` serves a page that says which ones it can use
  * and how to get one. Resolves with the link the chat then takes over, or `null` when stopped first.
  */
-async function welcome(options: WebRunOptions): Promise<{ port: number; token: string } | null | undefined> {
+async function welcome(
+  options: WebRunOptions,
+  release: () => UiRelease,
+): Promise<{ port: number; token: string } | null | undefined> {
   if (options.agent || detectAgents(options.agents, options.env).some(({ path }) => path)) return undefined;
   const page = await startWelcome({
     agents: options.agents,
     env: options.env,
     version: options.version,
+    release,
     host: options.host,
     port: options.port,
     assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
@@ -379,7 +384,10 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   // Before anything waits: what the app says while the welcome page shows is kept for the chat.
   if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
     options = { ...options, hostApp: hostApp(options, { onOpenSession: openSession, onSettings: setArtifactCdn }) };
-  const welcomed = await welcome(options);
+  const desktopVersion = options.hostApp && options.env?.GENAICODE_DESKTOP_VERSION;
+  if (desktopVersion) options = { ...options, version: desktopVersion };
+  const release = uiRelease(options.version, options.env ?? process.env, !!desktopVersion);
+  const welcomed = await welcome(options, release);
   if (welcomed === null) return 0;
   // The chat answers on the link the welcome page had, which the browser already shows.
   if (welcomed) options = { ...options, ...welcomed, open: false };
@@ -400,7 +408,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(options, () => controller!, roots, addRoot, settings);
+  const web = webLink(options, () => controller!, roots, addRoot, settings, release);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     options,
     () => controller,
@@ -497,6 +505,7 @@ function webLink(
   roots: RootsInput,
   addRoot: (dir: string) => void,
   settings?: WebSettings,
+  release = uiRelease(options.version, options.env ?? process.env, false),
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
@@ -521,6 +530,7 @@ function webLink(
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
+      release,
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.

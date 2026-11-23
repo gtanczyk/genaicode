@@ -181,13 +181,31 @@ function comparePrerelease(a: string, b: string): number {
 }
 
 /** The changelog sections after `from` up to and including `to`, newest first. */
-export function releaseNotes(changelog: string, from: string, to: string): string {
+export function releaseNotes(changelog: string, from: string | undefined, to: string): string {
   const sections = changelog.split(/^(?=## )/m);
   const picked = sections.filter((section) => {
     const version = /^## v?(\d+\.\d+\.\d+\S*)/.exec(section)?.[1];
-    return version !== undefined && compareVersions(version, from) > 0 && compareVersions(version, to) <= 0;
+    if (version === undefined) return false;
+    return from === undefined
+      ? version === to
+      : compareVersions(version, from) > 0 && compareVersions(version, to) <= 0;
   });
   return picked.map((section) => section.trim()).join('\n\n');
+}
+
+/** Public notes shipped with this package. The desktop also uses this offline after a restart. */
+export function installedReleaseNotes(
+  version: string,
+  from?: string,
+  packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..'),
+): string {
+  const changelog = readText(join(packageRoot, 'docs', 'CHANGELOG.md'));
+  if (!changelog) return '';
+  return releaseNotes(changelog, from, version)
+    .split(/^(?=#{2,3} )/m)
+    .filter((block) => !/^### Internal\s*$/m.test(block))
+    .join('')
+    .trim();
 }
 
 /** Sets up the command for the version this process runs (`install.sh` runs it once per install). */
