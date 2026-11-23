@@ -231,6 +231,11 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .signin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .signin-head strong { font-size: 14px; }
 .signin-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.setup-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 10px; padding: 11px 14px; margin-top: 8px; box-shadow: var(--shadow); }
+.setup-banner-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.setup-banner-copy strong { font-size: 13.5px; color: var(--text); }
+.setup-banner-copy span { font-size: 12.5px; color: var(--muted); }
+.setup-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .agent-picker { position: relative; }
 .gc-under .run-with .agent-trigger { display: inline-flex; align-items: center; gap: 6px; color: var(--text); padding: 4px 8px; }
 .picker-caret { font-size: 10px; color: var(--muted); }

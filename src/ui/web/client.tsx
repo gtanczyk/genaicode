@@ -479,6 +479,12 @@ function App() {
     setFocusAgent(agent);
     setPanel('agents');
   };
+  // When onboarding opened as a panel during setup finishes, return straight to the conversation.
+  const wasSetupRef = useRef(inSetup);
+  useEffect(() => {
+    if (wasSetupRef.current && !inSetup && showAgents) setPanel('chat');
+    wasSetupRef.current = inSetup;
+  }, [inSetup, showAgents]);
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
@@ -625,12 +631,26 @@ function App() {
           <>
             {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
             {usage ? <span className="chip">{usage}</span> : null}
+            {inSetup && (session.turns.length > 0 || showAgents) ? (
+              <button
+                className={`chip${showAgents ? '' : ' waits'}`}
+                title="Install or sign in to a coding agent to continue"
+                aria-pressed={showAgents}
+                onClick={() => {
+                  setFocusAgent(undefined);
+                  setPanel(showAgents ? 'chat' : 'agents');
+                }}
+              >
+                {showAgents ? '← Chat' : 'Connect agent'}
+              </button>
+            ) : null}
             {session.turns.length && !showSessions ? (
               <button
                 className="chip off"
                 title="Start a new conversation: a fresh agent session and an empty screen. This one stays in the list."
                 onClick={() => {
                   dropWaiting();
+                  setPanel('chat');
                   void command({ type: 'submit', text: '/clear' });
                 }}
               >
@@ -780,14 +800,49 @@ function App() {
             />
           ) : undefined
         }
-        renderFooter={() =>
-          unsent ? (
+        renderFooter={() => {
+          const setupBanner =
+            inSetup && session && session.turns.length > 0 ? (
+              <div className="setup-banner" role="region" aria-label="Connect a coding agent">
+                <div className="setup-banner-copy">
+                  <strong>Connect an agent to continue this conversation</strong>
+                  <span>
+                    {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
+                      ? 'Sign in to an installed agent in Terminal, then click Check again.'
+                      : 'Install a supported agent CLI in Terminal, then click Check again.'}
+                  </span>
+                </div>
+                <div className="setup-banner-actions">
+                  <button type="button" className="btn-primary" onClick={() => openSetup()}>
+                    Connect agent
+                  </button>
+                  {hasAgentsApi ? (
+                    <button
+                      type="button"
+                      className="btn-use"
+                      disabled={checkingAgents}
+                      onClick={() => void checkAgents({ env: true })}
+                    >
+                      {checkingAgents ? 'Checking…' : 'Check again'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            ) : null;
+          const unsentBox = unsent ? (
             <div className="gc-notice gc-err">
               {unsent.problem}
               {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
             </div>
-          ) : null
-        }
+          ) : null;
+          if (!setupBanner && !unsentBox) return null;
+          return (
+            <>
+              {setupBanner}
+              {unsentBox}
+            </>
+          );
+        }}
         onSend={submit}
         onStop={() => {
           dropWaiting();

@@ -147,6 +147,11 @@ export function Onboarding({
         <button type="button" className="btn-primary" disabled={checking} onClick={() => void handleCheck()}>
           {checking ? 'Checking…' : 'Check again'}
         </button>
+        {setup && onClose ? (
+          <button type="button" className="chip" onClick={onClose}>
+            ← Back to conversation
+          </button>
+        ) : null}
         {note ? (
           <span className="onboarding-note" role="status">
             {note}

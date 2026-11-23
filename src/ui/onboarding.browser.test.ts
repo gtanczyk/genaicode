@@ -247,3 +247,119 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Not logged in" >&2; exi
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it('keeps onboarding accessible after continuing an existing session during setup', async () => {
+  const browser = await chromium.launch();
+  const root = mkdtempSync(join(tmpdir(), 'genaicode-setup-history-browser-'));
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  const stop = new AbortController();
+  let running: Promise<number> | undefined;
+  try {
+    const clientScript = await bundleClient();
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript,
+      });
+    const projectDir = '/work/billing-app';
+    const pastSession = {
+      source: 'claude',
+      agent: 'claude',
+      id: 'past-session-1',
+      where: 'local' as const,
+      cwd: projectDir,
+      title: 'Fix billing retry',
+      firstPrompt: 'Check the billing retry loop',
+      lastReply: 'Found the missing backoff guard.',
+      updatedAt: Date.now() - 60_000,
+      state: 'waiting' as const,
+    };
+    const claudeWithHistory: CodingAgent = {
+      ...fakeDriver('claude', 'claude'),
+      sessions: {
+        name: 'claude',
+        where: 'local',
+        list: async () => [pastSession],
+        read: async () => [
+          {
+            id: 1,
+            agent: 'claude',
+            prompt: 'Check the billing retry loop',
+            startedAt: Date.now() - 60_000,
+            endedAt: Date.now() - 59_000,
+            entries: [{ kind: 'text', text: 'Found the missing backoff guard.', streaming: false }],
+            result: {
+              status: 'completed',
+              ok: true,
+              exitCode: 0,
+              signal: null,
+              text: 'Found the missing backoff guard.',
+            },
+          },
+        ],
+      },
+    };
+    running = main({
+      argv: ['ui', '--sessions', '--no-artifacts'],
+      cwd: projectDir,
+      env: { PATH: bin, HOME: root, GENAICODE_HOME: root },
+      agents: [claudeWithHistory, fakeDriver('codex', 'codex')],
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy());
+    const page = await browser.newPage();
+    await page.goto(opened!);
+
+    await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
+
+    // Open Sessions and continue the previous conversation while still in setup mode.
+    await page.getByRole('button', { name: 'Sessions' }).click();
+    await page.locator('main.sessions').waitFor();
+    await page.getByText('Fix billing retry').waitFor();
+    await page.getByRole('button', { name: 'Continue here' }).click();
+
+    // The loaded turn is visible, and onboarding + Check again remain accessible without clearing history.
+    await page.getByText('Found the missing backoff guard.').waitFor();
+    const banner = page.getByRole('region', { name: 'Connect a coding agent' });
+    await banner.waitFor();
+    expect(await banner.textContent()).toContain('Connect an agent to continue this conversation');
+    expect(await banner.getByRole('button', { name: 'Check again' }).count()).toBe(1);
+    expect(await page.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(true);
+
+    // Open the full onboarding instructions from the banner.
+    await banner.getByRole('button', { name: 'Connect agent' }).click();
+    await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
+    expect(await page.locator('li[data-agent="codex"]').textContent()).toContain('npm i -g @openai/codex');
+    expect(await page.getByRole('button', { name: '← Back to conversation' }).count()).toBe(1);
+
+    // Install and sign in to codex -> Check again -> returns directly to the loaded conversation ready to send.
+    writeScript(
+      bin,
+      'codex',
+      `if [ "$1" = "--version" ]; then echo "codex-cli 0.170.0"; exit 0; fi
+if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT" >&2; exit 0; fi`,
+    );
+    await page.getByRole('button', { name: 'Check again' }).click();
+    await page.getByText('Found the missing backoff guard.').waitFor();
+    await vi.waitFor(async () => {
+      expect(await page.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(false);
+    });
+    expect(await page.getByRole('region', { name: 'Connect a coding agent' }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: 'Agent' }).textContent()).toContain('codex');
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 30_000);

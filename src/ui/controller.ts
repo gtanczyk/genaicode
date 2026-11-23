@@ -446,15 +446,13 @@ export function createChatController(options: ChatOptions): ChatController {
     // Pick the first Ready agent (or installed unknown agent) when leaving setup, or before any turn starts if current is unusable.
     const preferred = usable.find((item) => item.auth === 'ready') ?? usable[0];
     setup = nextSetup;
-    if (
-      preferred &&
-      state.status === 'idle' &&
-      state.turns.length === 0 &&
-      (wasSetup || (!explicitAgent && !userSelectedAgent && !currentUsable))
-    ) {
+    const shouldSwitch = wasSetup
+      ? !userSelectedAgent || !currentUsable
+      : state.turns.length === 0 && !explicitAgent && !userSelectedAgent && !currentUsable;
+    if (preferred && state.status === 'idle' && shouldSwitch) {
       const target = byName.get(preferred.name);
       if (target && target.name !== state.agent) {
-        session.setAgent(target, { handoff: false });
+        session.setAgent(target, { handoff: state.turns.length > 0 });
         return;
       }
     }
@@ -477,8 +475,8 @@ export function createChatController(options: ChatOptions): ChatController {
       }
       const turns = await readSession(sources, theirs);
       const agent = byName.get(session.get().agent);
-      // Its own store and it can resume: no handoff needed.
-      const own = !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+      // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
+      const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
       if (!turns.length && !own) {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
@@ -488,10 +486,13 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+      const count = turns.length ? ` (${turns.length} turns)` : '';
       notice(
-        own
-          ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
-          : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+        setup
+          ? `Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`
+          : own
+            ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+            : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
       );
       return true;
     } catch (error) {

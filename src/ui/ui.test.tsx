@@ -304,6 +304,101 @@ describe('chat controller', () => {
     chat.close();
   });
 
+  it('keeps setup turns when an agent becomes usable and preserves canAsk across updateAgents', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-setup-continue-'));
+    try {
+      const claude = { ...echoAgent('claude', 'claude'), capabilities: { questions: true, resume: true } };
+      const codex = { ...echoAgent('codex', 'codex'), capabilities: { resume: true } };
+      const pastSession = {
+        source: 'claude',
+        agent: 'claude',
+        id: 'old-claude-1',
+        where: 'local' as const,
+        cwd: '/w',
+        title: 'Earlier work',
+        firstPrompt: 'Audit the router',
+        lastReply: 'Router looks clean.',
+        updatedAt: Date.now() - 60_000,
+      };
+      const chat = createChatController({
+        agents: [claude, codex],
+        sessionSources: [
+          {
+            name: 'claude',
+            where: 'local',
+            list: async () => [pastSession],
+            read: async () => [
+              {
+                id: 1,
+                agent: 'claude',
+                prompt: 'Audit the router',
+                startedAt: Date.now() - 60_000,
+                endedAt: Date.now() - 59_000,
+                entries: [{ kind: 'text', text: 'Router looks clean.', streaming: false }],
+                result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: 'Router looks clean.' },
+              },
+            ],
+          },
+        ],
+        cwd: '/w',
+        env: { PATH: empty },
+        allowNoAgent: true,
+      });
+      expect(chat.get().setup).toBe(true);
+      expect(await chat.continueSession('old-claude-1')).toBe(true);
+      expect(chat.get().setup).toBe(true);
+      expect(chat.get().session.turns).toHaveLength(1);
+      // Do not bind an uninstalled placeholder's sessionId during setup.
+      expect(chat.get().session.sessionId).toBeUndefined();
+      expect(chat.get().notices.at(-1)?.text).toContain('Connect an agent to continue it');
+
+      // Now codex becomes ready -> leaves setup, switches from placeholder claude to codex, keeps turns + canAsk.
+      chat.updateAgents([
+        {
+          name: 'claude',
+          command: 'claude',
+          installed: false,
+          auth: 'unknown',
+          guide: {
+            name: 'claude',
+            command: 'claude',
+            title: 'Claude Code',
+            maker: 'Anthropic',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+        {
+          name: 'codex',
+          command: 'codex',
+          installed: true,
+          path: '/bin/codex',
+          auth: 'ready',
+          guide: {
+            name: 'codex',
+            command: 'codex',
+            title: 'Codex',
+            maker: 'OpenAI',
+            summary: '',
+            install: [],
+            loginNote: '',
+          },
+        },
+      ]);
+      expect(chat.get().setup).toBeUndefined();
+      expect(chat.get().session.agent).toBe('codex');
+      expect(chat.get().session.turns).toHaveLength(1);
+      expect(chat.get().agents.map((a) => [a.name, a.canAsk])).toEqual([
+        ['claude', true],
+        ['codex', false],
+      ]);
+      chat.close();
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it('/clear empties the conversation and its notices', async () => {
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     chat.submit('hi');
