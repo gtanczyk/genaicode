@@ -8,6 +8,7 @@ export type PackSpec = { auto: true; maxParallel?: number } | { lead: string; me
 export type CliCommand =
   | { kind: 'help' }
   | { kind: 'version' }
+  | { kind: 'whats-new' }
   | {
       kind: 'update';
       /** `--check`: only say whether a newer version exists. */
@@ -178,6 +179,10 @@ export function parseCli(argv: readonly string[]): CliCommand {
   const options = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
   if (options.includes('--help') || options.includes('-h')) return { kind: 'help' };
 
+  if (command === 'whats-new') {
+    if (rest.length) throw new UsageError('Usage: genaicode whats-new');
+    return { kind: 'whats-new' };
+  }
   if (command === 'update') {
     const { values } = parse(() =>
       parseArgs({

@@ -97,9 +97,14 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 
 ## Updates
 
+After an update, **What’s new** shows the running version and the release notes bundled with the app.
+When the previous version is known, it includes the changes across skipped releases. Open **What’s new**
+in the window header to read the notes again. In a terminal, `genaicode whats-new` shows the notes for
+the version of the command you are running.
+
 The app looks for a newer version at start, every half hour while it runs and on **Check for
-Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Relaunch to update** in the
-window's header and in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
+Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Install 3.x.y and relaunch** in the
+window header and **Relaunch to Update (3.x.y)** in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
 stops the agents it runs. The shell tells the page through the server it started: it writes
 `update-downloading <version>`, `update-ready <version>` and `update-installing <version>` to the server's stdin, and the page's button makes the server print
 `Relaunch to update` on stderr, which the shell reads. It reads `latest.json` of the newest GitHub Release, which
