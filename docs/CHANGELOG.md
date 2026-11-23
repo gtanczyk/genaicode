@@ -8,13 +8,13 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
-## 3.0.1 — 2026-11-23
-
-**Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.
-
 ### Added
 
 - "Waiting" is split into **needs you now** and **stalled**. Needs you now: an approval, or a last message that asked a question or gave a command to run in the last 3 days. Stalled: an offer to go on ("I can also…, if you want"), a report that could not be sent back, or an older question. Topics, `sessions --waiting`, the start screen and Sessions view of `genaicode ui`, and the desktop menu bar count only what needs you now; stalled sessions fold under their topic ("Show 2 stalled", a "Stalled" submenu). New `attentionOf()`, `isStalled()`, `TopicSummary.stalled`; `isAsking()` no longer counts offers and unsent reports (#315)
+
+## 3.0.1 — 2026-11-23
+
+**Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.
 
 ### Breaking
 
