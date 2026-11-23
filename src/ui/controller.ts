@@ -220,8 +220,9 @@ export function createChatController(options: ChatOptions): ChatController {
   });
   let notices: Notice[] = [];
   let conversationEpoch = 0;
+  let contextEpoch = 0;
   const relayNotices = new Map<number, number>();
-  const relayEpochs = new Map<number, number>();
+  const relayEpochs = new Map<number, { conversation: number; context: number }>();
   let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
@@ -377,13 +378,17 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     if (agent.name === session.get().agent) {
       if (options?.fresh) {
+        contextEpoch += 1;
         pendingRelayContext = [];
         session.setAgent(agent, { handoff: false });
         notice(`Still ${name}. New agent session, no context.`);
       }
       return true;
     }
-    if (options?.fresh) pendingRelayContext = [];
+    if (options?.fresh) {
+      contextEpoch += 1;
+      pendingRelayContext = [];
+    }
     session.setAgent(agent, { handoff: !options?.fresh });
     const installed = agents.find((choice) => choice.name === name)?.installed;
     const missing = installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
@@ -423,6 +428,7 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       conversationEpoch += 1;
+      contextEpoch += 1;
       relayNotices.clear();
       pendingRelayContext = [];
       const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
@@ -456,11 +462,16 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
   let sends = 0;
+  const isLiveRelay = (item: Notice) => item.relay?.status === 'queued' || item.relay?.status === 'working';
   const upsertRelay = (update: SessionSendUpdate) => {
     if (closed) return;
-    const knownEpoch = relayEpochs.get(update.id);
-    if (knownEpoch === undefined) relayEpochs.set(update.id, conversationEpoch);
-    else if (knownEpoch !== conversationEpoch) return;
+    let epochs = relayEpochs.get(update.id);
+    if (!epochs) {
+      epochs = { conversation: conversationEpoch, context: contextEpoch };
+      relayEpochs.set(update.id, epochs);
+    } else if (epochs.conversation !== conversationEpoch) {
+      return;
+    }
     const reply =
       update.reply !== undefined
         ? plainSessionText(
@@ -490,26 +501,30 @@ export function createChatController(options: ChatOptions): ChatController {
     const settled = update.status === 'answered' || update.status === 'failed';
     if (update.status === 'answered' || update.status === 'failed') {
       relayEpochs.delete(update.id);
-      pendingRelayContext = [
-        ...pendingRelayContext,
-        {
-          target: update.target,
-          status: update.status,
-          ...(update.reply !== undefined ? { reply: update.reply } : {}),
-          ...(update.error !== undefined ? { error: update.error } : {}),
-        },
-      ].slice(-MAX_CONTEXT_UPDATES);
+      if (epochs.context === contextEpoch) {
+        pendingRelayContext = [
+          ...pendingRelayContext,
+          {
+            target: update.target,
+            status: update.status,
+            ...(update.reply !== undefined ? { reply: update.reply } : {}),
+            ...(update.error !== undefined ? { error: update.error } : {}),
+          },
+        ].slice(-MAX_CONTEXT_UPDATES);
+      }
     }
     const existingId = relayNotices.get(update.id);
     if (existingId !== undefined) {
       const index = notices.findIndex((item) => item.id === existingId);
       if (index >= 0) {
         const prior = notices[index]!;
-        // Keep in place when nothing ran meanwhile; otherwise land chronologically at the bottom.
-        const moved = settled && currentTurns > prior.afterTurn;
+        // Keep settled notices append-only (Ink <Static> prints newly appended items by index)
+        // and land chronologically at the bottom if turns or other settled notices came after.
+        const hasSettledAfter = notices.slice(index + 1).some((item) => !isLiveRelay(item));
+        const moved = settled && (currentTurns > prior.afterTurn || hasSettledAfter);
         const nextItem: Notice = {
           id: prior.id,
-          afterTurn: moved ? currentTurns : prior.afterTurn,
+          afterTurn: moved ? Math.max(prior.afterTurn, currentTurns) : prior.afterTurn,
           text,
           tone,
           relay,
@@ -681,6 +696,7 @@ export function createChatController(options: ChatOptions): ChatController {
           else notice('Use /read <session id>. /waiting shows the IDs.', 'error');
           return 'ok';
         case 'new':
+          contextEpoch += 1;
           pendingRelayContext = [];
           session.reset();
           notice('Next prompt starts a new agent session.');
@@ -688,6 +704,7 @@ export function createChatController(options: ChatOptions): ChatController {
         case 'clear':
           if (session.clear()) {
             conversationEpoch += 1;
+            contextEpoch += 1;
             relayNotices.clear();
             pendingRelayContext = [];
             notices = [];

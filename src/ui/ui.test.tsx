@@ -1135,12 +1135,50 @@ describe('terminal UI', () => {
       relay: { status: 'answered', reply: 'PR #305 is open.' },
     });
 
-    // `/new` drops unread relay context; `/clear` drops pending notices and ignores late updates from earlier sends.
+    // Two relays after the same turn finishing out of order stay append-only for Ink <Static>.
+    gate.update({ id: 10, target, text: 'Slow task', status: 'working', startedAt: 6100 });
+    gate.update({ id: 11, target, text: 'Fast task', status: 'working', startedAt: 6200 });
+    gate.update({
+      id: 11,
+      target,
+      text: 'Fast task',
+      status: 'answered',
+      startedAt: 6200,
+      endedAt: 6300,
+      reply: 'Fast done.',
+    });
+    const doneAfterFast = splitTranscript(chat.get()).done.map((item) => item.key);
+    gate.update({
+      id: 10,
+      target,
+      text: 'Slow task',
+      status: 'answered',
+      startedAt: 6100,
+      endedAt: 6400,
+      reply: 'Slow done.',
+    });
+    const doneAfterSlow = splitTranscript(chat.get()).done.map((item) => item.key);
+    expect(doneAfterSlow.slice(0, doneAfterFast.length)).toEqual(doneAfterFast);
+    expect(doneAfterSlow.length).toBe(doneAfterFast.length + 1);
+
+    // `/new` drops unread AND still-in-flight relay context (while still updating the visible card).
+    gate.update({ id: 12, target, text: 'Pre-reset task', status: 'working', startedAt: 7000 });
     chat.submit('/new');
+    gate.update({
+      id: 12,
+      target,
+      text: 'Pre-reset task',
+      status: 'answered',
+      startedAt: 7000,
+      endedAt: 8000,
+      reply: 'Finished after /new.',
+    });
+    expect(chat.get().notices.at(-1)?.relay).toMatchObject({ status: 'answered', reply: 'Finished after /new.' });
     chat.submit('Fresh turn');
     await chat.session.idle();
     expect(agent.tasks.at(-1)!.prompt).toBe('Fresh turn');
 
+    // `/clear` drops pending notices and ignores late updates from earlier sends.
     gate.update({ id: 3, target, text: 'Old task', status: 'working', startedAt: 10_000 });
     chat.submit('/clear');
     gate.update({

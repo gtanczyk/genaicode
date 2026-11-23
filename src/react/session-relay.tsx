@@ -31,10 +31,12 @@ export interface ChatSessionRelay {
 
 /** Last directory name of a working directory path, for a compact project chip. */
 export function relayProjectName(cwd: string): string {
-  const trimmed = cwd.replace(/[\\/]+$/, '');
+  let end = cwd.length;
+  while (end > 0 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
+  const trimmed = cwd.slice(0, end);
   if (!trimmed) return cwd;
-  const parts = trimmed.split(/[\\/]/);
-  return parts.at(-1) || cwd;
+  const slash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return slash >= 0 ? trimmed.slice(slash + 1) || cwd : trimmed;
 }
 
 /** Live card for a cross-session message (`sessions_send`): Queued → Working → Answered / Failed. */
