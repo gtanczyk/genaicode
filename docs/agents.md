@@ -915,7 +915,8 @@ const run = claude().run({
   and has no `capabilities.questions` (nor `capabilities.remote`: managed and hosted agents run
   elsewhere and cannot reach this machine's loopback). Its questions show and are answered like
   the agent's own; the tool returns the answers as text, and Codex is told to wait up to a day
-  for it (`toolTimeoutSec` on the server). `genaicode chat` and `ui` do this.
+  for it (`toolTimeoutSec` on the server). The server is `trusted`: Codex and Antigravity run
+  it without a permission prompt in front of the question. `genaicode chat` and `ui` do this.
 - In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
   it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
   the options, and `genaicode chat` asks in the terminal.

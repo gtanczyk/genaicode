@@ -152,6 +152,11 @@ export type McpServer = (
    * `tool_timeout_sec`, default 60). For tools that wait for a person, like `ask_user`.
    */
   toolTimeoutSec?: number;
+  /**
+   * A server of genaicode's own whose tools only reach the person (`ask_user`): agents that ask
+   * before an MCP tool call run its tools without asking (Codex, Antigravity).
+   */
+  trusted?: boolean;
 };
 
 /**

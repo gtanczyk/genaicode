@@ -913,7 +913,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     approve(id, decision) {
       const resolve = waiting.get(id);
-      if (!resolve) return false;
+      // Only a decision the agent understands takes the request away (JS callers can pass anything).
+      if (!resolve || (decision !== 'approve' && decision !== 'deny')) return false;
       waiting.delete(id);
       set({ approvals: state.approvals.filter((request) => request.id !== id) });
       resolve(decision);
