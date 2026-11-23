@@ -10,11 +10,11 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- Plan mode (`task.mode: 'plan'`, `capabilities.plan`, `AgentSession.setMode()`, `CodexLiveOptions.collaborationMode`, and `/plan` + the Plan toggle in `genaicode chat`, `ui` and the desktop app): Codex enters app-server Plan mode (re-sent on resume only when changed), Claude Code uses `--permission-mode plan` and Gemini uses `--approval-mode plan`. When Codex offers its own `request_user_input` tool (Plan mode or `features.default_mode_request_user_input`), `codexLive()` drops `genaicode_ask` so Codex gets only one question tool per turn (#309)
+- Plan mode (`task.mode: 'plan'`, `capabilities.plan`, `AgentSession.setMode()`, `CodexLiveOptions.collaborationMode`, and `/plan` + the Plan toggle in `genaicode chat`, `ui` and the desktop app): Codex enters app-server Plan mode (re-sent on resume only when changed), Claude Code uses `--permission-mode plan` and Gemini uses `--approval-mode plan`. When Codex offers its own `request_user_input` tool (Plan mode or `features.default_mode_request_user_input`), `codexLive()` drops `genaicode_ask` so Codex gets only one question tool per turn (#328)
 
 ### Fixed
 
-- `codexLive()` and `codexTurns()` read Codex's Plan-mode output (`item/plan/delta` and completed `plan` items) instead of dropping it (#309)
+- `codexLive()` and `codexTurns()` read Codex's Plan-mode output (`item/plan/delta` and completed `plan` items) instead of dropping it (#328)
 
 ## 3.0.1 — 2026-11-23
 
