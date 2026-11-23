@@ -114,13 +114,11 @@ describe('claude driver', () => {
     expect(planned).not.toContain('--dangerously-skip-permissions');
 
     const leavingPlan = claudeArgs(
-      { prompt: 'hi', cwd: '.', mode: 'default', extraArgs: ['--permission-mode=plan'] },
+      { prompt: 'hi', cwd: '.', mode: 'default', extraArgs: ['--permission-mode=plan', '--permission-mode', 'manual'] },
       { permissionMode: 'plan' },
     );
-    expect(
-      leavingPlan.slice(leavingPlan.indexOf('--permission-mode'), leavingPlan.indexOf('--permission-mode') + 2),
-    ).toEqual(['--permission-mode', 'acceptEdits']);
     expect(leavingPlan).not.toContain('--permission-mode=plan');
+    expect(leavingPlan).toContain('manual');
 
     const leavingSettingsPlan = claudeArgs(
       { prompt: 'hi', cwd: '.', mode: 'default' },
@@ -132,6 +130,11 @@ describe('claude driver', () => {
         leavingSettingsPlan.indexOf('--permission-mode') + 2,
       ),
     ).toEqual(['--permission-mode', 'acceptEdits']);
+
+    // Parser surfaces configured/resumed Plan mode from system/init.
+    expect(
+      feed(createClaudeParser(), [{ type: 'system', subtype: 'init', session_id: 'c-plan', permissionMode: 'plan' }]),
+    ).toEqual([{ type: 'session', sessionId: 'c-plan', mode: 'plan' }]);
     const plannedPerms = claudeArgs({
       prompt: 'hi',
       cwd: '.',

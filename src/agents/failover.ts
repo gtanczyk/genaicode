@@ -73,6 +73,12 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
   };
   // The agent whose session the last result named: a `resume` id is only its.
   let sessionOwner: CodingAgent | undefined;
+  // Effective mode of known sessions, so a resumed Plan turn stays Plan even if its owner fails before init.
+  const sessionModes = new Map<string, AgentMode>();
+  const rememberMode = (id: string, mode: AgentMode) => {
+    if (sessionModes.size >= 256) sessionModes.clear();
+    sessionModes.set(id, mode);
+  };
   /** `task` as `agent` can take it: vendor ids only for the agent they belong to. */
   const taskFor = (
     agent: CodingAgent,
@@ -143,8 +149,10 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
       let current: AgentRun | undefined;
       let stopped = false;
       const result = (async (): Promise<AgentResult> => {
+        let effectiveMode: AgentMode | undefined =
+          task.mode ?? (task.resume !== undefined ? sessionModes.get(task.resume) : undefined);
         const all = ordered();
-        const order = task.mode === 'plan' ? all.filter((agent) => agent.capabilities.plan) : all;
+        const order = effectiveMode === 'plan' ? all.filter((agent) => agent.capabilities.plan) : all;
         if (!order.length) {
           const message = `${first.name} does not support Plan mode in this driver.`;
           const failed: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
@@ -153,7 +161,6 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           events.close();
           return failed;
         }
-        let effectiveMode: AgentMode | undefined = task.mode;
         let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;
@@ -163,13 +170,18 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           current = run;
           if (stopped) run.abort();
           let done: AgentResult | undefined;
+          let runSessionId: string | undefined;
           // Usage events are running totals for the run: earlier agents' share goes on top.
           const priorUsage = usage;
           const priorCost = costUsd;
           for await (const event of run) {
             if (event.type === 'done') done = event.result;
             else {
-              if (event.type === 'session' && event.mode === 'plan') effectiveMode = 'plan';
+              if (event.type === 'session') {
+                runSessionId = event.sessionId;
+                if (event.mode === 'plan') effectiveMode = 'plan';
+                if (effectiveMode !== undefined) rememberMode(event.sessionId, effectiveMode);
+              }
               events.push(
                 event.type === 'usage' && (priorUsage || priorCost !== undefined)
                   ? {
@@ -188,6 +200,8 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           if (own.usage) usage = usage ? addUsage(usage, own.usage) : own.usage;
           if (own.costUsd !== undefined) costUsd = (costUsd ?? 0) + own.costUsd;
           if (own.sessionId) sessionOwner = agent;
+          const sid = own.sessionId ?? runSessionId ?? (own.ok ? task.resume : undefined);
+          if (sid && effectiveMode !== undefined) rememberMode(sid, effectiveMode);
           const ended: AgentResult = {
             ...own,
             ...(usage ? { usage } : {}),

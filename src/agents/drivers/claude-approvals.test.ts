@@ -305,7 +305,9 @@ const toolName = process.env.FAKE_TOOL || 'Bash';
 const toolInput = toolName === 'ExitPlanMode' ? { plan: 'Step 1' } : { command: 'npm test' };
 const called = await rpc(2, 'tools/call', { name, arguments: { tool_name: toolName, input: toolInput, tool_use_id: 'tu-9' } });
 const report = { answer: JSON.parse(called.result.content[0].text), args, servers: Object.keys(config.mcpServers), timeout: process.env.MCP_TOOL_TIMEOUT };
-console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's-1' }));
+const permIdx = args.indexOf('--permission-mode');
+const permissionMode = permIdx >= 0 ? args[permIdx + 1] : undefined;
+console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's-1', ...(permissionMode ? { permissionMode } : {}) }));
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(report) }));
 `,
 );
@@ -461,6 +463,26 @@ describe('claude() with onApproval', () => {
         { type: 'approval-resolved', id: 'tu-9', decision: 'deny', automatic: true },
       ]);
     }
+    expect(onApproval).not.toHaveBeenCalled();
+
+    // A direct follow-up resuming the Plan session with mode omitted keeps Plan mode and still refuses ExitPlanMode.
+    const persistent = claude({ command: bin });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: join(dir, 'empty-claude-config'),
+      FAKE_TOOL: 'ExitPlanMode',
+    };
+    delete env.MCP_TOOL_TIMEOUT;
+    const first = persistent.run({ prompt: 'plan it', cwd: dir, env, mode: 'plan', onApproval });
+    const firstEvents: AgentEvent[] = [];
+    for await (const event of first) firstEvents.push(event);
+    const firstResult = await first.result;
+    expect(firstEvents).toContainEqual({ type: 'session', sessionId: 's-1', mode: 'plan' });
+    const resumed = persistent.run({ prompt: 'refine it', cwd: dir, env, resume: firstResult.sessionId, onApproval });
+    const resumedResult = await resumed.result;
+    const resumedReport = JSON.parse(resumedResult.text!);
+    expect(resumedReport.args).toContain('plan');
+    expect(resumedReport.answer).toMatchObject({ behavior: 'deny' });
     expect(onApproval).not.toHaveBeenCalled();
   });
 

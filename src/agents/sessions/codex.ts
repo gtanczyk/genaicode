@@ -6,6 +6,7 @@ import {
   activeIfRecent,
   ending,
   findFiles,
+  findLastLineMatch,
   chunksOf,
   headAndTail,
   homeOf,
@@ -66,69 +67,78 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
   return text && !(role === 'user' && text.startsWith('<')) ? text : undefined;
 }
 
-const MODE_SCAN_CHUNK = 256 * 1024;
+const codexModeCache = new Map<string, AgentMode | undefined>();
 
-function turnContextMode(line: string): { found: boolean; mode?: AgentMode } {
-  if (!line.includes('"turn_context"')) return { found: false };
+function turnContextMode(line: string): { found: true; value: AgentMode | undefined } | { found: false } {
   try {
     const parsed: unknown = JSON.parse(line);
     if (!isRecord(parsed) || parsed.type !== 'turn_context' || !isRecord(parsed.payload)) return { found: false };
     const cm = parsed.payload.collaboration_mode;
     const mode = isRecord(cm) && (cm.mode === 'plan' || cm.mode === 'default') ? cm.mode : undefined;
-    return { found: true, mode };
+    return { found: true, value: mode };
   } catch {
     return { found: false };
   }
 }
 
-/** Scan a large rollout backwards to find the last `turn_context`'s collaboration mode. */
-async function lastTurnContextMode(filePath: string, size: number): Promise<AgentMode | undefined> {
-  const handle = await fs.open(filePath, 'r');
+/** Resolve the latest `turn_context` mode of a large rollout, cached by file revision. */
+async function resolveCodexMode(info: SessionInfo, signal?: AbortSignal): Promise<void> {
+  if (!info.path || info.mode !== undefined) return;
   try {
-    let end = size;
-    let carry = '';
-    while (end > 0) {
-      const start = Math.max(0, end - MODE_SCAN_CHUNK);
-      const length = end - start;
-      const buf = Buffer.alloc(length);
-      await handle.read(buf, 0, length, start);
-      const combined = buf.toString('utf8') + carry;
-      const lines = combined.split('\n');
-      carry = start > 0 ? (lines.shift() ?? '') : '';
-      for (let i = lines.length - 1; i >= 0; i--) {
-        const result = turnContextMode(lines[i]!);
-        if (result.found) return result.mode;
+    const stat = await fs.stat(info.path).catch(() => undefined);
+    if (stat) {
+      if (stat.size <= 512 * 1024) return;
+      const key = `${info.path}:${stat.mtimeMs}:${stat.size}`;
+      if (codexModeCache.has(key)) {
+        const cached = codexModeCache.get(key);
+        if (cached) info.mode = cached;
+        return;
       }
-      end = start;
+      const mode = await findLastLineMatch(info.path, stat.size, '"turn_context"', turnContextMode, signal);
+      if (codexModeCache.size >= 256) codexModeCache.clear();
+      codexModeCache.set(key, mode);
+      if (mode) info.mode = mode;
+      return;
     }
-    if (carry) {
-      const result = turnContextMode(carry);
-      if (result.found) return result.mode;
+    const zstPath = `${info.path}.zst`;
+    const zstStat = await fs.stat(zstPath).catch(() => undefined);
+    if (!zstStat) return;
+    const key = `${zstPath}:${zstStat.mtimeMs}:${zstStat.size}`;
+    if (codexModeCache.has(key)) {
+      const cached = codexModeCache.get(key);
+      if (cached) info.mode = cached;
+      return;
     }
-    return undefined;
-  } finally {
-    await handle.close();
+    const data = await zstdFile(zstPath);
+    if (!data) return;
+    const mode = lastTurnContextModeInBuffer(data);
+    if (codexModeCache.size >= 256) codexModeCache.clear();
+    codexModeCache.set(key, mode);
+    if (mode) info.mode = mode;
+  } catch {
+    signal?.throwIfAborted();
   }
 }
 
 function lastTurnContextModeInBuffer(data: Buffer): AgentMode | undefined {
-  const lines = data.toString('utf8').split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const result = turnContextMode(lines[i]!);
-    if (result.found) return result.mode;
+  const needle = Buffer.from('"turn_context"', 'utf8');
+  let cursor = data.length;
+  while (cursor > 0) {
+    const nl = data.lastIndexOf(0x0a, cursor - 1);
+    const slice = data.subarray(nl + 1, cursor);
+    if (slice.length && slice.includes(needle)) {
+      const result = turnContextMode(slice.toString('utf8'));
+      if (result.found) return result.value;
+    }
+    if (nl < 0) break;
+    cursor = nl;
   }
   return undefined;
 }
 
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
 export async function readCodexSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
-  const chunks = await headAndTail(file);
-  const info = fromLines(file, now, chunks);
-  if (info && chunks.head !== chunks.tail && info.mode === undefined) {
-    const mode = await lastTurnContextMode(file.path, file.size).catch(() => undefined);
-    if (mode) info.mode = mode;
-  }
-  return info;
+  return fromLines(file, now, await headAndTail(file));
 }
 
 function fromLines(file: SessionFile, now: number, { head, tail }: { head: unknown[]; tail: unknown[] }) {
@@ -358,12 +368,7 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     else {
       const data = await zstdFile(`${info.path}.zst`);
       if (!data) return;
-      const chunks = chunksOf(data);
-      read = fromLines({ path: info.path, mtimeMs: 0, size: data.length }, Infinity, chunks);
-      if (read && chunks.head !== chunks.tail && read.mode === undefined) {
-        const mode = lastTurnContextModeInBuffer(data);
-        if (mode) read.mode = mode;
-      }
+      read = fromLines({ path: info.path, mtimeMs: 0, size: data.length }, Infinity, chunksOf(data));
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
@@ -540,7 +545,11 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
     verified: '0.170',
     reference: (query = {}) => listed(query, true),
     list,
-    find: (id, query) => list(query, id),
+    async find(id, query) {
+      const found = await list(query, id);
+      await mapLimited(found, 8, (session) => resolveCodexMode(session, query?.signal));
+      return found;
+    },
     async read(session, readOptions) {
       const env = listedIn.get(session.id) ?? envOf();
       const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));

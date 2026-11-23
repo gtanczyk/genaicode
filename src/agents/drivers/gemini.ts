@@ -1,7 +1,7 @@
 import { geminiSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
-import type { AgentEvent, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
+import type { AgentEvent, AgentMode, AgentPermissions, AgentTask, CodingAgent } from '../types.js';
 import { isObject, numberField, stringField } from './json.js';
 
 export type GeminiApprovalMode = 'default' | 'auto_edit' | 'yolo' | 'plan';
@@ -58,7 +58,7 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
     command: options.command ?? 'gemini',
     capabilities: {
       usage: true,
-      plan: true,
+      ...(options.trustWorkspace === false ? {} : { plan: true }),
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => geminiArgs(task, options),
@@ -70,7 +70,7 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
   });
 }
 
-function stripGeminiModeFlags(extraArgs: readonly string[]): string[] {
+function stripGeminiModeFlags(extraArgs: readonly string[], mode: AgentMode): string[] {
   const kept: string[] = [];
   for (let i = 0; i < extraArgs.length; i++) {
     const arg = extraArgs[i]!;
@@ -78,12 +78,23 @@ function stripGeminiModeFlags(extraArgs: readonly string[]): string[] {
       kept.push(...extraArgs.slice(i));
       break;
     }
-    if (arg === '--approval-mode') {
-      i++;
-    } else if (arg.startsWith('--approval-mode=') || arg === '--yolo' || arg === '-y') {
-      continue;
+    if (mode === 'plan') {
+      if (arg === '--approval-mode') {
+        i++;
+      } else if (arg.startsWith('--approval-mode=') || arg === '--yolo' || arg === '-y') {
+        continue;
+      } else {
+        kept.push(arg);
+      }
     } else {
-      kept.push(arg);
+      // Leaving Plan mode: remove only an explicit `plan` override so non-Plan policies (e.g. `default`) stay intact.
+      if (arg === '--approval-mode' && extraArgs[i + 1] === 'plan') {
+        i++;
+      } else if (arg === '--approval-mode=plan') {
+        continue;
+      } else {
+        kept.push(arg);
+      }
     }
   }
   return kept;
@@ -96,6 +107,10 @@ export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): s
   exclusiveOption('gemini', 'approvalMode', options.approvalMode !== undefined, 'approval/sandbox', owned);
   if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
     throw new Error(`Invalid task.mode for gemini: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
+  if (task.mode === 'plan' && options.trustWorkspace === false)
+    throw new Error('gemini cannot guarantee Plan mode when trustWorkspace is false.');
+  if (task.mode === 'plan' && permissions.approval === 'auto-approve')
+    throw new Error("gemini's plan mode cannot be combined with permissions.approval 'auto-approve'.");
   const args = ['--output-format', 'stream-json'];
   if (task.mode === 'plan') {
     args.push('--approval-mode', 'plan');
@@ -111,7 +126,8 @@ export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): s
   }
   if (options.trustWorkspace ?? true) args.push('--skip-trust');
   if (task.model) args.push('--model', task.model);
-  if (task.extraArgs) args.push(...(task.mode !== undefined ? stripGeminiModeFlags(task.extraArgs) : task.extraArgs));
+  if (task.extraArgs)
+    args.push(...(task.mode !== undefined ? stripGeminiModeFlags(task.extraArgs, task.mode) : task.extraArgs));
   // `--prompt=<text>` keeps a prompt that starts with a dash from reading as a flag.
   return [...args, `--prompt=${task.prompt}`];
 }

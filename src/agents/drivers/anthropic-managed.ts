@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { unsupportedMode } from '../prepare.js';
 import {
   failureOfError,
   managedAgent,
@@ -345,6 +346,8 @@ export function anthropicManagedProvider(options: AnthropicManagedOptions): Mana
     },
 
     async start(request: ManagedStart, signal?: AbortSignal) {
+      const refusedMode = unsupportedMode(name, {}, request);
+      if (refusedMode) throw new Error(refusedMode);
       if (request.maxTurns !== undefined) throw new Error(`${name} cannot cap turns (maxTurns).`);
       if (request.extraArgs?.length) throw new Error(`${name} takes no extra arguments.`);
       const c = await client();

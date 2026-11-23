@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { anthropicManagedProvider } from './drivers/anthropic-managed.js';
+import { cursorCloudProvider } from './drivers/cursor-cloud.js';
+import { geminiManagedProvider } from './drivers/gemini-managed.js';
+import { openaiManagedProvider } from './drivers/openai-managed.js';
 import {
   isManagedSettled,
   managedAgent,
@@ -762,5 +766,25 @@ describe('managedAgent resume cursor', () => {
       .result;
     expect(refused).toMatchObject({ status: 'failed', error: 'cloud does not support Plan mode in this driver.' });
     expect(calls).toEqual([]);
+
+    // Direct provider start() calls also reject Plan mode before touching any transport.
+    let fetched = 0;
+    const noFetch = (async () => {
+      fetched++;
+      throw new Error('network should not be called');
+    }) as typeof fetch;
+    await expect(
+      cursorCloudProvider({ apiKey: 'k', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      geminiManagedProvider({ apiKey: 'k', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      openaiManagedProvider({ apiKey: 'k', model: 'gpt-5', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      anthropicManagedProvider({ agent: 'a', environment: 'e' }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    expect(fetched).toBe(0);
   });
 });

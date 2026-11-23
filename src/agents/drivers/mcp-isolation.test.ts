@@ -228,6 +228,23 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
           extraArgs: ['-c', 'features = { "default_mode_request_user_input" = true }'],
         }),
       ).toBe(true);
+      // Quoted dotted key path does not enable the feature in Codex 0.170.
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features."default_mode_request_user_input"=true'],
+        }),
+      ).toBe(false);
+
+      // Effective feature status from `codex features list` (e.g. enabled in config.toml) is honored.
+      const featureEnabledBin = join(dir, 'codex-feature-on');
+      writeFileSync(
+        featureEnabledBin,
+        `#!/bin/sh\nprintf 'default_mode_request_user_input          under development  true\\n'\n`,
+      );
+      chmodSync(featureEnabledBin, 0o755);
+      const fromConfig = await prepareCodexLive(base, { command: featureEnabledBin });
+      expect(fromConfig.args.join(' ')).not.toContain('mcp_servers.choices');
+      expect(fromConfig.args.join(' ')).toContain('mcp_servers.app.url=');
 
       // Resuming a saved Codex Plan thread with mode omitted also drops the question channel.
       const codexHome = join(dir, 'codex-home');

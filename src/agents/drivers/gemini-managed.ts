@@ -1,4 +1,5 @@
 import { posix } from 'node:path';
+import { unsupportedMode } from '../prepare.js';
 import {
   failureOfError,
   managedAgent,
@@ -264,6 +265,8 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
     },
 
     async start(start, signal) {
+      const refusedMode = unsupportedMode(name, {}, start);
+      if (refusedMode) throw new Error(refusedMode);
       if (start.maxTurns !== undefined) throw new Error(`${name} cannot cap turns (maxTurns).`);
       if (start.extraArgs?.length) throw new Error(`${name} takes no extra arguments.`);
       if (start.effort !== undefined) throw new Error(`${name} takes no effort setting.`);

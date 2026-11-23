@@ -223,6 +223,8 @@ interface Sub {
   effort?: string;
   mcpServers?: McpServer[];
   mode: 'worktree' | 'shared';
+  /** Collaboration mode the delegated worker started in. */
+  agentMode?: AgentMode;
   cwd: string;
   repo?: string;
   dir?: string;
@@ -664,6 +666,7 @@ export function pack(options: PackOptions): Pack {
           ...(extra.effort ? { effort: extra.effort } : {}),
           ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           mode,
+          ...(effectiveMode !== undefined ? { agentMode: effectiveMode } : {}),
           cwd: base === leadCwd ? task.cwd : base,
           status: 'running',
           ended: new Promise<void>((resolve) => (settle = resolve)),
@@ -1064,7 +1067,12 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, text: { type: 'string' } },
             required: ['id', 'text'],
           },
-          call: (args) => steer(find(args.id), args.text),
+          call: (args) => {
+            const sub = find(args.id);
+            if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
+              throw new Error(`Cannot steer ${sub.id} while in Plan mode: it is running outside Plan mode.`);
+            return steer(sub, args.text);
+          },
         },
         {
           name: 'stop',

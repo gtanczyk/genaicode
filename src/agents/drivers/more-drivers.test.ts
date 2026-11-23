@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentOutputParser } from '../cli-agent.js';
 import { createCursorParser, cursorArgs } from './cursor.js';
-import { createGeminiParser, geminiArgs } from './gemini.js';
+import { createGeminiParser, gemini, geminiArgs } from './gemini.js';
 import { createOpencodeParser, opencodeArgs } from './opencode.js';
 
 function feed(parser: AgentOutputParser, values: unknown[]) {
@@ -38,10 +38,31 @@ describe('gemini driver', () => {
     ]);
     expect(
       geminiArgs(
-        { prompt: 'build it', cwd: '.', mode: 'default', extraArgs: ['--approval-mode=plan'] },
+        {
+          prompt: 'build it',
+          cwd: '.',
+          mode: 'default',
+          extraArgs: ['--approval-mode=plan', '--approval-mode', 'default'],
+        },
         { approvalMode: 'plan' },
       ),
-    ).toEqual(['--output-format', 'stream-json', '--approval-mode', 'auto_edit', '--skip-trust', '--prompt=build it']);
+    ).toEqual([
+      '--output-format',
+      'stream-json',
+      '--approval-mode',
+      'auto_edit',
+      '--skip-trust',
+      '--approval-mode',
+      'default',
+      '--prompt=build it',
+    ]);
+    expect(gemini({ trustWorkspace: false }).capabilities.plan).toBeUndefined();
+    expect(() => geminiArgs({ prompt: 'plan it', cwd: '.', mode: 'plan' }, { trustWorkspace: false })).toThrow(
+      /trustWorkspace/,
+    );
+    expect(() =>
+      geminiArgs({ prompt: 'plan it', cwd: '.', mode: 'plan', permissions: { approval: 'auto-approve' } }),
+    ).toThrow(/cannot be combined/);
   });
 
   it('decodes stream-json', () => {

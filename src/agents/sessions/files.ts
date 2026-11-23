@@ -72,6 +72,98 @@ export function chunksOf(data: Buffer): { head: unknown[]; tail: unknown[] } {
   return cut(data.subarray(0, CHUNK), data.subarray(data.length - CHUNK));
 }
 
+const MAX_SCAN_LINE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Scan a JSONL file backwards in chunks for the last line matching `match`. Raw UTF-8 bytes are
+ * checked for `marker` before decoding or parsing, and giant single lines without newlines are
+ * skipped in O(1) memory.
+ */
+export async function findLastLineMatch<T>(
+  filePath: string,
+  size: number,
+  marker: string,
+  match: (line: string) => { found: true; value: T } | { found: false },
+  signal?: AbortSignal,
+): Promise<T | undefined> {
+  const needle = Buffer.from(marker, 'utf8');
+  const handle = await fs.open(filePath, 'r');
+  try {
+    let end = size;
+    let pending: Buffer[] = [];
+    let pendingBytes = 0;
+    let pendingOverflow = false;
+    const checkLine = (buf: Buffer): { found: true; value: T } | { found: false } => {
+      if (!buf.length || !buf.includes(needle)) return { found: false };
+      return match(buf.toString('utf8'));
+    };
+    const flushPendingWith = (prefix: Buffer): { found: true; value: T } | { found: false } => {
+      if (pendingOverflow) {
+        pending = [];
+        pendingBytes = 0;
+        pendingOverflow = false;
+        return { found: false };
+      }
+      if (!pending.length) return checkLine(prefix);
+      const parts = [prefix, ...pending.reverse()];
+      pending = [];
+      pendingBytes = 0;
+      return checkLine(Buffer.concat(parts));
+    };
+    while (end > 0) {
+      signal?.throwIfAborted();
+      const start = Math.max(0, end - CHUNK);
+      const length = end - start;
+      const buf = Buffer.alloc(length);
+      await handle.read(buf, 0, length, start);
+      let cursor = length;
+      let nl = buf.lastIndexOf(0x0a, cursor - 1);
+      if (nl < 0) {
+        if (!pendingOverflow) {
+          pendingBytes += length;
+          if (pendingBytes > MAX_SCAN_LINE_BYTES) {
+            pending = [];
+            pendingOverflow = true;
+          } else {
+            pending.push(buf);
+          }
+        }
+        end = start;
+        continue;
+      }
+      const tailResult = flushPendingWith(buf.subarray(nl + 1, cursor));
+      if (tailResult.found) return tailResult.value;
+      cursor = nl;
+      while (cursor > 0) {
+        nl = buf.lastIndexOf(0x0a, cursor - 1);
+        if (nl < 0) break;
+        const lineResult = checkLine(buf.subarray(nl + 1, cursor));
+        if (lineResult.found) return lineResult.value;
+        cursor = nl;
+      }
+      if (cursor > 0) {
+        const prefix = buf.subarray(0, cursor);
+        if (start === 0) {
+          const firstResult = checkLine(prefix);
+          if (firstResult.found) return firstResult.value;
+        } else {
+          pending = [prefix];
+          pendingBytes = cursor;
+          pendingOverflow = false;
+        }
+      }
+      end = start;
+    }
+    if (pending.length) {
+      const result = flushPendingWith(Buffer.alloc(0));
+      if (result.found) return result.value;
+    }
+    return undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
 // The cut falls inside a line at the end of the head and at the start of the tail.
 function cut(first: Buffer, last: Buffer): { head: unknown[]; tail: unknown[] } {
   return {

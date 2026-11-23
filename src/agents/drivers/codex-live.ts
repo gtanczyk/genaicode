@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { codexSessions } from '../sessions/codex.js';
 import type { TokenUsage } from '../../core/types.js';
 import { isQuestionChannelServer, questionChannelHandler } from '../ask-user.js';
@@ -85,11 +87,14 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
   };
 }
 
-const FEATURES_KEY =
-  /^(?:features|"features"|'features')\.(?:default_mode_request_user_input|"default_mode_request_user_input"|'default_mode_request_user_input')\s*=\s*(true|false)$/;
-const FEATURES_TABLE = /^(?:features|"features"|'features')\s*=\s*\{([\s\S]*)\}$/;
+const execFileAsync = promisify(execFile);
+
+// Codex splits dotted `-c key=value` paths literally without TOML key unquoting; quoted keys apply only inside tables.
+const FEATURES_KEY = /^features\.default_mode_request_user_input\s*=\s*(true|false)$/;
+const FEATURES_TABLE = /^features\s*=\s*\{([\s\S]*)\}$/;
 const TABLE_ENTRY =
   /(?:^|,)\s*(?:default_mode_request_user_input|"default_mode_request_user_input"|'default_mode_request_user_input')\s*=\s*(true|false)(?=\s*(?:,|$))/g;
+const FEATURE_LIST_LINE = /^default_mode_request_user_input\s+.*\s+(true|false)\s*$/m;
 
 /** Effective collaboration mode for a turn: `task.mode` overrides `options.collaborationMode`. */
 export function codexCollaborationMode(
@@ -176,6 +181,32 @@ async function savedCodexMode(
   }
 }
 
+/** Ask Codex for the effective `default_mode_request_user_input` feature flag (`config.toml` + CLI overrides). */
+async function codexEffectiveDefaultModeInput(
+  command: string,
+  task: Pick<AgentTask, 'cwd' | 'env' | 'extraArgs'>,
+  signal: AbortSignal | undefined,
+): Promise<boolean | undefined> {
+  const extra = task.extraArgs ?? [];
+  const sep = extra.indexOf('--');
+  const flags = sep < 0 ? extra : extra.slice(0, sep);
+  try {
+    const { stdout } = await execFileAsync(command, [...flags, 'features', 'list'], {
+      cwd: task.cwd,
+      env: task.env,
+      signal,
+      timeout: 10_000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const match = FEATURE_LIST_LINE.exec(stdout);
+    return match ? match[1] === 'true' : undefined;
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
+}
+
 /** The app server's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others off. */
 export async function prepareCodexLive(
   task: AgentTask,
@@ -188,15 +219,22 @@ export async function prepareCodexLive(
   const canDrop = (server: NonNullable<AgentTask['mcpServers']>[number]) =>
     isQuestionChannelServer(server) && (Boolean(task.onQuestion) || Boolean(questionChannelHandler(server)));
   const hasQuestionServer = Boolean(task.mcpServers?.some(canDrop));
-  const inheritedPlan =
-    hasQuestionServer &&
-    codexCollaborationMode(task, options) === undefined &&
-    Boolean(task.resume) &&
-    (await savedCodexMode(task.resume!, task.env, context?.signal)) === 'plan';
+  const wanted = codexCollaborationMode(task, options);
+  let hasOwn = wanted === 'plan';
+  if (hasQuestionServer && !hasOwn) {
+    if (
+      wanted === undefined &&
+      task.resume &&
+      (await savedCodexMode(task.resume, task.env, context?.signal)) === 'plan'
+    ) {
+      hasOwn = true;
+    } else {
+      const effectiveFlag = await codexEffectiveDefaultModeInput(options.command ?? 'codex', task, context?.signal);
+      hasOwn = effectiveFlag ?? codexHasOwnQuestionTool(task, options);
+    }
+  }
   const effective =
-    (codexHasOwnQuestionTool(task, options) || inheritedPlan) && hasQuestionServer
-      ? { ...task, mcpServers: task.mcpServers!.filter((server) => !canDrop(server)) }
-      : task;
+    hasOwn && hasQuestionServer ? { ...task, mcpServers: task.mcpServers!.filter((server) => !canDrop(server)) } : task;
   const prepared = withCodexMcp(effective, [...(task.extraArgs ?? []), 'app-server']);
   if (!options.onlyTaskMcpServers) return prepared;
   let off: string[];

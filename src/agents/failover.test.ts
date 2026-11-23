@@ -267,6 +267,21 @@ describe('withFallback', () => {
     expect(inherited).toMatchObject({ status: 'completed', ok: true, text: 'planned-backup' });
     expect(noPlan2.tasks).toHaveLength(0);
     expect(backup2.tasks[0]?.mode).toBe('plan');
+
+    // Retains known Plan mode when the owner fails before init on a resumed turn with mode omitted.
+    const owner = fake('codex', [{ text: 'plan ready', sessionId: 'th-saved' }, out('unavailable')]);
+    owner.agent.capabilities.plan = true;
+    owner.agent.capabilities.resume = true;
+    const noPlan3 = fake('opencode');
+    const backup3 = fake('claude', [{ text: 'resumed-plan' }]);
+    backup3.agent.capabilities.plan = true;
+    const chain = withFallback([owner.agent, noPlan3.agent, backup3.agent]);
+    const firstTurn = await chain.run({ prompt: 'plan it', cwd: dir, mode: 'plan' }).result;
+    expect(firstTurn.sessionId).toBe('th-saved');
+    const secondTurn = await chain.run({ prompt: 'refine it', cwd: dir, resume: 'th-saved' }).result;
+    expect(secondTurn).toMatchObject({ status: 'completed', ok: true, text: 'resumed-plan' });
+    expect(noPlan3.tasks).toHaveLength(0);
+    expect(backup3.tasks[0]?.mode).toBe('plan');
   });
 });
 

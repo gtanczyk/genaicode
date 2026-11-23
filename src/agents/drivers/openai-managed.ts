@@ -1,3 +1,4 @@
+import { unsupportedMode } from '../prepare.js';
 import {
   managedAgent,
   type ManagedEventPage,
@@ -215,6 +216,8 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
     },
 
     async start(start, signal) {
+      const refusedMode = unsupportedMode(name, {}, start);
+      if (refusedMode) throw new Error(refusedMode);
       if (start.extraArgs?.length) throw new Error(`${name} takes no extra arguments.`);
       if (start.files?.length) throw new Error(`${name} cannot take start files.`);
       const model = start.model ?? options.model;

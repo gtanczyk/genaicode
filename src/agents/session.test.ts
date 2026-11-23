@@ -1056,6 +1056,46 @@ describe('createAgentSession', () => {
     expect(withoutCompatible.get()).toMatchObject({ agent: 'primary2', mode: 'plan' });
     expect(withoutCompatible.get().turns).toHaveLength(1);
     withoutCompatible.close();
+
+    // Pending Plan prompt in queue during a default-mode turn that hits quota picks a Plan-capable fallback.
+    let finishEdit!: () => void;
+    const editPrimary: CodingAgent = {
+      name: 'edit-primary',
+      command: 'edit-primary',
+      capabilities: { plan: true },
+      run() {
+        const result = new Promise<AgentResult>((resolve) => {
+          finishEdit = () => resolve(quota);
+        });
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    const noPlan3 = fakeAgent([async () => {}], {}, 'no-plan3');
+    const backup3 = fakeAgent([async () => {}, async () => {}], { plan: true }, 'backup3');
+    const queuedPlanSession = createAgentSession({
+      agent: editPrimary,
+      cwd: '/w',
+      fallback: [noPlan3.agent, backup3.agent],
+    });
+    queuedPlanSession.send('edit first');
+    await expect.poll(() => Boolean(finishEdit)).toBe(true);
+    queuedPlanSession.setMode('plan');
+    queuedPlanSession.send('plan second');
+    finishEdit();
+    await queuedPlanSession.idle();
+    expect(noPlan3.tasks).toHaveLength(0);
+    expect(backup3.tasks.map((t) => [t.prompt, t.mode])).toEqual([
+      ['edit first', undefined],
+      ['plan second', 'plan'],
+    ]);
+    expect(queuedPlanSession.get()).toMatchObject({ agent: 'backup3', mode: 'plan' });
+    queuedPlanSession.close();
   });
 
   it('restores inherited Plan mode from adopt() or a resumed session event, and marks injected question servers', async () => {
@@ -1132,6 +1172,29 @@ describe('createAgentSession', () => {
       ['genaicode_ask_2', true],
     ]);
     colliding.close();
+
+    // A follow-up queued BEFORE a resumed turn reports inherited Plan mode preserves Plan mode (never triggers leavingPlan).
+    let releaseResumed!: () => void;
+    const slowResume = fakeAgent(
+      [
+        async (_task, emit) => {
+          await new Promise<void>((resolve) => (releaseResumed = resolve));
+          emit({ type: 'session', sessionId: 's-plan', mode: 'plan' });
+        },
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'codex',
+    );
+    const earlyQueue = createAgentSession({ agent: slowResume.agent, cwd: '/w', resume: 's-plan' });
+    earlyQueue.send('first');
+    await expect.poll(() => Boolean(releaseResumed)).toBe(true);
+    earlyQueue.send('follow-up queued before session event', { queue: true });
+    releaseResumed();
+    await earlyQueue.idle();
+    expect(earlyQueue.get().mode).toBe('plan');
+    expect(slowResume.tasks.map((t) => t.mode)).toEqual([undefined, 'plan']);
+    earlyQueue.close();
   });
 
   it('never writes a secret question answer into the handoff transcript', async () => {

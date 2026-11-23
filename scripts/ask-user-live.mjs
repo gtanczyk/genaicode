@@ -289,7 +289,7 @@ try {
         keptInDefault &&
         usedOwnTool &&
         unexpectedApprovals.length === 0 &&
-        new RegExp(escapeRegExp(chosenColor), 'i').test(text);
+        new RegExp(escapeRegExp(baseLabel(chosenColor)), 'i').test(text);
       rows.push({
         mode: 'plan+session',
         case: 'own-tool-only',

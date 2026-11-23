@@ -875,5 +875,58 @@ describe('pack chat turns', () => {
     } finally {
       await plainTeam.close();
     }
+
+    // A Plan-mode run sharing a Pack cannot steer a running worker from a concurrent non-plan run.
+    let finishWorker!: () => void;
+    let workerStarted!: () => void;
+    const workerStartedP = new Promise<void>((resolve) => (workerStarted = resolve));
+    const steerableWorker: CodingAgent = {
+      name: 'codex',
+      command: process.execPath,
+      capabilities: { steer: true, plan: true },
+      run() {
+        workerStarted();
+        const done = new Promise<void>((resolve) => (finishWorker = resolve));
+        const result = done.then(() => ok({ text: 'done' }));
+        return {
+          result,
+          abort() {
+            finishWorker();
+          },
+          steer: async () => {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    let releaseEditLead!: () => void;
+    const sharedLead = fake(
+      'lead',
+      async (task) => {
+        if (task.mode !== 'plan') {
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'edit work', mode: 'shared' });
+          await new Promise<void>((resolve) => (releaseEditLead = resolve));
+          return { text: 'edit-lead' };
+        }
+        await expect(tool(task, 'steer', { id: 't1', text: 'do edit' })).rejects.toThrow(
+          /Cannot steer t1 while in Plan mode/,
+        );
+        return { text: 'plan-lead' };
+      },
+      { mcp: true, plan: true },
+    );
+    const sharedPack = pack({ lead: sharedLead, members: [steerableWorker] });
+    try {
+      const editRun = sharedPack.run({ prompt: 'run edit', cwd });
+      await workerStartedP;
+      const planRun = await sharedPack.run({ prompt: 'run plan', cwd, mode: 'plan' }).result;
+      expect(planRun).toMatchObject({ status: 'completed', ok: true, text: 'plan-lead' });
+      finishWorker();
+      releaseEditLead();
+      expect((await editRun.result).ok).toBe(true);
+    } finally {
+      await sharedPack.close();
+    }
   });
 });
