@@ -3,10 +3,11 @@ import path from 'node:path';
 import { archiveKey } from './archive.js';
 import { isScratchDir } from './files.js';
 import { liveDir } from './live.js';
-import { isAsking } from './group.js';
+import { attentionOf } from './group.js';
 import type { SessionInfo } from './types.js';
 
-export { ASKING_MS, isAsking } from './group.js';
+export { ASKING_MS, attentionOf, isAsking, isStalled } from './group.js';
+export type { Attention } from './group.js';
 
 /**
  * A topic: one piece of work, whichever agents and directories its sessions were in. A project
@@ -403,8 +404,10 @@ export interface TopicSummary extends Topic {
   /** The directories or repositories it was worked on in, most sessions first. */
   projects: string[];
   updatedAt: number;
-  /** Sessions that ask for approval, or whose last message asked something in the last `ASKING_MS`. */
+  /** Sessions that need you now (`attentionOf`): an approval, or a question or command in the last `ASKING_MS`. */
   asking: number;
+  /** Sessions that stalled: an offer, a failed report, or a question older than `ASKING_MS`. */
+  stalled: number;
   /** Sessions an agent works in now. */
   active: number;
 }
@@ -430,7 +433,7 @@ export function summarizeTopics(
     }
     let summary = byId.get(topic.id);
     if (!summary) {
-      summary = { ...topic, sessions: [], agents: {}, projects: [], updatedAt: 0, asking: 0, active: 0 };
+      summary = { ...topic, sessions: [], agents: {}, projects: [], updatedAt: 0, asking: 0, stalled: 0, active: 0 };
       byId.set(topic.id, summary);
       places.set(topic.id, new Map());
     }
@@ -438,7 +441,9 @@ export function summarizeTopics(
     summary.agents[session.agent] = (summary.agents[session.agent] ?? 0) + 1;
     summary.updatedAt = Math.max(summary.updatedAt, session.updatedAt);
     if (session.state === 'active') summary.active += 1;
-    if (isAsking(session, now)) summary.asking += 1;
+    const attention = attentionOf(session, now);
+    if (attention === 'now') summary.asking += 1;
+    else if (attention === 'stalled') summary.stalled += 1;
     const place = projectOf(session);
     const counts = places.get(topic.id)!;
     counts.set(place, (counts.get(place) ?? 0) + 1);
