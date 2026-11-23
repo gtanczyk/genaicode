@@ -10,6 +10,15 @@ import { withFallback } from '../agents/failover.js';
 import { runWithVerify, type VerifyReport } from '../agents/verify.js';
 import { defaultAgents } from '../agents/defaults.js';
 import { delegationBrief, pack } from '../agents/pack.js';
+import {
+  packRoot,
+  profileChoices,
+  projectTeams,
+  readPackProfile,
+  validateTeam,
+  type ProjectTeams,
+  type PackProfile,
+} from '../agents/pack-profile.js';
 import { codexLive } from '../agents/drivers/codex-live.js';
 import { museLive } from '../agents/drivers/muse-live.js';
 import { sendSession } from '../agents/sessions/send.js';
@@ -142,6 +151,8 @@ export interface UiLaunch {
   agents: readonly CodingAgent[];
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
+  projectTeams?: ProjectTeams;
+  projectLead?(cwd: string): Promise<string | undefined>;
   sessionSources?: readonly SessionSource[];
   sessionTools?: readonly McpTool[];
   towerInbox?: TowerInbox;
@@ -322,7 +333,7 @@ Notify options:
 
 Chat and UI options:
   -a, --agent <name>      Agent to start with (default: the first installed one; with --pack, the lead)
-      --pack [lead:list]  Start a pack: omit the value to use all installed agents, or name them
+      --pack [lead:list]  Use the project team or installed agents. A named roster overrides the project
                           explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
                           the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
@@ -763,6 +774,9 @@ async function runUi(
   let towerInbox: TowerInbox | undefined;
   let startupNotice: string | undefined;
   let initial = options.agent;
+  const launchCwd = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
+  let profiles: ProjectTeams | undefined;
+  let projectLead: ((directory: string) => Promise<string | undefined>) | undefined;
   if (options.pack) {
     const spec = options.pack;
     if (options.mcpServers.some((server) => server.name === 'pack')) {
@@ -773,13 +787,27 @@ async function runUi(
     const member = (name: string) => packAgents.find((agent) => agent.name === name)!;
     let lead: CodingAgent;
     let members: CodingAgent[];
+    const choices = profileChoices(packAgents, cli.env);
     if ('auto' in spec) {
-      const installed = detectAgents(packAgents, cli.env)
-        .filter((found) => found.path !== null)
-        .map((found) => found.agent);
+      let saved: PackProfile | undefined;
+      try {
+        saved = options.noProject ? undefined : await readPackProfile(await packRoot(launchCwd));
+        if (saved) {
+          if (options.agent) saved.lead = options.agent;
+          validateTeam(saved, choices);
+        }
+      } catch (error) {
+        cli.stderr.write(
+          `${error instanceof Error ? error.message : error} Use an explicit --pack LEAD:MEMBERS to override it.\n`,
+        );
+        return EXIT_USAGE;
+      }
+      const installed = choices.filter((choice) => choice.installed).map((choice) => member(choice.name));
       if (options.agent !== undefined) {
         if (!knownAgents(cli, agents, [options.agent], '--agent')) return EXIT_USAGE;
         lead = member(options.agent);
+      } else if (saved) {
+        lead = member(saved.lead);
       } else {
         const picked = installed.find((agent) => agent.capabilities.mcp);
         if (!picked) {
@@ -797,9 +825,8 @@ async function runUi(
         cli.stderr.write(`Agent "${lead.name}" cannot lead a pack because it does not support MCP.\n`);
         return EXIT_USAGE;
       }
-      // Every installed agent joins the pack (including the lead).
-      members = installed.includes(lead) ? installed : [lead, ...installed];
-      startupNotice = `Pack: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
+      members = saved ? saved.members.map(member) : installed.includes(lead) ? installed : [lead, ...installed];
+      startupNotice = `${saved ? 'Project pack' : 'Pack'}: ${lead.name} leads · members: ${members.map((agent) => agent.name).join(', ')}.`;
     } else {
       if (!knownAgents(cli, agents, [spec.lead, ...spec.members], '--pack')) return EXIT_USAGE;
       lead = member(spec.lead);
@@ -813,13 +840,14 @@ async function runUi(
       sessionAgents = packAgents;
       towerInbox = new TowerInbox(sessionAgents, cli.env);
     }
-    const project = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
-    const projectDir = await fs.realpath(project).catch(() => project);
+    profiles = projectTeams(choices, cli.env, { lead: lead.name, members: members.map((agent) => agent.name) });
+    const projectDir = await fs.realpath(launchCwd).catch(() => launchCwd);
     const command = options.verify ?? (await npmTestCommand(projectDir));
     const team = pack({
       lead,
       members,
       maxParallel: spec.maxParallel,
+      readLimits: knownLimits,
       operatorMerge: true,
       sessionProposalTool: towerInbox?.proposalTool,
       verification: command
@@ -844,12 +872,32 @@ async function runUi(
     }
     // Each agent that takes MCP servers keeps its name and may hand work to the installed ones.
     const helpers = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
-    const installed = detectAgents(helpers, cli.env)
-      .filter((found) => found.path !== null)
-      .map((found) => found.agent);
+    const choices = profileChoices(helpers, cli.env);
+    const installed = helpers.filter((_, index) => choices[index].installed);
+    profiles = projectTeams(choices, cli.env);
+    const homeCwd = options.noProject ? await fs.realpath(launchCwd).catch(() => launchCwd) : undefined;
+    const projectTeam = async (directory: string) =>
+      directory === homeCwd ? undefined : readPackProfile(await packRoot(directory));
+    projectLead = async (directory) => {
+      const saved = await projectTeam(directory);
+      if (saved) validateTeam(saved, choices);
+      return saved?.lead;
+    };
     agents = agents.map((agent) =>
       agent.capabilities.mcp
-        ? pack({ name: agent.name, lead: agent, members: installed, brief: delegationBrief, operatorMerge: true })
+        ? pack({
+            name: agent.name,
+            lead: agent,
+            members: installed,
+            brief: delegationBrief,
+            operatorMerge: true,
+            projectMembers: async (directory) => {
+              const saved = await projectTeam(directory);
+              if (saved) validateTeam({ lead: agent.name, members: saved.members }, choices);
+              return saved?.members;
+            },
+            readLimits: knownLimits,
+          })
         : agent,
     );
   }
@@ -868,7 +916,6 @@ async function runUi(
     agents = agents.filter((agent) => agent.capabilities.mcp);
   }
   if (!knownAgents(cli, agents, options.fallback)) return EXIT_USAGE;
-  const launchCwd = options.home ? ensureNeutralHome(cli.env) : resolve(cli.cwd, options.cwd ?? '.');
   // `--restore`: the conversation this directory's (or app's) chat had last, so a restart loses nothing.
   let restored: string | undefined;
   if (options.kind === 'ui' && options.restore && !options.from && !options.resume && !options.pack) {
@@ -878,6 +925,14 @@ async function runUi(
     if (last) {
       restored = last.id;
       initial ??= last.agent;
+    }
+  }
+  if (projectLead && !options.noProject && !initial && !options.from && !options.resume) {
+    try {
+      initial = await projectLead(launchCwd);
+    } catch (error) {
+      cli.stderr.write(`${error instanceof Error ? error.message : error}\n`);
+      return EXIT_USAGE;
     }
   }
   const ui = await (cli.loadUi ?? loadBundledUi)();
@@ -909,6 +964,8 @@ async function runUi(
     ...(sendGate ? { sessionSend: sendGate } : {}),
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
+    ...(profiles ? { projectTeams: profiles } : {}),
+    ...(options.home && !options.agent && projectLead ? { projectLead } : {}),
     agent: initial,
     cwd: launchCwd,
     model: options.model,

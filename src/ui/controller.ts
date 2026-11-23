@@ -106,6 +106,8 @@ export interface WebHandoff {
 export type ChatSource = 'terminal' | 'web';
 
 export interface ChatOptions {
+  /** Saved default for a fresh project conversation. Resumed sessions keep their selected agent. */
+  projectLead?(cwd: string): Promise<string | undefined>;
   agents: readonly CodingAgent[];
   /**
    * The stores the Sessions view, `/continue` and `--from` read. Default: those of `agents`. Give
@@ -536,6 +538,8 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
+      const savedLead = resolved.status === 'resolved' ? await options.projectLead?.(resolved.cwd) : undefined;
+      const lead = savedLead ? byName.get(savedLead) : undefined;
       batching++;
       let ok = false;
       try {
@@ -544,6 +548,7 @@ export function createChatController(options: ChatOptions): ChatController {
           conversationEpoch += 1;
           contextEpoch += 1;
           relayNotices.clear();
+          if (lead) session.setAgent(lead, { handoff: false });
           notices = [];
           conversation = {
             id: randomUUID(),

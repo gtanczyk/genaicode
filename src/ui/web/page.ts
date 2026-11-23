@@ -33,6 +33,23 @@ export function pageHtml(title: {
 // The page around <AgentChat>: header bar, wolf. The chat's own styles come with the client
 // (src/react/agent-chat.css); its defaults match these colors.
 const STYLES = `
+.project-team { color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(26rem, 86vw); max-height: 85vh; padding: 20px; box-shadow: var(--shadow); font: inherit; }
+.project-team::backdrop { background: rgba(0,0,0,.38); }
+.project-team header, .pack-folder { display: flex; align-items: center; gap: .6rem; }
+.project-team header { justify-content: space-between; }
+.project-team h2 { margin: 0; font-size: 1.12rem; }
+.project-team form { margin-top: 1rem; }
+.project-team button, .project-team select, .pack-folder input { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .4rem .65rem; }
+.project-team button { cursor: pointer; }
+.project-team button:disabled { opacity: .55; cursor: default; }
+.pack-folder input { flex: 1; min-width: 0; }
+.project-team label, .project-team legend { display: block; margin: .45rem 0; }
+.project-team fieldset { border: 0; margin: .6rem 0 1rem; padding: 0; }
+.project-team fieldset label { display: inline-flex; align-items: center; gap: .2rem; margin: 0 .8rem .4rem 0; }
+.project-team .pack-save { background: var(--accent); color: white; }
+.project-team .pack-dir { color: var(--muted); overflow-wrap: anywhere; font-family: var(--mono); font-size: .83em; }
+.project-team [role=alert] { color: var(--err); }
+
 :root {
   --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --faint: #9a9a94;
   --line: #e4e4df; --accent: #3b5bdb; --ok: #2b8a3e; --err: #c92a2a;
