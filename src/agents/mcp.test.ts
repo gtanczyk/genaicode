@@ -36,6 +36,7 @@ const report = {
   pluginMcpMode: pluginDir ? (statSync(join(pluginDir, 'mcp.json')).mode & 0o777).toString(8) : undefined,
   pluginMcp: pluginDir ? JSON.parse(readFileSync(join(pluginDir, 'mcp.json'), 'utf8')) : undefined,
   geminiFile,
+  geminiDefaults: process.env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH,
   geminiMode: geminiFile ? (statSync(geminiFile).mode & 0o777).toString(8) : undefined,
   geminiConfig: geminiFile ? JSON.parse(readFileSync(geminiFile, 'utf8')) : undefined,
   header: process.env.GENAICODE_MCP_0_HEADER_0,
@@ -227,21 +228,24 @@ describe('MCP servers', () => {
       },
     });
 
-    // Preserves any existing system settings file without touching it.
+    // Preserves any existing system settings file (including JSONC comments) and original defaults path.
     const existing = join(dir, 'existing-gemini-settings.json');
     writeFileSync(
       existing,
-      JSON.stringify({ theme: 'dark', mcpServers: { corp: { httpUrl: 'https://corp.example/mcp' } } }),
+      `// Enterprise Gemini defaults\n{\n  /* Keep theme and corp MCP */\n  "theme": "dark",\n  "mcpServers": {\n    "corp": { "httpUrl": "https://corp.example/mcp" } // URL has // inside string\n  }\n}\n`,
     );
+    const baseEnv: NodeJS.ProcessEnv = { ...process.env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: existing };
+    delete baseEnv.GEMINI_CLI_SYSTEM_DEFAULTS_PATH;
     const result = await gemini({ command: bin }).run({
       prompt: 'p',
       cwd: dir,
-      env: { ...process.env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: existing },
+      env: baseEnv,
       mcpServers: servers,
     }).result;
     const report = JSON.parse(result.text!);
     expect(result.ok).toBe(true);
     expect(report.geminiFile).not.toBe(existing);
+    expect(report.geminiDefaults).toBe(join(dir, 'system-defaults.json'));
     expect(report.geminiMode).toBe('600');
     expect(report.geminiConfig).toEqual({
       theme: 'dark',
@@ -254,6 +258,28 @@ describe('MCP servers', () => {
     expect(report.args.join(' ')).not.toContain('secret');
     expect(existsSync(report.geminiFile)).toBe(false);
     expect(existsSync(existing)).toBe(true);
+
+    // Retains an explicit caller GEMINI_CLI_SYSTEM_DEFAULTS_PATH unchanged.
+    const customDefaults = join(dir, 'custom-defaults.json');
+    const withCustomDefaults = await gemini({ command: bin }).run({
+      prompt: 'p',
+      cwd: dir,
+      env: { ...baseEnv, GEMINI_CLI_SYSTEM_DEFAULTS_PATH: customDefaults },
+      mcpServers: servers,
+    }).result;
+    expect(JSON.parse(withCustomDefaults.text!).geminiDefaults).toBe(customDefaults);
+
+    // Fails rather than silently dropping an existing malformed system settings file.
+    const broken = join(dir, 'broken-gemini-settings.json');
+    writeFileSync(broken, '{ not valid json');
+    const failed = await gemini({ command: bin }).run({
+      prompt: 'p',
+      cwd: dir,
+      env: { ...baseEnv, GEMINI_CLI_SYSTEM_SETTINGS_PATH: broken },
+      mcpServers: servers,
+    }).result;
+    expect(failed).toMatchObject({ status: 'failed', ok: false, exitCode: null });
+    expect(failed.error).toMatch(/Existing Gemini system settings/);
   });
 
   it('hands cursor a private temporary --plugin-dir and removes it afterwards', async () => {

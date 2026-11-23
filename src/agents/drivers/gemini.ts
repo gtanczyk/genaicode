@@ -1,7 +1,7 @@
 import { geminiSessions } from '../sessions/stores.js';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import { isHttpServer, type PreparedRun } from '../prepare.js';
@@ -114,22 +114,92 @@ function defaultGeminiSystemSettingsPath(env: NodeJS.ProcessEnv): string {
   return '/etc/gemini-cli/settings.json';
 }
 
-function readSettingsFile(file: string): Record<string, unknown> | undefined {
-  try {
-    const stat = statSync(file);
-    if (!stat.isFile() || stat.size > MAX_SETTINGS_BYTES) return undefined;
-    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    return isObject(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
+/** Strip `//` and `/* … *\/` comments outside JSON strings (matching Gemini CLI's JSONC loader). */
+function stripJsonComments(input: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i]!;
+    const next = input[i + 1];
+    if (inString) {
+      out += ch;
+      if (ch === '\\' && next !== undefined) {
+        out += next;
+        i += 1;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === '/' && next === '/') {
+      i += 2;
+      while (i < input.length && input[i] !== '\n' && input[i] !== '\r') i += 1;
+      if (i < input.length) out += input[i]!;
+    } else if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < input.length && !(input[i] === '*' && input[i + 1] === '/')) i += 1;
+      if (i >= input.length) throw new SyntaxError('Unterminated block comment');
+      i += 1;
+    } else {
+      out += ch;
+    }
   }
+  return out;
+}
+
+/**
+ * Read an existing Gemini system settings file (JSON or JSONC). Missing files (`ENOENT`/`ENOTDIR`)
+ * return undefined; an existing file that cannot be read or parsed throws instead of silently
+ * dropping system overrides.
+ */
+function readSettingsFile(file: string): Record<string, unknown> | undefined {
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(file);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
+    throw new Error(
+      `Cannot read existing Gemini system settings at ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!stat.isFile()) {
+    throw new Error(`Existing Gemini system settings at ${file} is not a regular file.`);
+  }
+  if (stat.size > MAX_SETTINGS_BYTES) {
+    throw new Error(`Existing Gemini system settings at ${file} exceeds ${MAX_SETTINGS_BYTES} bytes.`);
+  }
+  let content: string;
+  try {
+    content = readFileSync(file, 'utf8');
+  } catch (error) {
+    throw new Error(
+      `Cannot read existing Gemini system settings at ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonComments(content.replace(/^\uFEFF/, '')));
+  } catch (error) {
+    throw new Error(
+      `Existing Gemini system settings at ${file} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!isObject(parsed)) {
+    throw new Error(`Existing Gemini system settings at ${file} must be a JSON object.`);
+  }
+  return parsed;
 }
 
 /**
  * Hand Gemini CLI the task's MCP servers via a private temp settings file pointed to by
  * `GEMINI_CLI_SYSTEM_SETTINGS_PATH`. Gemini merges `mcpServers` with user and project settings
  * without touching either; any existing system settings file is preserved in the temp copy,
- * and header/env secrets stay out of argv.
+ * `GEMINI_CLI_SYSTEM_DEFAULTS_PATH` is pinned to the original defaults file when unset, and
+ * header/env secrets stay out of argv.
  */
 function prepareGemini(task: AgentTask, options: GeminiAgentOptions): PreparedRun {
   const args = geminiArgs(task, options);
@@ -142,14 +212,19 @@ function prepareGemini(task: AgentTask, options: GeminiAgentOptions): PreparedRu
   const existingMcp = isObject(existing?.mcpServers) ? existing.mcpServers : {};
   const config = geminiMcpConfig(task.mcpServers, { allowMcpTools: options.allowMcpTools });
   const merged = { ...(existing ?? {}), mcpServers: { ...existingMcp, ...config.mcpServers } };
-
   const dir = mkdtempSync(join(tmpdir(), 'genaicode-gemini-mcp-'));
   try {
     const file = join(dir, 'settings.json');
     writeFileSync(file, JSON.stringify(merged), { mode: 0o600 });
+    const env: Record<string, string> = { ...(permEnv ?? {}), GEMINI_CLI_SYSTEM_SETTINGS_PATH: file };
+    // Gemini derives system-defaults.json from dirname(GEMINI_CLI_SYSTEM_SETTINGS_PATH) when
+    // GEMINI_CLI_SYSTEM_DEFAULTS_PATH is unset; preserve the original directory's defaults path.
+    if (!baseEnv.GEMINI_CLI_SYSTEM_DEFAULTS_PATH) {
+      env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = join(dirname(existingPath), 'system-defaults.json');
+    }
     return {
       args,
-      env: { ...(permEnv ?? {}), GEMINI_CLI_SYSTEM_SETTINGS_PATH: file },
+      env,
       cleanup: () => rmSync(dir, { recursive: true, force: true }),
     };
   } catch (error) {
