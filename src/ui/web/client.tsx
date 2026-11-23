@@ -22,6 +22,7 @@ import { Sessions } from './sessions.js';
 import { FilePanel } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
+import { ProjectTeamDialog } from './project-team.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -168,6 +169,7 @@ interface PageConfig {
   sessions: boolean;
   agents?: boolean;
   uploads?: boolean;
+  projectTeams?: boolean;
   files?: boolean;
   /** A newer version of the app that shows this page: downloading, or ready to install on a relaunch. */
   update?: { version: string; ready: boolean; installing?: boolean };
@@ -453,6 +455,7 @@ function App() {
   const hasAgentsApi = config?.agents === true;
   useBark(view);
   const [model, setModel] = useState<string>();
+  const [showTeam, setShowTeam] = useState(false);
   // The Sessions / Agents views take the chat's place; the chat keeps running behind them.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'agents'>('chat');
   const [focusAgent, setFocusAgent] = useState<string>();
@@ -465,6 +468,7 @@ function App() {
   const session = view?.session;
   const conversation = view?.conversation;
   const activeCwd = conversation?.cwd || session?.cwd || cwd;
+  const teamFolder = hasProject || (isHome && activeCwd !== cwd) ? activeCwd : undefined;
   const running = session?.status === 'running';
   const inSetup = view?.setup === true;
   const {
@@ -724,6 +728,11 @@ function App() {
             )}
           </>
         ) : null}
+        {config?.projectTeams && (
+          <button type="button" className="chip off" aria-haspopup="dialog" onClick={() => setShowTeam(true)}>
+            Project team
+          </button>
+        )}
         {config?.update ? (
           <button
             className="chip update"
@@ -751,6 +760,16 @@ function App() {
         ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
+      {showTeam && (
+        <ProjectTeamDialog
+          token={token}
+          key={activeCwd}
+          chooseProject={!teamFolder}
+          cwd={teamFolder}
+          sessions={hasSessions}
+          onClose={() => setShowTeam(false)}
+        />
+      )}
       {showSessions ? (
         <Sessions
           token={token}

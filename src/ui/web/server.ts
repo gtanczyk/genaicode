@@ -19,6 +19,7 @@ import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 import type { ProjectFiles } from '../files.js';
 
 export interface WebUiOptions {
+  projectTeams?: import('../../agents/pack-profile.js').ProjectTeams;
   controller: ChatController;
   /** The bundled browser script served at /app.js. */
   clientScript: string;
@@ -343,6 +344,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       sessions: !!options.sessions,
       agents: !!options.agents,
       uploads: !!options.uploads,
+      ...(options.projectTeams ? { projectTeams: true } : {}),
       files: !!options.files,
       ...(update ? { update } : {}),
     };
@@ -485,6 +487,28 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const refreshEnv = req.method === 'POST' || url.searchParams.get('env') === '1';
       const status = await options.agents({ refresh, refreshEnv });
       return send(res, 200, 'application/json', JSON.stringify(status));
+    }
+    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/pack-profile') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      if (!options.projectTeams) return send(res, 404, 'application/json', '{"error":"no project teams"}');
+      const selected = url.searchParams.get('project');
+      const active = controller.session.get().cwd;
+      const chooseProject = options.title.project === false && (!options.title.home || active === options.title.cwd);
+      const cwd = chooseProject ? selected || '' : active;
+      if (selected && selected !== cwd)
+        return send(res, 409, 'application/json', '{"error":"The project changed. Open its team again."}');
+      try {
+        if (req.method === 'GET')
+          return send(res, 200, 'application/json', JSON.stringify(await options.projectTeams.load(cwd)));
+        if (!String(req.headers['content-type'] ?? '').startsWith('application/json'))
+          return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+        await options.projectTeams.save(cwd, JSON.parse(await readBody(req)));
+        return send(res, 200, 'application/json', '{"ok":true}');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not open the project team.';
+        return send(res, 400, 'application/json', JSON.stringify({ error: message }));
+      }
     }
     if (req.method === 'GET' && url.pathname === '/api/limits') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

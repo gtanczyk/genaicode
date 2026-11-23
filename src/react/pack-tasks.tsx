@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { PackAction, PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
-import { packCheckLabel, packMetrics, packTaskStatus, packTaskTitle, relativePath } from './format.js';
+import { packQuotaText, packCheckLabel, packMetrics, packTaskStatus, packTaskTitle, relativePath } from './format.js';
 import { Markdown } from './markdown.js';
 
 export type PackActionHandler = (turnId: number, id: string, action: PackAction) => Promise<string>;
@@ -179,6 +179,7 @@ function TaskDetail({
           <Markdown text={task.text} />
         </div>
       ) : null}
+      {task.quotaHint && <p className="gc-pack-warn">{packQuotaText(task.agent, task.quotaHint)}</p>}
       {task.error && <p className="gc-err">{task.error}</p>}
       {children}
       <details className="gc-pack-prompt">

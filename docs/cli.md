@@ -256,7 +256,7 @@ npx genaicode                      # chat in this terminal (same as "genaicode c
 npx genaicode chat -a claude -C ../api
 npx genaicode ui                   # the same chat in your browser, served on 127.0.0.1
 npx genaicode chat --web           # both: the terminal and the browser on one session
-npx genaicode ui --pack            # pack using all installed agents (first MCP agent leads)
+npx genaicode ui --pack            # saved project team, or all installed agents
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
@@ -277,18 +277,34 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-With `--pack` (all installed agents, first MCP-capable one leads; pass `-a <lead>` to choose the
-lead) or `--pack lead:member,member`, the lead chooses which tasks to delegate. **Pack tasks**
+In the desktop app or `genaicode ui --pack`, open **Project team**, choose a lead and workers,
+and click **Remember this team for the project**. In the desktop home view, first choose or enter
+the project's folder. Opening a new chat from a project’s topic also selects its saved lead. The next `genaicode ui --pack`, `chat --pack` or `tower` in that project
+reads the same `.genaicode/pack.json`, at the Git worktree root or the working directory outside Git.
+For example, `{"lead":"claude","members":["codex","gemini"]}` lets Claude delegate to Codex and Gemini.
+With no profile, all installed agents join and the first MCP-capable agent leads.
+`--pack lead:member,member` overrides the whole roster for one launch. With bare `--pack`,
+`-a <lead>` overrides only the lead. An unavailable saved agent is reported by name.
+
+The lead chooses which tasks to delegate. **Pack tasks**
 under its turn shows each worker's prompt, activity, result and changed files. The slot counter
 includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
 `--max-tokens` and `--max-cost` include the lead and its workers.
 
 `--delegate` keeps the usual agent picker but gives every agent that takes MCP servers the same
-tools, with all installed agents as members: ask Claude for a second opinion from Antigravity and
+tools. It uses the workers saved for the delegated task’s directory, or the installed agents when
+there is no profile. Ask Claude for a second opinion from Antigravity and
 Claude delegates it instead of starting `agy` from its shell, where Antigravity cannot ask for
 anything and returns empty. The delegated agent's approvals come to this chat, and commands that
 only read inside its directory pass without asking. A turn that delegates nothing looks as
 before. The desktop app starts its chat this way.
+
+The pack’s `agents` tool takes the target directory, model, effort and MCP server names. A refusal
+or a fully used window observed within the last 15 minutes can suggest another installed worker.
+The task card records the observation and the reset time when available. An alternative needs
+recent quota remaining and the requested capabilities. For a named model the pack needs to have
+seen the worker report that model. The operator decides whether to substitute a named agent.
+A 90% reading alone leaves the choice as it was.
 
 In the browser, select a task or open **Approvals**. In the terminal, press Tab on an empty
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
