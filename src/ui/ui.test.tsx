@@ -1523,6 +1523,48 @@ describe('web UI server', () => {
     }
   });
 
+  it('holds firstPrompt while in setup state and submits it once an agent becomes ready', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-first-prompt-'));
+    let errors = '';
+    const abort = new AbortController();
+    const done = runWeb({
+      agents: [echoAgent('other', 'other-agent')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      firstPrompt: 'Embed genaicode here',
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      const read = async (wanted: string) => {
+        while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+      };
+      await read('"setup":true');
+      expect(seen).not.toContain('Embed genaicode here');
+      // Agent becomes available -> refreshing exits setup and automatically sends the held firstPrompt.
+      writeFileSync(join(empty, 'other-agent'), '#!/bin/sh\necho "1.0.0"\n', { mode: 0o755 });
+      await fetch(new URL('/api/agents?refresh=1', url), { headers });
+      await read('You said **Embed genaicode here**');
+      await reader.cancel();
+    } finally {
+      abort.abort();
+      expect(await done).toBe(0);
+      rmSync(empty, { recursive: true, force: true });
+    }
+  });
+
   it('the page about a missing agent stops with stdin too', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
     const stdin = new PassThrough() as unknown as NodeJS.ReadStream;

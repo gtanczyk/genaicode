@@ -336,7 +336,27 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
   const taken = !options.continueFrom || (await controller.continueSession(options.continueFrom));
-  if (options.firstPrompt && taken && !inSetup) controller.submit(options.firstPrompt);
+  let pendingFirstPrompt = options.firstPrompt && taken ? options.firstPrompt : undefined;
+  let offFirstPrompt: (() => void) | undefined;
+  if (pendingFirstPrompt) {
+    if (!controller.get().setup) {
+      const prompt = pendingFirstPrompt;
+      pendingFirstPrompt = undefined;
+      controller.submit(prompt);
+    } else {
+      // Wait for onboarding to finish (e.g. `genaicode embed --ui` started before an agent is installed).
+      offFirstPrompt = controller.subscribe((view) => {
+        if (view.setup || !pendingFirstPrompt) return;
+        const prompt = pendingFirstPrompt;
+        pendingFirstPrompt = undefined;
+        offFirstPrompt?.();
+        offFirstPrompt = undefined;
+        queueMicrotask(() => {
+          if (!options.signal?.aborted && !controller.get().setup) controller.submit(prompt);
+        });
+      });
+    }
+  }
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
@@ -344,6 +364,9 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       options.stdin.off('data', onData);
       options.stdin.off('end', onAbort);
       options.signal?.removeEventListener('abort', onAbort);
+      offFirstPrompt?.();
+      offFirstPrompt = undefined;
+      pendingFirstPrompt = undefined;
       host?.close();
       if (terminal || watchEnd) options.stdin.pause();
       resolve('stop');
@@ -364,6 +387,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     }
   });
   if (next === 'terminal') await runTerminal(controller, webOptions);
+  offFirstPrompt?.();
+  pendingFirstPrompt = undefined;
   host?.close();
   await web.close();
   controller.close();
