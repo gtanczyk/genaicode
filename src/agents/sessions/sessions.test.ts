@@ -351,6 +351,28 @@ describe('session sources', () => {
         "I couldn't send this report back to the project thread. Should I retry?",
       ),
     ).toEqual(['unreported', 'unreported', 'unreported', 'unreported']);
+    // Requests put as statements, and yes/no gates dressed as offers: seen on real sessions.
+    expect(
+      endings(
+        'To jedyny bloker Gate A. Daj znać, czy teksty pasują i czy mam wypchnąć release.',
+        '…i ID filmu do powiązania (pewnie trailer Ink & Fury, ale potwierdź).',
+        "Your call whether the current 'host vouches for the table' model is the one you want for the beta.",
+        'Filmu nie przerabiałem, to Twoja decyzja.',
+        'Musisz jeszcze w Studio: ustawić Related video, okładkę, AI-disclosure.',
+        'Usunę je, jeśli potwierdzisz.',
+        'Let me know whether to squash it.',
+      ),
+    ).toEqual(['request', 'request', 'request', 'request', 'request', 'request', 'request']);
+    // Not requests: a report that only uses the same roots, and plain offers.
+    expect(
+      endings(
+        'Potwierdzenie wysłałem też w wątku projektu.',
+        'Otwarcie nie potwierdza długości rozgrywki.',
+        'Then press Escape mid-game to confirm it drops you out.',
+        'Mogę ją usunąć, jeśli napiszesz.',
+        'If a line sounds wrong, tell me which one and I will regenerate it.',
+      ),
+    ).toEqual([undefined, undefined, undefined, 'offer', 'offer']);
     expect(endings('Wszystkie zadania zakończone, raport dotarł do koordynatora.', '')).toEqual([undefined, undefined]);
     expect(replyEnding(undefined)).toBeUndefined();
     expect(endings('Should I proceed? \u26A0\uFE0F', '   \t  🙂  ', 'Let me know. Done.', 'Let me know!')).toEqual([
