@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- "Needs you now" also sees requests put as statements and yes/no gates dressed as offers: `SessionInfo.ending` has a new value `request` ("Confirm…", "Your call whether…", "Daj znać, czy mam…", "Musisz jeszcze…", "…jeśli potwierdzisz"), counted like a question for 3 days. On a real machine a 2-hour-old "let me know whether to push the release" sat among the stalled sessions, and about half of the checked waiting sessions with no signal were such requests (#PR)
+- "Needs you now" also sees requests put as statements and yes/no gates dressed as offers: `SessionInfo.ending` has a new value `request` ("Confirm…", "Your call whether…", "Daj znać, czy mam…", "Musisz jeszcze…", "…jeśli potwierdzisz"), counted like a question for 3 days. On a real machine a 2-hour-old "let me know whether to push the release" sat among the stalled sessions, and about half of the checked waiting sessions with no signal were such requests (#324)
 
 ### Internal
 
