@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- `sessions_send` in `genaicode ui`, `chat`, the desktop app and `<AgentChat>`: messages passed to another session show as live cards (`Queued` → `Working` with current step → `Answered` / `Failed`) with the target agent's avatar, project chip, collapsible sent prompt and Markdown-rendered reply instead of a raw monospace notice. Settled replies are passed into the active chat agent's context on the next prompt and trigger background notifications, and `sessions_send` tells the agent not to promise polling or checking back later
+- `sessions_send` in `genaicode ui`, `chat`, the desktop app and `<AgentChat>`: messages passed to another session show as live cards (`Queued` → `Working` with current step → `Answered` / `Failed`) with the target agent's avatar, project chip, collapsible sent prompt and Markdown-rendered reply instead of a raw monospace notice. Settled replies are passed into the active chat agent's context on the next prompt and trigger background notifications, and `sessions_send` tells the agent not to promise polling or checking back later (#323)
 
 ## 3.1.0 — 2026-11-23
 
