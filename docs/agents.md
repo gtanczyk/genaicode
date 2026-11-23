@@ -33,8 +33,8 @@ const result = await run.result; // { status, ok, text, sessionId, usage, error,
 | Claude Code      | `claude()`                    | `steer()`, MCP, approvals, max turns, effort       |
 | Codex            | `codex()`, `codexLive()`      | MCP servers; live: `steer()`, approvals            |
 | GitHub Copilot   | `copilot()`                   | MCP servers, allow/deny tool patterns              |
-| Cursor           | `cursor()`                    | streamed text deltas                               |
-| Gemini CLI       | `gemini()`                    | approval mode                                      |
+| Cursor           | `cursor()`                    | MCP servers, streamed text deltas                  |
+| Gemini CLI       | `gemini()`                    | MCP servers, approval mode                         |
 | opencode         | `opencode()`                  | `provider/model` ids, variants                     |
 | Mistral Vibe     | `vibe()`                      | agent profile, max turns, max price                |
 | Antigravity CLI  | `antigravity()`               | `steer()`, MCP, approvals, sandbox, effort, usage  |
@@ -753,7 +753,7 @@ app.get('/artifacts/:id', (req, res) => {
 
 - The agent gets one MCP tool, `publish_artifact({ title, path | content + format, name? })`, on
   a loopback MCP server behind a bearer token. So it works for the agents that take MCP servers
-  in genaicode (claude, codex, codexLive, copilot, muse, museLive, antigravity); the others
+  in genaicode (claude, codex, codexLive, copilot, cursor, gemini, muse, museLive, antigravity); the others
   simply do not get the tool. An app with its own MCP server can mount `store.tool()` there
   and pass `{ store }` alone; `createAppAgent` does exactly that (see [app-agent.md](app-agent.md)).
 - Each publish adds an `artifact` entry (`{ id, title, kind, mimeType, bytes, version, path? }`)
@@ -913,9 +913,11 @@ const run = claude().run({
   `createAgentSession({ questions: channel })` hands it to every agent that takes MCP servers
   and has no `capabilities.questions` (nor `capabilities.remote`: managed and hosted agents run
   elsewhere and cannot reach this machine's loopback). Its questions show and are answered like
-  the agent's own; the tool returns the answers as text, and Codex is told to wait up to a day
-  for it (`toolTimeoutSec` on the server). The server is `trusted`: Codex and Antigravity run
-  it without a permission prompt in front of the question. `genaicode chat` and `ui` do this.
+  the agent's own; the tool returns the answers as text, and Codex, Copilot and Gemini are told
+  to wait up to a day for it (`toolTimeoutSec` on the server). The server is `trusted`: Codex,
+  Antigravity, Muse live, Copilot and Gemini run it without a permission prompt in front of the
+  question. `SessionState.canAsk` reports whether the current agent can ask (own tool, or MCP
+  with a question channel). `genaicode chat` and `ui` do this.
 - In an `AgentSession` the question waits in `approvals`; `session.answer(id, answers)` answers
   it and `session.approve(id, 'deny')` skips it. `<AgentChat onAnswer>` shows it as a card with
   the options, and `genaicode chat` asks in the terminal.
@@ -1018,7 +1020,7 @@ protocol and resolves with `{ ok, error? }` when the turn ends.
 ## MCP servers
 
 `task.mcpServers` attaches MCP servers for one task on drivers with `capabilities.mcp`
-(`claude`, `codex`, `codexLive`, `copilot`, `muse`, `museLive`, `antigravity`):
+(`claude`, `codex`, `codexLive`, `copilot`, `cursor`, `gemini`, `muse`, `museLive`, `antigravity`):
 
 ```ts
 await claude().run({
@@ -1040,15 +1042,25 @@ await claude().run({
   on Codex's own environment and forwarded by name (`env_vars`); two servers cannot use
   different values for the same variable.
 - Copilot CLI gets a temporary `--additional-mcp-config @<file>` (mode 0600, removed after
-  the run), added to the user's own MCP config. `--allow-all-tools` already covers the
-  servers' tools; with `allowAllTools: false` each server is pre-allowed with
-  `--allow-tool=<name>` unless `allowMcpTools: false`.
+  the run), added to the user's own MCP config, with `timeout` mapped from `toolTimeoutSec`
+  (in ms). `--allow-all-tools` already covers the servers' tools; with `allowAllTools: false`
+  each server is pre-allowed with `--allow-tool=<name>` unless `allowMcpTools: false` (`trusted`
+  servers are always pre-allowed).
+- Gemini CLI gets a temporary system settings file (mode 0600, removed after the run) via
+  `GEMINI_CLI_SYSTEM_SETTINGS_PATH`, preserving any existing system settings file without
+  touching user or project settings. HTTP servers use `httpUrl`, `toolTimeoutSec` maps to
+  `timeout` (in ms), and servers are marked `trust: true` unless `allowMcpTools: false`
+  (`trusted` servers are always marked trusted).
+- Cursor CLI (`cursor-agent`) gets a temporary `--plugin-dir` containing `.cursor-plugin/plugin.json`
+  and `mcp.json` (mode 0600, removed after the run). Neither `~/.cursor/mcp.json` nor the
+  project's `.cursor/mcp.json` is touched, and secrets stay out of argv.
 - Muse Code (`muse exec`, `muse serve`) gets repeatable `-c mcp_servers.<name>.*` overrides
   (`transport` `streamable_http` or `stdio`, `url`, `command`, `args`). Header values and a
   stdio server's `env` values go through environment variables that the overrides name as a
   whole-value `${VAR}`, which Muse expands, so they never appear in argv. Needs Muse Code
-  1.4.4 or newer (checked with 1.4.13). Under `museLive()` with `permissions.approval: 'ask'`
-  every MCP tool call is an approval request: answer it in `onApproval`.
+  1.4.4 or newer (checked with 1.4.25). Under `museLive()` with `permissions.approval: 'ask'`
+  every untrusted MCP tool call is an approval request: answer it in `onApproval`; tools of a
+  `trusted` server (`ask_user`) are approved once automatically without prompting.
 - Antigravity CLI (`agy acp`, 1.5.0+) receives the task's HTTP and stdio servers in the
   JSON-RPC `session/new` / `session/resume` request over stdin, so secret headers and env
   values never appear in argv or on disk, and pre-allows the attached servers' tools for the

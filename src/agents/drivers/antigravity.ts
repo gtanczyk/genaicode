@@ -7,6 +7,7 @@ import { isHttpServer } from '../prepare.js';
 import { RpcError } from '../rpc.js';
 import type { AgentEvent, AgentPermissions, AgentTask, ApprovalRequest, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
+import { isTrustedMcpTool, mcpToolServer, trustedMcpServers } from './trusted-tool.js';
 
 export interface AntigravityAgentOptions {
   /** Executable name or path. Default `agy`. */
@@ -87,8 +88,7 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
   let streamed = '';
   const tools = new Map<string, ActiveTool>();
 
-  const servers = (task.mcpServers ?? []).map((server) => server.name);
-  const trusted = (task.mcpServers ?? []).filter((server) => server.trusted).map((server) => server.name);
+  const { servers, trusted } = trustedMcpServers(task.mcpServers);
   session.onNotification((method, params) => {
     if (method !== 'session/update' || !isObject(params)) return;
     if (!ids.session || stringField(params, 'sessionId') !== ids.session) return;
@@ -233,22 +233,15 @@ export function antigravityTrustedTool(
   // Commands and edits always ask: a command line could mention a tool name.
   const kind = stringField(toolCall, 'kind');
   if (kind === 'execute' || kind === 'edit' || kind === 'delete') return false;
-  const names = [stringField(toolCall, 'title'), stringField(toolCall, 'name')].filter(
-    (name): name is string => !!name,
-  );
-  // The whole title is the tool, alone or after "Run".
-  return names.some((name) => {
-    const tool = /^(?:Run\s+)?(\S+)$/.exec(name.trim())?.[1];
-    const server = tool ? antigravityServer(tool, servers) : undefined;
-    return !!server && trusted.includes(server);
+  return isTrustedMcpTool([stringField(toolCall, 'title'), stringField(toolCall, 'name')], trusted, servers, {
+    separator: '_',
+    stripRunPrefix: true,
   });
 }
 
 /** The attached server an Antigravity tool name `mcp_<server>_<tool>` belongs to: the longest that fits. */
 function antigravityServer(name: string, servers: readonly string[]): string | undefined {
-  return [...servers]
-    .sort((a, b) => b.length - a.length)
-    .find((s) => name.startsWith(`mcp_${s}_`) && name.length > s.length + 5);
+  return mcpToolServer(name, servers, '_');
 }
 
 /**
