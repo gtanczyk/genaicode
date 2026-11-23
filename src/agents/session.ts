@@ -361,7 +361,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     set({ turns: state.turns.map((turn) => (turn.id === id ? change(turn) : turn)) });
   };
 
-  const keepTurns = (turns: SessionTurn[], inheritedReason = state.truncatedReason) => {
+  const keepTurns = (turns: SessionTurn[], inheritedReason: string | undefined) => {
     const dropped = turns.length > maxTurns;
     const kept = turns.slice(-maxTurns);
     for (const [id, packRun] of packRuns)
@@ -749,7 +749,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     explicitResume = undefined;
     const turnController = new AbortController();
     controller = turnController;
-    const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn]);
+    const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn], state.truncatedReason);
     set({
       status: 'running',
       turns: nextTurns,

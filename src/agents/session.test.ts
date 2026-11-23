@@ -1011,4 +1011,40 @@ describe('createAgentSession', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('clears inherited truncation metadata when adopt({ replace: true }) loads a complete session', async () => {
+    const { agent } = fakeAgent([async (_task, emit) => emit({ type: 'message', text: 'ok' })], { resume: true });
+    const session = createAgentSession({ agent, cwd: process.cwd() });
+    const turn = (prompt: string) => ({ id: 1, agent: 'fake', prompt, entries: [], startedAt: 1 });
+
+    expect(
+      session.adopt([turn('first')], {
+        sessionId: 'sess-truncated',
+        replace: true,
+        truncatedReason: 'Only the latest 100 turns were loaded.',
+      }),
+    ).toBe(true);
+    expect(session.get().truncatedReason).toBe('Only the latest 100 turns were loaded.');
+
+    // Appending without replace keeps the inherited truncation reason.
+    expect(session.adopt([turn('appended')])).toBe(true);
+    expect(session.get().truncatedReason).toBe('Only the latest 100 turns were loaded.');
+
+    // Replacing with a complete session clears the previous conversation's truncation reason.
+    expect(session.adopt([turn('complete')], { sessionId: 'sess-complete', replace: true })).toBe(true);
+    expect(session.get().truncatedReason).toBeUndefined();
+
+    // Replacing with another truncated session applies the new reason, and clear() resets it.
+    expect(
+      session.adopt([turn('truncated-again')], {
+        sessionId: 'sess-truncated-2',
+        replace: true,
+        truncatedReason: 'Only the last 8 MB were read.',
+      }),
+    ).toBe(true);
+    expect(session.get().truncatedReason).toBe('Only the last 8 MB were read.');
+    expect(session.clear()).toBe(true);
+    expect(session.get().truncatedReason).toBeUndefined();
+    session.close();
+  });
 });

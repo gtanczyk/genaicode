@@ -186,6 +186,8 @@ describe('topics', () => {
       session('w', { state: 'waiting', updatedAt: now - 3600_000, ...more });
     expect(isAsking(waiting({ ending: 'question' }), now)).toBe(true);
     expect(isAsking(waiting({ ending: 'command' }), now)).toBe(true);
+    expect(isAsking(waiting({ ending: 'request' }), now)).toBe(true);
+    expect(isStalled(waiting({ ending: 'request', updatedAt: now - ASKING_MS - 1 }), now)).toBe(true);
     expect(isAsking(waiting({ ending: 'offer' }), now)).toBe(false);
     expect(attentionOf(waiting({ ending: 'offer' }), now)).toBe('stalled');
     expect(attentionOf(waiting({ ending: 'unreported' }), now)).toBe('stalled');

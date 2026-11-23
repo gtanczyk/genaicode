@@ -34,6 +34,7 @@ const MARK: Record<string, string> = {
 /** What a session's last message asked, as the row's mark says it. */
 const ENDING_TITLE: Record<string, string> = {
   question: 'asked a question',
+  request: 'asked you to confirm or decide',
   command: 'gave you a command to run',
   offer: 'offered to go on',
   unreported: 'could not report back',
