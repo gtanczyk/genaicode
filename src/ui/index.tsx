@@ -434,13 +434,35 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
         const store = sources.find((candidate) => candidate.name === sourceName);
         if (!store) return undefined;
         const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
-        const found = await findSession([store], id, query).catch(() => undefined);
+        const found = await findSession([store], id, query);
         if (!found) return undefined;
         const readable = typeof store.read === 'function';
-        const turns = readable
-          ? await store.read!(found.session, { maxTurns: 200, maxToolOutput: 8_000 }).catch(() => [])
-          : [];
-        return { session: found.session, turns, readable };
+        if (!readable) return { session: found.session, turns: [], readable: false };
+        const maxTurns = 200;
+        const reasons = new Set<'max-turns' | 'tail-bytes'>();
+        let turns = await store.read!(found.session, {
+          maxTurns: maxTurns + 1,
+          maxToolOutput: 8_000,
+          onTruncated: (reason) => reasons.add(reason),
+        });
+        if (turns.length > maxTurns) {
+          reasons.add('max-turns');
+          turns = turns.slice(-maxTurns).map((turn, index) => ({ ...turn, id: index + 1 }));
+        }
+        const truncatedReason =
+          reasons.has('tail-bytes') && reasons.has('max-turns')
+            ? `Only the last 8 MB of the session file and at most the latest ${maxTurns} turns were exported; earlier turns were omitted.`
+            : reasons.has('tail-bytes')
+              ? 'Only the last 8 MB of the session file was read; earlier turns were omitted.'
+              : reasons.has('max-turns')
+                ? `Only the latest ${maxTurns} turns were exported; earlier turns were omitted.`
+                : undefined;
+        return {
+          session: found.session,
+          turns,
+          readable: true,
+          ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
+        };
       },
     }).catch((error: unknown) => {
       running = undefined;

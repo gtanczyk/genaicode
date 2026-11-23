@@ -21,6 +21,8 @@ export interface TranscriptMeta {
   sessionPath?: string;
   turns: number;
   readable?: boolean;
+  truncated?: boolean;
+  truncatedReason?: string;
   filenameMd: string;
   filenameJson: string;
 }
@@ -40,6 +42,8 @@ export interface ChatTranscriptJson {
   exportedAt: string;
   sessionId?: string;
   sessionPath?: string;
+  truncated?: boolean;
+  truncatedReason?: string;
   session: SessionState;
   notices: Notice[];
   autoApprove: boolean;
@@ -50,6 +54,8 @@ export interface StoredSessionTranscriptInput {
   session: SessionInfo;
   turns: readonly SessionTurn[];
   readable: boolean;
+  truncated?: boolean;
+  truncatedReason?: string;
   version?: string;
   exportedAt?: string;
 }
@@ -60,6 +66,8 @@ export interface StoredSessionTranscriptJson {
   version?: string;
   exportedAt: string;
   readable: boolean;
+  truncated: boolean;
+  truncatedReason?: string;
   session: SessionInfo;
   turns: SessionTurn[];
 }
@@ -83,10 +91,18 @@ export function transcriptFilename(options: {
   return `genaicode-${agent}-${suffix}.${options.format}`;
 }
 
+/** Reason when an active chat's in-memory turn window dropped earlier turns. */
+export function activeChatTruncation(session: SessionState): string | undefined {
+  const first = session.turns[0];
+  if (!first || first.id <= 1) return undefined;
+  return `Only turns starting from turn ${first.id} are kept in memory; earlier turns were omitted.`;
+}
+
 /** Structured JSON snapshot of the active chat (full SessionState, notices and metadata). */
 export function chatTranscriptJson(input: ChatTranscriptInput): ChatTranscriptJson {
   const exportedAt = input.exportedAt ?? new Date().toISOString();
   const { view } = input;
+  const truncatedReason = activeChatTruncation(view.session);
   return {
     format: 'genaicode-transcript',
     formatVersion: 1,
@@ -94,6 +110,7 @@ export function chatTranscriptJson(input: ChatTranscriptInput): ChatTranscriptJs
     exportedAt,
     ...(view.session.sessionId ? { sessionId: view.session.sessionId } : {}),
     ...(input.sessionPath ? { sessionPath: input.sessionPath } : {}),
+    ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
     session: view.session,
     notices: view.notices,
     autoApprove: view.autoApprove,
@@ -103,12 +120,18 @@ export function chatTranscriptJson(input: ChatTranscriptInput): ChatTranscriptJs
 
 /** Structured JSON snapshot of a session read from an agent's store (`Sessions` / `Chats`). */
 export function storedSessionTranscriptJson(input: StoredSessionTranscriptInput): StoredSessionTranscriptJson {
+  const truncated = input.truncated === true;
+  const truncatedReason =
+    input.truncatedReason ??
+    (truncated ? 'Earlier turns were omitted from this export; only the latest portion is included.' : undefined);
   return {
     format: 'genaicode-session-transcript',
     formatVersion: 1,
     ...(input.version ? { version: input.version } : {}),
     exportedAt: input.exportedAt ?? new Date().toISOString(),
     readable: input.readable,
+    truncated,
+    ...(truncatedReason ? { truncatedReason } : {}),
     session: input.session,
     turns: [...input.turns],
   };
@@ -119,6 +142,7 @@ export function formatChatTranscriptMarkdown(input: ChatTranscriptInput): string
   const exportedAt = input.exportedAt ?? new Date().toISOString();
   const { view } = input;
   const { session } = view;
+  const truncatedReason = activeChatTruncation(session);
   const out: string[] = ['# Genaicode transcript', ''];
 
   const meta: Array<[string, string | undefined]> = [
@@ -133,12 +157,14 @@ export function formatChatTranscriptMarkdown(input: ChatTranscriptInput): string
     ['Auto-approve', view.autoApprove ? 'on' : undefined],
     ['Fallback', session.fallback?.length ? session.fallback.join(' → ') : undefined],
     ['Usage', formatUsage(session.usage, session.costUsd) || undefined],
+    ['Incomplete', truncatedReason],
     ['Exported', exportedAt],
   ];
   for (const [label, value] of meta) {
     if (value) out.push(`- **${label}:** ${value}`);
   }
   out.push('');
+  if (truncatedReason) out.push(`> **Note:** ${truncatedReason}`, '');
 
   const notices = [...view.notices].sort((a, b) => a.afterTurn - b.afterTurn);
   const flushNotices = (upTo: number) => {
@@ -173,6 +199,9 @@ export function formatChatTranscriptMarkdown(input: ChatTranscriptInput): string
 export function formatStoredSessionMarkdown(input: StoredSessionTranscriptInput): string {
   const exportedAt = input.exportedAt ?? new Date().toISOString();
   const { session, turns, readable } = input;
+  const truncatedReason = input.truncated
+    ? (input.truncatedReason ?? 'Earlier turns were omitted from this export; only the latest portion is included.')
+    : undefined;
   const out: string[] = ['# Session transcript', ''];
 
   const state =
@@ -198,6 +227,7 @@ export function formatStoredSessionMarkdown(input: StoredSessionTranscriptInput)
         ? formatUsage(session.usage ?? {}, session.costUsd) || undefined
         : undefined,
     ],
+    ['Incomplete', truncatedReason],
     ['Updated', session.updatedAt ? new Date(session.updatedAt).toISOString() : undefined],
     ['Exported', exportedAt],
   ];
@@ -205,6 +235,10 @@ export function formatStoredSessionMarkdown(input: StoredSessionTranscriptInput)
     if (value) out.push(`- **${label}:** ${value}`);
   }
   out.push('');
+
+  if (truncatedReason) {
+    out.push(`> **Note:** ${truncatedReason} Turn numbers below start from the first exported turn.`, '');
+  }
 
   if (!readable) {
     out.push('_This session store cannot be read yet; metadata only._', '');

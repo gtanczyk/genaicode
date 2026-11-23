@@ -310,4 +310,57 @@ describe('transcript export', () => {
     expect(md).toContain('- **Tool** `shell` `git status` (ok)');
     expect(md).not.toContain('```\ngit status\n```');
   });
+
+  it('discloses when active or stored transcripts omit earlier turns', () => {
+    const view = baseView({
+      turns: [
+        {
+          id: 5,
+          agent: 'claude',
+          prompt: 'Latest prompt',
+          entries: [{ kind: 'text', text: 'Latest answer', streaming: false }],
+          startedAt: Date.parse('2026-11-23T21:00:00.000Z'),
+        },
+      ],
+    });
+    const activeMd = formatChatTranscriptMarkdown({ view, exportedAt: '2026-11-23T21:05:00.000Z' });
+    expect(activeMd).toContain('- **Incomplete:** Only turns starting from turn 5 are kept in memory');
+    expect(activeMd).toContain('> **Note:** Only turns starting from turn 5 are kept in memory');
+    expect(chatTranscriptJson({ view, exportedAt: '2026-11-23T21:05:00.000Z' })).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('turn 5'),
+    });
+
+    const session: SessionInfo = {
+      source: 'codex',
+      agent: 'codex',
+      id: 'long-session',
+      where: 'local',
+      updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
+    };
+    const reason = 'Only the latest 200 turns were exported; earlier turns were omitted.';
+    const storedMd = formatStoredSessionMarkdown({
+      session,
+      readable: true,
+      truncated: true,
+      truncatedReason: reason,
+      turns: [{ id: 1, agent: 'codex', prompt: 'Turn 201', entries: [], startedAt: 1 }],
+      exportedAt: '2026-11-23T21:00:00.000Z',
+    });
+    expect(storedMd).toContain(`- **Incomplete:** ${reason}`);
+    expect(storedMd).toContain(`> **Note:** ${reason} Turn numbers below start from the first exported turn.`);
+    expect(
+      storedSessionTranscriptJson({
+        session,
+        readable: true,
+        truncated: true,
+        truncatedReason: reason,
+        turns: [],
+        exportedAt: '2026-11-23T21:00:00.000Z',
+      }),
+    ).toMatchObject({
+      truncated: true,
+      truncatedReason: reason,
+    });
+  });
 });

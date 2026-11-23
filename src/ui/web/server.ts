@@ -15,6 +15,7 @@ import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController } from '../controller.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
+  activeChatTruncation,
   chatTranscriptJson,
   formatChatTranscriptMarkdown,
   formatStoredSessionMarkdown,
@@ -98,7 +99,16 @@ export interface WebUiOptions {
   sessionTranscript?: (
     source: string,
     id: string,
-  ) => Promise<{ session: SessionInfo; turns: SessionTurn[]; readable: boolean } | undefined>;
+  ) => Promise<
+    | {
+        session: SessionInfo;
+        turns: SessionTurn[];
+        readable: boolean;
+        truncated?: boolean;
+        truncatedReason?: string;
+      }
+    | undefined
+  >;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
 }
@@ -544,6 +554,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         exportedAt: now,
       });
       if (format === 'meta') {
+        const truncatedReason = activeChatTruncation(session);
         const meta: TranscriptMeta = {
           version: options.title.version,
           agent: session.agent,
@@ -553,6 +564,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           ...(session.sessionId ? { sessionId: session.sessionId } : {}),
           ...(sessionPath ? { sessionPath } : {}),
           turns: session.turns.length,
+          ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
           filenameMd,
           filenameJson,
         };
@@ -603,7 +615,20 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       } catch {
         return send(res, 400, 'application/json', '{"error":"invalid session id"}');
       }
-      const found = await options.sessionTranscript(source, id);
+      let found:
+        | {
+            session: SessionInfo;
+            turns: SessionTurn[];
+            readable: boolean;
+            truncated?: boolean;
+            truncatedReason?: string;
+          }
+        | undefined;
+      try {
+        found = await options.sessionTranscript(source, id);
+      } catch {
+        return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
+      }
       if (!found) return send(res, 404, 'application/json', '{"error":"session not found"}');
       const now = new Date();
       const exportedAt = now.toISOString();
@@ -630,6 +655,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           ...(found.session.path ? { sessionPath: found.session.path } : {}),
           turns: found.turns.length,
           readable: found.readable,
+          ...(found.truncated ? { truncated: true, truncatedReason: found.truncatedReason } : {}),
           filenameMd,
           filenameJson,
         };
@@ -644,6 +670,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
             session: found.session,
             turns: found.turns,
             readable: found.readable,
+            truncated: found.truncated,
+            truncatedReason: found.truncatedReason,
             version: options.title.version,
             exportedAt,
           }),
@@ -660,6 +688,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         session: found.session,
         turns: found.turns,
         readable: found.readable,
+        truncated: found.truncated,
+        truncatedReason: found.truncatedReason,
         version: options.title.version,
         exportedAt,
       });

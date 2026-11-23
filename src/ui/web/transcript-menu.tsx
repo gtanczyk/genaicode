@@ -155,7 +155,13 @@ export function TranscriptMenu({
     const res = await fetch(`${endpoint}?format=${format}`, {
       headers: { 'x-genaicode-token': token },
     });
-    if (!res.ok) throw new Error(`Server answered ${res.status}.`);
+    if (!res.ok) {
+      const detail = await res
+        .json()
+        .then((body: { error?: unknown }) => (typeof body?.error === 'string' ? body.error : undefined))
+        .catch(() => undefined);
+      throw new Error(detail ?? `Server answered ${res.status}.`);
+    }
     const filename = res.headers.get('x-genaicode-filename') || `genaicode-transcript.${format}`;
     return { text: await res.text(), filename };
   };

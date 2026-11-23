@@ -130,4 +130,6 @@ export interface SessionReadOptions {
   maxTurns?: number;
   /** Tool output longer than this is cut. Default 4000 characters. */
   maxToolOutput?: number;
+  /** Called when earlier turns or file bytes were omitted due to `maxTurns` or the tail-size cap. */
+  onTruncated?(reason: 'max-turns' | 'tail-bytes'): void;
 }

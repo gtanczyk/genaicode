@@ -305,7 +305,7 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
     },
     async read(session, readOptions) {
       if (!session.path) throw new Error(`Session ${session.id} has no transcript file.`);
-      return claudeTranscript(await transcriptLines(session.path), readOptions);
+      return claudeTranscript(await transcriptLines(session.path, readOptions), readOptions);
     },
   };
 }

@@ -1604,22 +1604,45 @@ describe('web UI server', () => {
       state: 'waiting',
       updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
     };
+    const longStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195long',
+      title: 'Very long chat',
+    };
+    const brokenStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195broken',
+      title: 'Missing rollout',
+    };
     const agent: CodingAgent = {
       ...echoAgent(),
       sessions: {
         name: 'echo-store',
         where: 'local',
-        list: async () => [stored],
-        read: async () => [
-          {
-            id: 1,
-            agent: 'echo',
-            prompt: 'Stored question',
-            entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
-            startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
-            endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
-          },
-        ],
+        list: async () => [stored, longStored, brokenStored],
+        read: async (info, readOptions) => {
+          if (info.id === brokenStored.id) throw new Error('ENOENT: rollout missing');
+          if (info.id === longStored.id) {
+            readOptions?.onTruncated?.('tail-bytes');
+            return Array.from({ length: 205 }, (_, i) => ({
+              id: i + 1,
+              agent: 'echo',
+              prompt: `Turn ${i + 1}`,
+              entries: [],
+              startedAt: 1,
+            }));
+          }
+          return [
+            {
+              id: 1,
+              agent: 'echo',
+              prompt: 'Stored question',
+              entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
+              startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
+              endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
+            },
+          ];
+        },
       },
     };
     const done = runWeb({
@@ -1697,6 +1720,35 @@ describe('web UI server', () => {
     expect(
       (await fetch(new URL('/api/sessions/echo-store/missing/transcript?format=md', url), { headers })).status,
     ).toBe(404);
+
+    // Truncated stored session discloses incompleteness in meta, JSON, and Markdown.
+    const longJsonRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=json', url), {
+      headers,
+    });
+    expect(longJsonRes.status).toBe(200);
+    const longJson = (await longJsonRes.json()) as {
+      truncated: boolean;
+      truncatedReason?: string;
+      turns: Array<{ id: number; prompt: string }>;
+    };
+    expect(longJson.truncated).toBe(true);
+    expect(longJson.truncatedReason).toContain('8 MB');
+    expect(longJson.truncatedReason).toContain('200 turns');
+    expect(longJson.turns).toHaveLength(200);
+    expect(longJson.turns[0]?.prompt).toBe('Turn 6');
+
+    const longMdRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=md', url), {
+      headers,
+    });
+    expect(longMdRes.status).toBe(200);
+    expect(await longMdRes.text()).toContain('> **Note:** Only the last 8 MB');
+
+    // Read failures surface as HTTP 500 instead of silently exporting empty turns.
+    const brokenRes = await fetch(new URL('/api/sessions/echo-store/sess-0195broken/transcript?format=md', url), {
+      headers,
+    });
+    expect(brokenRes.status).toBe(500);
+    expect(await brokenRes.json()).toEqual({ error: 'Could not read the session transcript.' });
 
     // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
     const events = await fetch(new URL('/api/events', url), { headers });
