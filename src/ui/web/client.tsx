@@ -300,11 +300,19 @@ interface CachedImage {
 }
 
 /** Resolve local image paths referenced in agent replies to short-lived capability URLs. */
-function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled: boolean): Record<string, string> {
-  const [entries, setEntries] = useState<Record<string, CachedImage>>({});
+function useLocalImages(
+  turns: ChatView['session']['turns'] | undefined,
+  enabled: boolean,
+  scopeKey: string,
+): Record<string, string> {
+  const [cache, setCache] = useState<{ scope: string; map: Record<string, CachedImage> }>(() => ({
+    scope: scopeKey,
+    map: {},
+  }));
   const [tick, setTick] = useState(0);
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
+  const scopeEpochRef = useRef(0);
   const checkedTurnCount = useRef(0);
   const attempted = useRef(new Set<string>());
   const inFlight = useRef(new Set<string>());
@@ -316,11 +324,26 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
     mounted.current = true;
     return () => {
       mounted.current = false;
+      scopeEpochRef.current += 1;
       for (const controller of controllers.current) controller.abort();
       controllers.current.clear();
       inFlight.current.clear();
     };
   }, []);
+
+  // Switching conversations / working directories invalidates cached relative capabilities and in-flight batches.
+  useEffect(() => {
+    scopeEpochRef.current += 1;
+    for (const controller of controllers.current) controller.abort();
+    controllers.current.clear();
+    inFlight.current.clear();
+    attempted.current.clear();
+    retriedUrl.current.clear();
+    checkedTurnCount.current = 0;
+    const empty = { scope: scopeKey, map: {} };
+    cacheRef.current = empty;
+    setCache(empty);
+  }, [scopeKey]);
 
   const pathsKey = useMemo(() => {
     if (!enabled || !turns?.length) return '';
@@ -339,12 +362,12 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
 
   // Refresh expired image capabilities proactively when returning to the tab or when their TTL elapses.
   useEffect(() => {
-    if (!enabled || !pathsKey) return;
+    if (!enabled || !pathsKey || cache.scope !== scopeKey) return;
     const active = pathsKey.split('\n').filter(Boolean);
     const now = Date.now();
     let earliest = Infinity;
     for (const path of active) {
-      const cached = entries[path];
+      const cached = cache.map[path];
       if (!cached) continue;
       const due = cached.resolvedAt + IMAGE_CAPABILITY_REFRESH_MS;
       if (due < earliest) earliest = due;
@@ -359,7 +382,7 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
       if (timer !== undefined) window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [enabled, pathsKey, entries]);
+  }, [enabled, pathsKey, cache, scopeKey]);
 
   // If a lazy-loaded or remounted thumbnail fails (e.g. its capability expired), invalidate and re-resolve once.
   useEffect(() => {
@@ -368,37 +391,39 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
       const target = event.target;
       if (!(target instanceof HTMLImageElement) || !target.classList.contains('gc-md-image')) return;
       const path = target.closest('[data-gc-file]')?.getAttribute('data-gc-file');
-      if (!path) return;
-      const cached = entriesRef.current[path];
+      if (!path || cacheRef.current.scope !== scopeKey) return;
+      const cached = cacheRef.current.map[path];
       if (!cached || retriedUrl.current.get(path) === cached.url) return;
       retriedUrl.current.set(path, cached.url);
       attempted.current.delete(path);
-      setEntries((prev) => {
-        if (!prev[path] || prev[path].url !== cached.url) return prev;
-        const next = { ...prev };
-        delete next[path];
-        return next;
+      setCache((prev) => {
+        if (prev.scope !== scopeKey || !prev.map[path] || prev.map[path].url !== cached.url) return prev;
+        const nextMap = { ...prev.map };
+        delete nextMap[path];
+        return { scope: prev.scope, map: nextMap };
       });
       setTick((n) => n + 1);
     };
     window.addEventListener('error', onImageError, true);
     return () => window.removeEventListener('error', onImageError, true);
-  }, [enabled]);
+  }, [enabled, scopeKey]);
 
   useEffect(() => {
     if (!enabled || !token || !pathsKey) return;
+    const epoch = scopeEpochRef.current;
+    const currentMap = cacheRef.current.scope === scopeKey ? cacheRef.current.map : {};
     const now = Date.now();
     // New turns may have opened new session roots: retry previously unresolved paths.
     if (turnCount !== checkedTurnCount.current) {
       checkedTurnCount.current = turnCount;
       for (const path of [...attempted.current]) {
-        if (!entriesRef.current[path] && !inFlight.current.has(path)) attempted.current.delete(path);
+        if (!currentMap[path] && !inFlight.current.has(path)) attempted.current.delete(path);
       }
     }
     const all = pathsKey.split('\n').filter(Boolean);
     const missing = all.filter((path) => {
       if (inFlight.current.has(path)) return false;
-      const cached = entriesRef.current[path];
+      const cached = currentMap[path];
       if (cached) return now - cached.resolvedAt >= IMAGE_CAPABILITY_REFRESH_MS;
       return !attempted.current.has(path);
     });
@@ -410,7 +435,7 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
     }
     const controller = new AbortController();
     controllers.current.add(controller);
-    // Keep in-flight batches alive across streaming updates; only unmount aborts them.
+    // Keep in-flight batches alive across streaming updates; only scope change or unmount aborts them.
     fetch('/api/file/images', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
@@ -422,42 +447,46 @@ function useLocalImages(turns: ChatView['session']['turns'] | undefined, enabled
         return res.json() as Promise<{ urls?: Record<string, string> }>;
       })
       .then((body) => {
-        if (!mounted.current) return;
+        if (!mounted.current || scopeEpochRef.current !== epoch) return;
         const resolvedAt = Date.now();
         const returned = body?.urls ?? {};
-        setEntries((prev) => {
-          const next = { ...prev };
+        setCache((prev) => {
+          if (prev.scope !== scopeKey) return prev;
+          const nextMap = { ...prev.map };
           let changed = false;
           for (const path of batch) {
             const url = returned[path];
             if (url) {
               if (retriedUrl.current.get(path) !== url) retriedUrl.current.delete(path);
-              next[path] = { url, resolvedAt };
+              nextMap[path] = { url, resolvedAt };
               changed = true;
-            } else if (prev[path]) {
-              delete next[path];
+            } else if (prev.map[path]) {
+              delete nextMap[path];
               changed = true;
             }
           }
-          return changed ? next : prev;
+          return changed ? { scope: prev.scope, map: nextMap } : prev;
         });
       })
       .catch(() => {
         // Release failed or aborted paths so they can be retried instead of sticking unresolved.
+        if (scopeEpochRef.current !== epoch) return;
         for (const path of batch) attempted.current.delete(path);
       })
       .finally(() => {
         controllers.current.delete(controller);
+        if (scopeEpochRef.current !== epoch) return;
         for (const path of batch) inFlight.current.delete(path);
         if (mounted.current && missing.length > batch.length) setTick((n) => n + 1);
       });
-  }, [enabled, pathsKey, turnCount, tick]);
+  }, [enabled, pathsKey, turnCount, tick, scopeKey]);
 
   return useMemo(() => {
+    if (cache.scope !== scopeKey) return {};
     const out: Record<string, string> = {};
-    for (const [path, entry] of Object.entries(entries)) out[path] = entry.url;
+    for (const [path, entry] of Object.entries(cache.map)) out[path] = entry.url;
     return out;
-  }, [entries]);
+  }, [cache, scopeKey]);
 }
 
 /** Collect all artifacts published in the session, grouped by id with all versions, newest first. */
@@ -626,7 +655,7 @@ function App() {
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
-  const localImages = useLocalImages(session?.turns, !!config?.files);
+  const localImages = useLocalImages(session?.turns, !!config?.files, activeCwd);
 
   // Close the viewer if the conversation was cleared and the open artifact no longer exists.
   useEffect(() => {
