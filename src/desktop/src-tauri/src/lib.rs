@@ -14,6 +14,7 @@ mod tower;
 mod update;
 
 use std::{
+    collections::BTreeMap,
     env, fs,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
@@ -39,6 +40,8 @@ const QUIT: &str = "quit";
 const RELAUNCH: &str = "relaunch";
 /// What `genaicode ui` prints when its page asks for the relaunch that installs an update.
 const RELAUNCH_LINE: &str = "Relaunch to update";
+/// What `genaicode ui` prints when Check again asks to re-read the login shell environment.
+const REFRESH_ENV_LINE: &str = "Refresh env";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
 const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
 
@@ -54,8 +57,10 @@ struct Shell {
     server: Option<Server>,
     /// Bumped on every start, so the reader of a replaced server stays quiet.
     generation: u64,
-    /// The user's login shell environment, read once: where their agent CLIs live, their keys.
+    /// The user's login shell environment, read at start and refreshed on Check again.
     login: Option<Vec<(String, String)>>,
+    /// Prevents overlapping login-shell probes when Check again is clicked repeatedly.
+    refreshing_env: bool,
     /// `genaicode sessions --waiting --json --watch`, which feeds the menu bar.
     watcher: Option<Server>,
     /// What it last said waits: the menu bar's items point into it.
@@ -149,6 +154,8 @@ fn genaicode(app: &AppHandle, shell: &mut Shell) -> Result<Command, String> {
     // After the login environment, so a profile cannot turn it back on: the app updates itself
     // as a whole, and the copy inside it must not look for newer ones.
     command.env("GENAICODE_NO_AUTO_UPDATE", "1");
+    // Tells `genaicode ui` that this shell handles `Refresh env` requests over stderr/stdin.
+    command.env("GENAICODE_DESKTOP_SHELL", "1");
     Ok(command)
 }
 
@@ -266,6 +273,9 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             } else if opened && line == RELAUNCH_LINE {
                 // The page's "Relaunch to update": only an update this app downloaded installs.
                 update::relaunch(&app);
+            } else if opened && line == REFRESH_ENV_LINE {
+                // Check again: re-read the login shell environment without restarting the server.
+                refresh_env(&app, generation);
             } else if !opened {
                 said.push(line);
                 if said.len() > 12 {
@@ -305,6 +315,57 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             });
     });
     Ok(())
+}
+
+/// Encode environment variables as one `env <json>` line for `genaicode ui`'s stdin.
+fn format_env_line(vars: Option<&[(String, String)]>) -> String {
+    let mut map: BTreeMap<&str, &str> = BTreeMap::new();
+    if let Some(vars) = vars {
+        for (name, value) in vars {
+            if name == "GENAICODE_NO_AUTO_UPDATE" {
+                continue;
+            }
+            map.insert(name.as_str(), value.as_str());
+        }
+    }
+    let json = serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string());
+    format!("env {json}")
+}
+
+/// Re-read the user's login shell environment on a background thread (with the existing 5 s limit)
+/// and send it to the running `genaicode ui` over stdin so newly installed CLIs are picked up
+/// without restarting the app.
+fn refresh_env(app: &AppHandle, generation: u64) {
+    {
+        let state = app.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        if shell.quitting || shell.generation != generation || shell.refreshing_env {
+            return;
+        }
+        shell.refreshing_env = true;
+    }
+    let app = app.clone();
+    thread::spawn(move || {
+        let fresh = login_env();
+        let state = app.state::<ShellState>();
+        let Ok(mut shell) = state.lock() else { return };
+        shell.refreshing_env = false;
+        if let Some(vars) = fresh {
+            shell.login = Some(vars);
+        }
+        if shell.quitting || shell.generation != generation {
+            return;
+        }
+        let line = format_env_line(shell.login.as_deref());
+        if let Some(stdin) = shell
+            .server
+            .as_mut()
+            .and_then(|server| server.stdin.as_mut())
+        {
+            let _ = writeln!(stdin, "{line}");
+            let _ = stdin.flush();
+        }
+    });
 }
 
 fn show(app: &AppHandle) {
@@ -614,4 +675,31 @@ pub fn run() {
         RunEvent::Reopen { .. } => show(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_env_line;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn formats_env_as_a_single_json_line_without_auto_update_override() {
+        assert_eq!(format_env_line(None), "env {}");
+        let vars = vec![
+            ("PATH".to_string(), "/opt/homebrew/bin:/usr/bin".to_string()),
+            ("MULTILINE".to_string(), "a\nb".to_string()),
+            ("GENAICODE_NO_AUTO_UPDATE".to_string(), "0".to_string()),
+        ];
+        let line = format_env_line(Some(&vars));
+        assert!(line.starts_with("env "));
+        assert!(!line.contains('\n'));
+        let parsed: BTreeMap<String, String> =
+            serde_json::from_str(&line["env ".len()..]).expect("valid json");
+        assert_eq!(
+            parsed.get("PATH").map(String::as_str),
+            Some("/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(parsed.get("MULTILINE").map(String::as_str), Some("a\nb"));
+        assert!(!parsed.contains_key("GENAICODE_NO_AUTO_UPDATE"));
+    }
 }

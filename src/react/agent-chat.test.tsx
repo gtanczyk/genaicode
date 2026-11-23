@@ -503,6 +503,39 @@ describe('AgentChat', () => {
     expect(props.onSend).not.toHaveBeenCalled();
   });
 
+  it('replaces raw error entries when renderFailure returns custom content', () => {
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'codex',
+          prompt: 'hello',
+          entries: [{ kind: 'error', message: 'RAW 401 stderr output' }],
+          startedAt: 1000,
+          endedAt: 1200,
+          result: {
+            status: 'failed',
+            ok: false,
+            exitCode: 1,
+            signal: null,
+            error: 'RAW 401 stderr output',
+            failure: { kind: 'auth' },
+          },
+        },
+      ],
+    });
+    render({
+      state,
+      renderFailure: (turn) =>
+        turn.result?.failure?.kind === 'auth' ? (
+          <div className="custom-signin">Sign in to {turn.agent}</div>
+        ) : undefined,
+    });
+    expect(container.textContent).toContain('Sign in to codex');
+    expect(container.textContent).not.toContain('RAW 401 stderr output');
+    expect(container.textContent).toContain('sign-in required · codex');
+  });
+
   it('shows an agent question as a card and sends the answers', () => {
     const request = {
       id: 'q-1',

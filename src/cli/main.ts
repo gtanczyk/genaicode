@@ -810,14 +810,12 @@ async function runUi(
       cli.stderr.write('--delegate provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    // Each agent that takes MCP servers keeps its name and may hand work to the installed ones.
+    // Each agent that takes MCP servers keeps its name and may hand work to any installed helper.
+    // `pack()` checks `findExecutable()` per run, so agents installed after startup join without a restart.
     const helpers = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
-    const installed = detectAgents(helpers, cli.env)
-      .filter((found) => found.path !== null)
-      .map((found) => found.agent);
     agents = agents.map((agent) =>
       agent.capabilities.mcp
-        ? pack({ name: agent.name, lead: agent, members: installed, brief: delegationBrief, operatorMerge: true })
+        ? pack({ name: agent.name, lead: agent, members: helpers, brief: delegationBrief, operatorMerge: true })
         : agent,
     );
   }

@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- `genaicode ui` and the desktop app: onboarding when no agent CLI is installed or signed in. The server starts in a `setup` state with `GET /api/agents` (presence, duplicate-install hints, broken-binary detection, and cheap local sign-in checks for Claude Code and Codex), showing per-agent install/sign-in cards with copyable commands, plan limits, and **Check again** while keeping session tools working. In the desktop app, **Check again** re-reads the login shell environment without restarting. The agent picker separates Ready/Installed agents from greyed signed-out ones (**Sign in**) and **More agents** (**Install**), and auth failures on a prompt render as a sign-in card in the conversation. New exports in `genaicode/agents`: `AGENT_GUIDES`, `agentGuide`, `findAllExecutables`, `inspectAgent`, `inspectAgents`, `createAgentInspector`, `isAgentUsable`, `isAuthError`; `<AgentChat renderFailure>` in `genaicode/react` (#311)
+
 ## 3.0.1 — 2026-11-23
 
 **Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.

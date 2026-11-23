@@ -124,6 +124,11 @@ export interface AgentChatProps {
   onArtifactSubmit?: ((artifact: Artifact, data: unknown) => void) | null;
   /** Host content after a turn (approval cards, links...). */
   renderAfterTurn?(turn: SessionTurn, index: number): ReactNode;
+  /**
+   * Replaces the error display of a failed turn (e.g. a sign-in card when `failure.kind === 'auth'`).
+   * Return undefined/null/false to keep the default error entries and footer.
+   */
+  renderFailure?(turn: SessionTurn): ReactNode;
   /** Host content at the end of the transcript, after the last turn. */
   renderFooter?(): ReactNode;
   /** Host lines between turns. */
@@ -328,6 +333,7 @@ export function AgentChat(props: AgentChatProps) {
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
         renderArtifact={props.renderArtifact}
+        renderFailure={props.renderFailure}
         submitArtifact={submitArtifact}
         fold={props.foldSteps ?? false}
       />,
@@ -512,7 +518,7 @@ export function AgentChat(props: AgentChatProps) {
                 {attached.problem}
               </div>
             ) : null}
-            <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
+            <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'} data-disabled={props.disabled ? '1' : undefined}>
               <textarea
                 ref={input}
                 rows={1}
@@ -521,6 +527,7 @@ export function AgentChat(props: AgentChatProps) {
                 placeholder={placeholder}
                 title={props.composerTitle}
                 aria-label="Message"
+                aria-disabled={props.disabled || undefined}
                 onChange={(event) => {
                   setDraft(event.target.value);
                   setPicked(0);
@@ -598,11 +605,13 @@ function Turn({
   toolName,
   artifactUrl,
   renderArtifact,
+  renderFailure,
   submitArtifact,
   fold,
 }: {
   artifactUrl?: AgentChatProps['artifactUrl'];
   renderArtifact?: AgentChatProps['renderArtifact'];
+  renderFailure?: AgentChatProps['renderFailure'];
   submitArtifact?: SubmitArtifact;
   turn: SessionTurn;
   now: number;
@@ -618,6 +627,8 @@ function Turn({
   const running = !turn.result;
   const speaker = turn.pack?.lead ?? turn.agent;
   const bad = turn.result && !turn.result.ok;
+  const customFailure = bad ? renderFailure?.(turn) : undefined;
+  const hasCustomFailure = customFailure !== undefined && customFailure !== null && customFailure !== false;
   const shown = prompt ? prompt(turn.prompt, turn) : turn.prompt;
   const entry = (item: SessionEntry, i: number) => (
     <Entry
@@ -641,33 +652,39 @@ function Turn({
   );
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
-  const transcript =
-    packShown && pending.length
-      ? {
-          ...turn,
-          entries: turn.entries.filter(
-            (item) =>
-              item.kind !== 'approval' || item.decision || !pending.some((request) => request.id === item.request.id),
-          ),
-        }
-      : turn;
+  const filteredEntries = turn.entries.filter((item) => {
+    if (hasCustomFailure && item.kind === 'error') return false;
+    if (
+      packShown &&
+      pending.length &&
+      item.kind === 'approval' &&
+      !item.decision &&
+      pending.some((request) => request.id === item.request.id)
+    )
+      return false;
+    return true;
+  });
+  const transcript = filteredEntries.length === turn.entries.length ? turn : { ...turn, entries: filteredEntries };
   return (
     <section className="gc-turn">
       {shown === null || shown === undefined || shown === false || (shown === '' && turn.attachments?.length) ? null : (
         <div className="gc-prompt">{shown}</div>
       )}
       <TurnAttachments items={turn.attachments} />
-      {transcript.entries.length ? (
+      {transcript.entries.length || hasCustomFailure ? (
         <div className="gc-agent-row">
           <div className="gc-avatar" title={speaker} aria-hidden="true">
             {speaker.slice(0, 2)}
           </div>
           <div className="gc-steps">
-            {fold ? (
-              <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} />
-            ) : (
-              transcript.entries.map(entry)
-            )}
+            {transcript.entries.length ? (
+              fold ? (
+                <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} />
+              ) : (
+                transcript.entries.map(entry)
+              )
+            ) : null}
+            {hasCustomFailure ? customFailure : null}
           </div>
         </div>
       ) : null}
@@ -688,7 +705,12 @@ function Turn({
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
-          {turnFooter(turn, now)} · {speaker}
+          {hasCustomFailure
+            ? turn.result?.failure?.kind === 'auth'
+              ? 'sign-in required'
+              : 'failed'
+            : turnFooter(turn, now)}{' '}
+          · {speaker}
         </div>
       )}
     </section>

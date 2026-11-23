@@ -407,9 +407,18 @@ conversations that ran in the chat's own directory, apart from every agent's ses
 With `--restore` the page opens on the conversation the chat in this directory had last, with
 its agent and its history, so stopping and starting the server loses nothing; `--from` or
 `--resume` name another one.
-While no agent CLI is installed, `genaicode ui` does not give up: its link shows which agents
-it can use, the command that installs each and how to sign in, and it moves on to the chat by
-itself once one is found (it looks every few seconds and on **Check again**).
+While no agent CLI is installed or signed in, `genaicode ui` starts in a `setup` state instead of
+exiting: the page shows an onboarding screen with one card per supported agent (`Not installed`,
+`Installed, not signed in`, or `Ready`), copyable install and sign-in commands, vendor install links,
+plan limits, and **Check again** (also polling every few seconds), while the prompt box stays
+disabled ("Connect an agent to start") and the Sessions view keeps working. `GET /api/agents`
+reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
+binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
+(or installed), the onboarding collapses into the normal home; **Connect another agent** stays in the
+agent picker alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
+a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
+**Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
+send it back (`env <json>` on stdin) so newly installed CLIs are picked up without a restart.
 With `--sessions --no-project` the page names no project and suggests questions about the work
 of every agent: the chat is then about the sessions, wherever they run, and `--cwd` is only
 where its own agent starts. The desktop app runs it this way.

@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { AgentChat } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import type { ChatView } from '../controller.js';
+import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
+import type { AgentInspection } from '../../agents/status.js';
 import {
   formatUsage,
   limitChips,
@@ -14,9 +16,11 @@ import {
 } from '../format.js';
 import type { WebCommand } from './server.js';
 import type { RateLimit } from '../../agents/types.js';
+import { AgentPicker } from './agent-picker.js';
 import { Sessions } from './sessions.js';
 import { FilePanel } from './file-view.js';
 import { Home } from './home.js';
+import { Onboarding, SignInCard } from './onboarding.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -159,10 +163,142 @@ interface PageConfig {
   /** False when the page names no project (`ui --no-project`). */
   project?: boolean;
   sessions: boolean;
+  agents?: boolean;
   uploads?: boolean;
   files?: boolean;
   /** A newer version of the app that shows this page: downloading, or ready to install on a relaunch. */
   update?: { version: string; ready: boolean; installing?: boolean };
+}
+
+function fallbackAgents(choices: ChatView['agents'] | undefined): AgentInspection[] {
+  if (!choices?.length) return [];
+  return choices
+    .map((choice, index) => ({
+      index,
+      item: {
+        name: choice.name,
+        command: choice.command,
+        installed: choice.installed,
+        ...(choice.path ? { path: choice.path } : {}),
+        ...(choice.version ? { version: choice.version } : {}),
+        auth: choice.auth ?? 'unknown',
+        ...(choice.broken ? { broken: true } : {}),
+        ...(choice.plan ? { plan: choice.plan } : {}),
+        ...(choice.hint ? { hint: choice.hint } : {}),
+        guide: agentGuide(choice.name, choice.command),
+      } satisfies AgentInspection,
+    }))
+    .sort(
+      (a, b) => agentOrder(a.item.name, a.item.command) - agentOrder(b.item.name, b.item.command) || a.index - b.index,
+    )
+    .map(({ item }) => item);
+}
+
+/** How often the onboarding screen quietly re-checks PATH / sign-in while visible. */
+const AGENTS_POLL_MS = 4_000;
+
+function useAgents(
+  enabled: boolean,
+  viewAgents: ChatView['agents'] | undefined,
+  pollActive: boolean,
+): {
+  agents: AgentInspection[];
+  loading: boolean;
+  checking: boolean;
+  setup?: boolean;
+  inspectedAt: number;
+  checkAgain(options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined>;
+} {
+  const [inspected, setInspected] = useState<AgentInspection[]>();
+  const [setup, setSetup] = useState<boolean>();
+  const [loading, setLoading] = useState(enabled);
+  const [checking, setChecking] = useState(false);
+  const [inspectedAt, setInspectedAt] = useState(0);
+  const checkingRef = useRef(false);
+
+  const fetchAgents = async (query: string): Promise<AgentInspection[] | undefined> => {
+    if (!token) return undefined;
+    try {
+      const res = await fetch(`/api/agents${query}`, { headers: { 'x-genaicode-token': token } });
+      if (!res.ok) return undefined;
+      const body = (await res.json()) as { agents?: AgentInspection[]; setup?: boolean };
+      if (!Array.isArray(body.agents)) return undefined;
+      setInspected(body.agents);
+      if (typeof body.setup === 'boolean') setSetup(body.setup);
+      setInspectedAt(Date.now());
+      return body.agents;
+    } catch {
+      return undefined;
+    }
+  };
+
+  useEffect(() => {
+    if (!enabled || !token) {
+      setLoading(false);
+      return;
+    }
+    let current = true;
+    setLoading(true);
+    void fetchAgents('').finally(() => {
+      if (current) setLoading(false);
+    });
+    return () => {
+      current = false;
+    };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled || !pollActive || !token) return;
+    const timer = window.setInterval(() => {
+      if (!checkingRef.current) void fetchAgents('?refresh=1');
+    }, AGENTS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [enabled, pollActive]);
+
+  const checkAgain = async (options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined> => {
+    if (!enabled || !token) return undefined;
+    if (options?.quiet) {
+      if (checkingRef.current) return undefined;
+      return fetchAgents(options.env ? '?refresh=1&env=1' : '?refresh=1');
+    }
+    checkingRef.current = true;
+    setChecking(true);
+    try {
+      return await fetchAgents(options?.env ? '?refresh=1&env=1' : '?refresh=1');
+    } finally {
+      checkingRef.current = false;
+      setChecking(false);
+    }
+  };
+
+  return {
+    agents: inspected ?? fallbackAgents(viewAgents),
+    loading: enabled && loading,
+    checking,
+    setup,
+    inspectedAt,
+    checkAgain,
+  };
+}
+
+function useAllLimits(active: boolean): Array<RateLimit & { agent: string }> {
+  const [limits, setLimits] = useState<Array<RateLimit & { agent: string }>>([]);
+  useEffect(() => {
+    if (!active || !token) return;
+    let current = true;
+    fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
+      .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
+      .then(
+        (found: { limits?: Array<RateLimit & { agent: string }> }) => {
+          if (current) setLimits(found.limits ?? []);
+        },
+        () => undefined,
+      );
+    return () => {
+      current = false;
+    };
+  }, [active]);
+  return limits;
 }
 
 function useView(): { view?: ChatView; config?: PageConfig; connected: boolean; rejected: boolean } {
@@ -294,17 +430,48 @@ function App() {
   }, [waits]);
   const hasProject = config ? config.project !== false : !root.dataset.noProject;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
+  const hasAgentsApi = config?.agents === true;
   useBark(view);
   const [model, setModel] = useState<string>();
-  // The Sessions view takes the chat's place; the chat keeps running behind it.
-  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
+  // The Sessions / Agents views take the chat's place; the chat keeps running behind them.
+  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'agents'>('chat');
+  const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
+  const showAgents = panel === 'agents';
   // Only the conversations this chat had itself, not every agent's sessions.
   const [own, setOwn] = useState(false);
   // The topic picked on the start screen: the Sessions view shows only it.
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
   const running = session?.status === 'running';
+  const rawSetup = view?.setup === true;
+  const {
+    agents: agentList,
+    loading: loadingAgents,
+    checking: checkingAgents,
+    setup: apiSetup,
+    inspectedAt,
+    checkAgain: checkAgents,
+  } = useAgents(hasAgentsApi, view?.agents, rawSetup || showAgents);
+  const inSetup = rawSetup || apiSetup === true;
+  const allLimits = useAllLimits(inSetup || showAgents);
+  // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
+  const seenAuthFail = useRef(new Set<number>());
+  useEffect(() => {
+    if (!hasAgentsApi || !session) return;
+    let trigger = false;
+    for (const turn of session.turns) {
+      if (turn.result?.failure?.kind === 'auth' && !seenAuthFail.current.has(turn.id)) {
+        seenAuthFail.current.add(turn.id);
+        trigger = true;
+      }
+    }
+    if (trigger) void checkAgents({ env: false, quiet: true });
+  }, [hasAgentsApi, session?.turns]);
+  const openSetup = (agent?: string) => {
+    setFocusAgent(agent);
+    setPanel('agents');
+  };
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
@@ -356,24 +523,38 @@ function App() {
             {chip.text}
           </span>
         ))}
-        <select
-          aria-label="Agent"
-          title="The agent the next prompt goes to"
-          value={session.agent}
-          disabled={running}
-          onChange={(event) => {
-            // What still waits here was meant for the other agent.
-            dropWaiting();
-            void command({ type: 'agent', name: event.target.value });
-          }}
-        >
-          {view.agents.map((agent) => (
-            <option key={agent.name} value={agent.name}>
-              {agent.name}
-              {agent.installed ? '' : ' (not installed)'}
-            </option>
-          ))}
-        </select>
+        {hasAgentsApi ? (
+          <AgentPicker
+            current={session.agent}
+            agents={agentList}
+            disabled={running}
+            onSelect={(name) => {
+              // What still waits here was meant for the other agent.
+              dropWaiting();
+              void command({ type: 'agent', name });
+            }}
+            onOpenSetup={openSetup}
+          />
+        ) : (
+          <select
+            aria-label="Agent"
+            title="The agent the next prompt goes to"
+            value={session.agent}
+            disabled={running}
+            onChange={(event) => {
+              // What still waits here was meant for the other agent.
+              dropWaiting();
+              void command({ type: 'agent', name: event.target.value });
+            }}
+          >
+            {view.agents.map((agent) => (
+              <option key={agent.name} value={agent.name}>
+                {agent.name}
+                {agent.installed ? '' : ' (not installed)'}
+              </option>
+            ))}
+          </select>
+        )}
         <input
           aria-label="Model"
           title="The model id, or empty for the agent's default"
@@ -537,21 +718,60 @@ function App() {
           decide={(id, decision) => command({ type: 'tower', id, decision })}
         />
       )}
+      {showAgents ? (
+        <main className="agents-panel">
+          <Onboarding
+            agents={agentList}
+            limits={allLimits}
+            loading={loadingAgents}
+            checking={checkingAgents}
+            setup={inSetup}
+            focusAgent={focusAgent}
+            onCheckAgain={() => checkAgents({ env: true })}
+            onSelectAgent={(name) => {
+              dropWaiting();
+              void command({ type: 'agent', name });
+              setPanel('chat');
+            }}
+            onClose={() => setPanel('chat')}
+          />
+        </main>
+      ) : null}
       <AgentChat
         state={session}
         style={panel !== 'chat' ? { display: 'none' } : undefined}
         header={null}
         // The work in one line that opens on click: a long run of tool calls buries the answer.
         foldSteps
-        autoFocus
-        disabled={!connected}
+        autoFocus={!inSetup}
+        disabled={!connected || inSetup}
+        placeholder={inSetup ? 'Connect an agent to start' : undefined}
         notices={view?.notices}
         artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
         completions={SLASH_COMMANDS}
-        composerExtras={controls}
-        attachments={config?.uploads ? ATTACH : undefined}
+        composerExtras={inSetup ? null : controls}
+        attachments={config?.uploads && !inSetup ? ATTACH : undefined}
         onOpenFile={config?.files ? setOpenFile : undefined}
         renderPrompt={promptBubble}
+        renderFailure={(turn) =>
+          turn.result?.failure?.kind === 'auth' ? (
+            <SignInCard
+              agent={turn.agent}
+              inspection={agentList.find((item) => item.name === turn.agent)}
+              inspectedAt={inspectedAt}
+              failedAt={turn.endedAt ?? turn.startedAt}
+              checking={checkingAgents}
+              onCheckAgain={() => checkAgents({ env: true })}
+              onRetry={
+                turn.prompt
+                  ? () => {
+                      void submit(turn.prompt);
+                    }
+                  : undefined
+              }
+            />
+          ) : undefined
+        }
         renderFooter={() =>
           unsent ? (
             <div className="gc-notice gc-err">
@@ -574,38 +794,53 @@ function App() {
           if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
           return reply.text ?? '';
         }}
-        hint={null}
-        composerTitle={`Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`}
+        hint={inSetup ? 'Connect an agent to start' : null}
+        composerTitle={
+          inSetup
+            ? 'Connect an agent to start'
+            : `Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
+        }
         emptyState={
           session ? (
-            <div className="gc-empty">
-              <div className="wolf" role="img" aria-label="genaicode wolf" />
-              <h1>
-                {hasProject ? `What should ${session.agent} work on?` : `What should ${session.agent} look into?`}
-              </h1>
-              <div>
-                {hasProject
-                  ? `It works in ${cwd}, with its own login, tools and permissions.`
-                  : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+            inSetup ? (
+              <Onboarding
+                agents={agentList}
+                limits={allLimits}
+                loading={loadingAgents}
+                checking={checkingAgents}
+                setup={true}
+                onCheckAgain={() => checkAgents({ env: true })}
+              />
+            ) : (
+              <div className="gc-empty">
+                <div className="wolf" role="img" aria-label="genaicode wolf" />
+                <h1>
+                  {hasProject ? `What should ${session.agent} work on?` : `What should ${session.agent} look into?`}
+                </h1>
+                <div>
+                  {hasProject
+                    ? `It works in ${cwd}, with its own login, tools and permissions.`
+                    : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+                </div>
+                {hasSessions ? (
+                  <Home
+                    token={token}
+                    onTopic={(id) => {
+                      setTopic(id);
+                      setOwn(false);
+                      setPanel('sessions');
+                    }}
+                  />
+                ) : null}
+                <div className="ideas">
+                  {(hasProject ? IDEAS : IDEAS_ANYWHERE).map((idea) => (
+                    <button key={idea} onClick={() => void submit(idea)}>
+                      {idea}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {hasSessions ? (
-                <Home
-                  token={token}
-                  onTopic={(id) => {
-                    setTopic(id);
-                    setOwn(false);
-                    setPanel('sessions');
-                  }}
-                />
-              ) : null}
-              <div className="ideas">
-                {(hasProject ? IDEAS : IDEAS_ANYWHERE).map((idea) => (
-                  <button key={idea} onClick={() => void submit(idea)}>
-                    {idea}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )
           ) : rejected ? (
             <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
           ) : (

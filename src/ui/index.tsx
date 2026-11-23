@@ -5,6 +5,7 @@ import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.
 import { startQuestionChannel } from '../agents/ask-user.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
+import { createAgentInspector, type AgentInspector } from '../agents/status.js';
 import { sendSession } from '../agents/sessions/send.js';
 import { knownLimits } from '../agents/sessions/limits.js';
 import { readTopics } from '../agents/sessions/topics.js';
@@ -29,7 +30,6 @@ import {
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
 import { startWebUi, type HostApp, type HostUpdate, type WebAsset, type WebUi } from './web/server.js';
-import { startWelcome } from './web/welcome.js';
 
 export { NoAgentError };
 
@@ -124,11 +124,27 @@ async function openChannels(options: ChatOptions) {
 }
 
 export async function runChat(options: WebRunOptions): Promise<number> {
+  const liveEnv = options.env ?? process.env;
   let controller: ChatController;
-  const web = webLink(options, () => controller);
+  const inspector = createAgentInspector({
+    agents: options.agents,
+    getEnv: () => liveEnv,
+    onUpdate: (inspections) => controller?.updateAgents(inspections),
+  });
+  const web = webLink({ ...options, env: liveEnv }, () => controller, inspector);
   const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
+    controller = createChatController({
+      ...options,
+      env: liveEnv,
+      web,
+      artifactChannel,
+      questionChannel,
+      onAuthFailure: () => {
+        inspector.invalidate();
+        void inspector.check({ refresh: true });
+      },
+    });
   } catch (error) {
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
@@ -146,55 +162,20 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   return 0;
 }
 
-/**
- * While no agent CLI is installed, `genaicode ui` serves a page that says which ones it can use
- * and how to get one. Resolves with the link the chat then takes over, or `null` when stopped first.
- */
-async function welcome(options: WebRunOptions): Promise<{ port: number; token: string } | null | undefined> {
-  if (options.agent || detectAgents(options.agents, options.env).some(({ path }) => path)) return undefined;
-  const page = await startWelcome({
-    agents: options.agents,
-    env: options.env,
-    version: options.version,
-    host: options.host,
-    port: options.port,
-    assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
-  });
-  options.stderr.write(
-    `genaicode ${options.version} · no agent CLI found on PATH\n` +
-      `Open ${page.url}\n(it says how to install one, and goes on to the chat once one is there; Ctrl-C stops the server)\n`,
-  );
-  if (options.open !== false) (options.openUrl ?? openBrowser)(page.url);
-  const watchEnd = options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY);
-  const found = await new Promise<boolean>((resolve) => {
-    if (options.signal?.aborted) return resolve(false);
-    const settle = (value: boolean) => {
-      options.signal?.removeEventListener('abort', stop);
-      if (watchEnd) {
-        options.stdin.off('end', stop);
-        // A stream left flowing would keep the process alive after a signal.
-        options.stdin.pause();
-      }
-      resolve(value);
-    };
-    const stop = () => settle(false);
-    options.signal?.addEventListener('abort', stop, { once: true });
-    if (watchEnd) {
-      // The host app's listener reads stdin from the start: its end may already be past.
-      if (options.stdin.readableEnded) return stop();
-      options.stdin.once('end', stop);
-      options.stdin.resume();
-    }
-    void page.found.then(() => settle(true));
-  });
-  await page.close();
-  return found ? { port: page.port, token: page.token } : null;
-}
-
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
+/** What the host app reads from stderr when Check again asks to re-read the login shell environment. */
+export const REFRESH_ENV_LINE = 'Refresh env';
+/** Max buffered bytes for one partial stdin line from the host shell (a full login env JSON). */
+const HOST_LINE_MAX = 256 * 1024;
+/** Max wait for the desktop shell to reply with `env <json>` (just above its 5 s login-shell cap). */
+const ENV_REFRESH_TIMEOUT_MS = 6_000;
+
+interface ManagedHostApp extends HostApp {
+  close(): void;
+}
 
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
@@ -202,16 +183,56 @@ export const RELAUNCH_LINE = 'Relaunch to update';
  * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
  * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
  * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr.
+ *
+ * When started by the desktop shell (`GENAICODE_DESKTOP_SHELL=1`), clicking Check again prints
+ * `REFRESH_ENV_LINE` on stderr and the shell replies with `env <json>` containing the refreshed
+ * login shell environment, merged into `liveEnv` without restarting the server.
  */
-function hostApp(options: WebRunOptions): HostApp {
+function hostApp(options: WebRunOptions, liveEnv: NodeJS.ProcessEnv): ManagedHostApp {
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
-  options.stdin.on('data', (chunk: Buffer | string) => {
+  let envRefresh: Promise<void> | undefined;
+  let resolveEnv: (() => void) | undefined;
+  let envTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const finishEnvRefresh = () => {
+    if (envTimer) {
+      clearTimeout(envTimer);
+      envTimer = undefined;
+    }
+    const done = resolveEnv;
+    resolveEnv = undefined;
+    envRefresh = undefined;
+    done?.();
+  };
+
+  const applyEnvLine = (payload: string) => {
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof value !== 'string' || key === 'GENAICODE_NO_AUTO_UPDATE') continue;
+          liveEnv[key] = value;
+        }
+      }
+    } catch {
+      // Ignore malformed env payloads and keep the current environment.
+    }
+    finishEnvRefresh();
+  };
+
+  const onData = (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
-    rest = (lines.pop() ?? '').slice(-200);
-    for (const line of lines) {
-      const found = UPDATE_LINE.exec(line.trim());
+    rest = (lines.pop() ?? '').slice(-HOST_LINE_MAX);
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith('env ')) {
+        applyEnvLine(line.slice(4));
+        continue;
+      }
+      const found = UPDATE_LINE.exec(line);
       if (!found) continue;
       // `update-none`: a download that failed, so there is nothing to show any more.
       const next: HostUpdate | undefined = found[3]
@@ -225,7 +246,12 @@ function hostApp(options: WebRunOptions): HostApp {
       update = next;
       for (const listener of listeners) listener();
     }
-  });
+  };
+  const onEnd = () => finishEnvRefresh();
+  options.stdin.on('data', onData);
+  options.stdin.once('end', onEnd);
+
+  const canRefreshEnv = liveEnv.GENAICODE_DESKTOP_SHELL === '1';
   return {
     update: () => update,
     subscribe(listener) {
@@ -233,23 +259,58 @@ function hostApp(options: WebRunOptions): HostApp {
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    ...(canRefreshEnv
+      ? {
+          refreshEnv() {
+            if (envRefresh) return envRefresh;
+            envRefresh = new Promise<void>((resolve) => {
+              resolveEnv = resolve;
+              envTimer = setTimeout(finishEnvRefresh, ENV_REFRESH_TIMEOUT_MS);
+              envTimer.unref?.();
+              options.stderr.write(`${REFRESH_ENV_LINE}\n`);
+            });
+            return envRefresh;
+          },
+        }
+      : {}),
+    close() {
+      finishEnvRefresh();
+      options.stdin.off('data', onData);
+      options.stdin.off('end', onEnd);
+      listeners.clear();
+    },
   };
 }
 
 export async function runWeb(options: WebRunOptions): Promise<number> {
-  // Before anything waits: what the app says while the welcome page shows is kept for the chat.
-  if (options.exitWithStdin === true && !(options.stdin.isTTY && options.stdout.isTTY))
-    options = { ...options, hostApp: hostApp(options) };
-  const welcomed = await welcome(options);
-  if (welcomed === null) return 0;
-  // The chat answers on the link the welcome page had, which the browser already shows.
-  if (welcomed) options = { ...options, ...welcomed, open: false };
+  const liveEnv = options.env ?? process.env;
+  const terminal = !!(options.stdin.isTTY && options.stdout.isTTY);
+  const watchEnd = !terminal && options.exitWithStdin === true;
+  const host = watchEnd ? hostApp(options, liveEnv) : undefined;
+  const webOptions: WebRunOptions = { ...options, env: liveEnv, ...(host ? { hostApp: host } : {}) };
   let controller: ChatController;
-  const web = webLink(options, () => controller);
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
+  const inspector = createAgentInspector({
+    agents: webOptions.agents,
+    getEnv: () => liveEnv,
+    refreshEnv: host?.refreshEnv,
+    onUpdate: (inspections) => controller?.updateAgents(inspections),
+  });
+  const web = webLink(webOptions, () => controller, inspector);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(webOptions);
   try {
-    controller = createChatController({ ...options, web, artifactChannel, questionChannel });
+    controller = createChatController({
+      ...webOptions,
+      web,
+      artifactChannel,
+      questionChannel,
+      allowNoAgent: true,
+      onAuthFailure: () => {
+        inspector.invalidate();
+        void inspector.check({ refresh: true });
+      },
+    });
   } catch (error) {
+    host?.close();
     await closeChannels();
     if (!(error instanceof NoAgentError)) throw error;
     options.stderr.write(`${error.message}\n`);
@@ -259,27 +320,31 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   try {
     url = await web.start();
   } catch (error) {
+    host?.close();
     controller.close();
     await closeChannels();
     throw error;
   }
-  // From a terminal, Enter brings the same session into it: the browser stays connected.
-  const terminal = !!(options.stdin.isTTY && options.stdout.isTTY);
+  // Never block page load on sign-in checks; kick off initial inspection in the background.
+  void inspector.check();
+  const inSetup = controller.get().setup === true;
   options.stderr.write(
-    `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n` +
+    (inSetup
+      ? `genaicode ${options.version} · no agent CLI found on PATH (setup mode)\n`
+      : `genaicode ${options.version} · ${controller.get().session.agent} in ${options.cwd}\n`) +
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
   const taken = !options.continueFrom || (await controller.continueSession(options.continueFrom));
-  if (options.firstPrompt && taken) controller.submit(options.firstPrompt);
+  if (options.firstPrompt && taken && !inSetup) controller.submit(options.firstPrompt);
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
-    const watchEnd = !terminal && options.exitWithStdin === true;
     const onAbort = () => {
       options.stdin.off('data', onData);
       options.stdin.off('end', onAbort);
       options.signal?.removeEventListener('abort', onAbort);
+      host?.close();
       if (terminal || watchEnd) options.stdin.pause();
       resolve('stop');
     };
@@ -298,7 +363,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       options.stdin.resume();
     }
   });
-  if (next === 'terminal') await runTerminal(controller, options);
+  if (next === 'terminal') await runTerminal(controller, webOptions);
+  host?.close();
   await web.close();
   controller.close();
   await closeChannels();
@@ -322,14 +388,19 @@ async function runTerminal(controller: ChatController, options: UiRunOptions) {
  * The browser UI on the terminal's session, started on demand (`/web`, `genaicode chat --web`)
  * or up front (`genaicode ui`). Both front ends drive one controller, so they stay in step.
  */
-function webLink(options: WebRunOptions, controller: () => ChatController): WebHandoff & { start(): Promise<string> } {
+function webLink(
+  options: WebRunOptions,
+  controller: () => ChatController,
+  inspector?: AgentInspector,
+): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
-  const senders = detectAgents(agents, options.env).flatMap(({ agent, path }) =>
-    path && agent.capabilities.resume && agent.sessions?.where === 'local'
-      ? [{ agent: agent.name, source: agent.sessions.name, sandboxes: agent.capabilities.permissions?.sandbox ?? [] }]
-      : [],
-  );
+  const currentSenders = () =>
+    detectAgents(agents, options.env).flatMap(({ agent, path }) =>
+      path && agent.capabilities.resume && agent.sessions?.where === 'local'
+        ? [{ agent: agent.name, source: agent.sessions.name, sandboxes: agent.capabilities.permissions?.sandbox ?? [] }]
+        : [],
+    );
   const start = () =>
     (running ??= startWebUi({
       controller: controller(),
@@ -341,6 +412,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
+      ...(inspector ? { agents: (query) => inspector.check(query) } : {}),
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async ({ own, ...query }) => {
@@ -362,7 +434,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
           if (topic) topicOf[`${session.source}:${session.id}`] = topic;
         }
         const sorted = store?.topics.length ? { topics: store.topics, topicOf } : {};
-        return { ...listing, readable, asks, senders, ...sorted };
+        return { ...listing, readable, asks, senders: currentSenders(), ...sorted };
       },
       sendPrompt: (source, id, prompt, sandbox, signal) =>
         sendSession(agents, id, prompt, {
