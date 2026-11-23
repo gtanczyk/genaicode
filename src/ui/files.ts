@@ -38,7 +38,7 @@ export interface FileRaw {
 }
 
 /** Why a file is not shown. */
-export type FileRefusal = 'outside' | 'missing' | 'secret';
+export type FileRefusal = 'outside' | 'missing' | 'secret' | 'directory';
 
 export interface ProjectFilesOptions {
   /** How long a `/files/<id>` capability stays valid in milliseconds. Default 15 minutes. */
@@ -75,26 +75,28 @@ const DEFAULT_MAX_CAPABILITIES = 256;
 const TEXT_MIME = 'text/plain; charset=utf-8';
 const OCTET_MIME = 'application/octet-stream';
 
-function openRegularFile(real: string): { fd: number; size: number } | undefined {
+function openRegularFile(real: string): { fd: number; size: number } | 'missing' | 'directory' {
   let fd: number;
   try {
     // A pipe would hold the open (and the whole server) until someone writes to it.
-    if (!statSync(real).isFile()) return undefined;
+    const entry = statSync(real);
+    if (entry.isDirectory()) return 'directory';
+    if (!entry.isFile()) return 'missing';
     fd = openSync(real, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   } catch {
-    return undefined;
+    return 'missing';
   }
   try {
     // Asked of what was opened: the path can be something else by now.
     const stat = fstatSync(fd);
     if (!stat.isFile()) {
       closeSync(fd);
-      return undefined;
+      return 'missing';
     }
     return { fd, size: stat.size };
   } catch {
     closeSync(fd);
-    return undefined;
+    return 'missing';
   }
 }
 
@@ -138,7 +140,7 @@ export function createProjectFiles(roots: RootsInput, options: ProjectFilesOptio
     const resolved = resolveInRootsSync(path, roots);
     if (!resolved.ok) return resolved.reason;
     const opened = openRegularFile(resolved.real);
-    if (!opened) return 'missing';
+    if (typeof opened === 'string') return opened;
     const { fd, size } = opened;
     try {
       const ext = extname(resolved.real).toLowerCase();

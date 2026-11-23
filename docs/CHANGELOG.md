@@ -21,6 +21,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - Opt-in CDN hosts for HTML artifacts: `ArtifactStoreOptions.allowScriptHosts`, `genaicode ui --artifact-cdn <host>[,<host>]` and a desktop **Settings** control (off by default) add trusted hosts to HTML CSP `script-src`, `style-src` and `font-src` only while keeping `connect-src`, `img-src`, `media-src` and `form-action` closed, and inform the agent in the `publish_artifact` tool description (#317)
 - Desktop app links, downloads and Reveal: `tauri-plugin-opener` with strict `http(s)`/`mailto` scheme filtering in `on_new_window` and `on_navigation` (opening external links and tokenless artifact **New tab** links in the system browser), native Save dialog + **Show in Finder / File Manager** in `on_download`, and `POST /api/reveal` / `<AgentChat onRevealFile>` (#317)
 
+### Fixed
+
+- Chat renders Markdown links with angle-delimited destinations, including paths with spaces or parentheses. The desktop file panel offers Reveal for linked project folders (#329)
+
 ### Internal
 
 - A new release becomes the "latest" one on GitHub only after the desktop build has added its downloads, so `releases/latest/download/Genaicode-*` links no longer return 404 for the half hour after each release (#321)

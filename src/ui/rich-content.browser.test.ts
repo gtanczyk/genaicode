@@ -128,6 +128,9 @@ describe('rich content in genaicode ui (browser)', () => {
 
     mkdirSync(join(home, 'docs'), { recursive: true });
     mkdirSync(join(otherProject, 'docs'), { recursive: true });
+
+    const folder = join(home, 'Project (draft)');
+    mkdirSync(folder);
     writeFileSync(join(home, 'code.ts'), 'line1\nline2\nline3\nline4\nline5\n');
     writeFileSync(join(home, 'docs', 'doc.md'), '# Heading\n\nSome **bold** markdown.\n\n![Chart](./chart.png)\n');
     writeFileSync(join(home, 'docs', 'chart.png'), TINY_PNG);
@@ -180,8 +183,9 @@ describe('rich content in genaicode ui (browser)', () => {
           text: [
             `Files: [code](./code.ts#L3-L4) [md](./docs/doc.md) [img](./shot.png) [audio](./sound.mp3) [video](./movie.webm) [pdf](./sheet.pdf) [html](./demo.html) [bin](./archive.bin)`,
             `Other session: [from-session](${join(otherProject, 'from-session.ts')}) [secondary-md](./docs/report.md)`,
+            `[Project folder](<${folder}>)`,
             `Outside: [outside](${join(outside, 'secret-outside.txt')})`,
-            `![Local shot](./shot.png)`,
+            `![Local shot](<./shot.png>)`,
             `![Remote tracker](${remoteImgUrl})`,
           ].join('\n\n'),
         });
@@ -325,6 +329,11 @@ describe('rich content in genaicode ui (browser)', () => {
       await panel.locator('.viewer-markdown .gc-md-image-btn').click();
       await panel.locator('.viewer-image-stage img').waitFor();
       expect(await panel.locator('header small').textContent()).toContain(`${secondaryChart.length} B`);
+
+      await page.getByRole('button', { name: 'Project folder', exact: true }).click();
+      await panel.getByText('This link points to a folder.').waitFor();
+      await panel.getByRole('button', { name: /Reveal/ }).click();
+      await vi.waitFor(() => expect(stderrChunks.join('')).toContain(`Reveal ${JSON.stringify(folder)}`));
 
       // Outside file shows path + Reveal button in desktop (--exit-with-stdin) mode, and Reveal prints protocol line!
       await page.locator('.gc-file-link', { hasText: 'outside' }).click();
