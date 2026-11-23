@@ -1,6 +1,6 @@
 import type { SessionSendStatus } from '../agents/sessions/send-tool.js';
 import { firstLine, formatDuration, shortId } from './format.js';
-import { Markdown } from './markdown.js';
+import { Markdown, trimTrailingSlashes } from './markdown.js';
 
 /** Live state of a message relayed to another local agent session (`sessions_send`). */
 export interface ChatSessionRelay {
@@ -31,9 +31,7 @@ export interface ChatSessionRelay {
 
 /** Last directory name of a working directory path, for a compact project chip. */
 export function relayProjectName(cwd: string): string {
-  let end = cwd.length;
-  while (end > 0 && (cwd[end - 1] === '/' || cwd[end - 1] === '\\')) end -= 1;
-  const trimmed = cwd.slice(0, end);
+  const trimmed = trimTrailingSlashes(cwd);
   if (!trimmed) return cwd;
   const slash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
   return slash >= 0 ? trimmed.slice(slash + 1) || cwd : trimmed;
@@ -42,10 +40,13 @@ export function relayProjectName(cwd: string): string {
 /** Live card for a cross-session message (`sessions_send`): Queued → Working → Answered / Failed. */
 export function SessionRelayCard({
   relay,
+  cwd,
   now,
   toolName,
 }: {
   relay: ChatSessionRelay;
+  /** Active chat's project root, used to scope clickable file links in replies. */
+  cwd: string;
   now: number;
   toolName: (name: string) => string;
 }) {
@@ -119,7 +120,7 @@ export function SessionRelayCard({
       {relay.status === 'answered' ? (
         relay.reply ? (
           <div className="gc-relay-body">
-            <Markdown text={relay.reply} />
+            <Markdown text={relay.reply} fileBase={relay.cwd} fileRoot={cwd} />
           </div>
         ) : (
           <div className="gc-relay-live">Took the message.</div>

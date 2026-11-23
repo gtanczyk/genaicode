@@ -196,6 +196,13 @@ export interface AgentSession {
    * own turn instead of steering a running one.
    */
   send(text: string, options?: { note?: boolean; queue?: boolean }): void;
+  /**
+   * Queue a host context block for the next prompt without starting a turn (for example, a reply
+   * from another session). Prepended once on the next turn or live steer, preserved if that turn
+   * fails over or the steer falls back to the queue, and cleared by `reset()`, `clear()`,
+   * `adopt()`, or a fresh agent switch (`handoff: false`).
+   */
+  addContext(text: string): void;
   /** Stop the running turn and drop queued prompts. */
   stop(): void;
   /** Answer a pending approval request. Returns false when no such request is pending. */
@@ -318,6 +325,32 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // A note's turn that a stop cuts short puts the note back: the agent may not have heard it.
   let nextIsNote = false;
   let noteTurn: { id: number; text: string } | undefined;
+  // Host context blocks queued for the next prompt (`addContext()`), preserved across failover and rejected steers.
+  const MAX_PENDING_CONTEXT = 10;
+  let contextEpoch = 0;
+  let pendingContext: string[] = [];
+  type ContextBatch = { texts: string[]; epoch: number; restored: boolean };
+  let turnContext: ContextBatch[] = [];
+  const clearContext = () => {
+    contextEpoch += 1;
+    pendingContext = [];
+    turnContext = [];
+  };
+  const takeContext = (): ContextBatch | undefined => {
+    if (!pendingContext.length) return undefined;
+    const batch: ContextBatch = { texts: pendingContext, epoch: contextEpoch, restored: false };
+    pendingContext = [];
+    return batch;
+  };
+  const restoreContext = (batches: readonly ContextBatch[]) => {
+    const recovered: string[] = [];
+    for (const batch of batches) {
+      if (batch.restored || batch.epoch !== contextEpoch) continue;
+      batch.restored = true;
+      recovered.push(...batch.texts);
+    }
+    if (recovered.length) pendingContext = [...recovered, ...pendingContext].slice(-MAX_PENDING_CONTEXT);
+  };
   const shiftNote = (): string => {
     const [next, ...rest] = state.notes ?? [];
     nextIsNote = true;
@@ -728,6 +761,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       canSteer: false,
     });
     let current: AgentRun;
+    let contextBatch: ContextBatch | undefined;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
       if (left?.spent) throw new Error(left.spent);
@@ -740,11 +774,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
               : []),
           ]
         : [];
+      const basePrompt = rewritten ?? toAgent(prompt);
+      contextBatch = takeContext();
+      const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
       current = turnAgent.run({
         ...options.task,
         ...(extraServers.length ? { mcpServers: [...(options.task?.mcpServers ?? []), ...extraServers] } : {}),
         ...(budget ? { budget } : {}),
-        prompt: preamble + prefix + (rewritten ?? toAgent(prompt)) + suffix,
+        prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
         model: state.model,
         effort: turnEffort,
@@ -753,6 +790,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         onApproval: (request, signal) => onApproval(turnId, request, signal),
         onQuestion: (request, signal) => onQuestion(turnId, request, signal),
       });
+      turnContext = contextBatch ? [contextBatch] : [];
       if (current.pack) {
         const { lead, maxParallel } = current.pack;
         packRuns.set(turnId, {
@@ -766,6 +804,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }));
       }
     } catch (error) {
+      if (contextBatch) restoreContext([contextBatch]);
+      turnContext = [];
       // A throwing transformPrompt (or driver) fails this turn; the queue goes on as usual.
       current = failedRun(error instanceof Error ? error.message : String(error));
     }
@@ -814,7 +854,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           if (sessionId) set({ sessionId });
         }
       }
+      const activeContext = turnContext;
+      turnContext = [];
       if (failOver(turnId, result)) {
+        // Restore host context delivered to the failed turn so the fallback agent hears it too.
+        restoreContext(activeContext);
         // The same prompt again, on the next agent; a note stays a note.
         if (finished && noteTurnWas) nextIsNote = true;
         return startTurn(finished!.prompt, true);
@@ -864,19 +908,24 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const turnController = controller;
       // Transform only what is steered now; a queued prompt is transformed when its turn starts.
       let steerText: string | undefined;
+      let steerContext: ContextBatch | undefined;
       if (current?.steer && state.canSteer && turnId !== undefined && !sendOptions?.queue) {
         try {
-          steerText = toAgent(prompt);
+          const transformed = toAgent(prompt);
+          steerContext = takeContext();
+          steerText = steerContext ? `${steerContext.texts.join('\n\n')}\n\n${transformed}` : transformed;
         } catch {
           // Queued instead: its turn reports the failure.
         }
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
+        if (steerContext) turnContext.push(steerContext);
         addEntry(turnId, { kind: 'input', text: prompt });
         current.steer(steerText).catch(() => {
           // The turn ended before the agent took the input: run it as the next turn instead,
           // unless the user stopped that turn.
           if (closed || turnController?.signal.aborted) return;
+          if (steerContext) restoreContext([steerContext]);
           set({ queued: [...state.queued, prompt] });
           if (state.status === 'idle' && !budgetInReview()) {
             const next = takeNext();
@@ -886,6 +935,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       }
       set({ queued: [...state.queued, prompt] });
+    },
+    addContext(text) {
+      const item = text.trim();
+      if (!item || closed) return;
+      pendingContext = [...pendingContext, item].slice(-MAX_PENDING_CONTEXT);
     },
     stop() {
       checkLifetime.abort();
@@ -971,6 +1025,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     setAgent(next, switchOptions) {
       const carry = handoffOn && switchOptions?.handoff !== false;
+      if (!carry) clearContext();
       if (next === agent) {
         // Switching to the current agent fresh is a reset of its session.
         if (!carry) {
@@ -1010,6 +1065,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       set({ budget });
     },
     reset() {
+      clearContext();
       explicitResume = undefined;
       known.clear();
       missedAfter = undefined;
@@ -1019,6 +1075,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     clear() {
       if (state.status === 'running' || closed) return false;
+      clearContext();
       explicitResume = undefined;
       known.clear();
       missedAfter = undefined;
@@ -1030,6 +1087,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (state.status === 'running' || closed) return false;
       const own = adoptOptions?.sessionId && agent.capabilities.resume ? adoptOptions.sessionId : undefined;
       if (!turns.length && !own) return true;
+      clearContext();
       const before = state.turns.at(-1)?.id ?? 0;
       const adopted = turns.map((turn) => {
         // A handoff of its own belongs to the session it came from.
@@ -1056,6 +1114,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     },
     close() {
       closed = true;
+      clearContext();
       for (const packRun of packRuns.values()) packRun.unsubscribe?.();
       stopArtifacts?.();
       options.questions?.bind(undefined);

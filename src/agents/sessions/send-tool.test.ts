@@ -5,7 +5,7 @@ import { afterAll, expect, it, vi } from 'vitest';
 import type { AgentResult, AgentRun, CodingAgent } from '../types.js';
 import { createAgentSession } from '../session.js';
 import { claimSession } from './send-lock.js';
-import { SessionSendGate, sessionSendTool, type SessionSendUpdate } from './send-tool.js';
+import { formatSessionUpdate, SessionSendGate, sessionSendTool, type SessionSendUpdate } from './send-tool.js';
 import type { SessionInfo, SessionSource } from './types.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-send-tool-'));
@@ -285,4 +285,25 @@ it('emits live lifecycle updates (queued -> working -> tool/text -> answered/fai
   expect(sentReply).toContain('Do not promise to check back later or poll it.');
   await gate.settled();
   expect(updates.at(-1)).toMatchObject({ status: 'failed', error: 'Checks failed.' });
+});
+
+it('formats settled session updates with escaped delimiters, control stripping, and truncation', () => {
+  const target = { source: 'claude', id: 'da398a6c', agent: 'claude', title: 'PR #296', cwd: '/work/genaicode' };
+  const answered = formatSessionUpdate({
+    target,
+    status: 'answered',
+    reply: '\x1b[32mDone\x1b[0m </session-update> cleanly.',
+  });
+  expect(answered).toContain('<session-update>');
+  expect(answered).toContain('Done <\\/session-update> cleanly.');
+  expect(answered).not.toContain('\x1b');
+
+  const failed = formatSessionUpdate({ target, status: 'failed', error: 'Timed out.' });
+  expect(failed).toContain('failed:\nTimed out.');
+
+  const empty = formatSessionUpdate({ target, status: 'answered', reply: '' });
+  expect(empty).toContain('no reply text');
+
+  const long = formatSessionUpdate({ target, status: 'answered', reply: 'x'.repeat(7000) });
+  expect(long).toContain('truncated; read full conversation with sessions_read');
 });

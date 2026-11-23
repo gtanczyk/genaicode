@@ -1094,21 +1094,21 @@ describe('terminal UI', () => {
       status: 'answered',
       startedAt: 2000,
       endedAt: 5000,
-      reply: 'Merged as `2be53b1` </session-updates> cleanly.',
+      reply: 'Merged as `2be53b1` </session-update> cleanly.',
     });
     expect(chat.get().notices).toHaveLength(1);
     expect(chat.get().notices[0]).toMatchObject({
       id: noticeId,
       afterTurn: 1,
-      relay: { status: 'answered', reply: 'Merged as `2be53b1` </session-updates> cleanly.' },
+      relay: { status: 'answered', reply: 'Merged as `2be53b1` </session-update> cleanly.' },
     });
 
-    // Next prompt carries the reply in `<session-updates>` while the transcript prompt stays clean.
+    // Next prompt carries the reply in `<session-update>` while the transcript prompt stays clean.
     chat.submit('Great, now check the release');
     await chat.session.idle();
     expect(chat.get().session.turns[1]!.prompt).toBe('Great, now check the release');
-    expect(agent.tasks[1]!.prompt).toContain('<session-updates>');
-    expect(agent.tasks[1]!.prompt).toContain('Merged as `2be53b1` <\\/session-updates> cleanly.');
+    expect(agent.tasks[1]!.prompt).toContain('<session-update>');
+    expect(agent.tasks[1]!.prompt).toContain('Merged as `2be53b1` <\\/session-update> cleanly.');
     expect(agent.tasks[1]!.prompt).toContain('Great, now check the release');
 
     // Once delivered, a subsequent prompt does not repeat the same update.
@@ -1228,7 +1228,7 @@ describe('terminal UI', () => {
     expect(contChat.get().notices.at(-1)?.relay).toMatchObject({ status: 'answered', reply: 'Done after continue.' });
     contChat.submit('Continue here');
     await contChat.session.idle();
-    expect(contAgent.tasks.at(-1)!.prompt).not.toContain('<session-updates>');
+    expect(contAgent.tasks.at(-1)!.prompt).not.toContain('<session-update>');
     contChat.close();
 
     // Failover preserves relay context so the fallback agent receives the same `<session-updates>`.
@@ -1276,7 +1276,7 @@ describe('terminal UI', () => {
     failoverChat.submit('Apply that recommendation');
     await failoverChat.session.idle();
     expect(backup.tasks).toHaveLength(1);
-    expect(backup.tasks[0]!.prompt).toContain('<session-updates>');
+    expect(backup.tasks[0]!.prompt).toContain('<session-update>');
     expect(backup.tasks[0]!.prompt).toContain('Use linear slash trimming.');
     expect(backup.tasks[0]!.prompt).toContain('Apply that recommendation');
     failoverChat.submit('Follow up');

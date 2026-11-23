@@ -738,6 +738,65 @@ describe('AgentChat', () => {
     expect(failed.querySelector('[role="alert"]')?.textContent).toBe('Session could not be found.');
   });
 
+  it('scopes Markdown file links in relay replies to the target project and active workspace', () => {
+    const onOpenFile = vi.fn();
+    render({
+      onOpenFile,
+      state: fixture({ cwd: '/work/app' }),
+      notices: [
+        {
+          id: 'same-sub',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'claude',
+            sessionId: 's1',
+            cwd: '/work/app/packages/ui',
+            prompt: 'Check file',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply: 'See [button](./src/button.tsx) and [outside](../../../other/secret.ts).',
+          },
+        },
+        {
+          id: 'foreign',
+          afterTurn: 1,
+          text: 'fallback',
+          relay: {
+            agent: 'codex',
+            sessionId: 's2',
+            cwd: '/work/other',
+            prompt: 'Check result',
+            status: 'answered',
+            startedAt: 1000,
+            endedAt: 2000,
+            reply: 'See [result](./src/result.ts) and [abs](/work/other/README.md).',
+          },
+        },
+      ],
+    });
+    const [inWorkspace, foreign] = $$('.gc-relay');
+    // Subdirectory link resolves against relay.cwd and opens inside /work/app.
+    const inButton = inWorkspace!.querySelector<HTMLButtonElement>('button.gc-file-link');
+    expect(inButton?.getAttribute('data-gc-file')).toBe('/work/app/packages/ui/src/button.tsx');
+    act(() => inButton!.click());
+    expect(onOpenFile).toHaveBeenCalledWith('/work/app/packages/ui/src/button.tsx');
+    // Traversal escaping /work/app is rendered as plain non-clickable text.
+    expect(inWorkspace!.querySelectorAll('button.gc-file-link')).toHaveLength(1);
+    expect(inWorkspace!.querySelector('span.gc-file-link')?.getAttribute('title')).toBe('/work/other/secret.ts');
+
+    // Foreign project links never render clickable buttons or open local files.
+    expect(foreign!.querySelectorAll('button.gc-file-link')).toHaveLength(0);
+    const foreignLinks = Array.from(foreign!.querySelectorAll('span.gc-file-link'));
+    expect(foreignLinks.map((el) => el.getAttribute('title'))).toEqual([
+      '/work/other/src/result.ts',
+      '/work/other/README.md',
+    ]);
+    act(() => (foreignLinks[0] as HTMLElement).click());
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
+  });
+
   it('replaces or drops the header, sets the theme', () => {
     render({ header: <div className="mine">Console agent</div>, theme: 'dark' });
     expect($('.gc-header')).toBeNull();

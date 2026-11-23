@@ -92,9 +92,10 @@ export type { Attention, Topic, TopicFolder, TopicStore, TopicSummary } from './
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
-export { SessionSendGate, sessionSendTool } from './send-tool.js';
+export { formatSessionUpdate, SessionSendGate, sessionSendTool } from './send-tool.js';
 export type {
   SessionSendHandler,
+  SessionSendReply,
   SessionSendStatus,
   SessionSendTarget,
   SessionSendToolOptions,

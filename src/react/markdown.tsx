@@ -31,8 +31,61 @@ function withoutPosition(path: string): string {
   return path.slice(0, end);
 }
 
+/** Trim trailing `/` or `\` linearly (no regex backtracking). */
+export function trimTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && (path[end - 1] === '/' || path[end - 1] === '\\')) end -= 1;
+  return path.slice(0, end);
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+/** Resolve a POSIX or Windows file path against `base` (handling `.` and `..`) without `node:path`. */
+export function resolveFilePath(path: string, base: string): string {
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
+  const raw = isAbsolutePath(path) ? path : `${trimTrailingSlashes(base)}/${path}`;
+  const drive = /^[A-Za-z]:/.exec(raw)?.[0] ?? '';
+  const rest = drive ? raw.slice(2) : raw;
+  const rooted = rest.startsWith('/') || rest.startsWith('\\');
+  const parts: string[] = [];
+  for (const segment of rest.split(/[\\/]/)) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (parts.length && parts.at(-1) !== '..') parts.pop();
+      else if (!rooted) parts.push('..');
+    } else {
+      parts.push(segment);
+    }
+  }
+  const joined = parts.join(sep);
+  return drive ? `${drive}${rooted ? sep : ''}${joined}` : `${rooted ? sep : ''}${joined || (rooted ? '' : '.')}`;
+}
+
+/** Whether `target` equals `root` or lies inside it (browser-safe string check). */
+export function isPathWithin(target: string, root: string): boolean {
+  if (!root || !target) return false;
+  const norm = (value: string) => {
+    const clean = trimTrailingSlashes(value.replace(/\\/g, '/'));
+    return clean || (value.startsWith('/') || value.startsWith('\\') ? '/' : '');
+  };
+  const a = norm(target);
+  const b = norm(root);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return b === '/' ? a.startsWith('/') : a.startsWith(`${b}/`);
+}
+
+interface FileLinkScope {
+  /** Base directory for resolving relative file links (`./...`, `../...`). */
+  fileBase?: string;
+  /** When set, only file links resolving inside `fileRoot` render as clickable `data-gc-file` buttons. */
+  fileRoot?: string;
+}
+
 /** `links` is false inside a link label, so no <a> ends up inside another. */
-function inline(text: string, links = true): ReactNode[] {
+function inline(text: string, links = true, files?: FileLinkScope): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let key = 0;
@@ -41,21 +94,27 @@ function inline(text: string, links = true): ReactNode[] {
     const at = match.index ?? 0;
     if (at > last) out.push(text.slice(last, at));
     if (match[1]) out.push(<code key={key++}>{token.slice(1, -1)}</code>);
-    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), links)}</strong>);
-    else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), links)}</del>);
-    else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), links)}</em>);
+    else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), links, files)}</strong>);
+    else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), links, files)}</del>);
+    else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), links, files)}</em>);
     else if (match[5]) {
       const label = inline(token.slice(1, token.indexOf(']')), false);
       out.push(links ? link(match[6], label, key++) : <span key={key++}>{label}</span>);
     } else if (match[8]) {
       // A link to a file on disk, as agents write them: the label, and the path for the host to open.
       const label = inline(token.slice(1, token.indexOf(']')), false);
-      const path = withoutPosition(match[9]);
+      const rawPath = withoutPosition(match[9]);
+      const path = files?.fileBase ? resolveFilePath(rawPath, files.fileBase) : rawPath;
+      const openable = files?.fileRoot !== undefined ? isPathWithin(path, files.fileRoot) : true;
       out.push(
-        links ? (
+        links && openable ? (
           <button key={key++} type="button" className="gc-file-link" data-gc-file={path} title={path}>
             {label}
           </button>
+        ) : links ? (
+          <span key={key++} className="gc-file-link" title={path}>
+            {label}
+          </span>
         ) : (
           <span key={key++}>{label}</span>
         ),
@@ -140,10 +199,25 @@ function task(text: string): { done: boolean; text: string } | undefined {
 const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
 /** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
-export function Markdown({ text, streaming, className }: { text: string; streaming?: boolean; className?: string }) {
+export function Markdown({
+  text,
+  streaming,
+  className,
+  fileBase,
+  fileRoot,
+}: {
+  text: string;
+  streaming?: boolean;
+  className?: string;
+  /** Resolve relative file links (`./...`, `../...`) against this directory. */
+  fileBase?: string;
+  /** Only render file links as clickable buttons when they resolve inside this project root. */
+  fileRoot?: string;
+}) {
+  const files = fileBase !== undefined || fileRoot !== undefined ? { fileBase, fileRoot } : undefined;
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
-      {blocks(text.trimEnd().split('\n'))}
+      {blocks(text.trimEnd().split('\n'), 0, files)}
     </div>
   );
 }
@@ -151,7 +225,7 @@ export function Markdown({ text, streaming, className }: { text: string; streami
 // Deeper quotes render as plain text, so a reply full of '>' cannot exhaust the stack.
 const MAX_QUOTE_DEPTH = 8;
 
-function blocks(lines: string[], depth = 0): ReactNode[] {
+function blocks(lines: string[], depth = 0, files?: FileLinkScope): ReactNode[] {
   const quote = (line: string) => depth < MAX_QUOTE_DEPTH && isQuote(line);
   const out: ReactNode[] = [];
   let i = 0;
@@ -189,7 +263,7 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
     if (title) {
       // h1 in a reply would outrank the host page's own headings.
       const Tag = `h${Math.min(6, title.level + 1)}` as 'h2';
-      out.push(<Tag key={key++}>{inline(title.text)}</Tag>);
+      out.push(<Tag key={key++}>{inline(title.text, true, files)}</Tag>);
       i += 1;
       continue;
     }
@@ -203,7 +277,7 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
       const row = (values: string[], Cell: 'th' | 'td') =>
         aligns.map((align, n) => (
           <Cell key={n} style={align ? { textAlign: align } : undefined}>
-            {inline(values[n] ?? '')}
+            {inline(values[n] ?? '', true, files)}
           </Cell>
         ));
       out.push(
@@ -227,7 +301,7 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
     if (quote(line)) {
       const quoted: string[] = [];
       while (i < lines.length && quote(lines[i])) quoted.push(unquote(lines[i++]));
-      out.push(<blockquote key={key++}>{blocks(quoted, depth + 1)}</blockquote>);
+      out.push(<blockquote key={key++}>{blocks(quoted, depth + 1, files)}</blockquote>);
       continue;
     }
     if (item(line) !== undefined) {
@@ -248,10 +322,10 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
         return box ? (
           <li key={n} className="gc-md-task">
             <input type="checkbox" checked={box.done} disabled />
-            {inline(box.text)}
+            {inline(box.text, true, files)}
           </li>
         ) : (
-          <li key={n}>{inline(text)}</li>
+          <li key={n}>{inline(text, true, files)}</li>
         );
       });
       out.push(
@@ -278,7 +352,7 @@ function blocks(lines: string[], depth = 0): ReactNode[] {
     ) {
       para.push(lines[i++]);
     }
-    out.push(<p key={key++}>{inline(para.join('\n'))}</p>);
+    out.push(<p key={key++}>{inline(para.join('\n'), true, files)}</p>);
   }
   return out;
 }

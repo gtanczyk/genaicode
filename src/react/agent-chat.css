@@ -497,12 +497,12 @@
   padding: 1px 5px;
   cursor: default;
 }
-.gc-opens-files .gc-file-link {
+.gc-opens-files button.gc-file-link {
   background: var(--_accent-soft);
   cursor: pointer;
 }
-.gc-opens-files .gc-file-link:hover,
-.gc-opens-files .gc-file-link:focus-visible {
+.gc-opens-files button.gc-file-link:hover,
+.gc-opens-files button.gc-file-link:focus-visible {
   text-decoration: underline;
 }
 /* A path the host can open. */

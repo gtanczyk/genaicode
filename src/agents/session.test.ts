@@ -903,4 +903,70 @@ describe('createAgentSession', () => {
     expect(session.get()).toMatchObject({ sessionId: 's-1', effort: 'low' });
     expect(() => session.setEffort('high')).toThrow(/keeps the effort/);
   });
+
+  it('delivers addContext() once, preserves it on failover and rejected steer, and drops it on reset', async () => {
+    // 1. Delivered once on the next turn without polluting turn.prompt.
+    const { agent, tasks } = fakeAgent([async () => {}, async () => {}]);
+    const session = createAgentSession({ agent, cwd: '.' });
+    session.addContext('<session-update>Done</session-update>');
+    session.send('Next step');
+    await session.idle();
+    expect(session.get().turns[0]!.prompt).toBe('Next step');
+    expect(tasks[0]!.prompt).toBe('<session-update>Done</session-update>\n\nNext step');
+    session.send('After that');
+    await session.idle();
+    expect(tasks[1]!.prompt).toBe('After that');
+
+    // 2. Preserved when a live steer is rejected and requeued as the next turn.
+    const runs: string[] = [];
+    let rejectSteer!: (error: Error) => void;
+    let finishFirst!: () => void;
+    const steerable: CodingAgent = {
+      name: 'steerable',
+      command: 'steerable',
+      capabilities: { steer: true },
+      run(task): AgentRun {
+        runs.push(task.prompt);
+        if (runs.length === 1) {
+          const done = new Promise<AgentResult>((resolve) => {
+            finishFirst = () => resolve({ status: 'completed', ok: true, exitCode: 0, signal: null });
+          });
+          return {
+            result: done,
+            abort() {},
+            steer: () => new Promise<void>((_resolve, reject) => (rejectSteer = reject)),
+            async *[Symbol.asyncIterator]() {
+              yield { type: 'done', result: await done };
+            },
+          };
+        }
+        const ok: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        return {
+          result: Promise.resolve(ok),
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: ok };
+          },
+        };
+      },
+    };
+    const steerSession = createAgentSession({ agent: steerable, cwd: '.' });
+    steerSession.send('first turn');
+    steerSession.addContext('<session-update>Reply from claude</session-update>');
+    steerSession.send('apply it');
+    finishFirst();
+    await Promise.resolve();
+    rejectSteer(new Error('turn already ended'));
+    await steerSession.idle();
+    expect(runs).toEqual(['first turn', '<session-update>Reply from claude</session-update>\n\napply it']);
+
+    // 3. Dropped by reset(), clear(), and fresh agent switch.
+    const fresh = fakeAgent([async () => {}]);
+    const resetSession = createAgentSession({ agent: fresh.agent, cwd: '.' });
+    resetSession.addContext('<session-update>Old</session-update>');
+    resetSession.reset();
+    resetSession.send('clean');
+    await resetSession.idle();
+    expect(fresh.tasks[0]!.prompt).toBe('clean');
+  });
 });

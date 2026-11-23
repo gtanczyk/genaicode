@@ -312,7 +312,7 @@ export function AgentChat(props: AgentChatProps) {
       const notice = notices.shift()!;
       items.push(
         notice.relay ? (
-          <SessionRelayCard key={`n${notice.id}`} relay={notice.relay} now={now} toolName={toolName} />
+          <SessionRelayCard key={`n${notice.id}`} relay={notice.relay} cwd={state.cwd} now={now} toolName={toolName} />
         ) : (
           <div key={`n${notice.id}`} className={`gc-notice${notice.tone === 'error' ? ' gc-err' : ''}`}>
             {notice.text}
