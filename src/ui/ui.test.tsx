@@ -1818,6 +1818,225 @@ describe('web UI server', () => {
     expect(await done).toBe(0);
   });
 
+  it('serves active chat and stored session transcripts, native save requests, and host toasts', async () => {
+    const stdin = new PassThrough();
+    let errors = '';
+    const stored: SessionInfo = {
+      source: 'echo-store',
+      agent: 'echo',
+      id: 'sess-0195abcdef',
+      where: 'local',
+      cwd: '/w',
+      title: 'Debug chat',
+      path: '/home/me/.echo/sess-0195abcdef.jsonl',
+      state: 'waiting',
+      updatedAt: Date.parse('2026-11-23T20:00:00.000Z'),
+    };
+    const longStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195long',
+      title: 'Very long chat',
+    };
+    const brokenStored: SessionInfo = {
+      ...stored,
+      id: 'sess-0195broken',
+      title: 'Missing rollout',
+    };
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      sessions: {
+        name: 'echo-store',
+        where: 'local',
+        list: async () => [stored, longStored, brokenStored],
+        read: async (info, readOptions) => {
+          if (info.id === brokenStored.id) throw new Error('ENOENT: rollout missing');
+          if (info.id === longStored.id) {
+            readOptions?.onTruncated?.('tail-bytes');
+            return Array.from({ length: 205 }, (_, i) => ({
+              id: i + 1,
+              agent: 'echo',
+              prompt: `Turn ${i + 1}`,
+              entries: [],
+              startedAt: 1,
+            }));
+          }
+          return [
+            {
+              id: 1,
+              agent: 'echo',
+              prompt: 'Stored question',
+              entries: [{ kind: 'text', text: 'Stored answer', streaming: false }],
+              startedAt: Date.parse('2026-11-23T19:59:00.000Z'),
+              endedAt: Date.parse('2026-11-23T19:59:05.000Z'),
+            },
+          ];
+        },
+      },
+    };
+    const done = runWeb({
+      agents: [agent],
+      cwd: '/w',
+      env,
+      version: '2.55.0',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    await until(() => /Open (\S+)/.test(errors));
+    const url = /Open (\S+)/.exec(errors)![1];
+    const token = new URL(url).searchParams.get('token')!;
+    const headers = { 'x-genaicode-token': token };
+
+    // Auth & format validation.
+    expect((await fetch(new URL('/api/transcript', url))).status).toBe(403);
+    expect((await fetch(new URL('/api/transcript?format=xml', url), { headers })).status).toBe(400);
+
+    // Run one turn so active chat has a turn and sessionId ('s-1' from echoAgent).
+    const submitRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: 'Hello transcript' }),
+    });
+    expect(submitRes.status).toBe(200);
+    await until(() => true);
+    let mdText = '';
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const res = await fetch(new URL('/api/transcript?format=md', url), { headers });
+      mdText = await res.text();
+      if (mdText.includes('You said **Hello transcript**')) break;
+      await tick();
+    }
+    expect(mdText).toContain('# Genaicode transcript');
+    expect(mdText).toContain('- **Version:** 2.55.0');
+    expect(mdText).toContain('- **Session ID:** s-1');
+    expect(mdText).toContain('Hello transcript');
+    expect(mdText).toContain('You said **Hello transcript**');
+
+    const jsonRes = await fetch(new URL('/api/transcript?format=json', url), { headers });
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.headers.get('x-genaicode-filename')).toMatch(/^genaicode-echo-s-1\.json$/);
+    const jsonBody = (await jsonRes.json()) as { format: string; sessionId: string; session: { turns: unknown[] } };
+    expect(jsonBody.format).toBe('genaicode-transcript');
+    expect(jsonBody.sessionId).toBe('s-1');
+    expect(jsonBody.session.turns).toHaveLength(1);
+
+    // Stored session transcript (meta, md, json, and 404 on unknown).
+    const storedMeta = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=meta', url), {
+      headers,
+    });
+    expect(storedMeta.status).toBe(200);
+    expect(await storedMeta.json()).toMatchObject({
+      agent: 'echo',
+      source: 'echo-store',
+      sessionId: 'sess-0195abcdef',
+      sessionPath: '/home/me/.echo/sess-0195abcdef.jsonl',
+      turns: 1,
+      readable: true,
+    });
+    const storedMd = await fetch(new URL('/api/sessions/echo-store/sess-0195abcdef/transcript?format=md', url), {
+      headers,
+    });
+    expect(storedMd.status).toBe(200);
+    const storedMdText = await storedMd.text();
+    expect(storedMdText).toContain('# Session transcript');
+    expect(storedMdText).toContain('Stored question');
+    expect(storedMdText).toContain('Stored answer');
+    expect(
+      (await fetch(new URL('/api/sessions/echo-store/missing/transcript?format=md', url), { headers })).status,
+    ).toBe(404);
+
+    // Truncated stored session discloses incompleteness in meta, JSON, and Markdown.
+    const longJsonRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=json', url), {
+      headers,
+    });
+    expect(longJsonRes.status).toBe(200);
+    const longJson = (await longJsonRes.json()) as {
+      truncated: boolean;
+      truncatedReason?: string;
+      turns: Array<{ id: number; prompt: string }>;
+    };
+    expect(longJson.truncated).toBe(true);
+    expect(longJson.truncatedReason).toContain('8 MB');
+    expect(longJson.truncatedReason).toContain('200 turns');
+    expect(longJson.turns).toHaveLength(200);
+    expect(longJson.turns[0]?.prompt).toBe('Turn 6');
+
+    const longMdRes = await fetch(new URL('/api/sessions/echo-store/sess-0195long/transcript?format=md', url), {
+      headers,
+    });
+    expect(longMdRes.status).toBe(200);
+    expect(await longMdRes.text()).toContain('> **Note:** Only the last 8 MB');
+
+    // Read failures surface as HTTP 500 instead of silently exporting empty turns.
+    const brokenRes = await fetch(new URL('/api/sessions/echo-store/sess-0195broken/transcript?format=md', url), {
+      headers,
+    });
+    expect(brokenRes.status).toBe(500);
+    expect(await brokenRes.json()).toEqual({ error: 'Could not read the session transcript.' });
+
+    // Continuing a truncated session preserves truncation metadata on active-chat exports, and /clear resets it.
+    const contRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'continue', id: longStored.id }),
+    });
+    expect(contRes.status).toBe(200);
+    const adoptedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(adoptedMeta).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('latest 100 turns were loaded'),
+    });
+    const adoptedJson = await (await fetch(new URL('/api/transcript?format=json', url), { headers })).json();
+    expect(adoptedJson).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('8 MB'),
+    });
+    const adoptedMd = await (await fetch(new URL('/api/transcript?format=md', url), { headers })).text();
+    expect(adoptedMd).toContain('- **Incomplete:** Only the last 8 MB');
+
+    await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: '/clear' }),
+    });
+    const clearedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(clearedMeta.truncated).toBeUndefined();
+
+    // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
+    const events = await fetch(new URL('/api/events', url), { headers });
+    const reader = events.body!.getReader();
+    let seen = '';
+    const read = async (wanted: string) => {
+      while (!seen.includes(wanted)) seen += new TextDecoder().decode((await reader.read()).value);
+    };
+    await read('event: config');
+    expect(seen).toContain('"nativeSave":true');
+
+    const save = (body: unknown) =>
+      fetch(new URL('/api/save-transcript', url), {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await save({ format: 'xml' })).status).toBe(400);
+    expect((await save({ format: 'md', source: 'only-source' })).status).toBe(400);
+    expect((await save({ format: 'md' })).status).toBe(200);
+    expect(errors).toContain('Save transcript md\n');
+    expect((await save({ format: 'json', source: 'echo-store', id: 'sess-0195abcdef' })).status).toBe(200);
+    expect(errors).toContain('Save session-transcript json echo-store sess-0195abcdef\n');
+
+    stdin.write('toast Copied session ID\n');
+    await read('event: toast\ndata: {"text":"Copied session ID"}');
+
+    await reader.cancel();
+    stdin.end();
+    expect(await done).toBe(0);
+  });
+
   it('stops when stdin ended while it was still starting', async () => {
     const stdin = new PassThrough();
     stdin.end();

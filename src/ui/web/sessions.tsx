@@ -10,6 +10,7 @@ import {
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
 import { SessionReply } from './session-reply.js';
+import { TranscriptMenu } from './transcript-menu.js';
 import {
   ago,
   canContinueHere,
@@ -88,6 +89,8 @@ export function Sessions({
   onAllTopics,
   own,
   onAllSessions,
+  nativeSave,
+  onStatus,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
@@ -106,6 +109,10 @@ export function Sessions({
   own?: boolean;
   /** Back to every agent's sessions. */
   onAllSessions?(): void;
+  /** Desktop host handles Save File dialogs natively. */
+  nativeSave?: boolean;
+  /** Brief feedback after copying or downloading a session's ID or transcript. */
+  onStatus?(message: string, isError?: boolean): void;
 }) {
   const [days, setDays] = useState(7);
   const [listing, setListing] = useState<WebSessionListing>();
@@ -470,6 +477,18 @@ export function Sessions({
                         {copied === session.id ? 'Copied' : 'Copy resume command'}
                       </button>
                     ) : null}
+                    <TranscriptMenu
+                      token={token}
+                      endpoint={`/api/sessions/${encodeURIComponent(session.source)}/${encodeURIComponent(session.id)}/transcript`}
+                      sessionId={session.id}
+                      sessionPath={session.path}
+                      storedSession={{ source: session.source, id: session.id }}
+                      nativeSave={nativeSave}
+                      label="⋯"
+                      ariaLabel={`Copy ID or transcript for ${session.title ?? session.id}`}
+                      title="Copy session ID, file path or transcript"
+                      onStatus={onStatus}
+                    />
                   </span>
                 </div>,
                 replying && sender ? (

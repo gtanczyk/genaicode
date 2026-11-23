@@ -34,9 +34,11 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
+import { formatTruncationReason } from './transcript.js';
 import {
   startWebUi,
   type HostApp,
+  type HostSaveRequest,
   type HostUpdate,
   type WebAsset,
   type WebSettings,
@@ -253,12 +255,17 @@ export async function runChat(options: WebRunOptions): Promise<number> {
 
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
+/** Short status toast from the host app (e.g. after a native Developer menu action copies or saves). */
+const TOAST_LINE = /^toast ([^\r\n\0]{1,160})$/;
 /** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
 const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;
 /** What the host app writes to stdin when settings change from its native menu. */
 const SETTINGS_IN_PREFIX = 'settings ';
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
+/** Prefixes printed on stderr when the page asks the host app to save a transcript via its native dialog. */
+export const SAVE_TRANSCRIPT_PREFIX = 'Save transcript ';
+export const SAVE_SESSION_TRANSCRIPT_PREFIX = 'Save session-transcript ';
 /** What the host app reads from stderr when Check again asks to re-read the login shell environment. */
 export const REFRESH_ENV_LINE = 'Refresh env';
 /** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
@@ -277,11 +284,11 @@ interface ManagedHostApp extends HostApp {
 /**
  * The other end of an app that started the server with `--exit-with-stdin` (the desktop app). It
  * says `update-downloading <version>` on stdin while it downloads a newer version of itself,
- * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
- * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
- * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr. `open-session <id>`
- * brings a session from the menu bar directly into the chat, and the app listens for
- * `Reveal <json-path>` and `Settings <json>` lines on stderr.
+ * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself,
+ * `update-none` when a download failed, `toast <message>` after native actions, and
+ * `open-session <id>` when a waiting session is clicked in the menu bar; the page shows each and
+ * can ask stderr to relaunch, open a native Save dialog for a transcript, `Reveal <json-path>`, or
+ * persist `Settings <json>`.
  *
  * When started by the desktop shell (`GENAICODE_DESKTOP_SHELL=1`), clicking Check again prints
  * `REFRESH_ENV_LINE` on stderr and the shell replies with `env <json>` containing the refreshed
@@ -295,6 +302,7 @@ function hostApp(
   let update: HostUpdate | undefined;
   let rest = '';
   const listeners = new Set<() => void>();
+  const toastListeners = new Set<(text: string) => void>();
   let envRefresh: Promise<void> | undefined;
   let resolveEnv: (() => void) | undefined;
   let envTimer: ReturnType<typeof setTimeout> | undefined;
@@ -333,6 +341,12 @@ function hostApp(
       if (!line) continue;
       if (line.startsWith('env ')) {
         applyEnvLine(line.slice(4));
+        continue;
+      }
+      const toast = TOAST_LINE.exec(line);
+      if (toast) {
+        const text = toast[1]!.trim();
+        if (text) for (const listener of toastListeners) listener(text);
         continue;
       }
       const openMatch = OPEN_SESSION_LINE.exec(line);
@@ -378,6 +392,19 @@ function hostApp(
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    saveTranscript: (request: HostSaveRequest) => {
+      if (request.source && request.id) {
+        options.stderr.write(
+          `${SAVE_SESSION_TRANSCRIPT_PREFIX}${request.format} ${encodeURIComponent(request.source)} ${encodeURIComponent(request.id)}\n`,
+        );
+      } else {
+        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}\n`);
+      }
+    },
+    onToast(listener) {
+      toastListeners.add(listener);
+      return () => toastListeners.delete(listener);
+    },
     reveal: (path) => void options.stderr.write(`${REVEAL_PREFIX}${JSON.stringify(path)}\n`),
     saveSettings: (settings) => void options.stderr.write(`${SETTINGS_PREFIX}${JSON.stringify(settings)}\n`),
     ...(canRefreshEnv
@@ -697,6 +724,46 @@ function webLink(
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
       archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
+      sessionFile: async ({ agent, sessionId }) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const ownName = agents.find((candidate) => candidate.name === agent)?.sessions?.name;
+        const own = ownName ? sources.filter((source) => source.name === ownName) : [];
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        if (own.length) {
+          const direct = await findSession(own, sessionId, query).catch(() => undefined);
+          if (direct?.session.path) return direct.session.path;
+        }
+        const found = await findSession(sources, sessionId, query).catch(() => undefined);
+        return found?.session.path;
+      },
+      sessionTranscript: async (sourceName, id) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const store = sources.find((candidate) => candidate.name === sourceName);
+        if (!store) return undefined;
+        const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
+        const found = await findSession([store], id, query);
+        if (!found) return undefined;
+        const readable = typeof store.read === 'function';
+        if (!readable) return { session: found.session, turns: [], readable: false };
+        const maxTurns = 200;
+        const reasons = new Set<'max-turns' | 'tail-bytes'>();
+        let turns = await store.read!(found.session, {
+          maxTurns: maxTurns + 1,
+          maxToolOutput: 8_000,
+          onTruncated: (reason) => reasons.add(reason),
+        });
+        if (turns.length > maxTurns) {
+          reasons.add('max-turns');
+          turns = turns.slice(-maxTurns).map((turn, index) => ({ ...turn, id: index + 1 }));
+        }
+        const truncatedReason = formatTruncationReason(reasons, maxTurns, 'exported');
+        return {
+          session: found.session,
+          turns,
+          readable: true,
+          ...(truncatedReason ? { truncated: true, truncatedReason } : {}),
+        };
+      },
     }).catch((error: unknown) => {
       running = undefined;
       throw error;

@@ -7,13 +7,17 @@ const TAIL_BYTES = 8 * 1024 * 1024;
 const MAX_COMPRESSED = 32 * 1024 * 1024;
 
 /** The JSON lines of the last megabytes of a transcript file. */
-export async function transcriptLines(file: string): Promise<unknown[]> {
+export async function transcriptLines(
+  file: string,
+  options?: Pick<SessionReadOptions, 'onTruncated'>,
+): Promise<unknown[]> {
   const handle = await fs.open(file, 'r');
   try {
     const { size } = await handle.stat();
     if (size <= TAIL_BYTES) return parse((await handle.readFile('utf8')).split('\n'));
     const tail = Buffer.alloc(TAIL_BYTES);
     await handle.read(tail, 0, TAIL_BYTES, size - TAIL_BYTES);
+    options?.onTruncated?.('tail-bytes');
     // The cut falls inside a line.
     return parse(tail.toString('utf8').split('\n').slice(1));
   } finally {
@@ -42,8 +46,9 @@ export async function zstdFile(file: string): Promise<Buffer | undefined> {
 }
 
 /** The JSON lines at the end of a transcript that is already in memory. */
-export function linesOf(data: Buffer): unknown[] {
+export function linesOf(data: Buffer, options?: Pick<SessionReadOptions, 'onTruncated'>): unknown[] {
   if (data.length <= TAIL_BYTES) return parse(data.toString('utf8').split('\n'));
+  options?.onTruncated?.('tail-bytes');
   return parse(
     data
       .subarray(data.length - TAIL_BYTES)
@@ -112,7 +117,9 @@ export function transcriptBuilder(agent: string, options: SessionReadOptions = {
     },
     /** The latest `maxTurns` turns, each ended: a session that was read is not running here. */
     turns(): SessionTurn[] {
-      const kept = turns.slice(-(options.maxTurns ?? 100));
+      const limit = options.maxTurns ?? 100;
+      if (turns.length > limit) options.onTruncated?.('max-turns');
+      const kept = turns.slice(-limit);
       return kept.map((turn, index) => {
         const last = turn.entries.findLast((entry) => entry.kind === 'text');
         return {

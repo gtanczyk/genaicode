@@ -29,6 +29,7 @@ import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
 import { ProjectTeamDialog } from './project-team.js';
 import { TowerInboxPanel } from './tower-inbox.js';
+import { TranscriptMenu } from './transcript-menu.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
 const style = document.createElement('style');
@@ -176,6 +177,8 @@ interface PageConfig {
   uploads?: boolean;
   projectTeams?: boolean;
   files?: boolean;
+  /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
+  nativeSave?: boolean;
   reveal?: boolean;
   artifactCdn?: string[];
   canConfigureCdn?: boolean;
@@ -323,7 +326,7 @@ function useAllLimits(active: boolean): Array<RateLimit & { agent: string }> {
   return limits;
 }
 
-function useView(): {
+function useView(onToast?: (text: string) => void): {
   view?: ChatView;
   config?: PageConfig;
   release?: UiRelease;
@@ -335,6 +338,8 @@ function useView(): {
   const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
   const [rejected, setRejected] = useState(!token);
+  const toastRef = useRef(onToast);
+  toastRef.current = onToast;
   useEffect(() => {
     if (!token) return;
     const abort = new AbortController();
@@ -381,6 +386,9 @@ function useView(): {
               setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
               setConfig(JSON.parse(payload) as PageConfig);
+            } else if (event === 'toast') {
+              const parsed = JSON.parse(payload) as { text?: string };
+              if (parsed.text) toastRef.current?.(parsed.text);
             }
           }
         }
@@ -791,7 +799,15 @@ function WhatsNew({ release }: { release: UiRelease }) {
 
 function App() {
   const root = document.getElementById('root')!;
-  const { view, config, release, connected, rejected } = useView();
+  const [toast, setToast] = useState<{ text: string; error?: boolean }>();
+  const toastTimer = useRef<number>(undefined);
+  const showToast = (text: string, error = false) => {
+    setToast({ text, error });
+    if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
+  };
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+  const { view, config, release, connected, rejected } = useView((text) => showToast(text));
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
   // Said at once: installing takes a few seconds before the app goes away.
   const [relaunching, setRelaunching] = useState(false);
@@ -1070,7 +1086,22 @@ function App() {
         <span className="spacer" />
         {view && session ? (
           <>
-            {session.sessionId ? <span className="chip">session {shortId(session.sessionId)}</span> : null}
+            {session.sessionId || session.turns.length ? (
+              <TranscriptMenu
+                token={token}
+                endpoint="/api/transcript"
+                sessionId={session.sessionId}
+                nativeSave={config?.nativeSave}
+                label={session.sessionId ? `session ${shortId(session.sessionId)} ▾` : 'Transcript ▾'}
+                title={
+                  session.sessionId
+                    ? `Session ${session.sessionId} — copy ID, file path or transcript`
+                    : 'Copy or save conversation transcript'
+                }
+                buttonClassName="chip"
+                onStatus={showToast}
+              />
+            ) : null}
             {usage ? <span className="chip">{usage}</span> : null}
             {inSetup && (session.turns.length > 0 || showAgents) ? (
               <button
@@ -1238,6 +1269,8 @@ function App() {
           onAllTopics={() => setTopic(undefined)}
           own={own}
           onAllSessions={() => setOwn(false)}
+          nativeSave={config?.nativeSave}
+          onStatus={showToast}
           onNewTopicChat={isHome ? startTopicChat : undefined}
           onContinue={(found) => {
             // The chat says what happened, also when it could not.
@@ -1461,6 +1494,11 @@ function App() {
           />
         ) : null}
       </div>
+      {toast ? (
+        <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
+          {toast.text}
+        </div>
+      ) : null}
     </>
   );
 }

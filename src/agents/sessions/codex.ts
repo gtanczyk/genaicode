@@ -472,11 +472,11 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));
       if (turns?.length) return turns;
       if (!session.path) throw new Error(`Session ${session.id} has no rollout file.`);
-      const plain = await transcriptLines(session.path).catch(() => undefined);
+      const plain = await transcriptLines(session.path, readOptions).catch(() => undefined);
       if (plain) return codexTranscript(plain, readOptions);
       const packed = await zstdFile(`${session.path}.zst`);
       if (!packed) throw new Error(`Cannot read the rollout of session ${session.id}.`);
-      return codexTranscript(linesOf(packed), readOptions);
+      return codexTranscript(linesOf(packed, readOptions), readOptions);
     },
   };
 }
