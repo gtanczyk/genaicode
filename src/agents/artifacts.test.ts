@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ArtifactError, artifactResponse, createArtifactStore, startArtifactChannel } from './artifacts.js';
+import { contentSecurityPolicy, normalizeScriptHost, normalizeScriptHosts } from './media.js';
 import { createAgentSession } from './session.js';
 import type { AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
@@ -101,6 +102,95 @@ describe('artifact store', () => {
     expect(artifactResponse(file, Buffer.alloc(0)).headers['content-disposition']).toBe(
       'attachment; filename="data.bin"',
     );
+    // Download option forces attachment disposition even for HTML.
+    expect(artifactResponse(page, Buffer.alloc(0), { download: true }).headers['content-disposition']).toBe(
+      'attachment; filename="Report-Q3-x.html"',
+    );
+  });
+
+  it('keeps version history so read(id, version) can serve earlier versions and trims superseded versions first', async () => {
+    const store = createArtifactStore({ cwd, maxTotalBytes: 25 });
+    const v1 = await store.publish({ title: 'Plan', name: 'plan', content: '1234567890', format: 'markdown' });
+    const v2 = await store.publish({ title: 'Plan', name: 'plan', content: 'abcdefghij', format: 'markdown' });
+    expect(v2.id).toBe(v1.id);
+    expect(v2.version).toBe(2);
+    expect(store.read(v1.id)?.body.toString()).toBe('abcdefghij');
+    expect(store.read(v1.id, 1)?.body.toString()).toBe('1234567890');
+    expect(store.read(v1.id, 2)?.body.toString()).toBe('abcdefghij');
+    expect(store.read(v1.id, 99)).toBeUndefined();
+    expect(store.versions?.(v1.id).map((a) => a.version)).toEqual([1, 2]);
+    // Exceeding maxTotalBytes drops superseded v1 before dropping the artifact itself.
+    await store.publish({ title: 'Other', content: '0123456789' });
+    expect(store.read(v1.id, 1)).toBeUndefined();
+    expect(store.read(v1.id, 2)?.body.toString()).toBe('abcdefghij');
+    expect(store.list()).toHaveLength(2);
+  });
+
+  it('publishes files across dynamic multi-root lists (session cwd first, worktrees under .genaicode)', async () => {
+    const second = mkdtempSync(join(root, 'session-b-'));
+    const worktree = join(cwd, '.genaicode', 'worktrees', 't1');
+    mkdirSync(worktree, { recursive: true });
+    writeFileSync(join(second, 'only-b.html'), '<h1>B</h1>');
+    writeFileSync(join(second, 'report.html'), '<h1>From B</h1>');
+    writeFileSync(join(worktree, 'wt.html'), '<h1>Worktree</h1>');
+    writeFileSync(join(worktree, '.env'), 'SECRET=1');
+    let roots = [cwd];
+    const store = createArtifactStore({ cwd: () => roots });
+    // Before session B is opened, its files are refused.
+    await expect(store.publish({ title: 'B', path: join(second, 'only-b.html') })).rejects.toBeInstanceOf(
+      ArtifactError,
+    );
+    // Once session B and the pack worktree join roots, they are readable; session cwd still wins for relative names.
+    roots = [cwd, second, worktree];
+    const firstWins = await store.publish({ title: 'First', path: 'report.html' });
+    expect(store.read(firstWins.id)?.body.toString()).toBe('<h1>Report</h1>');
+    const fromB = await store.publish({ title: 'From B', path: 'only-b.html' });
+    expect(store.read(fromB.id)?.body.toString()).toBe('<h1>B</h1>');
+    const fromWt = await store.publish({ title: 'WT', path: join(worktree, 'wt.html') });
+    expect(store.read(fromWt.id)?.body.toString()).toBe('<h1>Worktree</h1>');
+    // Secrets inside a worktree are still refused.
+    await expect(store.publish({ title: 'Env', path: join(worktree, '.env') })).rejects.toBeInstanceOf(ArtifactError);
+  });
+
+  it('snapshots CSP headers for opt-in allowScriptHosts and updates the tool description', async () => {
+    expect(contentSecurityPolicy('html')).toBe(
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'; webrtc 'block'; sandbox allow-scripts",
+    );
+    expect(contentSecurityPolicy('html', ['cdn.jsdelivr.net', 'unpkg.com'])).toBe(
+      "default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; img-src data: blob:; media-src data: blob:; font-src data: https://cdn.jsdelivr.net https://unpkg.com; form-action 'none'; base-uri 'none'; webrtc 'block'; sandbox allow-scripts",
+    );
+    expect(contentSecurityPolicy('image')).toBe(
+      "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+    );
+    expect(contentSecurityPolicy('pdf')).toBe(
+      "default-src 'none'; object-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+    );
+    expect(contentSecurityPolicy('text')).toBe("default-src 'none'; style-src 'unsafe-inline'; sandbox");
+
+    // Host normalization and injection rejection.
+    expect(normalizeScriptHost('CDN.jsDelivr.net')).toBe('https://cdn.jsdelivr.net');
+    expect(normalizeScriptHost('http://127.0.0.1:8080')).toBe('http://127.0.0.1:8080');
+    expect(normalizeScriptHost('http://public.example')).toBeUndefined();
+    expect(normalizeScriptHost('*.jsdelivr.net')).toBeUndefined();
+    expect(normalizeScriptHost("cdn.jsdelivr.net; connect-src 'self'")).toBeUndefined();
+    expect(normalizeScriptHost('cdn.jsdelivr.net/path')).toBeUndefined();
+    expect(normalizeScriptHost('javascript:alert(1)')).toBeUndefined();
+    expect(() => normalizeScriptHosts(['*'])).toThrow(/Invalid script host/);
+
+    // Dynamic allowScriptHosts reflects immediately in tool description and artifactResponse.
+    let hosts: string[] = [];
+    const store = createArtifactStore({ cwd, allowScriptHosts: () => hosts });
+    const tool = store.tool();
+    expect(tool.description).toContain('nothing loads from a CDN');
+    hosts = ['cdn.jsdelivr.net', 'unpkg.com'];
+    expect(tool.description).toContain('https://cdn.jsdelivr.net, https://unpkg.com');
+    expect(tool.description).toContain('Subresource Integrity');
+    const page = await store.publish({ title: 'Chart', content: '<h1>Chart</h1>', format: 'html' });
+    const res = artifactResponse(page, store.read(page.id)!.body, { allowScriptHosts: store.allowScriptHosts?.() });
+    expect(res.headers['content-security-policy']).toContain(
+      "script-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com",
+    );
+    expect(res.headers['content-security-policy']).not.toContain('connect-src');
   });
 });
 

@@ -332,6 +332,17 @@ export type {
   ArtifactChannelOptions,
   ArtifactStore,
   ArtifactResponse,
+  ArtifactResponseRequest,
   ArtifactStoreOptions,
   PublishArtifact,
 } from './agents/artifacts.js';
+export {
+  contentHeaders,
+  contentSecurityPolicy,
+  DEFAULT_ARTIFACT_CDN_HOSTS,
+  MEDIA_TYPES,
+  mediaTypeFor,
+  normalizeScriptHost,
+  normalizeScriptHosts,
+} from './agents/media.js';
+export type { ContentHeaderOptions, ContentKind, MediaType, RootsInput } from './agents/media.js';
