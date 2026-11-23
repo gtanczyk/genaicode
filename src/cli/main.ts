@@ -107,6 +107,8 @@ import {
   defaultUpdateDeps,
   findInstall,
   installCommand,
+  installedReleaseNotes,
+  readVersion,
   shadowingCommand,
   registerRun,
   selfInstall,
@@ -235,6 +237,7 @@ Usage:
   genaicode embed [options] [request]  Have an agent add genaicode to the project here
   genaicode acp [options]              Serve the Agent Client Protocol on stdin/stdout
   genaicode install [options]          Install "genaicode" as a command that updates itself
+  genaicode whats-new                  Show release notes for the installed version
   genaicode update [options]           Update the installed genaicode command
 
 Install options (macOS, Linux; same as scripts/install.sh):
@@ -443,7 +446,7 @@ export async function main(cli: CliEnvironment): Promise<number> {
   }
 
   const updater: UpdateDeps = { ...defaultUpdateDeps(cli.env), ...cli.updater };
-  const quick = ['help', 'version', 'update', 'self-install', 'install'].includes(command.kind);
+  const quick = ['help', 'version', 'whats-new', 'update', 'self-install', 'install'].includes(command.kind);
   // Machine-readable output and protocol servers get no banner and start no updater.
   const machine = command.kind === 'acp' || command.kind === 'sessions-mcp' || ('json' in command && command.json);
   if (!quick && !machine) autoUpdate(updater, (line) => cli.stderr.write(`${line}\n`));
@@ -468,6 +471,14 @@ function dispatch(
     case 'version':
       cli.stdout.write(`${packageVersion()}\n`);
       return EXIT_OK;
+    case 'whats-new': {
+      const version = readVersion(updater.packageRoot);
+      const notes = installedReleaseNotes(version, undefined, updater.packageRoot);
+      cli.stdout.write(
+        `${notes || `Genaicode ${version} · https://github.com/gtanczyk/genaicode/releases/tag/v${version}`}\n`,
+      );
+      return EXIT_OK;
+    }
     case 'agents':
       return listAgents(cli, agents, command.json);
     case 'sessions':

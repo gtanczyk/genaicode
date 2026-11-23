@@ -42,6 +42,7 @@ import {
   type WebSettings,
   type WebUi,
 } from './web/server.js';
+import { uiRelease } from './web/release.js';
 
 export { NoAgentError };
 
@@ -213,7 +214,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   const chatOptions: WebRunOptions = { ...options, env: liveEnv };
   const roots = makeRoots(chatOptions, () => controller, localRoots);
   const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
-  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, inspector);
+  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, undefined, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     chatOptions,
     () => controller,
@@ -423,7 +424,14 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   const host = watchEnd
     ? hostApp(options, liveEnv, { onOpenSession: openSession, onSettings: setArtifactCdn })
     : undefined;
-  const webOptions: WebRunOptions = { ...options, env: liveEnv, ...(host ? { hostApp: host } : {}) };
+  const desktopVersion = host && liveEnv.GENAICODE_DESKTOP_VERSION;
+  const webOptions: WebRunOptions = {
+    ...options,
+    env: liveEnv,
+    ...(desktopVersion ? { version: desktopVersion } : {}),
+    ...(host ? { hostApp: host } : {}),
+  };
+  const release = uiRelease(webOptions.version, liveEnv, !!desktopVersion);
   const inspector = createAgentInspector({
     agents: webOptions.agents,
     getEnv: () => liveEnv,
@@ -447,7 +455,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, inspector);
+  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     webOptions,
     () => controller,
@@ -580,6 +588,7 @@ function webLink(
   roots: RootsInput,
   addRoot: (dir: string) => void,
   settings?: WebSettings,
+  release = uiRelease(options.version, options.env ?? process.env, false),
   inspector?: AgentInspector,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
@@ -607,6 +616,7 @@ function webLink(
       token: options.token,
       hostApp: options.hostApp,
       ...(inspector ? { agents: (query) => inspector.check(query) } : {}),
+      release,
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.

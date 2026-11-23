@@ -20,6 +20,7 @@ import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
+import { uiRelease } from './web/release.js';
 import { parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
@@ -1750,6 +1751,22 @@ describe('web UI server', () => {
     expect(pipe.isPaused()).toBe(true);
     expect(pipe.listenerCount('end')).toBe(0);
     rmSync(empty, { recursive: true, force: true });
+  });
+
+  it('announces the desktop release once per version and includes releases skipped since the last launch', () => {
+    const env = { GENAICODE_HOME: mkdtempSync(join(bin, 'release-')) };
+    const first = uiRelease('2.35.0', env, true)();
+    expect(first).toMatchObject({ announce: true, previous: undefined });
+
+    const newer = uiRelease('2.36.0', env, true);
+    const notes = newer();
+    expect(notes).toMatchObject({ announce: true, previous: '2.35.0', version: '2.36.0' });
+    expect(notes.notes).toContain('## 2.35.1');
+    expect(notes.notes).not.toContain('## 2.35.0');
+    expect(newer()).toMatchObject({ announce: false, notes: notes.notes });
+    expect(uiRelease('2.36.0', env, true)().announce).toBe(false);
+    expect(uiRelease('2.35.0', env, false)().announce).toBe(false);
+    expect(uiRelease('2.36.0', env, true)().announce).toBe(false);
   });
 
   it('offers the relaunch its host app announced on stdin, and passes the click back', async () => {
