@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { supportHelp } from '../support.js';
 import { neutralHomeDir, saveConversation } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { parseCli, UsageError } from './args.js';
@@ -684,10 +685,11 @@ describe('parseCli', () => {
 });
 
 describe('genaicode CLI', () => {
-  it('prints help with the 1.x fallback', async () => {
+  it('prints help with support, bug reports and the 1.x fallback', async () => {
     const { cli, out } = environment({ argv: [] });
     expect(await main(cli)).toBe(EXIT_OK);
     expect(out()).toBe(helpText);
+    expect(out()).toContain(supportHelp);
     expect(out()).toContain('npx genaicode@1');
     expect(out()).toContain('github.com/gtanczyk/genaicode/tree/1.x');
   });

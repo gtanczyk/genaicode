@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- The desktop Help menu, browser UI and terminal help link to support and bug reports (#331)
+
 ## 3.2.0 — 2026-11-23
 
 ### Added

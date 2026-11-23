@@ -30,7 +30,7 @@ use std::{
 };
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID},
     tray::TrayIconBuilder,
     webview::{DownloadEvent, NewWindowResponse},
     AppHandle, Manager, RunEvent, Url, WebviewWindowBuilder, WindowEvent, Wry,
@@ -45,6 +45,9 @@ const DEV_COPY_MD: &str = "dev:copy-md";
 const DEV_COPY_JSON: &str = "dev:copy-json";
 const DEV_SAVE_MD: &str = "dev:save-md";
 const DEV_SAVE_JSON: &str = "dev:save-json";
+const SUPPORT_URL: &str = "https://github.com/gtanczyk/genaicode/blob/master/docs/SUPPORT.md";
+const BUG_REPORT_URL: &str =
+    "https://github.com/gtanczyk/genaicode/issues/new?template=bug_report.md";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
 /// `deny:<question>` and `open:<index of the session in the last snapshot>`, which shows the window.
 const TRAY: &str = "tower";
@@ -894,6 +897,10 @@ fn on_menu(app: &AppHandle, id: &str) {
                 session: None,
             },
         );
+    } else if matches!(id, SUPPORT_URL | BUG_REPORT_URL) {
+        if let Err(error) = app.opener().open_url(id, None::<&str>) {
+            fail(app, format!("Could not open {id} in your browser: {error}"));
+        }
     } else if id == QUIT {
         app.exit(0);
     } else if let Some(ask) = id.strip_prefix("approve:") {
@@ -1069,6 +1076,16 @@ pub fn run() {
                 None::<&str>,
             )?;
             let menu = Menu::default(handle)?;
+            if let Some(help) = menu
+                .get(HELP_SUBMENU_ID)
+                .as_ref()
+                .and_then(|item| item.as_submenu())
+            {
+                for (label, url) in [("Get Help", SUPPORT_URL), ("Report a Bug…", BUG_REPORT_URL)]
+                {
+                    help.append(&MenuItem::with_id(handle, url, label, true, None::<&str>)?)?;
+                }
+            }
             // Under the app's own menu on macOS, where such an item is looked for; elsewhere under
             // the last one, Help.
             let menus = menu.items()?;

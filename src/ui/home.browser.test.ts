@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { expect, it, vi } from 'vitest';
+import { BUG_REPORT_URL, SUPPORT_URL } from '../support.js';
 import { neutralHomeDir, writeTopics, type SessionInfo } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
@@ -152,6 +153,16 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     const chat = page.getByRole('log');
     const composer = page.locator('textarea');
     await composer.fill('co tam?');
+    const support = page.getByRole('navigation', { name: 'Support' });
+    expect(await support.getByRole('link', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
+    await page.context().route(BUG_REPORT_URL, (route) => route.fulfill({ body: 'Bug report' }), { times: 1 });
+    const [report] = await Promise.all([
+      page.waitForEvent('popup'),
+      support.getByRole('link', { name: 'Report a bug' }).click(),
+    ]);
+    expect(report.url()).toBe(BUG_REPORT_URL);
+    await report.close();
+    expect(await composer.inputValue()).toBe('co tam?');
     await composer.press('Enter');
     await chat.getByText('Status from sessions:').waitFor();
     expect(realpathSync(runs[0]!.cwd)).toBe(realpathSync(homeDir));

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { supportHelp } from '../support.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
 import {
@@ -295,6 +296,7 @@ describe('chat controller', () => {
       [1, 'info'],
       [1, 'error'],
     ]);
+    expect(notices[0].text).toContain(supportHelp);
     expect(notices[1].text).toMatch(/Switched to other/);
     chat.close();
   });

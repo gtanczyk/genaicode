@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
@@ -1298,6 +1299,14 @@ function App() {
                 : 'Downloading update…'}
           </button>
         ) : null}
+        <nav className="support-links" aria-label="Support">
+          <a href={SUPPORT_URL} target="_blank" rel="noreferrer">
+            Get help
+          </a>
+          <a href={BUG_REPORT_URL} target="_blank" rel="noreferrer">
+            Report a bug
+          </a>
+        </nav>
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
       {showTeam && (

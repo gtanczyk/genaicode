@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
+import { supportHelp } from '../support.js';
 import { detectAgents } from '../agents/discovery.js';
 import { isAgentUsable, type AgentAuthState, type AgentInspection } from '../agents/status.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
@@ -1008,6 +1009,7 @@ export function createChatController(options: ChatOptions): ChatController {
               ...SLASH_COMMANDS.map((c) => `${c.name}${c.args ? ` ${c.args}` : ''}  ${c.help}`),
               '!command  run a shell command in the project (e.g. !npm run dev); /stop ends it, !! sends a leading !',
               'While the agent works, new prompts steer it (live agents) or wait in a queue.',
+              supportHelp,
             ].join('\n'),
           );
           return 'ok';
