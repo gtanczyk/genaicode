@@ -17,6 +17,7 @@ import type { RateLimit } from '../../agents/types.js';
 import { Sessions } from './sessions.js';
 import { FilePanel } from './file-view.js';
 import { Home } from './home.js';
+import { ProjectTeamDialog } from './project-team.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -160,6 +161,7 @@ interface PageConfig {
   project?: boolean;
   sessions: boolean;
   uploads?: boolean;
+  projectTeams?: boolean;
   files?: boolean;
   /** A newer version of the app that shows this page: downloading, or ready to install on a relaunch. */
   update?: { version: string; ready: boolean; installing?: boolean };
@@ -296,6 +298,7 @@ function App() {
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   useBark(view);
   const [model, setModel] = useState<string>();
+  const [showTeam, setShowTeam] = useState(false);
   // The Sessions view takes the chat's place; the chat keeps running behind it.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox'>('chat');
   const showSessions = panel === 'sessions';
@@ -486,6 +489,11 @@ function App() {
             )}
           </>
         ) : null}
+        {config?.projectTeams && (
+          <button type="button" className="chip off" aria-haspopup="dialog" onClick={() => setShowTeam(true)}>
+            Project team
+          </button>
+        )}
         {config?.update ? (
           <button
             className="chip update"
@@ -513,6 +521,15 @@ function App() {
         ) : null}
         <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
       </header>
+      {showTeam && (
+        <ProjectTeamDialog
+          token={token}
+          chooseProject={!hasProject}
+          cwd={hasProject ? (session?.cwd ?? cwd) : session?.cwd !== config?.cwd ? session?.cwd : undefined}
+          sessions={hasSessions}
+          onClose={() => setShowTeam(false)}
+        />
+      )}
       {showSessions ? (
         <Sessions
           token={token}

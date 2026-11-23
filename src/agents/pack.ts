@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import type { TokenUsage } from '../core/types.js';
 import { findExecutable } from './discovery.js';
+import { latestPackLimits, quotaHints, type QuotaHint, type RoutingNeeds } from './pack-routing.js';
+import { limitsAgent, type KnownLimit } from './sessions/limits.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { ownMcpServers } from './agent-mcp.js';
 import { startLocalMcpServer } from './mcp-server.js';
@@ -44,6 +46,10 @@ export interface PackOptions {
   lead: CodingAgent;
   /** Agents the lead may delegate to. The lead may be one of them. */
   members: readonly CodingAgent[];
+  /** Narrow delegation to the saved team of the task's directory. No profile uses all members. */
+  projectMembers?(cwd: string): Promise<readonly string[] | undefined>;
+  /** Optional cross-session readings, in addition to the pack's live events. */
+  readLimits?(env?: NodeJS.ProcessEnv): Promise<readonly KnownLimit[]>;
   /** Name of the combined agent. Default `pack`. */
   name?: string;
   /** Most delegated tasks running at once. Default 4. */
@@ -89,7 +95,9 @@ export interface PackMember {
   /** `effort` values `delegate` accepts for it. Absent: effort is not configurable. */
   effort?: readonly string[];
   /** The latest plan limits it reported, by window. */
-  limits?: RateLimit[];
+  limits?: (RateLimit & { at?: number })[];
+  /** Fresh exhaustion and a compatible alternative, when one is known. */
+  quotaHint?: QuotaHint;
   /** How its last delegated task failed, when the agent itself was at fault. */
   lastFailure?: AgentFailure;
 }
@@ -108,6 +116,7 @@ export interface PackTask {
   effort?: string;
   /** Names of the MCP servers the task got from the lead. */
   mcpServers?: string[];
+  quotaHint?: QuotaHint;
   mode: 'worktree' | 'shared';
   status: PackTaskStatus;
   /** This running task accepts steering input. */
@@ -218,6 +227,7 @@ interface Sub {
   model?: string;
   effort?: string;
   mcpServers?: McpServer[];
+  quotaHint?: QuotaHint;
   mode: 'worktree' | 'shared';
   cwd: string;
   repo?: string;
@@ -268,6 +278,9 @@ function projectDirectory(cwd: string): string {
 /** Briefing lines on what a task can be given: a model, effort and the lead's MCP servers. */
 function taskBrief(mcpServers: readonly string[] = []): string[] {
   return [
+    '- Before choosing a worker, call `agents` with the target cwd, model, effort and MCP servers. If it reports',
+    '  fresh exhaustion, tell the person the observed window, reset time when known, and any compatible alternative.',
+    '  When the person names an agent, ask before substituting another. A warning or unknown quota is no reason to switch.',
     "- When the person names a model or effort for the work, pass it as `model` / `effort`; the agent's CLI decides",
     '  which model names it knows. Give each task a short `title` for its card.',
     mcpServers.length
@@ -308,7 +321,7 @@ export function delegationBrief(members: readonly PackMember[], mcpServers?: rea
     'When asked to involve another agent (a second opinion, a review, a parallel piece of work), use `delegate`',
     'and `wait`, never its CLI from a shell: started from a shell it cannot ask for approval, so it gets nothing done.',
     'The request is the go-ahead: delegate right away instead of asking to confirm a plan, and ask only when you cannot',
-    'tell what the person wants. When the agent they name is not listed, pick the closest one and say so in one line.',
+    'tell what the person wants. If the named agent is unavailable, let the person choose whether to change it.',
     'Give `delegate` a complete prompt and, for work in another directory, its `cwd`. Use mode `shared` for read-only',
     'work; a `worktree` task stays on its card for the person to review and merge.',
     ...taskBrief(mcpServers),
@@ -369,7 +382,8 @@ export function pack(options: PackOptions): Pack {
   const { lead, members } = options;
   const maxParallel = options.maxParallel ?? 4;
   const subs = new Map<string, Sub>();
-  const limits = new Map<string, Map<string, RateLimit>>();
+  const limits = new Map<string, KnownLimit>();
+  const models = new Map<string, Set<string>>();
   const lastFailure = new Map<string, AgentFailure>();
   const listeners = new Set<(sub: Sub) => void>();
   const notify = (sub: Sub) => {
@@ -394,29 +408,57 @@ export function pack(options: PackOptions): Pack {
   const occupied = () => starting + [...subs.values()].filter((sub) => sub.status === 'running' || sub.checking).length;
 
   const noteLimit = (agent: string, limit: RateLimit) => {
-    let known = limits.get(agent);
-    if (!known) limits.set(agent, (known = new Map()));
-    known.set(limit.window, limit);
+    limits.set(JSON.stringify([limitsAgent(agent), limit.name, limit.window]), { ...limit, agent, at: Date.now() });
+  };
+  const observeAgent = (agent: string, event: AgentEvent) => {
+    if (event.type === 'rate-limit') noteLimit(agent, event.limit);
+    if (event.type === 'session' && event.model) {
+      let seen = models.get(agent);
+      if (!seen) models.set(agent, (seen = new Set()));
+      seen.add(event.model);
+    }
   };
 
-  const describeMembers = (env: NodeJS.ProcessEnv | undefined): PackMember[] =>
-    members.map((member) => {
-      const known = [...(limits.get(member.name)?.values() ?? [])];
-      const failure = lastFailure.get(member.name);
+  const describeMembers = async (
+    roster: readonly CodingAgent[],
+    env: NodeJS.ProcessEnv | undefined,
+    needs: RoutingNeeds = {},
+  ): Promise<PackMember[]> => {
+    const stored = (await options.readLimits?.(env).catch(() => [])) ?? [];
+    const now = Date.now();
+    const readings = latestPackLimits([...stored, ...limits.values()], now);
+    const candidates = roster.map((member) => ({
+      name: member.name,
+      capabilities: member.capabilities,
+      models: models.get(member.name),
+      installed: findExecutable(member.command, env) !== null,
+    }));
+    const hints = quotaHints(
+      candidates.filter((c) => !['auth', 'unavailable'].includes(lastFailure.get(c.name)?.kind ?? '')),
+      readings,
+      needs,
+      now,
+    );
+    return candidates.map((candidate) => {
+      const { name, installed, capabilities } = candidate;
+      const known = readings.filter((r) => limitsAgent(r.agent) === limitsAgent(name));
+      const failure = lastFailure.get(name);
       return {
-        name: member.name,
-        installed: findExecutable(member.command, env) !== null,
+        name,
+        installed,
         running: [...subs.values()].filter(
           (sub) =>
-            (sub.agent === member && sub.status === 'running') ||
-            (sub.reviewer === member && sub.checks?.review?.status === 'running'),
+            (sub.agent.name === name && sub.status === 'running') ||
+            (sub.reviewer?.name === name && sub.checks?.review?.status === 'running'),
         ).length,
-        steer: !!member.capabilities.steer,
-        ...(member.capabilities.effort?.length ? { effort: member.capabilities.effort } : {}),
+        steer: !!capabilities.steer,
+        ...(capabilities.effort?.length ? { effort: capabilities.effort } : {}),
         ...(known.length ? { limits: known } : {}),
+        ...(hints.has(name) ? { quotaHint: hints.get(name) } : {}),
         ...(failure ? { lastFailure: failure } : {}),
       };
     });
+  };
 
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
@@ -426,6 +468,7 @@ export function pack(options: PackOptions): Pack {
     ...(sub.model ? { model: sub.model } : {}),
     ...(sub.effort ? { effort: sub.effort } : {}),
     ...(sub.mcpServers?.length ? { mcpServers: sub.mcpServers.map((server) => server.name) } : {}),
+    ...(sub.quotaHint ? { quotaHint: sub.quotaHint } : {}),
     mode: sub.mode,
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
@@ -483,9 +526,18 @@ export function pack(options: PackOptions): Pack {
       const mine = new Set<Sub>();
       const settingUp = new Set<Promise<string>>();
       let observers = 0;
-      const reviewers = [lead, ...members].filter(
-        (agent) => agent.runText && findExecutable(agent.command, task.env) !== null,
-      );
+      const directory = (where: unknown) => {
+        if (where === undefined) return leadCwd;
+        if (typeof where !== 'string' || !where.trim()) throw new Error('`cwd` is a directory path.');
+        const base = projectDirectory(path.resolve(leadCwd, where));
+        if (base !== leadCwd && !statSync(base, { throwIfNoEntry: false })?.isDirectory())
+          throw new Error(`${where} is not a directory.`);
+        return base;
+      };
+      const rosterAt = async (cwd: string) => {
+        const names = await options.projectMembers?.(cwd);
+        return names ? members.filter((member) => names.includes(member.name)) : members;
+      };
       // What the lead may pass on to a task: the servers it was given, then those of its own config.
       const shareable: Promise<McpServer[]> = (async () => {
         const own = await (options.shareableMcpServers ?? ((cwd, env) => ownMcpServers(lead.name, cwd, env)))(
@@ -568,17 +620,19 @@ export function pack(options: PackOptions): Pack {
       const delegate = async (args: Record<string, unknown>): Promise<string> => {
         const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
         if (!prompt) throw new Error('`prompt` is required.');
-        const agent = members.find((member) => member.name === args.agent);
+        const base = directory(args.cwd);
+        const roster = await rosterAt(base);
+        const agent = roster.find((member) => member.name === args.agent);
         if (!agent)
-          throw new Error(`No agent ${String(args.agent)}. Available: ${members.map((m) => m.name).join(', ')}.`);
+          throw new Error(`No agent ${String(args.agent)}. Available: ${roster.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
         if (ended.signal.aborted) throw new Error('The run has ended.');
         const running = occupied();
         if (running >= maxParallel)
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
-        // Taken before the first await, so calls made at the same moment cannot share a slot.
+        // Reserve immediately after the capacity check, before starting asynchronous setup.
         starting += 1;
-        const setup = start(agent, prompt, args).finally(() => {
+        const setup = start(agent, prompt, args, base, roster).finally(() => {
           starting -= 1;
           settingUp.delete(setup);
         });
@@ -622,14 +676,25 @@ export function pack(options: PackOptions): Pack {
         return { title, model, effort, mcpServers };
       };
 
-      const start = async (agent: CodingAgent, prompt: string, args: Record<string, unknown>): Promise<string> => {
-        const { mode: wanted, cwd: where } = args;
+      const start = async (
+        agent: CodingAgent,
+        prompt: string,
+        args: Record<string, unknown>,
+        base: string,
+        roster: readonly CodingAgent[],
+      ): Promise<string> => {
+        const wanted = args.mode;
         const extra = await taskOptions(agent, args);
-        if (where !== undefined && (typeof where !== 'string' || !where.trim()))
-          throw new Error('`cwd` is a directory path.');
-        const base = typeof where === 'string' ? projectDirectory(path.resolve(leadCwd, where)) : leadCwd;
-        if (base !== leadCwd && !statSync(base, { throwIfNoEntry: false })?.isDirectory())
-          throw new Error(`${String(where)} is not a directory.`);
+        const advice = async () =>
+          (
+            await describeMembers(roster, task.env, {
+              model: extra.model,
+              effort: extra.effort,
+              mcp: !!extra.mcpServers?.length,
+            })
+          ).find((member) => member.name === agent.name)?.quotaHint;
+        const quotaHint = await advice();
+        if (ended.signal.aborted) throw new Error('The run has ended.');
         const repo = await repoRoot(base);
         const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
         if (!mode) throw new Error('`mode` is `worktree` or `shared`.');
@@ -644,6 +709,7 @@ export function pack(options: PackOptions): Pack {
           id,
           agent,
           prompt,
+          ...(quotaHint ? { quotaHint } : {}),
           ...(extra.title ? { title: extra.title } : {}),
           ...(extra.model ? { model: extra.model } : {}),
           ...(extra.effort ? { effort: extra.effort } : {}),
@@ -666,7 +732,12 @@ export function pack(options: PackOptions): Pack {
           sub.repo = repo;
           sub.dir = dir;
           sub.state = 'unmerged';
-          sub.reviewer = reviewers.find((candidate) => candidate.name !== agent.name);
+          sub.reviewer = [lead, ...roster].find(
+            (candidate) =>
+              candidate.name !== agent.name &&
+              candidate.runText &&
+              findExecutable(candidate.command, task.env) !== null,
+          );
           sub.checks = { reviewer: sub.reviewer?.name, command: options.verification?.label };
           sub.cwd = path.join(dir, relativeCwd);
           try {
@@ -691,6 +762,7 @@ export function pack(options: PackOptions): Pack {
           !!repo &&
           repo !== path.parse(repo).root &&
           repo !== projectDirectory(homedir());
+        let reportedExhaustion = false;
         const run = startRun(agent, {
           prompt,
           cwd: sub.cwd,
@@ -718,7 +790,12 @@ export function pack(options: PackOptions): Pack {
           try {
             for await (const event of run) {
               sub.last = event.type === 'approval-resolved' ? undefined : (activity(event) ?? sub.last);
-              if (event.type === 'rate-limit') noteLimit(agent.name, event.limit);
+              observeAgent(agent.name, event);
+              if (
+                event.type === 'rate-limit' &&
+                (event.limit.status === 'exceeded' || (event.limit.usedPercent ?? 0) >= 100)
+              )
+                reportedExhaustion = true;
               if (event.type === 'usage') {
                 sub.usage = event.usage;
                 if (event.costUsd !== undefined) sub.costUsd = event.costUsd;
@@ -736,6 +813,17 @@ export function pack(options: PackOptions): Pack {
           }
           if (result.usage) sub.usage = result.usage;
           if (result.costUsd !== undefined) sub.costUsd = result.costUsd;
+          if (result.failure?.kind === 'quota') {
+            if (!reportedExhaustion) {
+              noteLimit(agent.name, {
+                window: 'quota',
+                status: 'exceeded',
+                resetsAt: result.failure.resetsAt,
+                ...(extra.model ? { name: extra.model } : {}),
+              });
+            }
+            sub.quotaHint = await advice();
+          }
           if (result.failure) lastFailure.set(agent.name, result.failure);
           else if (result.ok) lastFailure.delete(agent.name);
           if (sub.dir && sub.start) {
@@ -754,7 +842,7 @@ export function pack(options: PackOptions): Pack {
           usageChanged();
           settle();
         })();
-        return JSON.stringify({ id, agent: agent.name, mode, cwd: sub.cwd });
+        return JSON.stringify({ id, agent: agent.name, mode, cwd: sub.cwd, ...(quotaHint ? { quotaHint } : {}) });
       };
 
       const wait = async (args: Record<string, unknown>): Promise<string> => {
@@ -978,9 +1066,38 @@ export function pack(options: PackOptions): Pack {
         {
           name: 'agents',
           description:
-            'List the coding agents you can delegate to: whether each is installed, what it is running, and the plan limits it reported.',
-          inputSchema: { type: 'object', properties: {} },
-          call: async () => JSON.stringify(describeMembers(task.env), null, 1),
+            'List this project’s workers, their quota readings and fresh exhaustion hints. Pass the actual task requirements to check alternatives. The named worker is never replaced automatically.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              cwd: { type: 'string' },
+              model: { type: 'string' },
+              effort: { type: 'string' },
+              mcpServers: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          call: async (args) => {
+            const names = args.mcpServers ?? [];
+            if (!Array.isArray(names) || names.some((name) => typeof name !== 'string'))
+              throw new Error('`mcpServers` is a list of server names.');
+            const available = new Set((await shareable).map((server) => server.name));
+            if (names.length && names.some((name) => !available.has(name)))
+              throw new Error('Requested MCP server is not shareable.');
+            if (
+              (args.model !== undefined && typeof args.model !== 'string') ||
+              (args.effort !== undefined && typeof args.effort !== 'string')
+            )
+              throw new Error('Model and effort must be names.');
+            return JSON.stringify(
+              await describeMembers(await rosterAt(directory(args.cwd)), task.env, {
+                model: args.model,
+                effort: args.effort,
+                mcp: names.length > 0,
+              }),
+              null,
+              1,
+            );
+          },
         },
         {
           name: 'delegate',
@@ -1131,7 +1248,7 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
-          const roster = describeMembers(task.env);
+          const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
           const passable = (await shareable).map((server) => server.name);
           const brief = task.resume
             ? ''
@@ -1152,7 +1269,7 @@ export function pack(options: PackOptions): Pack {
               if (event.costUsd !== undefined) leadCost = event.costUsd;
               usageChanged();
             } else {
-              if (event.type === 'rate-limit') noteLimit(lead.name, event.limit);
+              observeAgent(lead.name, event);
               events.push(event);
               await events.room();
             }

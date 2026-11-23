@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Save a project’s pack lead and workers from the desktop or web app. The CLI reuses that team and task cards suggest compatible workers when a fresh reading shows an exhausted quota (#325)
+
 ## 3.1.0 — 2026-11-23
 
 ### Added

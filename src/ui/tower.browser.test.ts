@@ -1,4 +1,5 @@
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { recordLimits } from '../agents/sessions/limits.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -39,6 +40,7 @@ async function callPack(task: AgentTask, name: string, args: Record<string, unkn
   });
   const answer = await response.json();
   if (answer.result.isError) throw new Error(answer.result.content[0].text);
+  return String(answer.result.content[0].text);
 }
 
 it('shares pack approvals, other sessions and individually reviewed messages between two browsers', async () => {
@@ -258,3 +260,103 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it('saves a team from the desktop home, uses it on delegation and on a fresh project launch', async () => {
+  const browser = await chromium.launch();
+  const root = mkdtempSync(join(tmpdir(), 'genaicode-project-pack-'));
+  const project = join(root, 'catalog');
+  mkdirSync(project);
+  const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+  const ran: string[] = [];
+  const rosters: string[][] = [];
+  const captain = driver('captain', async (task) => {
+    const members = JSON.parse(await callPack(task, 'agents', { cwd: project })) as Array<{ name: string }>;
+    rosters.push(members.map((m) => m.name));
+    await callPack(task, 'delegate', { agent: 'worker', prompt: 'Check the catalog', mode: 'shared', cwd: project });
+    await callPack(task, 'wait', {});
+  });
+  const agents = [
+    captain,
+    ...['worker', 'backup', 'spare'].map((name) =>
+      driver(name, async () => {
+        ran.push(name);
+      }),
+    ),
+  ];
+  const resetsAt = Date.now() + 60 * 60_000;
+  recordLimits('worker', [{ window: '5h', status: 'exceeded', usedPercent: 100, resetsAt }], env);
+  recordLimits('backup', [{ window: '5h', status: 'ok', usedPercent: 20, resetsAt }], env);
+  const bundle = await build({
+    entryPoints: ['src/ui/web/client.tsx'],
+    bundle: true,
+    write: false,
+    platform: 'browser',
+    jsx: 'automatic',
+    loader: { '.css': 'text' },
+    define: { 'process.env.NODE_ENV': '"production"' },
+  });
+  let stop = new AbortController();
+  let running: Promise<number> | undefined;
+  const start = async (cwd: string, argv: string[]) => {
+    stop = new AbortController();
+    let opened: string | undefined;
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(url) {
+          opened = url;
+        },
+        clientScript: bundle.outputFiles[0].text,
+      });
+    running = main({
+      argv,
+      cwd,
+      env,
+      agents,
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(opened).toBeTruthy(), { timeout: 8000 });
+    const page = await browser.newPage();
+    await page.goto(opened!);
+    return page;
+  };
+  try {
+    const home = await start(root, ['ui', '--sessions', '--delegate', '--no-project', '--no-artifacts']);
+    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByLabel('Project folder').fill(project);
+    await home.getByRole('button', { name: 'Open', exact: true }).click();
+    await home.getByLabel('Lead', { exact: true }).selectOption('captain');
+    await home.getByRole('checkbox', { name: 'captain' }).uncheck();
+    await home.getByRole('checkbox', { name: 'spare' }).uncheck();
+    await home.getByRole('button', { name: 'Remember this team for the project' }).click();
+    await home.getByText('Team saved in .genaicode/pack.json', { exact: false }).waitFor();
+    expect(JSON.parse(readFileSync(join(project, '.genaicode', 'pack.json'), 'utf8'))).toEqual({
+      lead: 'captain',
+      members: ['worker', 'backup'],
+    });
+    await home.getByRole('button', { name: 'Close project team' }).click();
+    await home.getByLabel('Message', { exact: true }).fill('Use worker in the catalog project.');
+    await home.getByLabel('Message', { exact: true }).press('Enter');
+    await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
+    expect(ran).toEqual(['worker']);
+    expect(rosters).toEqual([['worker', 'backup']]);
+    await home.close();
+    stop.abort();
+    await running;
+    const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
+    await scoped.getByText('Project pack: captain leads · members: worker, backup.').waitFor();
+    await scoped.getByRole('button', { name: 'Project team' }).click();
+    expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
+    expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);
+  } finally {
+    stop.abort();
+    await browser.close();
+    await running;
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 45_000);
