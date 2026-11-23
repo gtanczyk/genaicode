@@ -8,7 +8,13 @@ import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
-import { sessionTools, writeTopics, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
+import {
+  readConversations,
+  sessionTools,
+  writeTopics,
+  type SessionInfo,
+  type SessionSource,
+} from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
 import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
@@ -1692,17 +1698,37 @@ describe('web UI server', () => {
       expect(chat.get().session.cwd).toBe(homeDir);
       expect(chat.get().conversation).toMatchObject({ origin: 'unresolved', topic: { id: 't2', name: 'Cloud Only' } });
 
-      // Continuing any local session in --home mode switches cwd to that session's directory.
+      // Continuing two sessions in sequence persists each under its own metadata (never crosses IDs/titles).
+      expect(await chat.continueSession('k1')).toBe(true);
+      expect(chat.get().session.cwd).toBe(knights);
+      expect(chat.get().session.sessionId).toBe('k1');
+      expect(chat.get().conversation).toMatchObject({
+        cwd: knights,
+        origin: 'session',
+        title: 'Knight AI',
+        topic: { id: 't1', name: 'Knights' },
+      });
+
       expect(await chat.continueSession('o1')).toBe(true);
       expect(chat.get().session.cwd).toBe(other);
       expect(chat.get().session.sessionId).toBe('o1');
       expect(chat.get().conversation).toMatchObject({ cwd: other, origin: 'session', title: 'Other task' });
 
-      // Returning home resets cwd back to neutral home.
+      const saved = await readConversations(homeEnv);
+      const savedK1 = saved.find((item) => item.sessionId === 'k1');
+      const savedO1 = saved.find((item) => item.sessionId === 'o1');
+      expect(savedK1).toMatchObject({ cwd: knights, title: 'Knight AI', topicId: 't1', topicName: 'Knights' });
+      expect(savedO1).toMatchObject({ cwd: other, title: 'Other task' });
+      expect(savedO1?.topicId).toBeUndefined();
+      expect(savedK1?.id).not.toBe(savedO1?.id);
+
+      // Returning home resets cwd back to neutral home without overwriting the outgoing conversation.
       expect(chat.startHomeChat()).toBe(true);
       expect(chat.get().session.cwd).toBe(homeDir);
       expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
       expect(chat.get().conversation?.topic).toBeUndefined();
+      const afterHome = await readConversations(homeEnv);
+      expect(afterHome.find((item) => item.sessionId === 'o1')).toMatchObject({ cwd: other, title: 'Other task' });
     } finally {
       chat.close();
     }

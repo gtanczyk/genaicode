@@ -294,8 +294,10 @@ export function createChatController(options: ChatOptions): ChatController {
     };
   };
   let view = snapshot();
+  let batching = 0;
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
+    if (batching > 0) return;
     view = snapshot();
     for (const listener of [...listeners]) {
       try {
@@ -449,30 +451,46 @@ export function createChatController(options: ChatOptions): ChatController {
   };
 
   const startHomeChat = (): boolean => {
-    if (!session.clear(homeMode ? { cwd: homeDir } : undefined)) {
+    batching++;
+    let ok = false;
+    try {
+      ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
+      if (ok) {
+        notices = [];
+        if (homeMode) {
+          conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
+          lastSavedKey = '';
+        }
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) {
       notice('A turn is running. /stop it first, then /clear.', 'error');
       return false;
-    }
-    notices = [];
-    if (homeMode) {
-      conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
-      lastSavedKey = '';
     }
     publish();
     return true;
   };
 
   const moveProject = (target: { cwd: string; topic?: { id: string; name: string } }): boolean => {
-    if (!session.setCwd(target.cwd, { handoff: true })) return false;
-    if (homeMode) {
-      conversation = {
-        ...(conversation ?? { id: randomUUID(), cwd: target.cwd, origin: 'project' }),
-        cwd: target.cwd,
-        origin: 'project',
-        ...(target.topic ? { topic: target.topic } : {}),
-      };
-      publish();
+    batching++;
+    let ok = false;
+    try {
+      ok = session.setCwd(target.cwd, { handoff: true });
+      if (ok && homeMode) {
+        conversation = {
+          ...(conversation ?? { id: randomUUID(), cwd: target.cwd, origin: 'project' }),
+          cwd: target.cwd,
+          origin: 'project',
+          ...(target.topic ? { topic: target.topic } : {}),
+        };
+      }
+    } finally {
+      batching--;
     }
+    if (!ok) return false;
+    publish();
     return true;
   };
 
@@ -495,18 +513,27 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
-      if (!session.clear({ cwd: resolved.cwd })) {
+      batching++;
+      let ok = false;
+      try {
+        ok = session.clear({ cwd: resolved.cwd });
+        if (ok) {
+          notices = [];
+          conversation = {
+            id: randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            topic: { id: topic.id, name: topic.name },
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
         notice('Stop the running turn before starting another chat.', 'error');
         return false;
       }
-      notices = [];
-      conversation = {
-        id: randomUUID(),
-        cwd: resolved.cwd,
-        origin: resolved.origin,
-        topic: { id: topic.id, name: topic.name },
-      };
-      lastSavedKey = '';
       publish();
       if (resolved.status === 'unresolved') {
         notice(
@@ -579,10 +606,6 @@ export function createChatController(options: ChatOptions): ChatController {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
       }
-      if (!session.adopt(turns, { ...(own ? { sessionId: theirs.id } : {}), cwd: resolved.cwd, replace: true })) {
-        notice('Stop the running turn before taking over another session.', 'error');
-        return false;
-      }
       const saved = savedList.find(
         (candidate) => candidate.sessionId === theirs.id && (!candidate.source || candidate.source === theirs.source),
       );
@@ -591,15 +614,28 @@ export function createChatController(options: ChatOptions): ChatController {
         (topicId ? store.topics.find((candidate) => candidate.id === topicId) : undefined) ??
         (saved?.topicId && saved?.topicName ? { id: saved.topicId, name: saved.topicName } : undefined);
       const name = theirs.title ?? theirs.firstPrompt ?? saved?.title ?? theirs.id;
-      notices = [];
-      conversation = {
-        id: saved?.id ?? randomUUID(),
-        cwd: resolved.cwd,
-        origin: resolved.origin,
-        title: oneLine(name, 120),
-        ...(topicObj ? { topic: { id: topicObj.id, name: topicObj.name } } : {}),
-      };
-      lastSavedKey = '';
+      batching++;
+      let ok = false;
+      try {
+        ok = session.adopt(turns, { ...(own ? { sessionId: theirs.id } : {}), cwd: resolved.cwd, replace: true });
+        if (ok) {
+          notices = [];
+          conversation = {
+            id: saved?.id ?? randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            title: oneLine(name, 120),
+            ...(topicObj ? { topic: { id: topicObj.id, name: topicObj.name } } : {}),
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
+        notice('Stop the running turn before taking over another session.', 'error');
+        return false;
+      }
       publish();
       if (resolved.status === 'unresolved') {
         notice(

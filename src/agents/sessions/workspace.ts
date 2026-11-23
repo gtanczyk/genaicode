@@ -683,10 +683,11 @@ export function conversationsFile(env: NodeJS.ProcessEnv = process.env): string 
 const MAX_CONVERSATIONS = 200;
 const VALID_ORIGINS = new Set<ConversationOrigin>(['home', 'topic', 'session', 'project', 'unresolved']);
 
-/** Read recorded conversations, newest first. Empty when missing or unreadable. */
-export async function readConversations(env: NodeJS.ProcessEnv = process.env): Promise<ConversationRecord[]> {
+const conversationQueues = new Map<string, Promise<void>>();
+
+async function readConversationsUnlocked(file: string): Promise<ConversationRecord[]> {
   try {
-    const raw: unknown = JSON.parse(await fs.readFile(conversationsFile(env), 'utf8'));
+    const raw: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
     if (!Array.isArray(raw)) return [];
     return raw
       .flatMap((item): ConversationRecord[] => {
@@ -721,24 +722,42 @@ export async function readConversations(env: NodeJS.ProcessEnv = process.env): P
   }
 }
 
+/** Read recorded conversations, newest first. Empty when missing or unreadable. */
+export async function readConversations(env: NodeJS.ProcessEnv = process.env): Promise<ConversationRecord[]> {
+  const file = path.resolve(conversationsFile(env));
+  await conversationQueues.get(file)?.catch(() => undefined);
+  return readConversationsUnlocked(file);
+}
+
 /** Insert or update one conversation record in `~/.genaicode/conversations.json`. */
 export async function saveConversation(
   record: ConversationRecord,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  const existing = await readConversations(env);
-  const cleaned: ConversationRecord = {
-    ...record,
-    ...(record.title ? { title: oneLine(record.title, 120) } : {}),
-  };
-  const next = [cleaned, ...existing.filter((item) => item.id !== record.id)]
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_CONVERSATIONS);
-  const file = conversationsFile(env);
-  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2, 8)}.tmp`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 1)}\n`, { mode: 0o600 });
-  await fs.rename(tmp, file);
+  const file = path.resolve(conversationsFile(env));
+  const previous = conversationQueues.get(file) ?? Promise.resolve();
+  const run = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const existing = await readConversationsUnlocked(file);
+      const cleaned: ConversationRecord = {
+        ...record,
+        ...(record.title ? { title: oneLine(record.title, 120) } : {}),
+      };
+      const next = [cleaned, ...existing.filter((item) => item.id !== record.id)]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, MAX_CONVERSATIONS);
+      await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+      const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2, 8)}.tmp`;
+      await fs.writeFile(tmp, `${JSON.stringify(next, null, 1)}\n`, { mode: 0o600 });
+      await fs.rename(tmp, file);
+    });
+  conversationQueues.set(file, run);
+  try {
+    await run;
+  } finally {
+    if (conversationQueues.get(file) === run) conversationQueues.delete(file);
+  }
 }
 
 function defaultIsDir(dir: string): boolean {

@@ -477,4 +477,29 @@ describe('neutral home and conversation store', () => {
     writeFileSync(join(root, 'plain.txt'), 'hi');
     expect(existsSync(join(root, 'plain.txt'))).toBe(true);
   });
+
+  it('serializes concurrent saveConversation calls so no records are lost', async () => {
+    const root = makeTemp('genaicode-concurrent-');
+    const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    await Promise.all(
+      Array.from({ length: 10 }, (_, index) =>
+        saveConversation(
+          {
+            id: `conv-${index}`,
+            cwd: join(root, `proj-${index}`),
+            origin: 'session',
+            title: `Chat ${index}`,
+            sessionId: `sess-${index}`,
+            updatedAt: 1000 + index,
+          },
+          env,
+        ),
+      ),
+    );
+    const loaded = await readConversations(env);
+    expect(loaded).toHaveLength(10);
+    expect(loaded.map((item) => item.id)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `conv-${9 - index}`),
+    );
+  });
 });
