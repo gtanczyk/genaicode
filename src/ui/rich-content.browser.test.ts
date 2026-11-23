@@ -126,8 +126,10 @@ describe('rich content in genaicode ui (browser)', () => {
     mkdirSync(otherProject, { recursive: true });
     mkdirSync(outside, { recursive: true });
 
+    mkdirSync(join(home, 'docs'), { recursive: true });
     writeFileSync(join(home, 'code.ts'), 'line1\nline2\nline3\nline4\nline5\n');
-    writeFileSync(join(home, 'doc.md'), '# Heading\n\nSome **bold** markdown.\n');
+    writeFileSync(join(home, 'docs', 'doc.md'), '# Heading\n\nSome **bold** markdown.\n\n![Chart](./chart.png)\n');
+    writeFileSync(join(home, 'docs', 'chart.png'), TINY_PNG);
     writeFileSync(join(home, 'shot.png'), TINY_PNG);
     writeFileSync(join(home, 'sound.mp3'), Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00'));
     writeFileSync(join(home, 'movie.webm'), Buffer.from('0123456789'));
@@ -171,7 +173,7 @@ describe('rich content in genaicode ui (browser)', () => {
         emit({
           type: 'message',
           text: [
-            `Files: [code](./code.ts#L3-L4) [md](./doc.md) [img](./shot.png) [audio](./sound.mp3) [video](./movie.webm) [pdf](./sheet.pdf) [html](./demo.html) [bin](./archive.bin)`,
+            `Files: [code](./code.ts#L3-L4) [md](./docs/doc.md) [img](./shot.png) [audio](./sound.mp3) [video](./movie.webm) [pdf](./sheet.pdf) [html](./demo.html) [bin](./archive.bin)`,
             `Other session: [from-session](${join(otherProject, 'from-session.ts')})`,
             `Outside: [outside](${join(outside, 'secret-outside.txt')})`,
             `![Local shot](./shot.png)`,
@@ -261,11 +263,19 @@ describe('rich content in genaicode ui (browser)', () => {
         .evaluateAll((els) => els.map((el) => el.getAttribute('data-line')));
       expect(markedLines).toEqual(['3', '4']);
 
-      // Markdown renders formatted HTML and toggles to Source.
+      // Markdown renders formatted HTML, resolves document-relative images not mentioned in chat, and toggles to Source.
       await page.locator('.gc-file-link', { hasText: 'md' }).click();
       await panel.locator('.viewer-markdown h2', { hasText: 'Heading' }).waitFor();
+      const docImg = panel.locator('.viewer-markdown img.gc-md-image[alt="Chart"]');
+      await docImg.waitFor();
+      expect(await docImg.getAttribute('src')).toMatch(/^\/files\/[0-9a-f]{32}$/);
+      await expect.poll(() => docImg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
       await panel.getByRole('button', { name: 'Source' }).click();
       await panel.locator('.file-text').waitFor();
+      await panel.getByRole('button', { name: 'Preview' }).click();
+      await panel.locator('.viewer-markdown .gc-md-image-btn').click();
+      await panel.locator('.viewer-image-stage img').waitFor();
+      expect(await panel.locator('.viewer-title').textContent()).toContain('docs/chart.png');
 
       // Audio viewer.
       await page.locator('.gc-file-link', { hasText: 'audio' }).click();

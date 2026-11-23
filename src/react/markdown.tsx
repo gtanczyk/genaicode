@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 // A small, safe Markdown subset for agent replies: paragraphs, headings, lists, task lists,
 // quotes, tables, fenced code, inline code, bold, italic, strikethrough, links and images.
@@ -136,16 +136,15 @@ function remoteLabel(src: string): string {
 }
 
 function RemoteImage({ src, alt, autoLoad }: { src: string; alt: string; autoLoad: boolean }) {
-  const [loaded, setLoaded] = useState(autoLoad);
-  useEffect(() => {
-    if (autoLoad) setLoaded(true);
-  }, [autoLoad]);
+  // Consent is bound to the exact URL so a later update to a different src requires a fresh click.
+  const [approvedSrc, setApprovedSrc] = useState<string>();
+  const loaded = autoLoad || approvedSrc === src;
   const label = remoteLabel(src);
   if (!loaded) {
     return (
       <span className="gc-md-image-chip" title={alt ? `${alt} — ${src}` : src}>
         <span className="gc-md-image-chip-label">Image: {label}</span>
-        <button type="button" className="gc-md-image-load" onClick={() => setLoaded(true)}>
+        <button type="button" className="gc-md-image-load" onClick={() => setApprovedSrc(src)}>
           Load
         </button>
       </span>
@@ -214,7 +213,7 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       const src = match[6]!;
       out.push(
         links ? (
-          <RemoteImage key={key++} src={src} alt={alt} autoLoad={options.remoteImages === 'load'} />
+          <RemoteImage key={`${key++}:${src}`} src={src} alt={alt} autoLoad={options.remoteImages === 'load'} />
         ) : (
           <span key={key++}>{alt || remoteLabel(src)}</span>
         ),

@@ -1043,6 +1043,14 @@ describe('AgentChat', () => {
     expect(container.textContent).toContain('![Inline](data:image/svg+xml,<svg/>)');
     expect($$('img[src^="data:"]')).toHaveLength(0);
 
+    // Clicking Load authorizes only that exact URL: replacing it at the same position requires a fresh click.
+    act(() => root.render(<Markdown text="![First](https://img.example/one.png)" />));
+    click($('button.gc-md-image-load'));
+    expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/one.png');
+    act(() => root.render(<Markdown text="![Second](https://img.example/two.png)" />));
+    expect($$('img')).toHaveLength(0);
+    expect($('.gc-md-image-chip').textContent).toContain('img.example/two.png');
+
     // remoteImages="load" loads remote images immediately.
     act(() => root.render(<Markdown text="![Photo](https://img.example/pic.jpg)" remoteImages="load" />));
     expect($<HTMLImageElement>('img.gc-md-image').getAttribute('src')).toBe('https://img.example/pic.jpg');

@@ -10,7 +10,13 @@ import {
   withDownloadParam,
   type SubmitArtifact,
 } from '../../react/artifact-panel.js';
-import { formatFilePosition, Markdown, readFileLinkPosition, type FilePosition } from '../../react/markdown.js';
+import {
+  extractLocalImagePaths,
+  formatFilePosition,
+  Markdown,
+  readFileLinkPosition,
+  type FilePosition,
+} from '../../react/markdown.js';
 import { installResizeHandle, storedSize } from '../../react/resize-handle.js';
 import type { FileKind, FileView } from '../files.js';
 
@@ -44,6 +50,35 @@ const FILE_KIND_LABEL: Record<FileKind, string> = {
 const MIN_WIDTH = 320;
 const DEFAULT_WIDTH = 620;
 const WIDTH_STORAGE_KEY = 'genaicode-viewer-width';
+
+function isAbsoluteFilePath(value: string): boolean {
+  return value.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(value);
+}
+
+/** Resolve a link or image target from inside an open Markdown file relative to that file's directory. */
+function resolveRelativeToFile(baseFile: string, target: string): string {
+  if (!target || isAbsoluteFilePath(target)) return target;
+  const normBase = baseFile.replace(/\\/g, '/');
+  const normTarget = target.replace(/\\/g, '/');
+  const winDrive = /^[a-zA-Z]:/.exec(normBase)?.[0] ?? '';
+  const withoutDrive = winDrive ? normBase.slice(winDrive.length) : normBase;
+  const absolute = withoutDrive.startsWith('/');
+  const slash = withoutDrive.lastIndexOf('/');
+  const baseDir = slash >= 0 ? withoutDrive.slice(0, slash) : '';
+  const combined = baseDir ? `${baseDir}/${normTarget}` : normTarget;
+  const parts: string[] = [];
+  for (const segment of combined.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') {
+      if (parts.length && parts[parts.length - 1] !== '..') parts.pop();
+      else if (!absolute) parts.push('..');
+    } else {
+      parts.push(segment);
+    }
+  }
+  if (absolute) return `${winDrive}/${parts.join('/')}`;
+  return parts.join('/') || '.';
+}
 
 export interface ViewerPanelProps {
   target: ViewerTarget;
@@ -87,10 +122,16 @@ export function ViewerPanel({
   const [showSource, setShowSource] = useState(false);
   const [actualSize, setActualSize] = useState(false);
   const [dims, setDims] = useState<{ width: number; height: number }>();
+  const [docImages, setDocImages] = useState<Record<string, string>>({});
+  const [docImageTick, setDocImageTick] = useState(0);
   const panelRef = useRef<HTMLElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLPreElement>(null);
+  const markdownRef = useRef<HTMLDivElement>(null);
   const artifactFrameRef = useRef<HTMLIFrameElement>(null);
+  const docImagesRef = useRef(docImages);
+  docImagesRef.current = docImages;
+  const retriedDocUrl = useRef(new Map<string, string>());
 
   const artifactGroup = target.kind === 'artifact' ? artifacts.find((g) => g.id === target.id) : undefined;
   const activeArtifact =
@@ -144,6 +185,76 @@ export function ViewerPanel({
       });
     return () => abort.abort();
   }, [filePath, token]);
+
+  // Resolve local images referenced inside an open Markdown file relative to that file's directory.
+  const markdownBasePath = filePath && isAbsoluteFilePath(filePath) ? filePath : (file?.path ?? filePath ?? '');
+  useEffect(() => {
+    setDocImages({});
+    retriedDocUrl.current.clear();
+  }, [filePath, file?.path]);
+
+  useEffect(() => {
+    if (!file || file.kind !== 'markdown' || !file.text || !token) return;
+    const rawPaths = [...new Set(extractLocalImagePaths(file.text))];
+    if (!rawPaths.length) return;
+    const resolvedByRaw = new Map<string, string>();
+    const uniqueResolved: string[] = [];
+    for (const raw of rawPaths) {
+      const resolved = resolveRelativeToFile(markdownBasePath, raw);
+      resolvedByRaw.set(raw, resolved);
+      if (!uniqueResolved.includes(resolved)) uniqueResolved.push(resolved);
+    }
+    const abort = new AbortController();
+    void (async () => {
+      const resolvedUrls: Record<string, string> = {};
+      for (let i = 0; i < uniqueResolved.length; i += 100) {
+        if (abort.signal.aborted) return;
+        const batch = uniqueResolved.slice(i, i + 100);
+        try {
+          const res = await fetch('/api/file/images', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+            body: JSON.stringify({ paths: batch }),
+            signal: abort.signal,
+          });
+          if (!res.ok) continue;
+          const body = (await res.json()) as { urls?: Record<string, string> };
+          if (body?.urls) Object.assign(resolvedUrls, body.urls);
+        } catch {
+          if (abort.signal.aborted) return;
+        }
+      }
+      if (abort.signal.aborted) return;
+      const mapped: Record<string, string> = {};
+      for (const [raw, resolved] of resolvedByRaw) {
+        const url = resolvedUrls[resolved];
+        if (url) {
+          if (retriedDocUrl.current.get(raw) !== url) retriedDocUrl.current.delete(raw);
+          mapped[raw] = url;
+        }
+      }
+      setDocImages(mapped);
+    })();
+    return () => abort.abort();
+  }, [file, markdownBasePath, token, docImageTick]);
+
+  // If a rendered Markdown document's image capability expires, refresh it once on load error.
+  useEffect(() => {
+    const container = markdownRef.current;
+    if (!container || file?.kind !== 'markdown') return;
+    const onImageError = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLImageElement) || !target.classList.contains('gc-md-image')) return;
+      const raw = target.closest('[data-gc-file]')?.getAttribute('data-gc-file');
+      if (!raw) return;
+      const cached = docImagesRef.current[raw];
+      if (!cached || retriedDocUrl.current.get(raw) === cached) return;
+      retriedDocUrl.current.set(raw, cached);
+      setDocImageTick((n) => n + 1);
+    };
+    container.addEventListener('error', onImageError, true);
+    return () => container.removeEventListener('error', onImageError, true);
+  }, [file?.kind, showSource]);
 
   // Scroll to and highlight the target line once text lines are rendered.
   useEffect(() => {
@@ -480,18 +591,23 @@ export function ViewerPanel({
         <div className="viewer-body">{renderLines()}</div>
       ) : file.kind === 'markdown' ? (
         <div
+          ref={markdownRef}
           className="viewer-body viewer-markdown"
           onClick={
             onOpenFile
               ? (event) => {
                   const el = (event.target as Element).closest?.('[data-gc-file]');
                   const clicked = el?.getAttribute('data-gc-file');
-                  if (el && clicked) onOpenFile(clicked, readFileLinkPosition(el));
+                  if (el && clicked)
+                    onOpenFile(resolveRelativeToFile(markdownBasePath, clicked), readFileLinkPosition(el));
                 }
               : undefined
           }
         >
-          <Markdown text={file.text ?? ''} imageUrl={imageUrl} />
+          <Markdown
+            text={file.text ?? ''}
+            imageUrl={(path) => docImages[path] ?? imageUrl?.(resolveRelativeToFile(markdownBasePath, path))}
+          />
           {file.truncated ? <p className="file-problem">The file is longer; this is its start.</p> : null}
         </div>
       ) : file.kind === 'image' && rawUrl ? (
