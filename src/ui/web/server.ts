@@ -24,7 +24,7 @@ export interface WebUiOptions {
   clientScript: string;
   /** Shown in the page header. */
   /** `project: false`: the page names no project, `cwd` is only where the chat's agent runs. */
-  title: { version: string; cwd: string; project?: boolean };
+  title: { version: string; cwd: string; project?: boolean; home?: boolean };
   /** Default 127.0.0.1. The UI can run any command through the agent, so keep it local. */
   host?: string;
   /** Default 0 (a free port). */
@@ -153,6 +153,10 @@ export type WebCommand =
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   /** Take over the session with this id (`ChatController.continueSession`). */
   | { type: 'continue'; id: string }
+  /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
+  | { type: 'topic-chat'; topic: string }
+  /** Start a new conversation back in the neutral home (`--home` mode). */
+  | { type: 'home-chat' }
   | { type: 'agent'; name: string }
   | { type: 'model'; model: string };
 
@@ -253,6 +257,12 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const id = text('id', 200);
       return id ? { type: 'continue', id } : undefined;
     }
+    case 'topic-chat': {
+      const topic = text('topic', 200);
+      return topic ? { type: 'topic-chat', topic } : undefined;
+    }
+    case 'home-chat':
+      return { type: 'home-chat' };
     case 'agent': {
       const name = text('name', 100);
       return name === undefined ? undefined : { type: 'agent', name };
@@ -329,6 +339,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     const config = {
       cwd: options.title.cwd,
       project: options.title.project !== false,
+      ...(options.title.home ? { home: true } : {}),
       sessions: !!options.sessions,
       agents: !!options.agents,
       uploads: !!options.uploads,
@@ -713,6 +724,10 @@ async function run(
       return controller.decideTower(command.id, command.decision);
     case 'continue':
       return controller.continueSession(command.id);
+    case 'topic-chat':
+      return controller.startTopicChat(command.topic);
+    case 'home-chat':
+      return controller.startHomeChat();
     case 'agent':
       return controller.selectAgent(command.name);
     case 'model':

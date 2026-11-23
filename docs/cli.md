@@ -421,9 +421,18 @@ agent picker alongside greyed **Sign in** and **More agents** (**Install**) entr
 a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
 **Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
 send it back (`env <json>` on stdin) so newly installed CLIs are picked up without a restart.
-With `--sessions --no-project` the page names no project and suggests questions about the work
-of every agent: the chat is then about the sessions, wherever they run, and `--cwd` is only
-where its own agent starts. The desktop app runs it this way.
+With `--home` (as the desktop app runs it), there is no fixed project folder: each conversation
+resolves its own working directory (continuing a session uses its directory or repo root, **New
+chat** on a topic card uses that topic's most recent non-automated directory, and **New chat** from
+the home screen runs in the neutral home `~/.genaicode/home`). In the neutral home or when a
+directory cannot be resolved, the agent gets an `open_project` tool that asks for confirmation via a
+question card before moving the conversation into a project directory (or creating a missing one).
+The header shows the conversation's title and topic without a path; hover the header or type
+`/where` to see the directory, and the file panel follows the active conversation's directory. When
+Codex works in a directory for the first time, it asks to trust it through a question card instead
+of failing. `genaicode ui --cwd <dir>` keeps single-folder behaviour unchanged. With `--sessions
+--no-project` the page names no project and suggests questions about the work of every agent while
+keeping `--cwd` fixed.
 
 `genaicode ui` listens on the loopback address and prints a link with a random access
 token. Opening it in a browser moves the token into origin-isolated `sessionStorage`, strips

@@ -1,9 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { codexSessions } from '../sessions/codex.js';
+import { displayPath, isNeutralHome } from '../sessions/workspace.js';
 import type { TokenUsage } from '../../core/types.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
-import type { AgentEvent, CodingAgent } from '../types.js';
+import type { AgentEvent, ApprovalRequest, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
+import {
+  canonicalPath,
+  isCodexTrustError,
+  readCodexProjectTrust,
+  writeCodexProjectTrust,
+  type CodexTrustLevel,
+} from './codex-trust.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import type { AgentTask } from '../types.js';
 import type { PrepareContext, PreparedRun } from '../prepare.js';
@@ -31,6 +40,11 @@ export interface CodexLiveOptions {
    * `'when-listed'`: a Codex that cannot list them runs with its own servers, and says so.
    */
   onlyTaskMcpServers?: boolean | 'when-listed';
+  /**
+   * Ask through `task.onQuestion` before running Codex in a directory it has not trusted yet,
+   * instead of running untrusted or failing. Default true.
+   */
+  askTrust?: boolean;
 }
 
 /**
@@ -184,23 +198,102 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
     return answer;
   });
 
-  await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
+  const init = await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
   rpc.notify('initialized');
+
+  const canWriteConfig = isObject(init) && typeof init.codexHome === 'string';
+  const persistTrust = async (target: string, level: CodexTrustLevel) => {
+    if (canWriteConfig) {
+      try {
+        await rpc.request(
+          'config/value/write',
+          { keyPath: `projects.${JSON.stringify(target)}.trust_level`, value: level, mergeStrategy: 'replace' },
+          timeout,
+        );
+        return;
+      } catch {
+        // Older or custom app-server: fall back to updating Codex's config.toml directly.
+      }
+    }
+    writeCodexProjectTrust(target, level, task.env);
+  };
+  const askTrust = async (): Promise<'trusted' | 'untrusted' | 'cancel'> => {
+    const shown = displayPath(task.cwd, task.env);
+    const target = canonicalPath(task.cwd);
+    const questionText = `Codex wants to work in ${shown} for the first time. Trust it?`;
+    const request: ApprovalRequest = {
+      id: `codex-trust-${randomUUID()}`,
+      kind: 'question',
+      scope: 'once',
+      summary: questionText,
+      detail: { tool: 'codex_trust', cwd: target },
+      questions: [
+        {
+          id: 'trust',
+          header: 'Codex trust',
+          question: questionText,
+          options: [
+            { label: 'Trust', description: 'Mark this directory trusted in Codex config' },
+            { label: 'Continue untrusted', description: 'Run without loading project Codex config' },
+            { label: 'Cancel', description: 'Stop without running Codex here' },
+          ],
+        },
+      ],
+    };
+    const asked = await session.ask(request, session.signal);
+    const picked = asked.decision === 'approve' ? asked.answers?.trust?.[0] : undefined;
+    if (picked === 'Trust') {
+      await persistTrust(target, 'trusted');
+      return 'trusted';
+    }
+    if (picked === 'Continue untrusted') {
+      await persistTrust(target, 'untrusted');
+      return 'untrusted';
+    }
+    return 'cancel';
+  };
+
+  const mayAskTrust =
+    options.askTrust !== false &&
+    !!task.onQuestion &&
+    !isNeutralHome(task.cwd, { env: task.env }) &&
+    !/\/\.genaicode\/worktrees(\/|$)/.test(task.cwd.replace(/\\/g, '/'));
+  let trustAsked = false;
+  if (!task.resume && mayAskTrust && readCodexProjectTrust(task.cwd, task.env) === undefined) {
+    trustAsked = true;
+    if ((await askTrust()) === 'cancel') {
+      return { ok: false, error: `Codex was not trusted to work in ${displayPath(task.cwd, task.env)}.` };
+    }
+  }
 
   const policy = codexThreadPolicy(task, options);
   const explicit = resolvePermissions(task.permissions);
+  const startThread = () =>
+    rpc.request(
+      task.resume ? 'thread/resume' : 'thread/start',
+      {
+        cwd: task.cwd,
+        ...(task.model ? { model: task.model } : {}),
+        ...(task.resume ? { threadId: task.resume, excludeTurns: true } : {}),
+        ...(!task.resume || explicit.sandbox || options.sandbox ? { sandbox: policy.sandbox } : {}),
+        ...(!task.resume || explicit.approval ? { approvalPolicy: policy.approvalPolicy } : {}),
+      },
+      timeout,
+    );
   // A resume inherits the saved policy. Only caller-specified settings override it.
-  const thread = await rpc.request(
-    task.resume ? 'thread/resume' : 'thread/start',
-    {
-      cwd: task.cwd,
-      ...(task.model ? { model: task.model } : {}),
-      ...(task.resume ? { threadId: task.resume, excludeTurns: true } : {}),
-      ...(!task.resume || explicit.sandbox || options.sandbox ? { sandbox: policy.sandbox } : {}),
-      ...(!task.resume || explicit.approval ? { approvalPolicy: policy.approvalPolicy } : {}),
-    },
-    timeout,
-  );
+  let thread: unknown;
+  try {
+    thread = await startThread();
+  } catch (error) {
+    if (!trustAsked && mayAskTrust && isCodexTrustError(error)) {
+      if ((await askTrust()) === 'cancel') {
+        return { ok: false, error: `Codex was not trusted to work in ${displayPath(task.cwd, task.env)}.` };
+      }
+      thread = await startThread();
+    } else {
+      throw error;
+    }
+  }
   const info = isObject(thread) && isObject(thread.thread) ? thread.thread : undefined;
   const threadId = stringField(info, 'id');
   if (!threadId) throw new Error('Codex did not return a thread id.');

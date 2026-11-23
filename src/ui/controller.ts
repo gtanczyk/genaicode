@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
 import { isAgentUsable, type AgentAuthState, type AgentInspection } from '../agents/status.js';
@@ -10,8 +11,24 @@ import {
   type AgentSessionOptions,
   type SessionState,
 } from '../agents/session.js';
-import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
-import { isWithin } from '../agents/sessions/files.js';
+import {
+  agentSessionSources,
+  archiveKey,
+  codexProjects,
+  findSession,
+  isNeutralHome,
+  isSameDir,
+  listSessions,
+  readConversations,
+  readSession,
+  readTopics,
+  resolveSessionWorkspace,
+  resolveTopicWorkspace,
+  saveConversation,
+  type ConversationOrigin,
+  type TopicStore,
+} from '../agents/sessions/index.js';
+import { isWithin, oneLine } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
@@ -57,6 +74,15 @@ export interface Notice {
   tone: 'info' | 'error';
 }
 
+/** Metadata of the active conversation in `--home` mode. */
+export interface ConversationMeta {
+  id: string;
+  cwd: string;
+  origin: ConversationOrigin;
+  title?: string;
+  topic?: { id: string; name: string };
+}
+
 export interface ChatView {
   session: SessionState;
   notices: Notice[];
@@ -70,6 +96,8 @@ export interface ChatView {
   shells: number;
   /** True when no agent is ready/usable yet (`genaicode ui` onboarding setup state). */
   setup?: boolean;
+  /** Active conversation metadata when running in `--home` mode. */
+  conversation?: ConversationMeta;
 }
 
 /** Opens the session in the browser from the terminal chat (`/web`). */
@@ -127,6 +155,10 @@ export interface ChatOptions {
   artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
   /** The running `ask_user` channel (`AgentSessionOptions.questions`), started by the front end. */
   questionChannel?: AgentSessionOptions['questions'];
+  /** The running `open_project` channel (`AgentSessionOptions.openProject`), started in `--home` mode. */
+  openProjectChannel?: AgentSessionOptions['openProject'];
+  /** Per-conversation working directory mode (`ui --home`): starts in neutral home, resolves cwd per conversation. */
+  home?: boolean;
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
   /** Start in `setup` state when no agent CLI is installed instead of throwing `NoAgentError` (`genaicode ui`). */
@@ -154,11 +186,17 @@ export interface ChatController {
   updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
   /**
-   * Take over the session with this id (any agent's, in this directory or below it): its turns
-   * join the chat and the current agent continues it, resuming when the session is its own and
-   * getting a handoff otherwise. Resolves false, with a notice, when it cannot.
+   * Take over the session with this id (any agent's, in this directory or below it, or anywhere
+   * in `--home` mode): its turns join the chat and the current agent continues it, resuming when
+   * the session is its own and getting a handoff otherwise. Resolves false, with a notice, when it cannot.
    */
   continueSession(id: string): Promise<boolean>;
+  /** Start a new conversation in the resolved directory of `topicId` (`--home` mode). */
+  startTopicChat(topicId: string): Promise<boolean>;
+  /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
+  startHomeChat(): boolean;
+  /** Move the active conversation into `target.cwd` (used by `open_project` after user confirmation). */
+  moveProject(target: { cwd: string; topic?: { id: string; name: string } }): boolean;
   close(): void;
   readonly session: AgentSession;
   /** What the agent published, for the front end that serves it. */
@@ -228,16 +266,58 @@ export function createChatController(options: ChatOptions): ChatController {
     transformPrompt: options.transformPrompt,
     ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
     ...(options.questionChannel ? { questions: options.questionChannel } : {}),
+    ...(options.openProjectChannel ? { openProject: options.openProjectChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
+  const homeMode = options.home === true;
+  const homeDir = options.cwd;
+  let conversation: ConversationMeta | undefined = homeMode
+    ? { id: randomUUID(), cwd: homeDir, origin: 'home' }
+    : undefined;
+  let lastSavedKey = '';
   let notices: Notice[] = [];
   let closed = false;
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
   const shells = new Set<ChildProcess>();
+  const syncConversation = (state: SessionState) => {
+    if (!homeMode || !conversation) return;
+    let next = conversation;
+    if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
+    if (!next.title && state.turns.length) next = { ...next, title: oneLine(state.turns[0]!.prompt, 120) };
+    conversation = next;
+    if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
+    const source = byName.get(state.agent)?.sessions?.name;
+    const key = JSON.stringify([
+      next.id,
+      next.cwd,
+      next.origin,
+      next.title,
+      next.topic?.id,
+      state.agent,
+      state.sessionId,
+    ]);
+    if (key === lastSavedKey) return;
+    lastSavedKey = key;
+    void saveConversation(
+      {
+        id: next.id,
+        cwd: next.cwd,
+        origin: next.origin,
+        ...(next.title ? { title: next.title } : {}),
+        ...(next.topic ? { topicId: next.topic.id, topicName: next.topic.name } : {}),
+        agent: state.agent,
+        ...(source ? { source } : {}),
+        ...(state.sessionId ? { sessionId: state.sessionId } : {}),
+        updatedAt: Date.now(),
+      },
+      env,
+    ).catch(() => undefined);
+  };
   const snapshot = (): ChatView => {
     const state = session.get();
+    syncConversation(state);
     return {
       session: state,
       notices,
@@ -247,11 +327,14 @@ export function createChatController(options: ChatOptions): ChatController {
       shells: shells.size,
       ...(setup ? { setup: true } : {}),
       ...(inbox ? { tower: inbox.view(state) } : {}),
+      ...(conversation ? { conversation } : {}),
     };
   };
   let view = snapshot();
+  let batching = 0;
   const listeners = new Set<(view: ChatView) => void>();
   const publish = () => {
+    if (batching > 0) return;
     view = snapshot();
     for (const listener of [...listeners]) {
       try {
@@ -331,7 +414,7 @@ export function createChatController(options: ChatOptions): ChatController {
     let child: ChildProcess;
     try {
       child = spawn(command, {
-        cwd: options.cwd,
+        cwd: session.get().cwd,
         env,
         shell: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -459,6 +542,103 @@ export function createChatController(options: ChatOptions): ChatController {
     publish();
   };
 
+  const startHomeChat = (): boolean => {
+    batching++;
+    let ok = false;
+    try {
+      ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
+      if (ok) {
+        notices = [];
+        if (homeMode) {
+          conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
+          lastSavedKey = '';
+        }
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) {
+      notice('A turn is running. /stop it first, then /clear.', 'error');
+      return false;
+    }
+    publish();
+    return true;
+  };
+
+  const moveProject = (target: { cwd: string; topic?: { id: string; name: string } }): boolean => {
+    batching++;
+    let ok = false;
+    try {
+      ok = session.setCwd(target.cwd, { handoff: true });
+      if (ok && homeMode) {
+        conversation = {
+          ...(conversation ?? { id: randomUUID(), cwd: target.cwd, origin: 'project' }),
+          cwd: target.cwd,
+          origin: 'project',
+          ...(target.topic ? { topic: target.topic } : {}),
+        };
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) return false;
+    publish();
+    return true;
+  };
+
+  const startTopicChat = async (topicId: string): Promise<boolean> => {
+    if (!homeMode) return false;
+    if (session.get().status === 'running') {
+      notice('Stop the running turn before starting another chat.', 'error');
+      return false;
+    }
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    try {
+      const [store, listing, codex] = await Promise.all([
+        readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
+        listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
+        codexProjects({ env }).catch(() => []),
+      ]);
+      const topic = store.topics.find((candidate) => candidate.id === topicId);
+      if (!topic) {
+        notice(`No topic "${topicId}" found.`, 'error');
+        return false;
+      }
+      const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
+      batching++;
+      let ok = false;
+      try {
+        ok = session.clear({ cwd: resolved.cwd });
+        if (ok) {
+          notices = [];
+          conversation = {
+            id: randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            topic: { id: topic.id, name: topic.name },
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
+        notice('Stop the running turn before starting another chat.', 'error');
+        return false;
+      }
+      publish();
+      if (resolved.status === 'unresolved') {
+        notice(
+          `No local folder found for "${topic.name}". Mention a directory (e.g. ~/src/…) to move this conversation there.`,
+        );
+      }
+      return true;
+    } catch (error) {
+      notice(`Could not start a chat for that topic: ${errorText(error)}`, 'error');
+      return false;
+    }
+  };
+
   const continueSession = async (id: string): Promise<boolean> => {
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
     try {
@@ -468,32 +648,105 @@ export function createChatController(options: ChatOptions): ChatController {
         return false;
       }
       const { session: theirs } = found;
-      if (!theirs.cwd || !isWithin(theirs.cwd, options.cwd)) {
-        const where = theirs.cwd ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.` : '';
-        notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
-        return false;
+      if (!homeMode) {
+        if (!theirs.cwd || !isWithin(theirs.cwd, options.cwd)) {
+          const where = theirs.cwd
+            ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.`
+            : '';
+          notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
+          return false;
+        }
+        const turns = await readSession(sources, theirs);
+        const agent = byName.get(session.get().agent);
+        // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
+        const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+        if (!turns.length && !own) {
+          notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
+          return false;
+        }
+        if (!session.adopt(turns, own ? { sessionId: theirs.id } : {})) {
+          notice('Stop the running turn before taking over another session.', 'error');
+          return false;
+        }
+        const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+        const count = turns.length ? ` (${turns.length} turns)` : '';
+        notice(
+          setup
+            ? `Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`
+            : own
+              ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+              : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+        );
+        return true;
       }
-      const turns = await readSession(sources, theirs);
+
+      // `--home` mode: resolve working directory per conversation (A.1) across any project.
+      let resolved = resolveSessionWorkspace(theirs, { env });
+      if (resolved.status === 'unresolved') {
+        const [listing, codex] = await Promise.all([
+          listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
+          codexProjects({ env }).catch(() => []),
+        ]);
+        resolved = resolveSessionWorkspace(theirs, { env, sessions: listing.sessions, codexProjects: codex });
+      }
+      const [turns, store, savedList] = await Promise.all([
+        readSession(sources, theirs),
+        readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
+        readConversations(env).catch(() => []),
+      ]);
       const agent = byName.get(session.get().agent);
-      // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
-      const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+      const sameDir = resolved.status === 'resolved' && !!theirs.cwd && isSameDir(resolved.cwd, theirs.cwd);
+      // Never treat an uninstalled setup placeholder as own.
+      const own = !setup && sameDir && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
       if (!turns.length && !own) {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
       }
-      if (!session.adopt(turns, own ? { sessionId: theirs.id } : {})) {
+      const saved = savedList.find(
+        (candidate) => candidate.sessionId === theirs.id && (!candidate.source || candidate.source === theirs.source),
+      );
+      const topicId = store.sessions[archiveKey(theirs)] ?? saved?.topicId;
+      const topicObj =
+        (topicId ? store.topics.find((candidate) => candidate.id === topicId) : undefined) ??
+        (saved?.topicId && saved?.topicName ? { id: saved.topicId, name: saved.topicName } : undefined);
+      const name = theirs.title ?? theirs.firstPrompt ?? saved?.title ?? theirs.id;
+      batching++;
+      let ok = false;
+      try {
+        ok = session.adopt(turns, { ...(own ? { sessionId: theirs.id } : {}), cwd: resolved.cwd, replace: true });
+        if (ok) {
+          notices = [];
+          conversation = {
+            id: saved?.id ?? randomUUID(),
+            cwd: resolved.cwd,
+            origin: resolved.origin,
+            title: oneLine(name, 120),
+            ...(topicObj ? { topic: { id: topicObj.id, name: topicObj.name } } : {}),
+          };
+          lastSavedKey = '';
+        }
+      } finally {
+        batching--;
+      }
+      if (!ok) {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }
-      const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+      publish();
       const count = turns.length ? ` (${turns.length} turns)` : '';
-      notice(
-        setup
-          ? `Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`
-          : own
+      if (setup) {
+        notice(`Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`);
+      } else if (resolved.status === 'unresolved') {
+        notice(
+          `Took over "${name}" from ${theirs.agent}. ${resolved.reason ?? 'Original directory is no longer available.'} Mention a directory (e.g. ~/src/…) to move this conversation there.`,
+        );
+      } else {
+        notice(
+          own
             ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
             : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
-      );
+        );
+      }
       return true;
     } catch (error) {
       notice(`Could not take over the session: ${errorText(error)}`, 'error');
@@ -700,11 +953,15 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Next prompt starts a new agent session.');
           return 'ok';
         case 'clear':
-          if (session.clear()) {
-            notices = [];
-            publish();
-          } else notice('A turn is running. /stop it first, then /clear.', 'error');
+          startHomeChat();
           return 'ok';
+        case 'where': {
+          const dir = session.get().cwd;
+          const neutral = homeMode && isNeutralHome(dir, { env }) ? ' (neutral home)' : '';
+          const topic = conversation?.topic ? ` · topic: ${conversation.topic.name}` : '';
+          notice(`Working directory: ${dir}${neutral}${topic}`);
+          return 'ok';
+        }
         case 'stop':
           stopAll();
           return 'ok';
@@ -749,6 +1006,9 @@ export function createChatController(options: ChatOptions): ChatController {
     selectAgent,
     updateAgents,
     continueSession,
+    startTopicChat,
+    startHomeChat,
+    moveProject,
     setModel(model) {
       session.setModel(model || undefined);
     },

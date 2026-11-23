@@ -25,23 +25,41 @@ export const MAX_FILE_VIEW_BYTES = 512 * 1024;
 
 /**
  * Files under `cwd` only: a path that leaves it, or a link inside it that points out, is refused,
- * so the page shows what the agent works on and nothing else on the machine.
+ * so the page shows what the agent works on and nothing else on the machine. Pass a function when
+ * the working directory changes per conversation (`ui --home`).
  */
-export function createProjectFiles(cwd: string): ProjectFiles {
+export function createProjectFiles(cwd: string | (() => string | readonly string[])): ProjectFiles {
   return {
     read(path) {
       if (!path || path.includes('\0')) return 'missing';
-      let root: string;
+      const raw = typeof cwd === 'function' ? cwd() : cwd;
+      const list = (Array.isArray(raw) ? raw : [raw]).filter((dir): dir is string => typeof dir === 'string' && !!dir);
+      if (!list.length) return 'outside';
+      const roots: string[] = [];
+      for (const dir of list) {
+        try {
+          roots.push(realpathSync(dir));
+        } catch {
+          // A root that is gone allows nothing.
+        }
+      }
+      if (!roots.length) return 'missing';
       let real: string;
       try {
-        root = realpathSync(cwd);
         // Links are followed first, so what is checked is the file that would be read.
-        real = realpathSync(resolve(cwd, path));
+        real = realpathSync(resolve(roots[0]!, path));
       } catch {
         return 'missing';
       }
-      const inside = relative(root, real);
-      if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return 'outside';
+      let inside: string | undefined;
+      for (const root of roots) {
+        const rel = relative(root, real);
+        if (rel && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) {
+          inside = rel;
+          break;
+        }
+      }
+      if (!inside) return 'outside';
       let descriptor: number;
       try {
         // A pipe would hold the open (and the whole server) until someone writes to it.
