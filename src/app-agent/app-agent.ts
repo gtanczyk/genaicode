@@ -6,7 +6,12 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createArtifactStore, PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from '../agents/artifacts.js';
 import { detectAgents } from '../agents/discovery.js';
 import { MCP_NAME } from '../agents/prepare.js';
-import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
+import {
+  createAgentSession,
+  type AgentSession,
+  type AgentSessionOptions,
+  type SessionTurn,
+} from '../agents/session.js';
 import type { ApprovalDecision, ApprovalRequest, CodingAgent, QuestionAnswers } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { safeJson } from './json.js';
@@ -95,6 +100,13 @@ export interface AppAgentOptions {
    * Files come from `dev.cwd` in dev mode only. Default false.
    */
   artifacts?: boolean | { maxBytes?: number; maxArtifacts?: number };
+  /**
+   * Give agents with no way of their own to ask the user (Antigravity, Gemini, Muse, Codex outside
+   * Plan mode) the `ask_user` tool: pass `await startQuestionChannel()` and close it with the app.
+   * Their questions join `session.approvals` as `kind: 'question'`, like Claude's, and
+   * `<AppAgentChat>` shows the card. Default: off.
+   */
+  questions?: AgentSessionOptions['questions'];
   /** MCP server name the agent sees (letters, digits, `_`, `-`); its tools show as `mcp__<name>__<tool>`. Default `app`. */
   serverName?: string;
   env?: NodeJS.ProcessEnv;
@@ -398,6 +410,7 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
       },
       fallback: fallbackFor(mode),
       ...(artifacts ? { artifacts: { store: artifacts } } : {}),
+      ...(options.questions ? { questions: options.questions } : {}),
       // The fallback agent starts its own session: brief it again, with the conversation so far.
       failoverPrompt: (prompt, earlier) => {
         const told = clip(`${carryOver}\n\n${transcript(earlier)}`.trim(), CARRY_MAX, true);
