@@ -330,6 +330,9 @@ describe('createAgentSession', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(session.get().approvals).toEqual([{ id: 'a1', kind: 'command', summary: 'rm -rf build' }]);
     expect(session.approve('nope', 'approve')).toBe(false);
+    // A decision the agent does not know leaves the request waiting.
+    expect(session.approve('a1', 'allow' as 'approve')).toBe(false);
+    expect(session.get().approvals).toHaveLength(1);
     expect(session.approve('a1', 'approve')).toBe(true);
     await session.idle();
     expect(decisions).toEqual(['approve']);
@@ -345,6 +348,51 @@ describe('createAgentSession', () => {
     await session.idle();
     expect(decisions).toEqual(['approve', 'deny']);
     expect(session.get().turns[1].result?.status).toBe('aborted');
+  });
+
+  it('holds a question for answer(), whatever autoApprove says', async () => {
+    const request = {
+      id: 'q1',
+      kind: 'question' as const,
+      questions: [{ id: 'color', question: 'Which color?', options: [{ label: 'Red' }, { label: 'Blue' }] }],
+    };
+    const got: unknown[] = [];
+    const { agent } = fakeAgent([
+      async (task, emit) => {
+        emit({ type: 'approval-request', request });
+        const answers = await task.onQuestion!(request);
+        got.push(answers);
+        emit({
+          type: 'approval-resolved',
+          id: 'q1',
+          decision: answers ? 'approve' : 'deny',
+          ...(answers ? { answers } : {}),
+        });
+      },
+      async (task) => {
+        got.push(await task.onQuestion!({ ...request, id: 'q2' }));
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '.', autoApprove: () => 'approve' });
+    session.send('ask');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.get().approvals).toEqual([request]);
+    expect(session.answer('nope', {})).toBe(false);
+    expect(session.answer('q1', { color: ['Blue'] })).toBe(true);
+    await session.idle();
+    expect(got).toEqual([{ color: ['Blue'] }]);
+    expect(session.get().turns[0]!.entries).toContainEqual({
+      kind: 'approval',
+      request,
+      decision: 'approve',
+      answers: { color: ['Blue'] },
+    });
+
+    session.send('again');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(session.approve('q2', 'deny')).toBe(true);
+    await session.idle();
+    expect(got).toEqual([{ color: ['Blue'] }, undefined]);
   });
 
   it('shows approvals decided by permissions, once each', async () => {

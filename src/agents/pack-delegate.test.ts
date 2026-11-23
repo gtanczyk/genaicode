@@ -128,4 +128,65 @@ describe('pack delegation for a chat agent', () => {
     }).result;
     expect(asked).toEqual(['t1:r']);
   });
+
+  it('passes a model, effort and the lead MCP servers by name, and asks the lead not to confirm first', async () => {
+    const cwd = mkdtempSync(join(root, 'options-'));
+    const seen: AgentTask[] = [];
+    const member: CodingAgent = {
+      ...fake('agy', async (task) => {
+        seen.push(task);
+      }),
+      capabilities: { mcp: true, effort: ['low', 'high'] },
+    };
+    const gamedev: McpServer = { name: 'gamedevpl', url: 'https://example.test/mcp', headers: { authorization: 'k' } };
+    let prompt = '';
+    const lead = fake(
+      'claude',
+      async (task) => {
+        prompt = task.prompt;
+        const roster = JSON.parse(await tool(task, 'agents', {})) as [{ effort?: string[] }];
+        expect(roster[0].effort).toEqual(['low', 'high']);
+        await expect(
+          tool(task, 'delegate', { agent: 'agy', prompt: 'x', mode: 'shared', mcpServers: ['nope'] }),
+        ).rejects.toThrow('Available: gamedevpl, given');
+        await expect(
+          tool(task, 'delegate', { agent: 'agy', prompt: 'x', mode: 'shared', effort: 'max' }),
+        ).rejects.toThrow('agy takes effort low, high');
+        await tool(task, 'delegate', {
+          agent: 'agy',
+          title: '  Visual   uplift ',
+          prompt: 'make it pretty',
+          mode: 'shared',
+          model: 'gemini-4-neon',
+          effort: 'high',
+          mcpServers: ['gamedevpl'],
+        });
+        const [report] = JSON.parse(await tool(task, 'wait', { ids: ['t1'] })) as [Record<string, unknown>];
+        expect(report).toMatchObject({
+          title: 'Visual uplift',
+          model: 'gemini-4-neon',
+          effort: 'high',
+          mcpServers: ['gamedevpl'],
+        });
+      },
+      true,
+    );
+    const team = pack({
+      lead,
+      members: [member],
+      brief: delegationBrief,
+      shareableMcpServers: async () => [gamedev],
+    });
+    const result = await team.run({
+      prompt: 'go',
+      cwd,
+      mcpServers: [{ name: 'given', command: 'node' }],
+    }).result;
+    expect(result.ok).toBe(true);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ model: 'gemini-4-neon', effort: 'high', mcpServers: [gamedev] });
+    expect(prompt).toContain('Yours: gamedevpl, given.');
+    expect(prompt).toContain('delegate right away');
+    expect(team.tasks()[0]).toMatchObject({ title: 'Visual uplift', mcpServers: ['gamedevpl'] });
+  });
 });

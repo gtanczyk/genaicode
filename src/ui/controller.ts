@@ -3,13 +3,25 @@ import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
 import { outputText, type McpTool } from '../agents/mcp-tools.js';
-import { createAgentSession, type AgentSession, type SessionState } from '../agents/session.js';
+import {
+  createAgentSession,
+  type AgentSession,
+  type AgentSessionOptions,
+  type SessionState,
+} from '../agents/session.js';
 import { agentSessionSources, findSession, readSession } from '../agents/sessions/index.js';
 import { isWithin } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
-import type { AgentBudget, AgentTask, ApprovalDecision, CodingAgent, McpServer } from '../agents/types.js';
+import type {
+  AgentBudget,
+  AgentTask,
+  ApprovalDecision,
+  CodingAgent,
+  McpServer,
+  QuestionAnswers,
+} from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 
 export interface AgentChoice {
@@ -96,6 +108,8 @@ export interface ChatOptions {
   artifacts?: boolean;
   /** The running artifact channel, started by the front end (`AgentSessionOptions.artifacts`). */
   artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
+  /** The running `ask_user` channel (`AgentSessionOptions.questions`), started by the front end. */
+  questionChannel?: AgentSessionOptions['questions'];
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
 }
@@ -110,6 +124,8 @@ export interface ChatController {
   /** Show a line from the front end itself. */
   note(text: string, tone?: Notice['tone']): void;
   approve(id: string, decision: ApprovalDecision): boolean;
+  /** Answer a pending question of the agent (`AgentSession.answer`). */
+  answer(id: string, answers: QuestionAnswers): boolean;
   decideTower(id: string, decision: TowerDecision): Promise<boolean>;
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
@@ -175,6 +191,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(options.budget ? { budget: options.budget } : {}),
     transformPrompt: options.transformPrompt,
     ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
+    ...(options.questionChannel ? { questions: options.questionChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });
   let notices: Notice[] = [];
@@ -595,7 +612,9 @@ export function createChatController(options: ChatOptions): ChatController {
           }
           autoApprove = command.on ?? !autoApprove;
           // What is waiting now gets the same answer as what comes next.
-          if (autoApprove) for (const approval of session.get().approvals) session.approve(approval.id, 'approve');
+          if (autoApprove)
+            for (const approval of session.get().approvals)
+              if (approval.kind !== 'question') session.approve(approval.id, 'approve');
           notice(
             autoApprove
               ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
@@ -614,6 +633,7 @@ export function createChatController(options: ChatOptions): ChatController {
     stop: stopAll,
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
+    answer: (id, answers) => session.answer(id, answers),
     decideTower: (id, decision) => inbox?.decide(session, id, decision) ?? Promise.resolve(false),
     selectAgent,
     continueSession,

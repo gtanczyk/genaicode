@@ -181,7 +181,7 @@ export function managedAgent(provider: ManagedProvider, options: ManagedAgentOpt
   return {
     name: provider.name,
     command: provider.name,
-    capabilities: { ...provider.capabilities, steer: !!provider.send, approvals: !!provider.answer },
+    capabilities: { ...provider.capabilities, remote: true, steer: !!provider.send, approvals: !!provider.answer },
     ...(provider.sessions !== undefined ? { sessions: provider.sessions } : {}),
     run: (task) => runManaged(provider, task, options),
   };

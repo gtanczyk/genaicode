@@ -15,6 +15,7 @@ import type {
   ApprovalPolicy,
   ApprovalRequest,
   CodingAgent,
+  QuestionAnswers,
 } from './types.js';
 import type { SessionSource } from './sessions/types.js';
 
@@ -33,6 +34,8 @@ export interface LiveSession {
    * handler's signal aborts in the last two cases.
    */
   approve(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision>;
+  /** Like `approve`, for a question: the answers come back with the decision. */
+  ask(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalOutcome>;
   /** Aborts once the task is over: its process exited, or it was stopped. */
   readonly signal: AbortSignal;
   /** Make `AgentRun.steer` send input, or pass undefined once the task stops accepting it. */
@@ -172,6 +175,15 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
           () => decideApproval(task, request, ended),
         );
       },
+      ask(request, signal) {
+        const ended = signal ? anySignal([lifetime.signal, signal]) : lifetime.signal;
+        return reportReply(
+          (event) => recorder.emit(event),
+          request,
+          ended,
+          () => decideApproval(task, request, ended),
+        );
+      },
       setSteer(next) {
         steer = next;
       },
@@ -259,6 +271,71 @@ export async function askApproval(
   }
 }
 
+/** A decided request: the decision, and for a question the answers that came with an approval. */
+export interface ApprovalOutcome {
+  decision: ApprovalDecision;
+  answers?: QuestionAnswers;
+}
+
+/**
+ * `task.onQuestion`'s answers to a question, cut down to the questions asked. A denial without
+ * a handler, when it throws or returns nothing, and when `signal` aborts first.
+ */
+export async function askQuestion(
+  task: Pick<AgentTask, 'onQuestion'>,
+  request: ApprovalRequest,
+  signal: AbortSignal,
+): Promise<ApprovalOutcome> {
+  const handler = task.onQuestion;
+  if (!handler || signal.aborted) return { decision: 'deny' };
+  let stop: () => void = () => {};
+  const withdrawn = new Promise<undefined>((resolve) => {
+    stop = () => resolve(undefined);
+    signal.addEventListener('abort', stop, { once: true });
+  });
+  try {
+    const given = await Promise.race([Promise.resolve().then(() => handler(request, signal)), withdrawn]);
+    if (signal.aborted || typeof given !== 'object' || given === null) return { decision: 'deny' };
+    return { decision: 'approve', answers: questionAnswers(request, given) };
+  } catch {
+    return { decision: 'deny' };
+  } finally {
+    signal.removeEventListener('abort', stop);
+  }
+}
+
+const MAX_ANSWER_CHARS = 10_000;
+
+/** `given` cut down to the questions of `request`: string answers, no empty ones. */
+export function questionAnswers(request: ApprovalRequest, given: unknown): QuestionAnswers {
+  const answers: QuestionAnswers = {};
+  if (typeof given !== 'object' || given === null) return answers;
+  for (const question of request.questions ?? []) {
+    if (!Object.hasOwn(given, question.id)) continue;
+    const value = (given as Record<string, unknown>)[question.id];
+    const picked = (Array.isArray(value) ? (value as unknown[]) : [value])
+      .filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+      .map((item) => item.slice(0, MAX_ANSWER_CHARS));
+    const kept = question.multiple ? picked.slice(0, question.options.length + 1) : picked.slice(0, 1);
+    if (kept.length) answers[question.id] = kept;
+  }
+  return answers;
+}
+
+/** `answers` without those of secret questions: what may go into events and the transcript. */
+export function shownAnswers(
+  request: ApprovalRequest,
+  answers: QuestionAnswers | undefined,
+): QuestionAnswers | undefined {
+  if (!answers) return undefined;
+  const secret = new Set(
+    (request.questions ?? []).filter((question) => question.secret).map((question) => question.id),
+  );
+  return Object.fromEntries(
+    Object.entries(answers).map(([id, value]) => [id, secret.has(id) ? value.map(() => '••••') : value]),
+  );
+}
+
 /**
  * Emit `approval-request`, run `decide`, and emit one `approval-resolved`. When `signal`
  * aborts first, the denial is emitted right away, before the run's event stream can close.
@@ -267,20 +344,37 @@ export async function reportApproval(
   emit: (event: AgentEvent) => void,
   request: ApprovalRequest,
   signal: AbortSignal,
-  decide: () => Promise<{ decision: ApprovalDecision; automatic: boolean }>,
+  decide: () => Promise<ApprovalOutcome & { automatic: boolean }>,
 ): Promise<ApprovalDecision> {
+  return (await reportReply(emit, request, signal, decide)).decision;
+}
+
+/** `reportApproval` that also returns a question's answers. The event carries them without secrets. */
+export async function reportReply(
+  emit: (event: AgentEvent) => void,
+  request: ApprovalRequest,
+  signal: AbortSignal,
+  decide: () => Promise<ApprovalOutcome & { automatic: boolean }>,
+): Promise<ApprovalOutcome> {
   emit({ type: 'approval-request', request });
-  let reported: ApprovalDecision | undefined;
-  const report = (decision: ApprovalDecision, automatic: boolean) => {
+  let reported: ApprovalOutcome | undefined;
+  const report = (outcome: ApprovalOutcome, automatic: boolean) => {
     if (reported) return;
-    reported = decision;
-    emit({ type: 'approval-resolved', id: request.id, decision, ...(automatic ? { automatic } : {}) });
+    reported = outcome;
+    const shown = outcome.decision === 'approve' ? shownAnswers(request, outcome.answers) : undefined;
+    emit({
+      type: 'approval-resolved',
+      id: request.id,
+      decision: outcome.decision,
+      ...(automatic ? { automatic } : {}),
+      ...(shown ? { answers: shown } : {}),
+    });
   };
-  const withdrawn = () => report('deny', false);
+  const withdrawn = () => report({ decision: 'deny' }, false);
   signal.addEventListener('abort', withdrawn, { once: true });
   try {
-    const { decision, automatic } = await decide();
-    report(decision, automatic);
+    const { automatic, ...outcome } = await decide();
+    report(outcome, automatic);
     return reported!;
   } finally {
     signal.removeEventListener('abort', withdrawn);
@@ -290,13 +384,14 @@ export async function reportApproval(
 /**
  * Decide one request under `task.permissions.approval`: `deny` and `auto-approve` answer
  * without asking (`automatic`), otherwise `askApproval`. An approval that arrives after
- * `signal` aborted is a denial either way.
+ * `signal` aborted is a denial either way. A question is never answered by `auto-approve`:
+ * it goes to `task.onQuestion`, and without one it is declined.
  */
 export async function decideApproval(
-  task: Pick<AgentTask, 'onApproval' | 'permissions'>,
+  task: Pick<AgentTask, 'onApproval' | 'onQuestion' | 'permissions'>,
   request: ApprovalRequest,
   signal: AbortSignal,
-): Promise<{ decision: ApprovalDecision; automatic: boolean }> {
+): Promise<ApprovalOutcome & { automatic: boolean }> {
   let policy: ApprovalPolicy | undefined;
   try {
     policy = resolvePermissions(task.permissions).approval;
@@ -304,6 +399,10 @@ export async function decideApproval(
     return { decision: 'deny', automatic: true };
   }
   if (policy === 'deny') return { decision: 'deny', automatic: true };
+  if (request.kind === 'question') {
+    if (!task.onQuestion) return { decision: 'deny', automatic: true };
+    return { ...(await askQuestion(task, request, signal)), automatic: false };
+  }
   if (policy === 'auto-approve') return { decision: signal.aborted ? 'deny' : 'approve', automatic: true };
   return { decision: await askApproval(task, request, signal), automatic: false };
 }

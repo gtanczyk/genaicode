@@ -738,6 +738,239 @@ describe('terminal UI', () => {
     chat.close();
   });
 
+  it('answers an agent question from the terminal: numbers, typed text, skip', async () => {
+    const got: unknown[] = [];
+    const request = (id: string) => ({
+      id,
+      kind: 'question' as const,
+      questions: [
+        { id: 'color', question: 'Which color?', options: [{ label: 'Red' }, { label: 'Blue' }], freeText: true },
+        { id: 'sizes', question: 'Which sizes?', options: [{ label: 'S' }, { label: 'M' }], multiple: true },
+      ],
+    });
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(await task.onQuestion!(request('q1')));
+          got.push(await task.onQuestion!(request('q2')));
+          got.push(await task.onQuestion!(request('q3')));
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('ask me');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (1/2): Which color?');
+    expect(app.lastFrame()).toContain('2 Blue');
+    // `y` is no answer to a question, and /auto does not answer it either.
+    app.stdin.write('y');
+    await tick();
+    app.stdin.write('\x7f');
+    chat.submit('/auto');
+    await tick();
+    expect(got).toEqual([]);
+    app.stdin.write('2');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('2');
+    await tick();
+    expect(app.lastFrame()).toContain('[x] M');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ color: ['Blue'], sizes: ['M'] }]);
+
+    // A typed answer (a path is an answer, not a command), then one choice for the second question.
+    await tick();
+    for (const char of '/work/green') app.stdin.write(char);
+    await tick();
+    app.stdin.write('\r');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('1');
+    await tick();
+    app.stdin.write('\r');
+    await expect.poll(() => got.length).toBe(2);
+    expect(got[1]).toEqual({ color: ['/work/green'], sizes: ['S'] });
+
+    // The first question takes typed text, so an empty Enter skips; the second one skips on `n`.
+    await tick();
+    app.stdin.write('\r');
+    await tick();
+    expect(got.length).toBe(2);
+    expect(app.lastFrame()).toContain('asks (2/2): Which sizes?');
+    app.stdin.write('2');
+    await tick();
+    app.stdin.write('n');
+    await expect.poll(() => got.length).toBe(3);
+    expect(got[2]).toBeUndefined();
+    app.unmount();
+    chat.close();
+  });
+
+  it('masks the answer to a secret question while it is typed', async () => {
+    const got: unknown[] = [];
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(
+            await task.onQuestion!({
+              id: 'q1',
+              kind: 'question',
+              questions: [{ id: 'token', question: 'Paste the token', options: [], freeText: true, secret: true }],
+            }),
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    // `!` does not open shell mode while an answer is typed, and history keys do nothing.
+    for (const char of '!s3cret') app.stdin.write(char);
+    await tick();
+    app.stdin.write('\u001B[A');
+    await tick();
+    expect(app.lastFrame()).toContain('•••••••');
+    expect(app.lastFrame()).not.toContain('s3cret');
+    expect(app.lastFrame()).not.toContain('shell mode');
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ token: ['!s3cret'] }]);
+    app.unmount();
+    chat.close();
+  });
+
+  it('drops a secret draft when its question is withdrawn', async () => {
+    const stop = new AbortController();
+    let answered: unknown = 'pending';
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          answered = await task.onQuestion!(
+            {
+              id: 'q1',
+              kind: 'question',
+              questions: [{ id: 'token', question: 'Paste the token', options: [], freeText: true, secret: true }],
+            },
+            stop.signal,
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    for (const char of 's3cret') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('••••••');
+    stop.abort();
+    await expect.poll(() => answered).not.toBe('pending');
+    await tick();
+    expect(app.lastFrame()).not.toContain('Paste the token');
+    expect(app.lastFrame()).not.toContain('s3cret');
+    expect(app.lastFrame()).not.toContain('••••••');
+    app.unmount();
+    chat.close();
+  });
+
+  it('picks an option past nine by its number and Enter', async () => {
+    const got: unknown[] = [];
+    const options = Array.from({ length: 12 }, (_, index) => ({ label: `opt${index + 1}` }));
+    const asking: CodingAgent = {
+      name: 'asker',
+      command: 'asker',
+      capabilities: {},
+      run(task): AgentRun {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        const done = (async () => {
+          got.push(
+            await task.onQuestion!({
+              id: 'q1',
+              kind: 'question',
+              questions: [
+                { id: 'one', question: 'Pick one', options },
+                { id: 'many', question: 'Pick some', options, multiple: true },
+              ],
+            }),
+          );
+          return result;
+        })();
+        return {
+          result: done,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            await done;
+            yield { type: 'done', result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [asking], cwd: '/w', env: { PATH: '' }, agent: 'asker' });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="9.9.9" />);
+    chat.submit('go');
+    await tick();
+    expect(app.lastFrame()).toContain('12 opt12');
+    for (const char of '11') app.stdin.write(char);
+    await tick();
+    expect(app.lastFrame()).toContain('asks (1/2)');
+    app.stdin.write('\r');
+    await tick();
+    expect(app.lastFrame()).toContain('asks (2/2): Pick some');
+    for (const text of ['10', '\r', '2', '\r']) {
+      for (const char of text) app.stdin.write(char);
+      await tick();
+    }
+    expect(app.lastFrame()).toContain('[x] opt10');
+    app.stdin.write('\r');
+    await expect.poll(() => got).toEqual([{ one: ['opt11'], many: ['opt10', 'opt2'] }]);
+    app.unmount();
+    chat.close();
+  });
+
   it('switches to shell mode on ! like Claude Code, and back', async () => {
     const agent = echoAgent();
     const chat = createChatController({ agents: [agent], cwd: bin, env: { PATH: `${bin}:/usr/bin:/bin` } });
@@ -888,6 +1121,14 @@ describe('web UI server', () => {
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
     expect(parseCommand({ type: 'approve', id: 'a', decision: 'maybe' })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q', answers: { q1: ['Blue'] }, more: 1 })).toEqual({
+      type: 'answer',
+      id: 'q',
+      answers: { q1: ['Blue'] },
+    });
+    expect(parseCommand({ type: 'answer', id: 'q', answers: { q1: 'Blue' } })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q', answers: [['Blue']] })).toBeUndefined();
+    expect(parseCommand({ type: 'answer', id: 'q' })).toBeUndefined();
     expect(parseCommand({ type: 'continue', id: 'abcd1234' })).toEqual({ type: 'continue', id: 'abcd1234' });
     expect(parseCommand({ type: 'continue', id: '' })).toBeUndefined();
     expect(parseCommand({ type: 'submit', text: 1 })).toBeUndefined();
@@ -1066,7 +1307,11 @@ describe('web UI server', () => {
       const store = ui.controller.artifacts!;
       ui.controller.submit('hi');
       await ui.controller.session.idle();
-      expect(agent.tasks[0].mcpServers).toEqual([expect.objectContaining({ name: 'artifacts' })]);
+      // And `ask_user`, since this agent has no way of its own to ask.
+      expect(agent.tasks[0].mcpServers).toEqual([
+        expect.objectContaining({ name: 'artifacts' }),
+        expect.objectContaining({ name: 'genaicode_ask' }),
+      ]);
       const artifact = await store.publish({ title: 'Page', content: '<script>top.x=1</script>', format: 'html' });
       expect(ui.controller.get().session.turns[0].entries.at(-1)).toEqual({ kind: 'artifact', artifact });
       // No token: the id is the capability.

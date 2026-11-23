@@ -14,6 +14,28 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - Node.js 22.5 or newer is required, up from 20: session stores are read with `node:sqlite`, and Node.js 20 is past its end of life. The desktop app carries its own Node.js and needs none on the machine (#299)
 
+## 2.54.0 — 2026-11-23
+
+### Added
+
+- Pack `delegate` takes `model`, `effort`, a short `title` and `mcpServers`: names of the lead's MCP servers to give the task (servers the task was given, plus those in Claude Code's own config: user, `.mcp.json` and local scope). `agents` lists each member's effort values. New `ownMcpServers()` / `claudeMcpServers()` and `PackOptions.shareableMcpServers`. Before, a delegated agent ran on its default model and without the lead's servers, so a task that needed e.g. the gamedevpl server failed (#303)
+- Pack tasks panel in `genaicode ui`, the desktop app and `<AgentChat>`: each task shows a short title, a status chip, agent/model/MCP on one line, the result in its own box and the prompt folded; one task takes the whole width; the Approvals button shows only when something waits. Delegating agents are told to act on the request instead of asking to confirm a plan (#303)
+
+### Fixed
+
+- Desktop app: the loading screen shows the Genaicode wolf with a soft glow and a progress bar, in the chat page's light or dark colors, instead of plain "Genaicode / Starting…" text (#305)
+- `ask_user` reaches the person on Codex and Antigravity: Codex no longer rejects the call (it asked for an MCP tool approval nobody answered), and Antigravity no longer shows a "Run mcp_genaicode_ask_ask_user" approval before the question. New `McpServer.trusted` for servers whose tools need no permission prompt. `AgentSession.approve()` refuses a decision other than `approve` / `deny` instead of dropping the request (#306)
+
+## 2.53.0 — 2026-11-22
+
+### Added
+
+- `genaicode ui`, `chat` and the desktop app: when Claude Code or Codex asks you to choose (`AskUserQuestion`, `request_user_input`), the question shows as a card with its options, a field for an answer of your own, and Skip. In the terminal a number chooses and Enter sends. Before, Claude's question was a plain Approve / Deny request and came back unanswered (#300)
+- `task.onQuestion` answers an agent's questions (requests of `kind: 'question'` with `questions`); `capabilities.questions` on `claude()`. `AgentSession.answer()`, `<AgentChat onAnswer>`, `claudeApprovalTool({ onQuestion })`; app agents answer through `POST /approvals/:id {answers}` and `<AppAgentChat>` shows the card. `auto-approve` does not answer questions (#300)
+- `ask_user`: agents without a question tool of their own (Codex outside Plan mode, Antigravity, Gemini, Muse...) can ask you to choose too. `genaicode chat`, `ui` and the desktop app give them this MCP tool, and its questions show as the same cards. `startQuestionChannel()` + `createAgentSession({ questions })` for your own sessions. New: `capabilities.remote` (managed and hosted agents) and `McpServer.toolTimeoutSec` (Codex's `tool_timeout_sec`) (#302)
+
+## 2.52.2 — 2026-11-22
+
 ### Fixed
 
 - Desktop app's Homebrew cask: `brew info` no longer warns about the `verified` URL parameter and the `">= :ventura"` form of `depends_on macos`. The README says Homebrew 7 needs `brew trust gtanczyk/genaicode` before the install (#294)

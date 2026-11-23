@@ -1,6 +1,7 @@
 import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionTurn } from '../../agents/session.js';
+import type { QuestionAnswers } from '../../agents/types.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
 import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
 import { NoticeView, TurnView } from './transcript.js';
@@ -39,6 +40,12 @@ export function splitTranscript(view: ChatView): { done: StaticItem[]; live: Ses
 }
 
 /** Visible slice of the draft around the cursor, for one terminal row. */
+/** A draft that is one of the chat's /commands, as opposed to text that starts with a slash. */
+function isCommand(draft: string): boolean {
+  const name = /^\/\S+/.exec(draft.trim())?.[0];
+  return !!name && SLASH_COMMANDS.some((command) => command.name === name);
+}
+
 export function draftViewport(draft: string, cursor: number, width: number) {
   const chars = [...draft.replace(/\n/g, '⏎')];
   const room = Math.max(1, width);
@@ -71,13 +78,18 @@ export function ChatApp({
   // `shell`: the draft is a shell command (`!` typed on an empty prompt, as in Claude Code).
   const draftRef = useRef({ text: '', cursor: 0, shell: false });
   const [, redraw] = useState(0);
+  const secretFor = useRef<string | undefined>(undefined);
   const draft = draftRef.current.text;
-  const cursor = draftRef.current.cursor;
   const shellMode = draftRef.current.shell;
   const [now, setNow] = useState(Date.now());
   const [armedExit, setArmedExit] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [selection, selectTask] = useState<TaskSelection>();
+  const [answering, setAnswering] = useState<{ id: string; answers: QuestionAnswers; done: string[] }>({
+    id: '',
+    answers: {},
+    done: [],
+  });
   const history = useRef<string[]>([]);
   const historyIndex = useRef(0);
   const stash = useRef('');
@@ -132,6 +144,21 @@ export function ChatApp({
   }, [draft]);
 
   const approval = view.session.approvals[0];
+  // A question of the agent is answered one question at a time; this holds what was chosen so far.
+  const asked = approval?.kind === 'question' && approval.questions?.length ? approval : undefined;
+  const partial = asked && answering.id === asked.id ? answering.answers : {};
+  const question = asked?.questions!.find((item) => !answering.done.includes(item.id) || answering.id !== asked.id);
+  /** Close the current question with `picked`; the last one sends every answer. */
+  const answerQuestion = (picked: string[]) => {
+    if (!asked || !question) return;
+    const others = Object.fromEntries(Object.entries(partial).filter(([id]) => id !== question.id));
+    const answers: QuestionAnswers = { ...others, ...(picked.length ? { [question.id]: picked } : {}) };
+    const done = [...(answering.id === asked.id ? answering.done : []), question.id];
+    if (done.length < asked.questions!.length) return setAnswering({ id: asked.id, answers, done });
+    setAnswering({ id: '', answers: {}, done: [] });
+    if (Object.keys(answers).length) controller.answer(asked.id, answers);
+    else controller.approve(asked.id, 'deny');
+  };
   const tasks = view.session.turns.flatMap((turn) => (turn.pack?.tasks ?? []).map((task) => ({ turn, task })));
   const currentTask =
     selection && tasks.find(({ turn, task }) => turn.id === selection.turnId && task.id === selection.id);
@@ -157,11 +184,43 @@ export function ChatApp({
     if (key.ctrl && input === 'd' && !draft) return quit();
     // Not while composing a shell command: its letters must not answer the approval.
     const plain = !key.ctrl && !key.meta && !shell;
-    if (approval && !draft && plain && (input === 'y' || input === 'n')) {
+    if (asked && question && plain) {
+      // Up to nine options a digit picks at once; with more, the number is typed and Enter picks it.
+      const many = question.options.length > 9;
+      const number = many ? (key.return && /^\d+$/.test(draft.trim()) ? draft.trim() : '') : !draft ? input : '';
+      const option = /^[1-9]\d*$/.test(number) ? question.options[Number(number) - 1] : undefined;
+      if (option) {
+        if (many) edit('', 0, false);
+        if (!question.multiple) return answerQuestion([option.label]);
+        const had = partial[question.id] ?? [];
+        const next = had.includes(option.label) ? had.filter((item) => item !== option.label) : [...had, option.label];
+        return setAnswering({
+          id: asked.id,
+          answers: { ...partial, [question.id]: next },
+          done: answering.id === asked.id ? answering.done : [],
+        });
+      }
+      // Enter: what was typed is the answer (where the agent takes one), else the options picked so far.
+      // Only a known /command runs as one: `/work/repo` is an answer; `//x` and `!!x` answer `/x` and `!x`.
+      if (key.return && !isCommand(draft)) {
+        const literal = draft.startsWith('//') || draft.startsWith('!!');
+        const typed = question.freeText ? (literal ? draft.slice(1) : draft).trim() : '';
+        const chosen = question.multiple ? (partial[question.id] ?? []) : [];
+        if (typed || chosen.length) {
+          edit('', 0, false);
+          return answerQuestion(typed ? [...chosen, typed] : chosen);
+        }
+        // Where an answer can be typed, letters belong to it: an empty Enter skips instead of `n`.
+        if (!draft && !question.freeText) return;
+      }
+      // Skip this question. With nothing answered at all, the agent is told so.
+      if (!draft && (question.freeText ? key.return : input === 'n')) return answerQuestion([]);
+    }
+    if (approval && !asked && !draft && plain && (input === 'y' || input === 'n')) {
       controller.approve(approval.id, input === 'y' ? 'approve' : 'deny');
       return;
     }
-    if (approval && !draft && plain && input === 'a') {
+    if (approval && !asked && !draft && plain && input === 'a') {
       controller.submit('/auto on');
       return;
     }
@@ -188,6 +247,8 @@ export function ChatApp({
     }
     if (key.leftArrow) return setCursor(Math.max(0, cursor - 1));
     if (key.rightArrow) return setCursor(Math.min(chars.length, cursor + 1));
+    // History never takes a secret along: it would come back unmasked once the question is gone.
+    if ((key.upArrow || key.downArrow) && question?.secret) return;
     if (key.upArrow) {
       if (!history.current.length || historyIndex.current === 0) return;
       if (historyIndex.current === history.current.length) stash.current = shell ? `!${draft}` : draft;
@@ -213,7 +274,9 @@ export function ChatApp({
     if (key.ctrl && input === 'u') return edit(chars.slice(cursor).join(''), 0);
     if (key.ctrl || key.meta || !input) return;
     let typed = [...input.replace(/\r\n?/g, '\n')];
-    if (!shell && !draft && typed[0] === '!' && typed[1] !== '!') {
+    // While the agent waits for a typed answer, `!` is part of it (a password may start with one).
+    const answers = asked && question?.freeText;
+    if (!shell && !draft && !answers && typed[0] === '!' && typed[1] !== '!') {
       typed = typed.slice(1);
       return edit(typed.join(''), typed.length, true);
     }
@@ -223,7 +286,17 @@ export function ChatApp({
 
   const { done, live, pending } = splitTranscript(view);
   const current = live.find((turn) => !turn.result);
-  const viewport = draftViewport(draft, cursor, width - 6);
+  // A secret typed for a question that went away (withdrawn, timed out) is dropped, never shown.
+  const secretKey = asked && question?.secret ? `${asked.id}:${question.id}` : undefined;
+  if (secretFor.current && secretFor.current !== secretKey) {
+    draftRef.current = { text: '', cursor: 0, shell: false };
+    stash.current = '';
+  }
+  secretFor.current = secretKey;
+  // A secret answer never shows as typed: the composer draws one dot per character.
+  const { text: typed, cursor: at } = draftRef.current;
+  const shownDraft = secretKey && !isCommand(typed) ? '•'.repeat([...typed].length) : typed;
+  const viewport = draftViewport(shownDraft, at, width - 6);
   const spinner = SPINNER[Math.floor(now / 120) % SPINNER.length];
   const queued = view.session.queued;
 
@@ -282,7 +355,41 @@ export function ChatApp({
         {currentTask ? (
           <PackInspector current={currentTask} tasks={tasks} controller={controller} select={selectTask} rows={rows} />
         ) : null}
-        {!currentTask && approval ? (
+        {!currentTask && asked && question ? (
+          <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
+            <Text>
+              <Text color="cyan" bold>
+                {asked.subtaskId ? `Task ${asked.subtaskId}` : (current?.pack?.lead ?? view.session.agent)} asks
+                {asked.questions!.length > 1
+                  ? ` (${asked.questions!.indexOf(question) + 1}/${asked.questions!.length})`
+                  : ''}
+                :{' '}
+              </Text>
+              {question.question}
+            </Text>
+            {question.options.map((option, index) => (
+              <Text key={option.label}>
+                <Text color="green" bold>
+                  {index + 1}
+                </Text>{' '}
+                {question.multiple ? ((partial[question.id] ?? []).includes(option.label) ? '[x] ' : '[ ] ') : ''}
+                {option.label}
+                {option.description ? <Text color="gray"> {option.description}</Text> : null}
+              </Text>
+            ))}
+            <Text color="gray">
+              {question.options.length
+                ? `${question.options.length > 9 ? 'a number + Enter' : 'a number'} ${question.multiple ? 'toggles, Enter sends' : 'chooses'}`
+                : ''}
+              {question.freeText ? `${question.options.length ? ' · ' : ''}type an answer and press Enter` : ''} ·{' '}
+              <Text color="red" bold>
+                {question.freeText ? 'Enter' : 'n'}
+              </Text>{' '}
+              {question.freeText ? 'on an empty line skips' : 'skip'}
+            </Text>
+          </Box>
+        ) : null}
+        {!currentTask && approval && !asked ? (
           <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
             <Text>
               <Text color="yellow" bold>
@@ -335,7 +442,7 @@ export function ChatApp({
             <Text color={shellMode ? 'magenta' : 'cyan'} bold>
               {shellMode ? '!' : '›'}{' '}
             </Text>
-            {draft ? (
+            {typed ? (
               <Text>
                 {viewport.before}
                 <Text inverse>{viewport.at}</Text>

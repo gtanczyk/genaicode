@@ -3,7 +3,14 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, AgentTask, ApprovalDecision, ApprovalHandler, ApprovalRequest } from '../types.js';
+import type {
+  AgentEvent,
+  AgentTask,
+  ApprovalDecision,
+  ApprovalHandler,
+  ApprovalRequest,
+  QuestionHandler,
+} from '../types.js';
 import { claude, hasClaudeDefaultMode, type ClaudeAgentOptions } from './claude.js';
 import {
   claudeApprovalArgs,
@@ -95,6 +102,92 @@ describe('claudeApprovalTool', () => {
     gone.abort();
     expect(answer(await result)).toMatchObject({ behavior: 'deny' });
     expect(signal?.aborted).toBe(true);
+  });
+
+  describe('AskUserQuestion', () => {
+    const input = {
+      questions: [
+        {
+          question: 'Which color?',
+          header: 'Color',
+          multiSelect: false,
+          options: [
+            { label: 'Red', description: 'Warm' },
+            { label: 'Blue', description: 'Cool' },
+          ],
+        },
+        { question: 'Which sizes?', header: 'Sizes', multiSelect: true, options: [{ label: 'S' }, { label: 'M' }] },
+      ],
+    };
+    const ask = { tool_name: 'AskUserQuestion', input, tool_use_id: 'tu-q' };
+
+    it('asks onQuestion and returns the answers keyed by question text', async () => {
+      const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+      const onQuestion = vi.fn<QuestionHandler>(() => ({ q1: ['Blue'], q2: ['S', 'M', 'XL'] }));
+      const result = await claudeApprovalTool(onApproval, { onQuestion }).call(ask);
+      expect(answer(result)).toEqual({
+        behavior: 'allow',
+        updatedInput: { ...input, answers: { 'Which color?': 'Blue', 'Which sizes?': 'S, M, XL' } },
+      });
+      expect(onApproval).not.toHaveBeenCalled();
+      expect(onQuestion.mock.calls[0]![0]).toEqual({
+        id: 'tu-q',
+        kind: 'question',
+        scope: 'once',
+        summary: 'Which color?',
+        detail: ask,
+        questions: [
+          {
+            id: 'q1',
+            question: 'Which color?',
+            header: 'Color',
+            freeText: true,
+            options: [
+              { label: 'Red', description: 'Warm' },
+              { label: 'Blue', description: 'Cool' },
+            ],
+          },
+          {
+            id: 'q2',
+            question: 'Which sizes?',
+            header: 'Sizes',
+            multiple: true,
+            freeText: true,
+            options: [{ label: 'S' }, { label: 'M' }],
+          },
+        ],
+      });
+    });
+
+    it('keeps one answer for a single choice and drops what was not asked', async () => {
+      const onQuestion: QuestionHandler = () => ({ q1: ['Red', 'Blue'], q9: ['x'], q2: [] });
+      const result = await claudeApprovalTool(undefined, { onQuestion }).call(ask);
+      expect(answer(result)).toEqual({
+        behavior: 'allow',
+        updatedInput: { ...input, answers: { 'Which color?': 'Red' } },
+      });
+    });
+
+    it('declines when skipped or when nobody answers questions', async () => {
+      const skipped = await claudeApprovalTool(() => 'approve', { onQuestion: () => undefined }).call(ask);
+      expect(answer(skipped)).toMatchObject({ behavior: 'deny' });
+      const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+      expect(answer(await claudeApprovalTool(onApproval).call(ask))).toMatchObject({ behavior: 'deny' });
+      expect(onApproval).not.toHaveBeenCalled();
+    });
+
+    it('asks under a read-only sandbox too', async () => {
+      const onQuestion: QuestionHandler = () => ({ q1: ['Red'] });
+      const result = await claudeApprovalTool(undefined, { onQuestion, sandbox: 'read-only', cwd: dir }).call(ask);
+      expect(answer(result)).toMatchObject({ behavior: 'allow' });
+    });
+
+    it('treats a malformed question as an ordinary permission prompt', async () => {
+      const onApproval = vi.fn<ApprovalHandler>(() => 'deny');
+      const odd = { tool_name: 'AskUserQuestion', input: { questions: [{ question: 'x' }] } };
+      expect(answer(await claudeApprovalTool(onApproval).call(odd))).toMatchObject({ behavior: 'deny' });
+      expect(onApproval.mock.calls[0]![0]).toMatchObject({ kind: 'other', summary: 'AskUserQuestion' });
+    });
   });
 
   it('raises the MCP tool timeout unless the environment sets one', () => {

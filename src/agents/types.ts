@@ -44,6 +44,13 @@ export interface AgentTask {
    */
   onApproval?: ApprovalHandler;
   /**
+   * Answer the agent's questions to the person (`capabilities.questions`): requests of
+   * `kind: 'question'`, which never reach `onApproval` and which `auto-approve` cannot answer.
+   * Without it they are declined, and the agent goes on without an answer. Claude Code asks
+   * through its permission prompts, so it also needs `onApproval` or `permissions.approval`.
+   */
+  onQuestion?: QuestionHandler;
+  /**
    * Approval and sandbox policy, translated by the driver into the agent's own options
    * (`capabilities.permissions` lists what it supports). An omitted field keeps the driver's
    * default. A value or combination the agent cannot honor fails the run with an error
@@ -121,15 +128,36 @@ export type ApprovalHandler = (
   signal?: AbortSignal,
 ) => ApprovalDecision | Promise<ApprovalDecision>;
 
+/**
+ * Answers an agent's question (`request.kind === 'question'`, `request.questions`). Undefined
+ * declines to answer. `signal` aborts when the agent withdraws the question or its turn ends.
+ */
+export type QuestionHandler = (
+  request: ApprovalRequest,
+  signal?: AbortSignal,
+) => QuestionAnswers | undefined | Promise<QuestionAnswers | undefined>;
+
 /** An MCP server the agent should connect to. `name` must match /^[A-Za-z0-9_-]+$/. */
-export type McpServer =
+export type McpServer = (
   | { name: string; url: string; headers?: Readonly<Record<string, string>> }
   | {
       name: string;
       command: string;
       args?: readonly string[];
       env?: Readonly<Record<string, string>>;
-    };
+    }
+) & {
+  /**
+   * How long the agent waits for one tool call, in seconds, where it can be told (Codex's
+   * `tool_timeout_sec`, default 60). For tools that wait for a person, like `ask_user`.
+   */
+  toolTimeoutSec?: number;
+  /**
+   * A server of genaicode's own whose tools only reach the person (`ask_user`): agents that ask
+   * before an MCP tool call run its tools without asking (Codex, Antigravity).
+   */
+  trusted?: boolean;
+};
 
 /**
  * Something an agent published for the user to look at (`publish_artifact`): a page, an image,
@@ -156,8 +184,11 @@ export interface ApprovalRequest {
   id: string;
   /** The delegated task that asked, when the request comes through a pack. */
   subtaskId?: string;
-  /** `command`: run a shell command; `file-change`: apply edits; `other`: anything else. */
-  kind: 'command' | 'file-change' | 'other';
+  /**
+   * `command`: run a shell command; `file-change`: apply edits; `question`: the agent asks the
+   * person to choose (`questions`, answered by `task.onQuestion`); `other`: anything else.
+   */
+  kind: 'command' | 'file-change' | 'question' | 'other';
   /** Human-readable summary (the command, the paths, or the vendor's reason). */
   summary?: string;
   /** The vendor's request payload, unchanged: the full command, tool arguments or permissions. */
@@ -167,7 +198,36 @@ export interface ApprovalRequest {
    * permissions in `detail`, until the agent's current turn ends.
    */
   scope?: ApprovalScope;
+  /**
+   * `kind: 'question'`: what the agent asks (Claude Code's `AskUserQuestion`, Codex's
+   * `request_user_input`). `task.onQuestion` answers these; `onApproval` and `auto-approve` do not.
+   */
+  questions?: AgentQuestion[];
 }
+
+/** One question of an agent, with the choices it offers. */
+export interface AgentQuestion {
+  /** The key of this question in `QuestionAnswers`. */
+  id: string;
+  question: string;
+  /** A short label for the question (a chip or tab title). */
+  header?: string;
+  options: AgentQuestionOption[];
+  /** Several options may be chosen. */
+  multiple?: boolean;
+  /** The person may type an answer of their own instead of, or beside, the options. */
+  freeText?: boolean;
+  /** The answer is a secret: show it masked, keep it out of the transcript. */
+  secret?: boolean;
+}
+
+export interface AgentQuestionOption {
+  label: string;
+  description?: string;
+}
+
+/** The chosen option labels, or the typed text, per question id. A question left out was not answered. */
+export type QuestionAnswers = Record<string, string[]>;
 
 export type ApprovalScope = 'once' | 'turn';
 
@@ -189,7 +249,14 @@ export type AgentEvent =
   | { type: 'file-change'; paths: string[]; diff?: string }
   | { type: 'approval-request'; request: ApprovalRequest }
   /** `automatic`: decided by `permissions.approval`, without asking anyone. */
-  | { type: 'approval-resolved'; id: string; decision: ApprovalDecision; automatic?: boolean }
+  | {
+      type: 'approval-resolved';
+      id: string;
+      decision: ApprovalDecision;
+      automatic?: boolean;
+      /** The answers to a question, without those of `secret` questions. */
+      answers?: QuestionAnswers;
+    }
   | { type: 'usage'; usage: TokenUsage; costUsd?: number }
   | { type: 'rate-limit'; limit: RateLimit }
   | { type: 'budget-warning'; warning: BudgetWarning }
@@ -252,10 +319,22 @@ export interface AgentCapabilities {
   rateLimits?: boolean;
   /** `AgentRun.steer` can add input to a running task. */
   steer?: boolean;
+  /**
+   * The agent asks the person through a tool of its own, in every mode, and its questions reach
+   * `AgentTask.onQuestion` (Claude Code's `AskUserQuestion`). Without it a session gives the agent
+   * `ask_user` (`AgentSessionOptions.questions`). `codexLive()` passes Codex's own
+   * `request_user_input` on too, but Codex offers that in Plan mode only.
+   */
+  questions?: boolean;
   /** Permission prompts reach `AgentTask.onApproval`. */
   approvals?: boolean;
   /** Honors `AgentTask.mcpServers`. */
   mcp?: boolean;
+  /**
+   * Runs on a provider's servers (managed and hosted agents): MCP servers on this machine's
+   * loopback do not reach it, so a session gives it no `ask_user`.
+   */
+  remote?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
   /** `AgentTask.permissions` values the driver can translate. Absent: none. */

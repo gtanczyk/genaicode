@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
+import { parseQuestionAnswers } from '../../agents/question-answers.js';
 import { publicPackRefusal, type PackAction } from '../../agents/pack.js';
 import { artifactResponse } from '../../agents/artifacts.js';
 import type { SessionListing } from '../../agents/sessions/index.js';
@@ -135,6 +136,8 @@ export type WebCommand =
   | { type: 'submit'; text: string; files?: string[] }
   | { type: 'stop' }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  /** Answer a question of the agent: chosen option labels or typed text per question id. */
+  | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   /** Take over the session with this id (`ChatController.continueSession`). */
@@ -228,6 +231,12 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const decision = command.decision;
       if (id === undefined || (decision !== 'approve' && decision !== 'deny')) return undefined;
       return { type: 'approve', id, decision };
+    }
+    case 'answer': {
+      const id = text('id', 200);
+      const answers = parseQuestionAnswers(command.answers);
+      if (id === undefined || !answers) return undefined;
+      return { type: 'answer', id, answers };
     }
     case 'continue': {
       const id = text('id', 200);
@@ -676,6 +685,8 @@ async function run(
       return true;
     case 'approve':
       return controller.approve(command.id, command.decision);
+    case 'answer':
+      return controller.answer(command.id, command.answers);
     case 'tower':
       return controller.decideTower(command.id, command.decision);
     case 'continue':

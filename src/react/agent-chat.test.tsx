@@ -503,6 +503,97 @@ describe('AgentChat', () => {
     expect(props.onSend).not.toHaveBeenCalled();
   });
 
+  it('shows an agent question as a card and sends the answers', () => {
+    const request = {
+      id: 'q-1',
+      kind: 'question' as const,
+      summary: 'Which color?',
+      questions: [
+        {
+          id: 'color',
+          header: 'Color',
+          question: 'Which color?',
+          options: [{ label: 'Red', description: 'Warm' }, { label: 'Blue' }],
+          freeText: true,
+        },
+      ],
+    };
+    const asking = (extra: object = {}) => {
+      const state = fixture({ approvals: [request] });
+      state.turns.at(-1)!.entries.push({ kind: 'approval', request, ...extra });
+      return state;
+    };
+    const onAnswer = vi.fn();
+    const onApprove = vi.fn();
+    render({ state: asking(), onAnswer, onApprove });
+    expect($('.gc-question legend')?.textContent).toBe('ColorWhich color?');
+    expect(text('.gc-option-label')).toEqual(['Red', 'Blue']);
+    expect(button('Approve')).toBeUndefined();
+    // One question with one choice: a click answers.
+    click($$('.gc-option')[1]!);
+    expect(onAnswer).toHaveBeenLastCalledWith('q-1', { color: ['Blue'] });
+    click(button('Skip')!);
+    expect(onApprove).toHaveBeenLastCalledWith('q-1', 'deny');
+
+    // An answer of one's own goes with Send.
+    const own = $<HTMLInputElement>('.gc-question-own');
+    expect(button('Send answer')!.hasAttribute('disabled')).toBe(true);
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(own, 'Green');
+      own.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    click(button('Send answer')!);
+    expect(onAnswer).toHaveBeenLastCalledWith('q-1', { color: ['Green'] });
+
+    // Several questions, one of them with several choices: nothing goes before Send.
+    const many = {
+      ...request,
+      questions: [
+        request.questions[0]!,
+        {
+          id: 'sizes',
+          question: 'Which sizes?',
+          options: [{ label: 'S' }, { label: 'M' }, { label: 'L' }],
+          multiple: true,
+        },
+      ],
+    };
+    const state = fixture({ approvals: [many] });
+    state.turns.at(-1)!.entries.push({ kind: 'approval', request: many });
+    onAnswer.mockClear();
+    act(() => root.unmount());
+    root = createRoot(container);
+    render({ state, onAnswer, onApprove });
+    click($$('.gc-option')[0]!);
+    click($$('.gc-option')[2]!);
+    click($$('.gc-option')[4]!);
+    click($$('.gc-option')[2]!);
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect($$('.gc-option.gc-on').map((el) => el.textContent)).toEqual(['RedWarm', 'L']);
+    click(button('Send answers')!);
+    expect(onAnswer).toHaveBeenLastCalledWith('q-1', { color: ['Red'], sizes: ['L'] });
+
+    // Without onAnswer the options are there, disabled, and Skip still declines.
+    render({ state: asking(), onApprove });
+    expect($<HTMLFieldSetElement>('.gc-question fieldset').disabled).toBe(true);
+    expect(button('Send answer')).toBeUndefined();
+    click(button('Skip')!);
+    expect(onApprove).toHaveBeenLastCalledWith('q-1', 'deny');
+    render({ state: asking(), onApprove: undefined });
+    expect($('.gc-question .gc-waiting')?.textContent).toBe('Waiting for an answer…');
+
+    // Answered, skipped, and left open by a turn that ended.
+    const done = (extra: object) => {
+      const ended = fixture({ approvals: [] });
+      ended.turns.at(-1)!.entries.push({ kind: 'approval', request, ...extra });
+      render({ state: ended, onAnswer, onApprove });
+      return $$('.gc-approval.gc-done').at(-1)!.textContent;
+    };
+    expect(done({ decision: 'approve', answers: { color: ['Blue'] } })).toBe('✓ Answered: Color: Blue');
+    expect(done({ decision: 'deny' })).toBe('– Skipped: Which color?');
+    expect(done({})).toBe('– Not answered: Which color?');
+  });
+
   it('answers pending approvals through onApprove, or shows them as waiting', () => {
     const onAutoApprove = vi.fn();
     render({ onApprove: undefined, onAutoApprove });

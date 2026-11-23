@@ -7,7 +7,7 @@ import { createArtifactStore, PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from '
 import { detectAgents } from '../agents/discovery.js';
 import { MCP_NAME } from '../agents/prepare.js';
 import { createAgentSession, type AgentSession, type SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision, ApprovalRequest, CodingAgent } from '../agents/types.js';
+import type { ApprovalDecision, ApprovalRequest, CodingAgent, QuestionAnswers } from '../agents/types.js';
 import { commitTree, snapshotTree, treeChanges } from './git.js';
 import { safeJson } from './json.js';
 import { outputText, type McpTool, type ToolOutput } from './mcp.js';
@@ -164,6 +164,8 @@ export interface AppAgent {
   decide(id: string, decision: 'approve' | 'reject' | 'dismiss'): void;
   /** Answer a permission prompt of the agent CLI itself (`session.approvals`). */
   approve(id: string, decision: ApprovalDecision): void;
+  /** Answer a question of the agent CLI (`session.approvals` of `kind: 'question'`); `approve(id, 'deny')` skips it. */
+  answer(id: string, answers: QuestionAnswers): void;
   /** The diff a proposed commit would land. */
   changes(id: string): Promise<TreeChanges>;
   /** The tools the agent currently sees over MCP. */
@@ -852,6 +854,9 @@ export function createAppAgent(options: AppAgentOptions): AppAgent {
     },
     approve(id, decision) {
       if (!session?.approve(id, decision)) throw new AppAgentError('no such approval request', 404);
+    },
+    answer(id, answers) {
+      if (!session?.answer(id, answers)) throw new AppAgentError('no such question', 404);
     },
     async changes(id) {
       const action = actions.find((candidate) => candidate.id === id);
