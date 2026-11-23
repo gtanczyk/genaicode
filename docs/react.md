@@ -83,12 +83,14 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                                    |
 | `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                            |
 | `artifactUrl(artifact)`, `renderArtifact(artifact, url)`                       | where your server serves a published artifact; your own card ([artifacts](agents.md#artifacts))                             |
+| `onOpenArtifact(artifact)`                                                     | opens an artifact in a host side panel instead of expanding it inline in the transcript; `<ArtifactPanel>` is also exported |
 | `onArtifactSubmit(artifact, data)`                                             | a page the agent published sent data and the user confirmed it; default sends it as a message; `null` turns it off          |
+| `imageUrl(path)`, `remoteImages`                                               | resolve `![alt](path)` thumbnails in replies; `remoteImages` defaults to `'click'` (placeholder chip) or `'load'`           |
 | `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line. An edit step shows its diff (added and removed lines) when opened |
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                                 |
 | `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
 | `composerExtras`                                                               | host controls in a row under the message field, beside the attach button (agent, model, mode)                               |
-| `onOpenFile`                                                                   | makes file paths in the transcript (edited files, the file a tool step read) buttons; the host shows the file               |
+| `onOpenFile(path, position?)`, `onRevealFile(path)`                            | makes file links (carrying `:line`, `:line:col`, `#L12-L20` positions) clickable; `onRevealFile` adds a Reveal context menu |
 | `emptyState`, `placeholder`, `hint`, `composerTitle`                           | text before the first turn, in and under the input, its tooltip                                                             |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                             |
 

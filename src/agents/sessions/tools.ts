@@ -21,6 +21,11 @@ export interface SessionToolsOptions {
   /** Environment that says where the stores are. Default `process.env`. */
   env?: NodeJS.ProcessEnv;
   now?: () => number;
+  /**
+   * Called for each session returned to the agent (`sessions_read`, `sessions_list`,
+   * `sessions_waiting`), so a host can add that session's working directory to its allowed roots.
+   */
+  onSession?(session: SessionInfo): void;
 }
 
 /**
@@ -112,6 +117,7 @@ export function sessionTools(sources: readonly SessionSource[], options: Session
         });
         const shown = matching.slice(0, positive(args.limit, 20, 100));
         if (!shown.length) return `No matching sessions in the last ${days} days.${unread(errors)}`;
+        for (const session of shown) options.onSession?.(session);
         const lines = shown.map((session) => sessionLine(session, now()));
         const more = matching.length > shown.length ? `\n(${matching.length - shown.length} more match.)` : '';
         return `${lines.join('\n')}${more}${unread(errors)}`;
@@ -139,6 +145,7 @@ export function sessionTools(sources: readonly SessionSource[], options: Session
           sessionWithLive(found.session, options.env, now()),
           readArchive(options.env),
         ]);
+        options.onSession?.(session);
         const turns = await readSession(sources, session, {
           maxTurns: positive(args.turns, 10, 50),
           maxToolOutput: 400,
@@ -183,6 +190,7 @@ export function sessionTools(sources: readonly SessionSource[], options: Session
         const waiting = waitingSessions(sessions);
         if (!waiting.length) return `Nothing waits for you in the last ${days} days.${unread(errors)}`;
         const shown = waiting.slice(0, positive(args.limit, 30, 100));
+        for (const session of shown) options.onSession?.(session);
         const questions = await pendingAsks(options.env, { readOnly: true });
         const lines = shown.map((session) => {
           const commands = (session.waitingCommands ?? []).map(({ tool, command }) => `    ? ${tool}: ${command}`);
