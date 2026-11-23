@@ -373,8 +373,11 @@ describe('session sources', () => {
         'If a line sounds wrong, tell me which one and I will regenerate it.',
         'If you need to adjust anything else, I can also help.',
         'Jeśli musisz to zmienić, daj znać.',
+        'Nie musisz nic robić, wszystko jest już gotowe.',
+        'Nie musisz odpowiadać, mogę też zająć się tym później.',
+        "You don't need to do anything, it is all merged.",
       ),
-    ).toEqual([undefined, undefined, undefined, 'offer', 'offer', 'offer', 'offer']);
+    ).toEqual([undefined, undefined, undefined, 'offer', 'offer', 'offer', 'offer', undefined, 'offer', undefined]);
     expect(
       endings(
         'The token expired, so you need to sign in again before I continue.',

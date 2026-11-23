@@ -32,8 +32,8 @@ const OFFER = new RegExp(
   String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}`,
   'iu',
 );
-// "If you need to…", "jeśli musisz…": a condition of an offer, not something asked of the user.
-const NOT_IF = String.raw`(?<!${B}(if|when|in case|jeśli|jeżeli|gdy|kiedy|skoro),?\s+)`;
+// "If you need to…", "jeśli musisz…", "nie musisz…": a condition or a release, not something asked of the user.
+const NOT_IF = String.raw`(?<!${B}(if|when|in case|jeśli|jeżeli|gdy|kiedy|skoro|nie),?\s+)`;
 // A request put as a statement, or a yes/no gate dressed as an offer: an answer is waited for.
 const REQUEST = new RegExp(
   [
