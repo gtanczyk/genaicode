@@ -1,9 +1,10 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { markQuestionChannelServer, startQuestionChannel } from '../ask-user.js';
 import { prepareCodex } from './codex.js';
-import { codexLive, prepareCodexLive } from './codex-live.js';
+import { codexHasOwnQuestionTool, codexLive, prepareCodexLive } from './codex-live.js';
 import { prepareCopilot } from './copilot.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-mcp-isolation-'));
@@ -134,5 +135,170 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     await expect(prepareCodex({ prompt: 'go', cwd: dir }, { command, onlyTaskMcpServers: true })).rejects.toThrow(
       /could not list/,
     );
+  });
+
+  it('drops the question channel in prepareCodexLive when Codex offers its own request_user_input', async () => {
+    const channel = await startQuestionChannel({ name: 'choices' });
+    const unrelatedSameName = { name: 'genaicode_ask', url: 'https://mcp.example/custom' };
+    const command = fakeCli('codex-plan', [{ name: 'github' }]);
+    const base = { prompt: 'plan', cwd: dir, mcpServers: [app, unrelatedSameName, channel.mcpServer] };
+    try {
+      // Normal mode: every server reaches Codex.
+      const normal = await prepareCodexLive(base, { command });
+      expect(normal.args.join(' ')).toContain('mcp_servers.choices.url=');
+      expect(normal.args.join(' ')).toContain('mcp_servers.genaicode_ask.url=');
+      expect(normal.args.join(' ')).toContain('mcp_servers.app.url=');
+
+      // Plan mode (task.mode or options.collaborationMode) or feature flag: only the tagged question channel is dropped;
+      // unrelated caller servers (even one named genaicode_ask) stay attached.
+      for (const [task, opts] of [
+        [{ ...base, mode: 'plan' as const }, { command }],
+        [base, { command, collaborationMode: 'plan' as const }],
+        [{ ...base, extraArgs: ['-c', 'features.default_mode_request_user_input=true'] }, { command }],
+        [{ ...base, extraArgs: ['-cfeatures.default_mode_request_user_input=true'] }, { command }],
+        [{ ...base, extraArgs: ['--enable', 'default_mode_request_user_input'] }, { command }],
+        [{ ...base, extraArgs: ['--enable=default_mode_request_user_input'] }, { command }],
+        [{ ...base, extraArgs: ['--config=features.default_mode_request_user_input = true'] }, { command }],
+      ] as const) {
+        const prepared = await prepareCodexLive(task, opts);
+        expect(prepared.args.join(' ')).not.toContain('mcp_servers.choices');
+        expect(prepared.args.join(' ')).toContain('mcp_servers.genaicode_ask.url=');
+        expect(prepared.args.join(' ')).toContain('mcp_servers.app.url=');
+      }
+
+      // Codex CLI precedence: --disable beats --enable, which beats -c/--config.
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: [
+            '--disable',
+            'default_mode_request_user_input',
+            '-c',
+            'features.default_mode_request_user_input=true',
+          ],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: [
+            '--enable',
+            'default_mode_request_user_input',
+            '-c',
+            'features.default_mode_request_user_input=false',
+          ],
+        }),
+      ).toBe(true);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['--disable', 'default_mode_request_user_input', '--enable', 'default_mode_request_user_input'],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool(
+          {
+            mode: 'default',
+            extraArgs: [
+              '-c',
+              'features.default_mode_request_user_input=true',
+              '--disable',
+              'default_mode_request_user_input',
+            ],
+          },
+          { collaborationMode: 'plan' },
+        ),
+      ).toBe(false);
+      expect(codexHasOwnQuestionTool({ extraArgs: ['--', '--enable', 'default_mode_request_user_input'] })).toBe(false);
+      // Whole-table `features={...}` overrides replace earlier `features.*` overrides.
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: [
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '-c',
+            'features={default_mode_request_user_input=false}',
+          ],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features.default_mode_request_user_input=true', '-c', 'features={}'],
+        }),
+      ).toBe(false);
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features = { "default_mode_request_user_input" = true }'],
+        }),
+      ).toBe(true);
+      // Quoted dotted key path does not enable the feature in Codex 0.170.
+      expect(
+        codexHasOwnQuestionTool({
+          extraArgs: ['-c', 'features."default_mode_request_user_input"=true'],
+        }),
+      ).toBe(false);
+
+      // Effective feature status from `codex features list` (e.g. enabled in config.toml) is honored.
+      const featureEnabledBin = join(dir, 'codex-feature-on');
+      writeFileSync(
+        featureEnabledBin,
+        `#!/bin/sh\nprintf 'default_mode_request_user_input          under development  true\\n'\n`,
+      );
+      chmodSync(featureEnabledBin, 0o755);
+      const fromConfig = await prepareCodexLive(base, { command: featureEnabledBin });
+      expect(fromConfig.args.join(' ')).not.toContain('mcp_servers.choices');
+      expect(fromConfig.args.join(' ')).toContain('mcp_servers.app.url=');
+
+      // Resuming a saved Codex Plan thread with mode omitted also drops the question channel.
+      const codexHome = join(dir, 'codex-home');
+      const rollouts = join(codexHome, 'sessions', '2026', '11', '23');
+      mkdirSync(rollouts, { recursive: true });
+      const threadId = '11111111-2222-3333-4444-555555555555';
+      writeFileSync(
+        join(rollouts, `rollout-2026-11-23T00-00-00-${threadId}.jsonl`),
+        [
+          JSON.stringify({ type: 'session_meta', payload: { id: threadId, cwd: dir } }),
+          JSON.stringify({ type: 'turn_context', payload: { cwd: dir, collaboration_mode: { mode: 'plan' } } }),
+          JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'plan it' } }),
+        ].join('\n') + '\n',
+      );
+      const resumedPlan = await prepareCodexLive(
+        {
+          prompt: 'continue',
+          cwd: dir,
+          resume: threadId,
+          env: { CODEX_HOME: codexHome },
+          onQuestion: () => undefined,
+          mcpServers: [app, markQuestionChannelServer({ name: 'genaicode_ask', url: 'http://127.0.0.1:2/mcp' })],
+        },
+        { command },
+      );
+      expect(resumedPlan.args.join(' ')).not.toContain('genaicode_ask');
+      expect(resumedPlan.args.join(' ')).toContain('mcp_servers.app.url=');
+      // Explicit mode: 'default' leaves Plan mode and keeps the question channel.
+      const leavingPlan = await prepareCodexLive(
+        {
+          prompt: 'implement',
+          cwd: dir,
+          resume: threadId,
+          mode: 'default',
+          env: { CODEX_HOME: codexHome },
+          onQuestion: () => undefined,
+          mcpServers: [app, markQuestionChannelServer({ name: 'genaicode_ask', url: 'http://127.0.0.1:2/mcp' })],
+        },
+        { command },
+      );
+      expect(leavingPlan.args.join(' ')).toContain('mcp_servers.genaicode_ask.url=');
+      // Without `onQuestion` or a bound channel handler, a custom marked server is kept so the turn is not left unanswerable.
+      const noNativeRoute = await prepareCodexLive(
+        {
+          prompt: 'plan',
+          cwd: dir,
+          mode: 'plan',
+          mcpServers: [markQuestionChannelServer({ name: 'custom_ask', url: 'http://127.0.0.1:2/mcp' })],
+        },
+        { command },
+      );
+      expect(noNativeRoute.args.join(' ')).toContain('mcp_servers.custom_ask.url=');
+    } finally {
+      await channel.close();
+    }
   });
 });

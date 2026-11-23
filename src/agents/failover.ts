@@ -1,6 +1,15 @@
 import { approximateSize, EventQueue } from './event-queue.js';
 import { addUsage, tokenCount } from './usage.js';
-import type { AgentBudget, AgentEvent, AgentFailure, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
+import type {
+  AgentBudget,
+  AgentEvent,
+  AgentFailure,
+  AgentMode,
+  AgentResult,
+  AgentRun,
+  AgentTask,
+  CodingAgent,
+} from './types.js';
 
 /** Failures another agent can get past: the agent is out, not the task. `budget` is the user's cap. */
 const FAILOVER_KINDS: ReadonlySet<AgentFailure['kind']> = new Set(['quota', 'auth', 'unavailable', 'crash']);
@@ -64,11 +73,23 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
   };
   // The agent whose session the last result named: a `resume` id is only its.
   let sessionOwner: CodingAgent | undefined;
+  // Effective mode of known sessions, so a resumed Plan turn stays Plan even if its owner fails before init.
+  const sessionModes = new Map<string, AgentMode>();
+  const rememberMode = (id: string, mode: AgentMode) => {
+    if (sessionModes.size >= 256) sessionModes.clear();
+    sessionModes.set(id, mode);
+  };
   /** `task` as `agent` can take it: vendor ids only for the agent they belong to. */
-  const taskFor = (agent: CodingAgent, task: AgentTask, budget: AgentBudget | undefined): AgentTask => {
+  const taskFor = (
+    agent: CodingAgent,
+    task: AgentTask,
+    budget: AgentBudget | undefined,
+    mode: AgentMode | undefined,
+  ): AgentTask => {
     const own = agent === (sessionOwner ?? first);
     return {
       ...task,
+      ...(mode !== undefined ? { mode } : {}),
       ...(own ? {} : { resume: undefined }),
       ...(agent === first ? {} : { model: undefined }),
       ...(agent !== first && task.effort !== undefined && !agent.capabilities.effort?.includes(task.effort)
@@ -128,22 +149,39 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
       let current: AgentRun | undefined;
       let stopped = false;
       const result = (async (): Promise<AgentResult> => {
-        const order = ordered();
+        let effectiveMode: AgentMode | undefined =
+          task.mode ?? (task.resume !== undefined ? sessionModes.get(task.resume) : undefined);
+        const all = ordered();
+        const order = effectiveMode === 'plan' ? all.filter((agent) => agent.capabilities.plan) : all;
+        if (!order.length) {
+          const message = `${first.name} does not support Plan mode in this driver.`;
+          const failed: AgentResult = { status: 'failed', ok: false, exitCode: null, signal: null, error: message };
+          events.push({ type: 'error', message });
+          events.push({ type: 'done', result: failed });
+          events.close();
+          return failed;
+        }
         let budget = task.budget;
         let usage: AgentResult['usage'];
         let costUsd: number | undefined;
-        for (let i = 0; ; i += 1) {
+        for (let i = 0; ; ) {
           const agent = order[i]!;
-          const run = agent.run(taskFor(agent, task, budget));
+          const run = agent.run(taskFor(agent, task, budget, effectiveMode));
           current = run;
           if (stopped) run.abort();
           let done: AgentResult | undefined;
+          let runSessionId: string | undefined;
           // Usage events are running totals for the run: earlier agents' share goes on top.
           const priorUsage = usage;
           const priorCost = costUsd;
           for await (const event of run) {
             if (event.type === 'done') done = event.result;
             else {
+              if (event.type === 'session') {
+                runSessionId = event.sessionId;
+                if (event.mode === 'plan') effectiveMode = 'plan';
+                if (effectiveMode !== undefined) rememberMode(event.sessionId, effectiveMode);
+              }
               events.push(
                 event.type === 'usage' && (priorUsage || priorCost !== undefined)
                   ? {
@@ -162,13 +200,19 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           if (own.usage) usage = usage ? addUsage(usage, own.usage) : own.usage;
           if (own.costUsd !== undefined) costUsd = (costUsd ?? 0) + own.costUsd;
           if (own.sessionId) sessionOwner = agent;
+          const sid = own.sessionId ?? runSessionId ?? (own.ok ? task.resume : undefined);
+          if (sid && effectiveMode !== undefined) rememberMode(sid, effectiveMode);
           const ended: AgentResult = {
             ...own,
             ...(usage ? { usage } : {}),
             ...(costUsd !== undefined ? { costUsd } : {}),
           };
           const left = leftOf(task.budget, usage, costUsd);
-          const to = order[i + 1];
+          let nextIndex = i + 1;
+          while (nextIndex < order.length && effectiveMode === 'plan' && !order[nextIndex]!.capabilities.plan) {
+            nextIndex += 1;
+          }
+          const to = order[nextIndex];
           const isOut = shouldFailOver(ended);
           if (isOut) out.add(agent);
           else if (ended.ok) {
@@ -183,6 +227,7 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
           }
           events.push({ type: 'failover', from: agent.name, to: to.name, failure: ended.failure! });
           if (left) budget = left;
+          i = nextIndex;
         }
       })();
       // Kept for the caller: a driver that throws still ends the run with a result.

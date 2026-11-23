@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { isQuestionChannelServer } from './ask-user.js';
+import { handoffTranscript } from './handoff.js';
 import { createAgentSession } from './session.js';
 import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -1111,6 +1113,323 @@ describe('createAgentSession', () => {
     expect(session.get().truncatedReason).toBe('Only the last 8 MB were read.');
     expect(session.clear()).toBe(true);
     expect(session.get().truncatedReason).toBeUndefined();
+    session.close();
+  });
+  it('toggles Plan mode per turn, preserves explicit default across turns, and clears it on unsupported agents', async () => {
+    const planner = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-plan' });
+        },
+        async () => {},
+        async () => {},
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'planner',
+    );
+    const plain = fakeAgent([async () => {}], { resume: true }, 'plain');
+    expect(() => createAgentSession({ agent: plain.agent, cwd: '/w', mode: 'plan' })).toThrow(/has no Plan mode/);
+    expect(() => createAgentSession({ agent: planner.agent, cwd: '/w', mode: 'bogus' as 'plan' })).toThrow(
+      /Unknown mode/,
+    );
+
+    const session = createAgentSession({ agent: planner.agent, cwd: '/w' });
+    expect(session.get().mode).toBeUndefined();
+    session.setMode('plan');
+    expect(session.get().mode).toBe('plan');
+    session.send('plan one');
+    await session.idle();
+    session.send('plan two');
+    await session.idle();
+    session.setMode('default');
+    expect(session.get().mode).toBe('default');
+    session.send('build it');
+    await session.idle();
+    session.send('polish it');
+    await session.idle();
+    expect(planner.tasks.map((task) => [task.resume, task.mode])).toEqual([
+      [undefined, 'plan'],
+      ['s-plan', 'plan'],
+      ['s-plan', 'default'],
+      ['s-plan', 'default'],
+    ]);
+
+    session.setMode('plan');
+    session.setAgent(plain.agent);
+    expect(session.get().mode).toBeUndefined();
+    expect(() => session.setMode('plan')).toThrow(/has no Plan mode/);
+    session.close();
+
+    // Explicit mode: 'default' at creation reaches turn 1 (e.g. to leave a saved Codex Plan thread).
+    const resumed = fakeAgent([async () => {}, async () => {}], { resume: true, plan: true }, 'planner');
+    const explicitDefault = createAgentSession({ agent: resumed.agent, cwd: '/w', resume: 's-saved', mode: 'default' });
+    expect(explicitDefault.get().mode).toBe('default');
+    explicitDefault.send('implement');
+    await explicitDefault.idle();
+    explicitDefault.send('follow up');
+    await explicitDefault.idle();
+    expect(resumed.tasks.map((task) => [task.resume, task.mode])).toEqual([
+      ['s-saved', 'default'],
+      ['s-saved', 'default'],
+    ]);
+    explicitDefault.close();
+  });
+
+  it('queues the next prompt instead of steering when mode changes mid-turn', async () => {
+    let finishFirst!: () => void;
+    const steered: string[] = [];
+    const seenModes: Array<string | undefined> = [];
+    let call = 0;
+    const agent: CodingAgent = {
+      name: 'live-planner',
+      command: 'live-planner',
+      capabilities: { steer: true, resume: true, plan: true },
+      run(task) {
+        seenModes.push(task.mode);
+        const turn = ++call;
+        const done = turn === 1 ? new Promise<void>((resolve) => (finishFirst = resolve)) : Promise.resolve();
+        const result = done.then(
+          (): AgentResult => ({ status: 'completed', ok: true, exitCode: 0, signal: null, sessionId: 's-1' }),
+        );
+        return {
+          result,
+          abort() {},
+          steer: async (text) => {
+            steered.push(text);
+          },
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'session', sessionId: 's-1' };
+            await done;
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('edit now');
+    await expect.poll(() => session.get().canSteer).toBe(true);
+    session.setMode('plan');
+    expect(session.get().canSteer).toBe(false);
+    session.send('plan next');
+    expect(steered).toEqual([]);
+    expect(session.get().queued).toEqual(['plan next']);
+    // Switching mode back before the queued prompt starts does NOT rewrite the already-queued planning prompt.
+    session.setMode('default');
+    session.send('edit after plan');
+    expect(session.get().queued).toEqual(['plan next', 'edit after plan']);
+    finishFirst();
+    await session.idle();
+    expect(seenModes).toEqual([undefined, 'plan', 'default']);
+    session.close();
+  });
+
+  it('skips non-plan fallbacks on automatic failover and stops if no fallback supports Plan mode', async () => {
+    const quota: AgentResult = {
+      status: 'failed',
+      ok: false,
+      exitCode: 1,
+      signal: null,
+      error: 'limit',
+      failure: { kind: 'quota' },
+    };
+    const primary = fakeAgent([async () => quota], { plan: true }, 'primary');
+    const noPlan = fakeAgent([async () => {}], {}, 'no-plan');
+    const backup = fakeAgent([async () => {}], { plan: true }, 'backup');
+
+    const withCompatible = createAgentSession({
+      agent: primary.agent,
+      cwd: '/w',
+      mode: 'plan',
+      fallback: [noPlan.agent, backup.agent],
+    });
+    withCompatible.send('design auth');
+    await withCompatible.idle();
+    expect(noPlan.tasks).toHaveLength(0);
+    expect(backup.tasks).toHaveLength(1);
+    expect(backup.tasks[0]!.mode).toBe('plan');
+    expect(withCompatible.get()).toMatchObject({ agent: 'backup', mode: 'plan' });
+    withCompatible.close();
+
+    const primary2 = fakeAgent([async () => quota], { plan: true }, 'primary2');
+    const noPlan2 = fakeAgent([async () => {}], {}, 'no-plan2');
+    const withoutCompatible = createAgentSession({
+      agent: primary2.agent,
+      cwd: '/w',
+      mode: 'plan',
+      fallback: [noPlan2.agent],
+    });
+    withoutCompatible.send('design billing');
+    await withoutCompatible.idle();
+    expect(noPlan2.tasks).toHaveLength(0);
+    expect(withoutCompatible.get()).toMatchObject({ agent: 'primary2', mode: 'plan' });
+    expect(withoutCompatible.get().turns).toHaveLength(1);
+    withoutCompatible.close();
+
+    // Pending Plan prompt in queue during a default-mode turn that hits quota picks a Plan-capable fallback.
+    let finishEdit!: () => void;
+    const editPrimary: CodingAgent = {
+      name: 'edit-primary',
+      command: 'edit-primary',
+      capabilities: { plan: true },
+      run() {
+        const result = new Promise<AgentResult>((resolve) => {
+          finishEdit = () => resolve(quota);
+        });
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    const noPlan3 = fakeAgent([async () => {}], {}, 'no-plan3');
+    const backup3 = fakeAgent([async () => {}, async () => {}], { plan: true }, 'backup3');
+    const queuedPlanSession = createAgentSession({
+      agent: editPrimary,
+      cwd: '/w',
+      fallback: [noPlan3.agent, backup3.agent],
+    });
+    queuedPlanSession.send('edit first');
+    await expect.poll(() => Boolean(finishEdit)).toBe(true);
+    queuedPlanSession.setMode('plan');
+    queuedPlanSession.send('plan second');
+    finishEdit();
+    await queuedPlanSession.idle();
+    expect(noPlan3.tasks).toHaveLength(0);
+    expect(backup3.tasks.map((t) => [t.prompt, t.mode])).toEqual([
+      ['edit first', undefined],
+      ['plan second', 'plan'],
+    ]);
+    expect(queuedPlanSession.get()).toMatchObject({ agent: 'backup3', mode: 'plan' });
+    queuedPlanSession.close();
+  });
+
+  it('restores inherited Plan mode from adopt() or a resumed session event, and marks injected question servers', async () => {
+    const agent = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', mode: 'plan' });
+        },
+        async () => {},
+      ],
+      { resume: true, plan: true, mcp: true },
+      'codex',
+    );
+    const customQuestionServer = { name: 'choices', url: 'http://127.0.0.1:9999/mcp' };
+    const session = createAgentSession({
+      agent: agent.agent,
+      cwd: '/w',
+      resume: 's-1',
+      questions: { mcpServer: customQuestionServer, bind() {} },
+    });
+    expect(session.get().mode).toBeUndefined();
+    session.send('continue');
+    await session.idle();
+    expect(session.get().mode).toBe('plan');
+    expect(agent.tasks[0]!.mcpServers?.some(isQuestionChannelServer)).toBe(true);
+    session.send('refine');
+    await session.idle();
+    expect(agent.tasks[1]!.mode).toBe('plan');
+    session.close();
+
+    const adopted = createAgentSession({ agent: agent.agent, cwd: '/w' });
+    expect(adopted.adopt([], { sessionId: 's-plan', mode: 'plan' })).toBe(true);
+    expect(adopted.get()).toMatchObject({ sessionId: 's-plan', mode: 'plan' });
+    adopted.close();
+
+    // Clearing mode before the running turn's session event arrives is preserved instead of reverting to 'plan'.
+    let releaseSession!: () => void;
+    const delayed = fakeAgent(
+      [
+        async (_task, emit) => {
+          await new Promise<void>((resolve) => (releaseSession = resolve));
+          emit({ type: 'session', sessionId: 's-late', mode: 'plan' });
+        },
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'codex',
+    );
+    const race = createAgentSession({ agent: delayed.agent, cwd: '/w', mode: 'plan' });
+    race.send('plan it');
+    await expect.poll(() => Boolean(releaseSession)).toBe(true);
+    race.setMode(undefined);
+    expect(race.get().mode).toBeUndefined();
+    releaseSession();
+    await race.idle();
+    expect(race.get().mode).toBeUndefined();
+    race.send('next turn');
+    await race.idle();
+    expect(delayed.tasks[1]!.mode).toBe('default');
+    race.close();
+
+    // A caller-supplied server named `genaicode_ask` does not collide with the injected question channel.
+    const withCollision = fakeAgent([async () => {}], { mcp: true, plan: true }, 'codex');
+    const colliding = createAgentSession({
+      agent: withCollision.agent,
+      cwd: '/w',
+      task: { mcpServers: [{ name: 'genaicode_ask', url: 'https://custom.example/mcp' }] },
+      questions: { mcpServer: { name: 'genaicode_ask', url: 'http://127.0.0.1:9999/mcp' }, bind() {} },
+    });
+    colliding.send('go');
+    await colliding.idle();
+    expect(withCollision.tasks[0]!.mcpServers?.map((s) => [s.name, isQuestionChannelServer(s)])).toEqual([
+      ['genaicode_ask', false],
+      ['genaicode_ask_2', true],
+    ]);
+    colliding.close();
+
+    // A follow-up queued BEFORE a resumed turn reports inherited Plan mode preserves Plan mode (never triggers leavingPlan).
+    let releaseResumed!: () => void;
+    const slowResume = fakeAgent(
+      [
+        async (_task, emit) => {
+          await new Promise<void>((resolve) => (releaseResumed = resolve));
+          emit({ type: 'session', sessionId: 's-plan', mode: 'plan' });
+        },
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'codex',
+    );
+    const earlyQueue = createAgentSession({ agent: slowResume.agent, cwd: '/w', resume: 's-plan' });
+    earlyQueue.send('first');
+    await expect.poll(() => Boolean(releaseResumed)).toBe(true);
+    earlyQueue.send('follow-up queued before session event', { queue: true });
+    releaseResumed();
+    await earlyQueue.idle();
+    expect(earlyQueue.get().mode).toBe('plan');
+    expect(slowResume.tasks.map((t) => t.mode)).toEqual([undefined, 'plan']);
+    earlyQueue.close();
+  });
+
+  it('never writes a secret question answer into the handoff transcript', async () => {
+    const { agent } = fakeAgent([
+      async (task, emit) => {
+        const request = {
+          id: 'q-sec',
+          kind: 'question' as const,
+          summary: 'API token?',
+          questions: [{ id: 'tok', question: 'API token?', options: [], freeText: true, secret: true }],
+        };
+        emit({ type: 'approval-request', request });
+        const answers = await task.onQuestion!(request);
+        expect(answers).toEqual({ tok: ['super-secret-value'] });
+        emit({ type: 'approval-resolved', id: 'q-sec', decision: 'approve', answers: { tok: ['••••'] } });
+        emit({ type: 'message', text: 'Saved.' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('configure');
+    await expect.poll(() => session.get().approvals.length).toBe(1);
+    expect(session.answer('q-sec', { tok: ['super-secret-value'] })).toBe(true);
+    await session.idle();
+    const transcript = handoffTranscript(session.get().turns);
+    expect(transcript).not.toContain('super-secret-value');
+    expect(JSON.stringify(session.get())).not.toContain('super-secret-value');
     session.close();
   });
 });

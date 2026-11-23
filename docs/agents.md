@@ -921,7 +921,13 @@ const run = claude().run({
 - `approval-resolved` carries the `answers`, with those of `secret` questions masked.
 - Claude Code asks through its permission prompts, so `claude()` needs `onApproval` or
   `permissions.approval` beside `onQuestion`. Codex offers `request_user_input` in its Plan mode
-  only, unless its experimental `default_mode_request_user_input` feature is on.
+  (`codexLive({ collaborationMode: 'plan' })` or `task.mode: 'plan'`, which also drops
+  `genaicode_ask` so Codex has only one question tool per turn), or when its experimental
+  `default_mode_request_user_input` feature flag is passed in `extraArgs`.
+- Plan mode (`task.mode: 'plan'`, `capabilities.plan`): supported by `codexLive()` (app-server
+  `collaborationMode`, re-sent on a resumed thread only when changed), `claude()`
+  (`--permission-mode plan`) and `gemini()` (`--approval-mode plan`). `AgentSession.setMode()`
+  and `/plan` in `genaicode chat` / `ui` / the desktop app toggle it for the next prompts.
 - Agents without a way of their own (no `capabilities.questions`: Codex outside Plan mode,
   Antigravity, Gemini, Muse...) can get `ask_user`, an MCP tool genaicode serves:
   `startQuestionChannel()` gives an `mcpServer` and `bind(handler)`, and

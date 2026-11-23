@@ -102,6 +102,8 @@ button.chip.update:disabled { cursor: default; opacity: 0.7; }
 .run-with input { max-width: 16em; text-overflow: ellipsis; field-sizing: content; min-width: 4em; }
 .run-with input::placeholder { color: var(--faint); }
 .run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
+.gc-under .run-with button.plan-on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.gc-under .run-with button.plan-on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8em; overflow: auto; color: var(--text); }
 .sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

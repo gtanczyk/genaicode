@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { anthropicManagedProvider } from './drivers/anthropic-managed.js';
+import { cursorCloudProvider } from './drivers/cursor-cloud.js';
+import { geminiManagedProvider } from './drivers/gemini-managed.js';
+import { openaiManagedProvider } from './drivers/openai-managed.js';
 import {
   isManagedSettled,
   managedAgent,
@@ -741,5 +745,46 @@ describe('managedAgent resume cursor', () => {
     const two = await agent.run({ prompt: 'q', resume: 's-1', ...options }).result;
     expect(two).toMatchObject({ status: 'completed', text: 'two' });
     expect(answers).toEqual(['a-1']);
+  });
+
+  it('forwards mode when capabilities.plan is declared and refuses Plan mode otherwise', async () => {
+    const seen: Array<string | undefined> = [];
+    const { provider } = fake([], {
+      capabilities: { plan: true },
+      async start(request) {
+        seen.push(request.mode);
+        return { id: 's-1', state: 'idle', stopReason: 'end-turn' };
+      },
+    });
+    const planner = managedAgent(provider, { pollIntervalMs: 1 });
+    expect((await planner.run({ prompt: 'p', cwd: '.', mode: 'plan' }).result).status).toBe('completed');
+    expect((await planner.run({ prompt: 'q', cwd: '.', mode: 'default' }).result).status).toBe('completed');
+    expect(seen).toEqual(['plan', 'default']);
+
+    const { provider: plain, calls } = fake([], { capabilities: {} });
+    const refused = await managedAgent(plain, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.', mode: 'plan' })
+      .result;
+    expect(refused).toMatchObject({ status: 'failed', error: 'cloud does not support Plan mode in this driver.' });
+    expect(calls).toEqual([]);
+
+    // Direct provider start() calls also reject Plan mode before touching any transport.
+    let fetched = 0;
+    const noFetch = (async () => {
+      fetched++;
+      throw new Error('network should not be called');
+    }) as typeof fetch;
+    await expect(
+      cursorCloudProvider({ apiKey: 'k', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      geminiManagedProvider({ apiKey: 'k', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      openaiManagedProvider({ apiKey: 'k', model: 'gpt-5', fetch: noFetch }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    await expect(
+      anthropicManagedProvider({ agent: 'a', environment: 'e' }).start({ prompt: 'p', mode: 'plan' }),
+    ).rejects.toThrow(/does not support Plan mode/);
+    expect(fetched).toBe(0);
   });
 });

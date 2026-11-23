@@ -1,10 +1,13 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { codexSessions } from '../sessions/codex.js';
 import { displayPath, isNeutralHome } from '../sessions/workspace.js';
 import type { TokenUsage } from '../../core/types.js';
+import { isQuestionChannelServer, questionChannelHandler } from '../ask-user.js';
 import { liveAgent, type LiveSession } from '../live-agent.js';
 import { epochMs, limitStatus, windowLabel, type AgentOutcome } from '../runtime.js';
-import type { AgentEvent, ApprovalRequest, CodingAgent } from '../types.js';
+import type { AgentEvent, AgentMode, AgentTask, ApprovalRequest, CodingAgent } from '../types.js';
 import { codexApprovals } from './codex-approvals.js';
 import {
   canonicalPath,
@@ -14,7 +17,6 @@ import {
   type CodexTrustLevel,
 } from './codex-trust.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
-import type { AgentTask } from '../types.js';
 import type { PrepareContext, PreparedRun } from '../prepare.js';
 import {
   CODEX_SANDBOX,
@@ -27,11 +29,20 @@ import {
 } from './codex.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 
+/** Codex app-server collaboration mode (`turn/start.collaborationMode.mode`). */
+export type CodexCollaborationMode = AgentMode;
+
 export interface CodexLiveOptions {
   /** Executable name or path. Default `codex`. */
   command?: string;
   /** Default `workspace-write`. */
   sandbox?: CodexSandbox;
+  /**
+   * Default collaboration mode (`'default'` or `'plan'`). `'plan'` enters Codex's Plan mode,
+   * where Codex explores and proposes a plan using its own `request_user_input` tool (genaicode
+   * drops `genaicode_ask` so Codex has only one question tool). Overridden per turn by `task.mode`.
+   */
+  collaborationMode?: CodexCollaborationMode;
   /** How long to wait for the server to acknowledge each request. Default 60 s. */
   requestTimeoutMs?: number;
   /**
@@ -57,7 +68,7 @@ export interface CodexLiveOptions {
  * Codex's own (`unrestricted` is `danger-full-access`).
  */
 export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
-  return liveAgent({
+  const agent = liveAgent({
     sessions: codexSessions(),
     name: 'codex',
     command: options.command ?? 'codex',
@@ -67,6 +78,7 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
       rateLimits: true,
       approvals: true,
       resume: true,
+      plan: true,
       mcp: true,
       permissions: {
         approval: ['ask', 'auto-approve', 'deny'],
@@ -75,11 +87,146 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
     },
     args: (task) => {
       codexThreadPolicy(task, options);
+      codexCollaborationMode(task, options);
       return [...(task.extraArgs ?? []), 'app-server'];
     },
     prepare: (task, context) => prepareCodexLive(task, options, context),
     drive: (session) => driveCodex(session, options),
   });
+  return {
+    ...agent,
+    run(task) {
+      if (task.onQuestion) return agent.run(task);
+      // A library caller that bound a question channel directly without `task.onQuestion` still
+      // receives Codex's native `request_user_input` questions when the MCP fallback is stripped.
+      const bound = task.mcpServers?.map(questionChannelHandler).find(Boolean);
+      if (!bound) return agent.run(task);
+      return agent.run({
+        ...task,
+        onQuestion: (request, signal) => bound()?.(request, signal),
+      });
+    },
+  };
+}
+
+const execFileAsync = promisify(execFile);
+
+// Codex splits dotted `-c key=value` paths literally without TOML key unquoting; quoted keys apply only inside tables.
+const FEATURES_KEY = /^features\.default_mode_request_user_input\s*=\s*(true|false)$/;
+const FEATURES_TABLE = /^features\s*=\s*\{([\s\S]*)\}$/;
+const TABLE_ENTRY =
+  /(?:^|,)\s*(?:default_mode_request_user_input|"default_mode_request_user_input"|'default_mode_request_user_input')\s*=\s*(true|false)(?=\s*(?:,|$))/g;
+const FEATURE_LIST_LINE = /^default_mode_request_user_input\s+.*\s+(true|false)\s*$/m;
+
+/** Effective collaboration mode for a turn: `task.mode` overrides `options.collaborationMode`. */
+export function codexCollaborationMode(
+  task: Pick<AgentTask, 'mode'>,
+  options: Pick<CodexLiveOptions, 'collaborationMode'> = {},
+): CodexCollaborationMode | undefined {
+  const mode = task.mode ?? options.collaborationMode;
+  if (mode !== undefined && mode !== 'default' && mode !== 'plan')
+    throw new Error(`Invalid Codex collaboration mode: ${JSON.stringify(mode)}. Expected 'default' or 'plan'.`);
+  return mode;
+}
+
+/**
+ * Whether Codex offers its own `request_user_input` tool for this turn: in Plan mode, or when
+ * `extraArgs` enables the `default_mode_request_user_input` feature flag. Matches Codex's CLI
+ * precedence: `--disable` overrides `--enable`, which overrides `-c`/`--config` overrides
+ * (including whole-table `features={...}` assignments).
+ */
+export function codexHasOwnQuestionTool(
+  task: Pick<AgentTask, 'mode' | 'extraArgs'>,
+  options: Pick<CodexLiveOptions, 'collaborationMode'> = {},
+): boolean {
+  if (codexCollaborationMode(task, options) === 'plan') return true;
+  let disabled = false;
+  let enabled = false;
+  let configValue: boolean | undefined;
+  const extra = task.extraArgs ?? [];
+  const readConfig = (raw: string) => {
+    const trimmed = raw.trim();
+    const direct = FEATURES_KEY.exec(trimmed);
+    if (direct) {
+      configValue = direct[1] === 'true';
+      return;
+    }
+    const table = FEATURES_TABLE.exec(trimmed);
+    if (table) {
+      // Whole-table `features={...}` replaces earlier `features.*` overrides.
+      let value: boolean | undefined;
+      for (const entry of table[1]!.matchAll(TABLE_ENTRY)) value = entry[1] === 'true';
+      configValue = value;
+    }
+  };
+  for (let i = 0; i < extra.length; i++) {
+    const arg = extra[i]!;
+    if (arg === '--') break;
+    if (arg === '--disable') {
+      if (extra[i + 1] === 'default_mode_request_user_input') disabled = true;
+      i++;
+    } else if (arg === '--disable=default_mode_request_user_input') {
+      disabled = true;
+    } else if (arg === '--enable') {
+      if (extra[i + 1] === 'default_mode_request_user_input') enabled = true;
+      i++;
+    } else if (arg === '--enable=default_mode_request_user_input') {
+      enabled = true;
+    } else if (arg === '-c' || arg === '--config') {
+      readConfig(extra[i + 1] ?? '');
+      i++;
+    } else if (arg.startsWith('--config=')) {
+      readConfig(arg.slice('--config='.length));
+    } else if (arg.startsWith('-c=')) {
+      readConfig(arg.slice(3));
+    } else if (arg.startsWith('-c') && arg.length > 2) {
+      readConfig(arg.slice(2));
+    }
+  }
+  if (disabled) return false;
+  if (enabled) return true;
+  return configValue ?? false;
+}
+
+/** Saved collaboration mode of a stored Codex thread, read from its local rollout. */
+async function savedCodexMode(
+  resume: string,
+  env: NodeJS.ProcessEnv | undefined,
+  signal: AbortSignal | undefined,
+): Promise<AgentMode | undefined> {
+  try {
+    const matches = await codexSessions({ via: 'files' }).find?.(resume, { env, signal, limit: 5 });
+    return matches?.find((item) => item.id === resume)?.mode;
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
+}
+
+/** Ask Codex for the effective `default_mode_request_user_input` feature flag (`config.toml` + CLI overrides). */
+async function codexEffectiveDefaultModeInput(
+  command: string,
+  task: Pick<AgentTask, 'cwd' | 'env' | 'extraArgs'>,
+  signal: AbortSignal | undefined,
+): Promise<boolean | undefined> {
+  const extra = task.extraArgs ?? [];
+  const sep = extra.indexOf('--');
+  const flags = sep < 0 ? extra : extra.slice(0, sep);
+  try {
+    const { stdout } = await execFileAsync(command, [...flags, 'features', 'list'], {
+      cwd: task.cwd,
+      env: task.env,
+      signal,
+      timeout: 10_000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const match = FEATURE_LIST_LINE.exec(stdout);
+    return match ? match[1] === 'true' : undefined;
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
 }
 
 /** The app server's arguments: the task's MCP servers, and with `onlyTaskMcpServers` the others off. */
@@ -89,12 +236,33 @@ export async function prepareCodexLive(
   context?: Partial<PrepareContext>,
 ): Promise<PreparedRun> {
   codexThreadPolicy(task, options);
-  const prepared = withCodexMcp(task, [...(task.extraArgs ?? []), 'app-server']);
+  // One question tool per turn: drop genaicode's question channel when Codex has `request_user_input`
+  // and native question answers have a route (`task.onQuestion` or a bound channel handler).
+  const canDrop = (server: NonNullable<AgentTask['mcpServers']>[number]) =>
+    isQuestionChannelServer(server) && (Boolean(task.onQuestion) || Boolean(questionChannelHandler(server)));
+  const hasQuestionServer = Boolean(task.mcpServers?.some(canDrop));
+  const wanted = codexCollaborationMode(task, options);
+  let hasOwn = wanted === 'plan';
+  if (hasQuestionServer && !hasOwn) {
+    if (
+      wanted === undefined &&
+      task.resume &&
+      (await savedCodexMode(task.resume, task.env, context?.signal)) === 'plan'
+    ) {
+      hasOwn = true;
+    } else {
+      const effectiveFlag = await codexEffectiveDefaultModeInput(options.command ?? 'codex', task, context?.signal);
+      hasOwn = effectiveFlag ?? codexHasOwnQuestionTool(task, options);
+    }
+  }
+  const effective =
+    hasOwn && hasQuestionServer ? { ...task, mcpServers: task.mcpServers!.filter((server) => !canDrop(server)) } : task;
+  const prepared = withCodexMcp(effective, [...(task.extraArgs ?? []), 'app-server']);
   if (!options.onlyTaskMcpServers) return prepared;
   let off: string[];
   try {
     // Stopping the turn stops the listing too.
-    off = await codexOwnServersOff(options.command ?? 'codex', task, context?.signal);
+    off = await codexOwnServersOff(options.command ?? 'codex', effective, context?.signal);
   } catch (error) {
     // A name clash is the caller's to fix, and a missing CLI fails the run as it would anyway.
     const code = (error as { code?: unknown }).code;
@@ -198,7 +366,17 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
     return answer;
   });
 
-  const init = await rpc.request('initialize', { clientInfo: { name: 'genaicode', version: '2' } }, timeout);
+  const wantedMode = codexCollaborationMode(task, options);
+  // `turn/start.collaborationMode` is gated behind `experimentalApi` in Codex's app-server.
+  const experimental = wantedMode === 'plan' || (wantedMode === 'default' && Boolean(task.resume));
+  const init = await rpc.request(
+    'initialize',
+    {
+      clientInfo: { name: 'genaicode', version: '2' },
+      ...(experimental ? { capabilities: { experimentalApi: true } } : {}),
+    },
+    timeout,
+  );
   rpc.notify('initialized');
 
   const canWriteConfig = isObject(init) && typeof init.codexHome === 'string';
@@ -301,13 +479,40 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   if (task.resume && stringField(info?.status, 'type') === 'active')
     throw new Error('The Codex thread already has an active turn.');
   ids.thread = threadId;
-  session.emit({ type: 'session', sessionId: threadId });
+
+  // Resumed threads keep their saved collaboration mode; re-send only when it changed.
+  const savedMode =
+    task.resume && isObject(thread) && isObject(thread.collaborationMode)
+      ? stringField(thread.collaborationMode, 'mode')
+      : undefined;
+  const effectiveMode: AgentMode | undefined =
+    wantedMode ?? (savedMode === 'plan' || savedMode === 'default' ? savedMode : undefined);
+  session.emit({ type: 'session', sessionId: threadId, ...(effectiveMode === 'plan' ? { mode: 'plan' } : {}) });
+  const sendMode = task.resume
+    ? (wantedMode === 'plan' && savedMode !== 'plan') || (wantedMode === 'default' && savedMode === 'plan')
+    : wantedMode === 'plan';
+  const collaborationMode = sendMode
+    ? {
+        mode: wantedMode,
+        settings: {
+          model: task.model ?? (isObject(thread) ? stringField(thread, 'model') : undefined) ?? '',
+          reasoning_effort:
+            task.effort ?? (isObject(thread) ? stringField(thread, 'reasoningEffort') : undefined) ?? null,
+          developer_instructions: null,
+        },
+      }
+    : undefined;
 
   const input = (text: string) => [{ type: 'text', text }];
   startingTurn = true;
   const started = await rpc.request(
     'turn/start',
-    { threadId, input: input(task.prompt), ...(task.effort ? { effort: task.effort } : {}) },
+    {
+      threadId,
+      input: input(task.prompt),
+      ...(task.effort ? { effort: task.effort } : {}),
+      ...(collaborationMode ? { collaborationMode } : {}),
+    },
     timeout,
   );
   const turnId = stringField(isObject(started) ? started.turn : undefined, 'id');
@@ -350,7 +555,8 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
   const id = stringField(item, 'id');
   const withId = id ? { id } : {};
   switch (method) {
-    case 'item/agentMessage/delta': {
+    case 'item/agentMessage/delta':
+    case 'item/plan/delta': {
       const delta = stringField(params, 'delta');
       return delta ? [{ type: 'text-delta', text: delta }] : [];
     }
@@ -361,7 +567,7 @@ export function codexNotification(method: string, params: unknown): AgentEvent[]
         return [{ type: 'tool-start', ...withId, name: mcpName(item!), input: item!.arguments }];
       return [];
     case 'item/completed':
-      if (type === 'agentMessage') {
+      if (type === 'agentMessage' || type === 'plan') {
         const text = stringField(item, 'text');
         return text ? [{ type: 'message', text }] : [];
       }

@@ -21,6 +21,19 @@ export interface PrepareContext {
 /** MCP server names every driver accepts. */
 export const MCP_NAME = /^[A-Za-z0-9_-]+$/;
 
+/** Reject an invalid or unsupported `task.mode` before anything is spawned. */
+export function unsupportedMode(
+  name: string,
+  capabilities: AgentCapabilities,
+  task: Pick<AgentTask, 'mode'>,
+): string | undefined {
+  if (task.mode === undefined) return undefined;
+  if (task.mode !== 'default' && task.mode !== 'plan')
+    return `Invalid mode for ${name}: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`;
+  if (task.mode === 'plan' && !capabilities.plan) return `${name} does not support Plan mode in this driver.`;
+  return undefined;
+}
+
 /** Reject a task the agent cannot honor before anything is spawned. */
 export function unsupportedTask(name: string, capabilities: AgentCapabilities, task: AgentTask): string | undefined {
   const servers = task.mcpServers ?? [];
@@ -33,7 +46,7 @@ export function unsupportedTask(name: string, capabilities: AgentCapabilities, t
     if (names.has(server.name)) return `Duplicate MCP server name: ${server.name}.`;
     names.add(server.name);
   }
-  return unsupportedPermissions(name, capabilities, task);
+  return unsupportedMode(name, capabilities, task) ?? unsupportedPermissions(name, capabilities, task);
 }
 
 export function isHttpServer(server: McpServer): server is Extract<McpServer, { url: string }> {

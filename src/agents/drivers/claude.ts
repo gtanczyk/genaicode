@@ -7,11 +7,12 @@ import { decideApproval, reportApproval, reportReply } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions } from '../permissions.js';
 import { isHttpServer, type PrepareContext, type PreparedRun } from '../prepare.js';
 import { epochMs, limitStatus } from '../runtime.js';
-import type { AgentEvent, AgentTask, CodingAgent, McpServer, RateLimit } from '../types.js';
+import type { AgentEvent, AgentMode, AgentTask, CodingAgent, McpServer, RateLimit } from '../types.js';
 import {
   claudeApprovalEnv,
   claudePermissionFlags,
   claudeSandboxRefuses,
+  isClaudeExitPlanMode,
   startClaudeApprovalServer,
 } from './claude-approvals.js';
 import { isObject, numberField, positionalPrompt, stringField } from './json.js';
@@ -109,22 +110,63 @@ function isModeDisabled(
   return (from(override, overridePerms) ?? from(user, userPerms)) === 'disable';
 }
 
-function hasDefaultModeInSettings(
+function defaultModeInSettings(
   user: Record<string, unknown> | undefined,
   override: Record<string, unknown> | undefined,
-): boolean {
+): string | undefined {
   const userPerms = user && isObject(user.permissions) ? user.permissions : undefined;
   const overridePerms = override && isObject(override.permissions) ? override.permissions : undefined;
   const mode =
     stringField(overridePerms, 'defaultMode')?.trim() || stringField(userPerms, 'defaultMode')?.trim() || undefined;
-  if (!mode) return false;
-  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return false;
+  if (!mode) return undefined;
+  if (mode === 'auto' && isModeDisabled(user, userPerms, override, overridePerms, 'disableAutoMode')) return undefined;
   if (
     mode === 'bypassPermissions' &&
     isModeDisabled(user, userPerms, override, overridePerms, 'disableBypassPermissionsMode')
   )
-    return false;
-  return true;
+    return undefined;
+  return mode;
+}
+
+function hasDefaultModeInSettings(
+  user: Record<string, unknown> | undefined,
+  override: Record<string, unknown> | undefined,
+): boolean {
+  return defaultModeInSettings(user, override) !== undefined;
+}
+
+function stripClaudeModeFlags(extraArgs: readonly string[], mode: AgentMode): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < extraArgs.length; i++) {
+    const arg = extraArgs[i]!;
+    if (arg === '--') {
+      kept.push(...extraArgs.slice(i));
+      break;
+    }
+    if (mode === 'plan') {
+      if (arg === '--permission-mode') {
+        i++;
+      } else if (
+        arg.startsWith('--permission-mode=') ||
+        arg === '--dangerously-skip-permissions' ||
+        arg === '--allow-dangerously-skip-permissions'
+      ) {
+        continue;
+      } else {
+        kept.push(arg);
+      }
+    } else {
+      // Leaving Plan mode: remove only an explicit `plan` override so non-Plan policies (e.g. `manual`) stay intact.
+      if (arg === '--permission-mode' && extraArgs[i + 1] === 'plan') {
+        i++;
+      } else if (arg === '--permission-mode=plan') {
+        continue;
+      } else {
+        kept.push(arg);
+      }
+    }
+  }
+  return kept;
 }
 
 /**
@@ -161,6 +203,12 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
   const steer = options.steer ?? true;
   const command = options.command ?? 'claude';
   const input = { start: (task: AgentTask) => [claudeUserMessage(task.prompt)], steer: claudeUserMessage };
+  // Remembers each session's last effective mode so a direct `resume` with `mode` omitted keeps Plan mode.
+  const sessionModes = new Map<string, AgentMode>();
+  const rememberMode = (sessionId: string, mode: AgentMode) => {
+    if (sessionModes.size >= 256) sessionModes.clear();
+    sessionModes.set(sessionId, mode);
+  };
   const agent = cliAgent({
     sessions: claudeSessions(),
     name: 'claude',
@@ -173,6 +221,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       rateLimits: true,
       mcp: true,
       resume: true,
+      plan: true,
       approvals: true,
       questions: true,
       permissions: {
@@ -181,8 +230,21 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       },
     },
     args: (task) => claudeArgs(task, options, undefined, undefined, steer),
-    prepare: (task, context) => prepareClaude(task, options, context, steer),
-    createParser: createClaudeParser,
+    prepare: (task, context) => prepareClaude(task, options, context, steer, sessionModes),
+    createParser: () => {
+      const parser = createClaudeParser();
+      return {
+        outcome: () => parser.outcome?.(),
+        ...(parser.input ? { input: (value: unknown) => parser.input!(value) } : {}),
+        event(value) {
+          const events = parser.event(value);
+          for (const event of events) {
+            if (event.type === 'session') rememberMode(event.sessionId, event.mode ?? 'default');
+          }
+          return events;
+        },
+      };
+    },
     ...(steer ? { input } : {}),
   });
   // The model receives only the stdin message. Keep the user's login, without loading
@@ -244,43 +306,70 @@ export function claudeUserMessage(text: string): string {
   return JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } });
 }
 
+async function savedClaudeMode(
+  resume: string,
+  env: NodeJS.ProcessEnv | undefined,
+  signal: AbortSignal | undefined,
+): Promise<AgentMode | undefined> {
+  try {
+    const matches = await claudeSessions().find?.(resume, { env, signal });
+    return matches?.find((item) => item.id === resume)?.mode;
+  } catch {
+    signal?.throwIfAborted();
+    return undefined;
+  }
+}
+
 /** Write the task's MCP servers to a private temp file, so header secrets stay out of argv. */
 async function prepareClaude(
   task: AgentTask,
   options: ClaudeAgentOptions,
   context: PrepareContext,
   stdinPrompt: boolean,
+  sessionModes?: ReadonlyMap<string, AgentMode>,
 ): Promise<PreparedRun> {
+  if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
+    throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   const permissions = resolvePermissions(task.permissions);
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
-  const asks = permissions.approval ? permissions.approval !== 'deny' : !!task.onApproval;
-  const approvals = asks ? await claudeApprovals(task, context) : undefined;
-  const servers = [...(task.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
+  const resumedPlan =
+    task.mode === undefined &&
+    task.resume !== undefined &&
+    (sessionModes?.get(task.resume) ?? (await savedClaudeMode(task.resume, task.env, context.signal))) === 'plan';
+  const effectiveTask = resumedPlan ? { ...task, mode: 'plan' as const } : task;
+  const asks = permissions.approval ? permissions.approval !== 'deny' : !!effectiveTask.onApproval;
+  const approvals = asks ? await claudeApprovals(effectiveTask, context) : undefined;
+  const servers = [...(effectiveTask.mcpServers ?? []), ...(approvals ? [approvals.server] : [])];
+  const userSettings =
+    !owned && options.permissionMode === undefined && readsUserSettings(effectiveTask.extraArgs)
+      ? readClaudeUserSettings(effectiveTask.env ?? process.env)
+      : undefined;
+  const settingsDefaultMode =
+    !owned && options.permissionMode === undefined ? defaultModeInSettings(userSettings, options.settings) : undefined;
   const inheritMode =
-    !owned &&
-    options.permissionMode === undefined &&
-    hasClaudeDefaultMode(task.env ?? process.env, options.settings, task.extraArgs);
-  if (!servers.length) return { args: claudeArgs(task, options, undefined, undefined, stdinPrompt, inheritMode) };
+    settingsDefaultMode !== undefined && !(effectiveTask.mode === 'default' && settingsDefaultMode === 'plan');
+  if (!servers.length)
+    return { args: claudeArgs(effectiveTask, options, undefined, undefined, stdinPrompt, inheritMode) };
   let dir: string | undefined;
-  let file: string;
   try {
     dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
-    file = join(dir, 'mcp.json');
+    const file = join(dir, 'mcp.json');
     writeFileSync(file, JSON.stringify(claudeMcpConfig(servers)), { mode: 0o600 });
+    const args = claudeArgs(effectiveTask, options, file, approvals?.args, stdinPrompt, inheritMode);
+    const created = dir;
+    return {
+      args,
+      ...(approvals ? { env: claudeApprovalEnv(effectiveTask.env) } : {}),
+      cleanup: () => {
+        void approvals?.close();
+        rmSync(created, { recursive: true, force: true });
+      },
+    };
   } catch (error) {
     if (dir) rmSync(dir, { recursive: true, force: true });
     void approvals?.close();
     throw error;
   }
-  const created = dir;
-  return {
-    args: claudeArgs(task, options, file, approvals?.args, stdinPrompt, inheritMode),
-    ...(approvals ? { env: claudeApprovalEnv(task.env) } : {}),
-    cleanup: () => {
-      void approvals?.close();
-      rmSync(created, { recursive: true, force: true });
-    },
-  };
 }
 
 /** The task's approval endpoint: decides under `task.permissions`, with the run's approval events. */
@@ -293,8 +382,9 @@ async function claudeApprovals(task: AgentTask, context: PrepareContext) {
     async (request, signal) => {
       const ended = signal ? anySignal([signal, context.signal]) : context.signal;
       return reportApproval(context.emit, request, ended, async () =>
-        // Outside the sandbox: denied by policy, whoever would have answered.
-        sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)
+        // Outside the sandbox, or leaving an explicitly requested Plan turn: denied by policy.
+        (sandbox && claudeSandboxRefuses(request.detail, sandbox, task.cwd)) ||
+        (task.mode === 'plan' && isClaudeExitPlanMode(request.detail))
           ? { decision: 'deny', automatic: true }
           : decideApproval(task, request, ended),
       );
@@ -350,16 +440,27 @@ export function claudeArgs(
   const permissions = resolvePermissions(task.permissions);
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
   exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
+  if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
+    throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   args.push('--output-format', 'stream-json');
   if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
-  const inheritMode = inheritPermissionMode ?? hasDefaultModeInSettings(undefined, options.settings);
+  const settingsMode = defaultModeInSettings(undefined, options.settings);
+  const inheritMode =
+    inheritPermissionMode ?? (settingsMode !== undefined && !(task.mode === 'default' && settingsMode === 'plan'));
+  const configuredMode =
+    task.mode === 'default' && options.permissionMode === 'plan' ? 'acceptEdits' : options.permissionMode;
   const modeArgs = owned
     ? claudePermissionFlags(permissions).args
-    : options.permissionMode !== undefined
-      ? ['--permission-mode', options.permissionMode]
+    : configuredMode !== undefined
+      ? ['--permission-mode', configuredMode]
       : inheritMode
         ? []
         : ['--permission-mode', 'acceptEdits'];
+  if (task.mode === 'plan') {
+    const at = modeArgs.indexOf('--permission-mode');
+    if (at >= 0) modeArgs[at + 1] = 'plan';
+    else modeArgs.push('--permission-mode', 'plan');
+  }
   if (options.settings) {
     // One `--settings`: a second one would replace the first.
     const at = modeArgs.indexOf('--settings');
@@ -373,7 +474,8 @@ export function claudeArgs(
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
   if (task.budget?.maxCostUsd !== undefined) args.push('--max-budget-usd', String(task.budget.maxCostUsd));
   if (task.resume) args.push('--resume', task.resume);
-  if (task.extraArgs) args.push(...task.extraArgs);
+  if (task.extraArgs)
+    args.push(...(task.mode !== undefined ? stripClaudeModeFlags(task.extraArgs, task.mode) : task.extraArgs));
   return stdinPrompt ? args : [...args, ...positionalPrompt(task.prompt)];
 }
 
@@ -396,7 +498,7 @@ export function createClaudeParser(): AgentOutputParser {
       const sessionId = stringField(value, 'session_id');
       if (sessionId && !sessionSent) {
         sessionSent = true;
-        events.push({ type: 'session', sessionId, ...modelOf(value) });
+        events.push({ type: 'session', sessionId, ...modelOf(value), ...modeOf(value) });
       }
 
       switch (value.type) {
@@ -535,6 +637,10 @@ function contentBlocks(message: unknown): ContentBlock[] {
 function modelOf(value: Record<string, unknown>): { model?: string } {
   const model = stringField(value, 'model');
   return model ? { model } : {};
+}
+
+function modeOf(value: Record<string, unknown>): { mode?: AgentMode } {
+  return stringField(value, 'permissionMode') === 'plan' ? { mode: 'plan' } : {};
 }
 
 function toolOutput(content: unknown): string | undefined {

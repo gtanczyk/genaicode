@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -301,9 +301,13 @@ const rpc = async (id, method, params) => {
   return res.json();
 };
 await rpc(1, 'initialize', { protocolVersion: '2025-06-18' });
-const called = await rpc(2, 'tools/call', { name, arguments: { tool_name: 'Bash', input: { command: 'npm test' }, tool_use_id: 'tu-9' } });
+const toolName = process.env.FAKE_TOOL || 'Bash';
+const toolInput = toolName === 'ExitPlanMode' ? { plan: 'Step 1' } : { command: 'npm test' };
+const called = await rpc(2, 'tools/call', { name, arguments: { tool_name: toolName, input: toolInput, tool_use_id: 'tu-9' } });
 const report = { answer: JSON.parse(called.result.content[0].text), args, servers: Object.keys(config.mcpServers), timeout: process.env.MCP_TOOL_TIMEOUT };
-console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's-1' }));
+const permIdx = args.indexOf('--permission-mode');
+const permissionMode = permIdx >= 0 ? args[permIdx + 1] : undefined;
+console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's-1', ...(permissionMode ? { permissionMode } : {}) }));
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(report) }));
 `,
 );
@@ -315,7 +319,12 @@ describe('claude() with onApproval', () => {
     onApproval: ApprovalHandler | undefined,
     mcpServers?: { name: string; url: string }[],
     permissions?: AgentTask['permissions'],
-    extra: { options?: Omit<ClaudeAgentOptions, 'command'>; env?: NodeJS.ProcessEnv; extraArgs?: string[] } = {},
+    extra: {
+      options?: Omit<ClaudeAgentOptions, 'command'>;
+      env?: NodeJS.ProcessEnv;
+      extraArgs?: string[];
+      mode?: AgentTask['mode'];
+    } = {},
   ) {
     const agent = claude({ command: bin, ...extra.options });
     const events: AgentEvent[] = [];
@@ -333,6 +342,7 @@ describe('claude() with onApproval', () => {
       mcpServers,
       permissions,
       extraArgs: extra.extraArgs,
+      mode: extra.mode,
     });
     for await (const event of task) events.push(event);
     const result = await task.result;
@@ -439,6 +449,84 @@ describe('claude() with onApproval', () => {
       extraArgs: ['--bare'],
     });
     expect(bare.report.args).toContain('acceptEdits');
+  });
+
+  it('denies ExitPlanMode automatically during an explicit Plan turn even with auto-approve or approving handler', async () => {
+    const onApproval = vi.fn<ApprovalHandler>(() => 'approve');
+    for (const permissions of [undefined, 'yolo', { approval: 'auto-approve' }] as const) {
+      const { report, events } = await run(onApproval, undefined, permissions, {
+        mode: 'plan',
+        env: { FAKE_TOOL: 'ExitPlanMode' },
+      });
+      expect(report.answer).toMatchObject({ behavior: 'deny' });
+      expect(events.filter((event) => event.type === 'approval-resolved')).toEqual([
+        { type: 'approval-resolved', id: 'tu-9', decision: 'deny', automatic: true },
+      ]);
+    }
+    expect(onApproval).not.toHaveBeenCalled();
+
+    // A direct follow-up resuming the Plan session with mode omitted keeps Plan mode and still refuses ExitPlanMode.
+    const persistent = claude({ command: bin });
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: join(dir, 'empty-claude-config'),
+      FAKE_TOOL: 'ExitPlanMode',
+    };
+    delete env.MCP_TOOL_TIMEOUT;
+    const first = persistent.run({ prompt: 'plan it', cwd: dir, env, mode: 'plan', permissions: 'yolo', onApproval });
+    const firstEvents: AgentEvent[] = [];
+    for await (const event of first) firstEvents.push(event);
+    const firstResult = await first.result;
+    expect(firstEvents).toContainEqual({ type: 'session', sessionId: 's-1', mode: 'plan' });
+    for (const permissions of [undefined, 'yolo'] as const) {
+      const resumed = persistent.run({
+        prompt: 'refine it',
+        cwd: dir,
+        env,
+        permissions,
+        resume: firstResult.sessionId,
+        onApproval,
+      });
+      const resumedResult = await resumed.result;
+      const resumedReport = JSON.parse(resumedResult.text!);
+      expect(resumedReport.args).toContain('plan');
+      expect(resumedReport.answer).toMatchObject({ behavior: 'deny' });
+    }
+    expect(onApproval).not.toHaveBeenCalled();
+  });
+
+  it('leaves no temp MCP config on disk when mode or option validation fails', async () => {
+    const marker = `cleanup-token-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const hasLeakedConfig = () =>
+      readdirSync(tmpdir())
+        .filter((entry) => entry.startsWith('genaicode-claude-mcp-'))
+        .some((entry) => {
+          try {
+            return readFileSync(join(tmpdir(), entry, 'mcp.json'), 'utf8').includes(marker);
+          } catch {
+            return false;
+          }
+        });
+    const badMode = await claude({ command: bin }).run({
+      prompt: 'go',
+      cwd: dir,
+      mode: 'bogus' as 'plan',
+      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: `Bearer ${marker}` } }],
+    }).result;
+    expect(badMode.status).toBe('failed');
+    expect(badMode.error).toMatch(/Invalid mode/);
+
+    const conflict = await claude({ command: bin, permissionMode: 'plan' }).run({
+      prompt: 'go',
+      cwd: dir,
+      permissions: { approval: 'ask' },
+      onApproval: () => 'approve',
+      mcpServers: [{ name: 's', url: 'https://mcp.example/s', headers: { Authorization: `Bearer ${marker}` } }],
+    }).result;
+    expect(conflict.status).toBe('failed');
+    expect(conflict.error).toMatch(/permissionMode/);
+
+    expect(hasLeakedConfig()).toBe(false);
   });
 });
 

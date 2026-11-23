@@ -1,6 +1,7 @@
 import type { TokenUsage } from '../core/types.js';
 import { decideApproval } from './live-agent.js';
 import { resolvePermissions, unsupportedPermissions } from './permissions.js';
+import { unsupportedMode } from './prepare.js';
 import type { ProcessExit } from './process.js';
 import { anySignal, RunRecorder, tokenCount, type AgentOutcome } from './runtime.js';
 import type {
@@ -8,6 +9,7 @@ import type {
   AgentCapabilities,
   AgentEvent,
   AgentFailure,
+  AgentMode,
   AgentPermissions,
   AgentRun,
   AgentTask,
@@ -53,6 +55,7 @@ export interface ManagedStart {
   system?: string;
   model?: string;
   effort?: string;
+  mode?: AgentMode;
   maxTurns?: number;
   /** The provider's workspace reference: a repository, a branch, an environment id. */
   workspace?: string;
@@ -379,6 +382,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
   const start = async (): Promise<ManagedSnapshot | { exit: ProcessExit; outcome?: AgentOutcome }> => {
     const refused =
       unsupportedPermissions(provider.name, provider.capabilities, task) ??
+      unsupportedMode(provider.name, provider.capabilities, task) ??
       refusedFields(provider, task, options.start?.files);
     if (refused) return { exit: exit('spawn-error', new Error(refused)) };
     const permissions = task.permissions !== undefined ? resolvePermissions(task.permissions) : undefined;
@@ -415,6 +419,7 @@ function runManaged(provider: ManagedProvider, input: AgentTask, options: Manage
       workspace,
       ...(task.model !== undefined ? { model: task.model } : {}),
       ...(task.effort !== undefined ? { effort: task.effort } : {}),
+      ...(task.mode !== undefined ? { mode: task.mode } : {}),
       ...(task.maxTurns !== undefined ? { maxTurns: task.maxTurns } : {}),
       ...(task.resume !== undefined ? { resume: task.resume } : {}),
       ...(task.extraArgs !== undefined ? { extraArgs: task.extraArgs } : {}),
@@ -581,6 +586,7 @@ function withDefaults(task: AgentTask, defaults: ManagedAgentOptions['start']): 
   for (const key of [
     'model',
     'effort',
+    'mode',
     'maxTurns',
     'resume',
     'extraArgs',

@@ -812,4 +812,171 @@ describe('pack chat turns', () => {
       await team.close();
     }
   });
+
+  it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
+    const cwd = repo();
+    const seenWorkerModes: Array<string | undefined> = [];
+    const plannerWorker = fake(
+      'codex',
+      async (task) => {
+        seenWorkerModes.push(task.mode);
+        return { text: `mode:${task.mode}` };
+      },
+      { plan: true },
+    );
+    const plainWorker = fake('opencode', async (task) => {
+      seenWorkerModes.push(task.mode);
+      return { text: 'edited' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const listed = JSON.parse(await tool(task, 'agents')) as { name: string; plan?: boolean }[];
+        expect(listed.map((m) => [m.name, m.plan])).toEqual([
+          ['codex', true],
+          ['opencode', undefined],
+        ]);
+        await expect(tool(task, 'delegate', { agent: 'opencode', prompt: 'research', mode: 'shared' })).rejects.toThrow(
+          /does not support Plan mode/,
+        );
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'research', mode: 'shared' }),
+        ) as { id: string };
+        await tool(task, 'wait', { ids: [started.id] });
+        await expect(tool(task, 'merge', { id: started.id })).rejects.toThrow(
+          /Cannot merge changes while in Plan mode/,
+        );
+        await expect(tool(task, 'discard', { id: started.id })).rejects.toThrow(
+          /Cannot discard changes while in Plan mode/,
+        );
+        return { text: 'planned' };
+      },
+      { mcp: true, plan: true },
+    );
+    const team = pack({ lead, members: [plannerWorker, plainWorker] });
+    try {
+      const result = await team.run({ prompt: 'plan it', cwd, mode: 'plan' }).result;
+      expect(result).toMatchObject({ status: 'completed', ok: true, text: 'planned' });
+      expect(seenWorkerModes).toEqual(['plan']);
+    } finally {
+      await team.close();
+    }
+
+    // Inherited Plan mode (reported by lead's session event when task.mode is omitted) enforces the same guards.
+    const inheritedModes: Array<string | undefined> = [];
+    const inheritedWorker = fake(
+      'codex',
+      async (task) => {
+        inheritedModes.push(task.mode);
+        return { text: 'ok' };
+      },
+      { plan: true },
+    );
+    let editWorktreeId = '';
+    const leadInherited = fake(
+      'lead',
+      async (task, emit) => {
+        if (!task.resume) {
+          const started = JSON.parse(await tool(task, 'delegate', { agent: 'codex', prompt: 'edit' })) as {
+            id: string;
+          };
+          editWorktreeId = started.id;
+          await tool(task, 'wait', { ids: [started.id] });
+          return { text: 'edited', sessionId: 'lead-1' };
+        }
+        emit({ type: 'session', sessionId: 'lead-1', mode: 'plan' });
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        await expect(tool(task, 'delegate', { agent: 'opencode', prompt: 'research', mode: 'shared' })).rejects.toThrow(
+          /does not support Plan mode/,
+        );
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'plan helper', mode: 'shared' }),
+        ) as { id: string };
+        await tool(task, 'wait', { ids: [started.id] });
+        await expect(tool(task, 'merge', { id: editWorktreeId })).rejects.toThrow(
+          /Cannot merge changes while in Plan mode/,
+        );
+        await expect(tool(task, 'discard', { id: editWorktreeId })).rejects.toThrow(
+          /Cannot discard changes while in Plan mode/,
+        );
+        return { text: 'inherited-plan' };
+      },
+      { mcp: true, plan: true, resume: true },
+    );
+    const inheritedTeam = pack({ lead: leadInherited, members: [inheritedWorker, plainWorker] });
+    try {
+      expect((await inheritedTeam.run({ prompt: 'turn 1', cwd }).result).ok).toBe(true);
+      const turn2 = await inheritedTeam.run({ prompt: 'turn 2', cwd, resume: 'lead-1' }).result;
+      expect(turn2).toMatchObject({ status: 'completed', ok: true, text: 'inherited-plan' });
+      expect(inheritedModes).toEqual([undefined, 'plan']);
+      expect(inheritedTeam.tasks()[0]?.state).toBe('unmerged');
+    } finally {
+      await inheritedTeam.close();
+    }
+
+    const nonPlanLead = fake('plain-lead', async () => ({ text: 'should not run' }), { mcp: true });
+    const plainTeam = pack({ lead: nonPlanLead, members: [plannerWorker] });
+    try {
+      const refused = await plainTeam.run({ prompt: 'plan it', cwd, mode: 'plan' }).result;
+      expect(refused).toMatchObject({
+        status: 'failed',
+        error: 'plain-lead does not support Plan mode in this driver.',
+      });
+    } finally {
+      await plainTeam.close();
+    }
+
+    // A Plan-mode run sharing a Pack cannot steer a running worker from a concurrent non-plan run.
+    let finishWorker!: () => void;
+    let workerStarted!: () => void;
+    const workerStartedP = new Promise<void>((resolve) => (workerStarted = resolve));
+    const steerableWorker: CodingAgent = {
+      name: 'codex',
+      command: process.execPath,
+      capabilities: { steer: true, plan: true },
+      run() {
+        workerStarted();
+        const done = new Promise<void>((resolve) => (finishWorker = resolve));
+        const result = done.then(() => ok({ text: 'done' }));
+        return {
+          result,
+          abort() {
+            finishWorker();
+          },
+          steer: async () => {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result };
+          },
+        };
+      },
+    };
+    let releaseEditLead!: () => void;
+    const sharedLead = fake(
+      'lead',
+      async (task) => {
+        if (task.mode !== 'plan') {
+          await tool(task, 'delegate', { agent: 'codex', prompt: 'edit work', mode: 'shared' });
+          await new Promise<void>((resolve) => (releaseEditLead = resolve));
+          return { text: 'edit-lead' };
+        }
+        await expect(tool(task, 'steer', { id: 't1', text: 'do edit' })).rejects.toThrow(
+          /Cannot steer t1 while in Plan mode/,
+        );
+        return { text: 'plan-lead' };
+      },
+      { mcp: true, plan: true },
+    );
+    const sharedPack = pack({ lead: sharedLead, members: [steerableWorker] });
+    try {
+      const editRun = sharedPack.run({ prompt: 'run edit', cwd });
+      await workerStartedP;
+      const planRun = await sharedPack.run({ prompt: 'run plan', cwd, mode: 'plan' }).result;
+      expect(planRun).toMatchObject({ status: 'completed', ok: true, text: 'plan-lead' });
+      finishWorker();
+      releaseEditLead();
+      expect((await editRun.result).ok).toBe(true);
+    } finally {
+      await sharedPack.close();
+    }
+  });
 });

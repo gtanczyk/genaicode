@@ -172,6 +172,112 @@ describe('codexApprovals', () => {
       });
       expect(onQuestion).not.toHaveBeenCalled();
     });
+
+    // Captured from real codex-cli 0.170.0 live turns (Plan mode and `features.default_mode_request_user_input=true`).
+    it('handles real codex-cli 0.170.0 payloads: Plan mode, multi-question, free-text Other, and skip', async () => {
+      const planPayload = {
+        threadId: 'th-1',
+        turnId: 'tu-1',
+        itemId: 'call_8f4a17357e2b466bb65c2f7e482a34d8',
+        questions: [
+          {
+            id: 'language',
+            header: 'CLI language',
+            question: 'Would you like to use TypeScript or JavaScript for the hello-world CLI?',
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: 'JavaScript (Recommended)', description: 'Run the script directly with Node.js.' },
+              { label: 'TypeScript', description: 'Type-check the source and compile it for Node.js.' },
+            ],
+          },
+        ],
+        isBlocking: true,
+        autoResolutionMs: null,
+      };
+      const planH = codex(undefined, () => ({ language: ['JavaScript (Recommended)'] }));
+      expect((await planH.request('item/tool/requestUserInput', planPayload)).result).toEqual({
+        answers: { language: { answers: ['JavaScript (Recommended)'] } },
+      });
+
+      const multiPayload = {
+        threadId: 'th-1',
+        turnId: 'tu-1',
+        itemId: 'call_179dc0a4544245b0b88a1ec1d919d2d0',
+        questions: [
+          {
+            id: 'database',
+            header: 'Database',
+            question: 'Which database?',
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: 'Postgres (Recommended)', description: 'Use Postgres.' },
+              { label: 'SQLite', description: 'Use SQLite.' },
+            ],
+          },
+          {
+            id: 'features',
+            header: 'Features',
+            question: 'Which features?',
+            isOther: true,
+            isSecret: false,
+            options: [
+              {
+                label: 'Search (Recommended)',
+                description: 'Choose Search or enter multiple feature names in the free-text field.',
+              },
+              { label: 'Export', description: 'Choose Export.' },
+              { label: 'Audit', description: 'Choose Audit.' },
+            ],
+          },
+        ],
+        isBlocking: false,
+        autoResolutionMs: null,
+      };
+      // Codex's schema has no multiSelect field, so free-text custom answers carry custom / combined choices.
+      const multiH = codex(undefined, () => ({
+        database: ['Postgres (Recommended)'],
+        features: ['Search, Export'],
+      }));
+      expect((await multiH.request('item/tool/requestUserInput', multiPayload)).result).toEqual({
+        answers: {
+          database: { answers: ['Postgres (Recommended)'] },
+          features: { answers: ['Search, Export'] },
+        },
+      });
+
+      const otherPayload = {
+        threadId: 'th-1',
+        turnId: 'tu-1',
+        itemId: 'call_7d90c4d33f6d4380b5adbf46ccb6ac36',
+        questions: [
+          {
+            id: 'port',
+            header: 'Server port',
+            question: 'Which port should the server use?',
+            isOther: true,
+            isSecret: false,
+            options: [
+              { label: '3000 (Recommended)', description: 'Use port 3000 for the server.' },
+              { label: '8080', description: 'Use port 8080 for the server.' },
+            ],
+          },
+        ],
+        isBlocking: false,
+        autoResolutionMs: null,
+      };
+      expect(
+        (await codex(undefined, () => ({ port: ['4242'] })).request('item/tool/requestUserInput', otherPayload)).result,
+      ).toEqual({
+        answers: { port: { answers: ['4242'] } },
+      });
+      expect(
+        (await codex(undefined, () => undefined).request('item/tool/requestUserInput', otherPayload)).result,
+      ).toEqual({
+        answers: {},
+      });
+    });
   });
   const command = {
     threadId: 'th-1',

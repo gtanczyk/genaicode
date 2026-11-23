@@ -6,6 +6,7 @@ import {
   activeIfRecent,
   ending,
   findFiles,
+  findLastLineMatch,
   chunksOf,
   headAndTail,
   homeOf,
@@ -18,6 +19,7 @@ import {
   type SessionFile,
 } from './files.js';
 import type { SessionTurn } from '../session.js';
+import type { AgentMode } from '../types.js';
 import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
 import { number, queryDatabase, tableColumns, text } from './sqlite.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions, SessionSource } from './types.js';
@@ -65,6 +67,75 @@ function itemText(payload: Record<string, unknown>, role: string): string | unde
   return text && !(role === 'user' && text.startsWith('<')) ? text : undefined;
 }
 
+const codexModeCache = new Map<string, AgentMode | undefined>();
+
+function turnContextMode(line: string): { found: true; value: AgentMode | undefined } | { found: false } {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (!isRecord(parsed) || parsed.type !== 'turn_context' || !isRecord(parsed.payload)) return { found: false };
+    const cm = parsed.payload.collaboration_mode;
+    const mode = isRecord(cm) && (cm.mode === 'plan' || cm.mode === 'default') ? cm.mode : undefined;
+    return { found: true, value: mode };
+  } catch {
+    return { found: false };
+  }
+}
+
+/** Resolve the latest `turn_context` mode of a large rollout, cached by file revision. */
+async function resolveCodexMode(info: SessionInfo, signal?: AbortSignal): Promise<void> {
+  if (!info.path || info.mode !== undefined) return;
+  try {
+    const stat = await fs.stat(info.path).catch(() => undefined);
+    if (stat) {
+      if (stat.size <= 512 * 1024) return;
+      const key = `${info.path}:${stat.mtimeMs}:${stat.size}`;
+      if (codexModeCache.has(key)) {
+        const cached = codexModeCache.get(key);
+        if (cached) info.mode = cached;
+        return;
+      }
+      const mode = await findLastLineMatch(info.path, stat.size, '"turn_context"', turnContextMode, signal);
+      if (codexModeCache.size >= 256) codexModeCache.clear();
+      codexModeCache.set(key, mode);
+      if (mode) info.mode = mode;
+      return;
+    }
+    const zstPath = `${info.path}.zst`;
+    const zstStat = await fs.stat(zstPath).catch(() => undefined);
+    if (!zstStat) return;
+    const key = `${zstPath}:${zstStat.mtimeMs}:${zstStat.size}`;
+    if (codexModeCache.has(key)) {
+      const cached = codexModeCache.get(key);
+      if (cached) info.mode = cached;
+      return;
+    }
+    const data = await zstdFile(zstPath);
+    if (!data) return;
+    const mode = lastTurnContextModeInBuffer(data);
+    if (codexModeCache.size >= 256) codexModeCache.clear();
+    codexModeCache.set(key, mode);
+    if (mode) info.mode = mode;
+  } catch {
+    signal?.throwIfAborted();
+  }
+}
+
+function lastTurnContextModeInBuffer(data: Buffer): AgentMode | undefined {
+  const needle = Buffer.from('"turn_context"', 'utf8');
+  let cursor = data.length;
+  while (cursor > 0) {
+    const nl = data.lastIndexOf(0x0a, cursor - 1);
+    const slice = data.subarray(nl + 1, cursor);
+    if (slice.length && slice.includes(needle)) {
+      const result = turnContextMode(slice.toString('utf8'));
+      if (result.found) return result.value;
+    }
+    if (nl < 0) break;
+    cursor = nl;
+  }
+  return undefined;
+}
+
 /** Read one Codex rollout (`<home>/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`). */
 export async function readCodexSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
   return fromLines(file, now, await headAndTail(file));
@@ -108,6 +179,12 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       if (line.type === 'turn_context') {
         if (typeof payload.cwd === 'string' && !info.cwd) info.cwd = payload.cwd;
         if (typeof payload.model === 'string') info.model = payload.model;
+        // Only record collaboration mode from `tail` (which is the whole file when small) so a
+        // large rollout's stale `head` turn_context cannot mask a newer one in the middle.
+        if (!first && isRecord(payload.collaboration_mode)) {
+          const mode = payload.collaboration_mode.mode;
+          if (mode === 'plan' || mode === 'default') info.mode = mode;
+        }
       }
       let prompt: string | undefined;
       let reply: string | undefined;
@@ -280,12 +357,6 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
   });
 }
 
-/** The lines of a rollout Codex has compressed (`.jsonl.zst`), where this Node can read zstd. */
-async function compressedRollout(file: string): Promise<{ head: unknown[]; tail: unknown[] } | undefined> {
-  const text = await zstdFile(file);
-  return text ? chunksOf(text) : undefined;
-}
-
 /** Add the latest prompt, reply and state from a thread's rollout: a `.jsonl`, or the `.jsonl.zst` Codex made of it. */
 async function fromRollout(info: SessionInfo): Promise<void> {
   if (!info.path) return;
@@ -295,14 +366,15 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     // Whether it is active is the index's to say (its own `updatedAt`), not the file's.
     if (stat) read = await readCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
     else {
-      const chunks = await compressedRollout(`${info.path}.zst`);
-      if (!chunks) return;
-      read = fromLines({ path: info.path, mtimeMs: 0, size: 0 }, Infinity, chunks);
+      const data = await zstdFile(`${info.path}.zst`);
+      if (!data) return;
+      read = fromLines({ path: info.path, mtimeMs: 0, size: data.length }, Infinity, chunksOf(data));
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
     if (read.lastReply) info.lastReply = read.lastReply;
     if (read.usage) info.usage = read.usage;
+    if (read.mode) info.mode = read.mode;
     if (read.automated) info.automated = true;
     // A state the app server reported (it asks for approval) is not the rollout's to change.
     if (info.state !== 'active' && !info.waitingFor) info.state = read.state;
@@ -445,7 +517,14 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
       return chosen;
     }
     const files = (
-      await findFiles(path.join(dir, 'sessions'), 3, (name) => name.startsWith('rollout-') && name.endsWith('.jsonl'))
+      await findFiles(
+        path.join(dir, 'sessions'),
+        3,
+        (name) =>
+          name.startsWith('rollout-') &&
+          name.endsWith('.jsonl') &&
+          (!prefix || (ROLLOUT_ID.exec(name)?.[1]?.startsWith(prefix) ?? true)),
+      )
     ).filter((file) => query.since === undefined || file.mtimeMs >= query.since);
     const sessions: SessionInfo[] = [];
     const wanted = query.limit ?? Infinity;
@@ -466,7 +545,11 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
     verified: '0.170',
     reference: (query = {}) => listed(query, true),
     list,
-    find: (id, query) => list(query, id),
+    async find(id, query) {
+      const found = await list(query, id);
+      await mapLimited(found, 8, (session) => resolveCodexMode(session, query?.signal));
+      return found;
+    },
     async read(session, readOptions) {
       const env = listedIn.get(session.id) ?? envOf();
       const turns = await ask(env, undefined, (server) => readCodexThread(server, session.id, readOptions));

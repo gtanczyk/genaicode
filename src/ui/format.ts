@@ -19,6 +19,7 @@ export function statusParts(state: SessionState): string[] {
   const parts = [state.agent];
   if (state.model) parts.push(state.model);
   if (state.effort) parts.push(`effort ${state.effort}`);
+  if (state.mode === 'plan') parts.push('plan');
   if (state.fallback?.length) parts.push(`fallback ${state.fallback.join(',')}`);
   if (state.sessionId) parts.push(`session ${shortId(state.sessionId)}`);
   const usage = formatUsage(state.usage, state.costUsd);
@@ -43,6 +44,7 @@ export const SLASH_COMMANDS: ReadonlyArray<{ name: string; args?: string; help: 
   { name: '/fallback', args: '[agents|off]', help: 'agents to switch to when this one runs out (e.g. codex,gemini)' },
   { name: '/model', args: '[id]', help: 'set the model id, or clear it' },
   { name: '/effort', args: '[level|default]', help: "set the reasoning effort, in the agent's own words, or clear it" },
+  { name: '/plan', args: '[on|off]', help: 'toggle Plan mode for the next prompts (explore and ask without editing)' },
   { name: '/waiting', args: '[project]', help: 'refresh the waiting queue (tower or --sessions)' },
   { name: '/read', args: '<session id>', help: 'preview recent turns locally (tower or --sessions)' },
   {
@@ -77,6 +79,7 @@ export type SlashCommand =
   | { kind: 'stop' }
   | { kind: 'bark'; on?: boolean; invalid?: string }
   | { kind: 'auto'; on?: boolean; invalid?: string }
+  | { kind: 'plan'; on?: boolean; invalid?: string }
   | { kind: 'web'; off: boolean; invalid?: string }
   | { kind: 'help' }
   | { kind: 'quit' }
@@ -165,6 +168,10 @@ export function parseSlash(text: string): SlashCommand | undefined {
       if (arg === undefined) return { kind: 'auto' };
       if (arg === 'on' || arg === 'off') return { kind: 'auto', on: arg === 'on' };
       return { kind: 'auto', invalid: arg };
+    case '/plan':
+      if (arg === undefined) return { kind: 'plan' };
+      if (arg === 'on' || arg === 'off') return { kind: 'plan', on: arg === 'on' };
+      return { kind: 'plan', invalid: arg };
     case '/web':
     case '/ui':
     case '/browser':

@@ -199,7 +199,7 @@ export function codexTurns(turns: readonly unknown[], options: SessionReadOption
       if (item.type === 'userMessage') {
         const text = inputText(item.content);
         if (text) builder.prompt(text, from);
-      } else if (item.type === 'agentMessage' && typeof item.text === 'string') {
+      } else if ((item.type === 'agentMessage' || item.type === 'plan') && typeof item.text === 'string') {
         builder.text(item.text, to);
       } else if (item.type === 'commandExecution') {
         builder.tool(id, 'shell', { command: item.command, cwd: item.cwd }, from);

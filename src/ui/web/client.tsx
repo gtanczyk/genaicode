@@ -915,6 +915,18 @@ function App() {
   const limits = session ? limitChips({ ...session, rateLimits }) : [];
   // A setting takes effect now: it does not wait behind a prompt whose files still upload.
   const control = (text: string) => void command({ type: 'submit', text });
+  // Mode toggles wait behind any prompt whose attachments are still uploading, so an earlier
+  // submitted prompt keeps the mode that was active when the user sent it.
+  const orderedControl = (text: string): Promise<boolean> => {
+    const mine = sending.then(() =>
+      command({ type: 'submit', text }).then(
+        () => true,
+        () => true,
+      ),
+    );
+    sending = mine;
+    return mine;
+  };
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
   // The file or artifact open in the side viewer panel beside the chat.
@@ -979,6 +991,7 @@ function App() {
         setUnsent({ problem: 'Not sent: files go with a prompt, not with a command.', text: text.trim() });
         return Promise.resolve(false);
       }
+      if (own.kind === 'plan') return orderedControl(text);
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
       if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
       return command({ type: 'submit', text }).then(
@@ -996,7 +1009,10 @@ function App() {
     });
   };
 
-  const efforts = view?.agents.find((agent) => agent.name === session?.agent)?.effort ?? [];
+  const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
+  const efforts = currentAgent?.effort ?? [];
+  const canPlan = !!currentAgent?.canPlan;
+  const planOn = session?.mode === 'plan';
   // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
   const controls =
     view && session ? (
@@ -1068,6 +1084,21 @@ function App() {
               </option>
             ))}
           </select>
+        )}
+        {canPlan && (
+          <button
+            type="button"
+            className={planOn ? 'plan-on' : undefined}
+            title={
+              planOn
+                ? 'Plan mode on: the agent plans and asks without editing. Click to leave it.'
+                : 'Plan mode: from the next prompt, the agent plans and asks without editing'
+            }
+            aria-pressed={planOn}
+            onClick={() => void orderedControl(`/plan ${planOn ? 'off' : 'on'}`)}
+          >
+            {planOn ? '✓ Plan' : 'Plan'}
+          </button>
         )}
         <button
           type="button"

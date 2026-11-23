@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { claudeArgs, createClaudeParser } from './claude.js';
-import { codexArgs, createCodexParser } from './codex.js';
+import { codex, codexArgs, createCodexParser } from './codex.js';
 import { codexChangesDiff, codexNotification } from './codex-live.js';
 import { createMuseParser, museArgs } from './muse.js';
 import { museNotification } from './muse-live.js';
@@ -90,6 +90,60 @@ describe('claude driver', () => {
       '--permission-mode',
       'plan',
     ]);
+    // task.mode: 'plan' forces --permission-mode plan even when inheriting defaultMode or setting permissions,
+    // and strips conflicting mode flags from extraArgs; task.mode: 'default' leaves a configured plan mode.
+    const planned = claudeArgs(
+      {
+        prompt: 'hi',
+        cwd: '.',
+        mode: 'plan',
+        extraArgs: ['--permission-mode', 'acceptEdits', '--dangerously-skip-permissions', '--verbose'],
+      },
+      {},
+      undefined,
+      undefined,
+      false,
+      true,
+    );
+    expect(planned.filter((arg) => arg === '--permission-mode')).toHaveLength(1);
+    expect(planned.slice(planned.indexOf('--permission-mode'), planned.indexOf('--permission-mode') + 2)).toEqual([
+      '--permission-mode',
+      'plan',
+    ]);
+    expect(planned).not.toContain('acceptEdits');
+    expect(planned).not.toContain('--dangerously-skip-permissions');
+
+    const leavingPlan = claudeArgs(
+      { prompt: 'hi', cwd: '.', mode: 'default', extraArgs: ['--permission-mode=plan', '--permission-mode', 'manual'] },
+      { permissionMode: 'plan' },
+    );
+    expect(leavingPlan).not.toContain('--permission-mode=plan');
+    expect(leavingPlan).toContain('manual');
+
+    const leavingSettingsPlan = claudeArgs(
+      { prompt: 'hi', cwd: '.', mode: 'default' },
+      { settings: { permissions: { defaultMode: 'plan' } } },
+    );
+    expect(
+      leavingSettingsPlan.slice(
+        leavingSettingsPlan.indexOf('--permission-mode'),
+        leavingSettingsPlan.indexOf('--permission-mode') + 2,
+      ),
+    ).toEqual(['--permission-mode', 'acceptEdits']);
+
+    // Parser surfaces configured/resumed Plan mode from system/init.
+    expect(
+      feed(createClaudeParser(), [{ type: 'system', subtype: 'init', session_id: 'c-plan', permissionMode: 'plan' }]),
+    ).toEqual([{ type: 'session', sessionId: 'c-plan', mode: 'plan' }]);
+    const plannedPerms = claudeArgs({
+      prompt: 'hi',
+      cwd: '.',
+      mode: 'plan',
+      permissions: { approval: 'ask', sandbox: 'workspace-write' },
+    });
+    expect(
+      plannedPerms.slice(plannedPerms.indexOf('--permission-mode'), plannedPerms.indexOf('--permission-mode') + 2),
+    ).toEqual(['--permission-mode', 'plan']);
   });
 
   it('decodes stream-json into agent events', () => {
@@ -300,6 +354,24 @@ describe('codex driver', () => {
       { type: 'stderr', text: note },
       { type: 'error', message: 'stream disconnected' },
     ]);
+  });
+
+  it('maps Codex Plan mode deltas and completed plan items to text events', () => {
+    expect(codexNotification('item/plan/delta', { delta: '## Plan\n' })).toEqual([
+      { type: 'text-delta', text: '## Plan\n' },
+    ]);
+    expect(codexNotification('item/completed', { item: { id: 'p1', type: 'plan', text: '## Plan\nDo X.' } })).toEqual([
+      { type: 'message', text: '## Plan\nDo X.' },
+    ]);
+  });
+
+  it('refuses Plan mode on headless codex() before spawning', async () => {
+    const result = await codex({ command: '/nonexistent/codex' }).run({
+      prompt: 'design it',
+      cwd: process.cwd(),
+      mode: 'plan',
+    }).result;
+    expect(result).toMatchObject({ status: 'failed', error: 'codex does not support Plan mode in this driver.' });
   });
 });
 

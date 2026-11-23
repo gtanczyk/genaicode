@@ -3,6 +3,7 @@ import {
   ACTIVE_MS,
   ending,
   findFiles,
+  findLastLineMatch,
   homeOf,
   headAndTail,
   isRecord,
@@ -13,6 +14,7 @@ import {
   type SessionFile,
 } from './files.js';
 import type { SessionTurn } from '../session.js';
+import type { AgentMode } from '../types.js';
 import { transcriptBuilder, transcriptLines } from './transcript.js';
 import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
@@ -176,6 +178,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
     if (typeof line.gitBranch === 'string' && line.gitBranch && line.gitBranch !== 'HEAD') info.branch = line.gitBranch;
     titleOf(line, info);
+    if (typeof line.permissionMode === 'string') info.mode = line.permissionMode === 'plan' ? 'plan' : 'default';
     if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     const prompt = promptOf(line);
@@ -258,6 +261,38 @@ export function claudeTranscript(lines: readonly unknown[], options: SessionRead
   return builder.turns();
 }
 
+const claudeModeCache = new Map<string, AgentMode | undefined>();
+
+function claudePermissionModeLine(line: string): { found: true; value: AgentMode } | { found: false } {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    if (!isRecord(parsed) || typeof parsed.permissionMode !== 'string') return { found: false };
+    return { found: true, value: parsed.permissionMode === 'plan' ? 'plan' : 'default' };
+  } catch {
+    return { found: false };
+  }
+}
+
+async function resolveClaudeMode(info: SessionInfo, file: SessionFile, signal?: AbortSignal): Promise<void> {
+  if (info.mode !== undefined || file.size <= 512 * 1024) return;
+  const key = `${file.path}:${file.mtimeMs}:${file.size}`;
+  if (claudeModeCache.has(key)) {
+    const cached = claudeModeCache.get(key);
+    if (cached) info.mode = cached;
+    return;
+  }
+  const mode = await findLastLineMatch(
+    file.path,
+    file.size,
+    '"permissionMode"',
+    claudePermissionModeLine,
+    signal,
+  ).catch(() => undefined);
+  if (claudeModeCache.size >= 256) claudeModeCache.clear();
+  claudeModeCache.set(key, mode);
+  if (mode) info.mode = mode;
+}
+
 /** Sessions Claude Code keeps on this machine. */
 export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSource {
   return {
@@ -297,7 +332,11 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
         (name) => name.endsWith('.jsonl') && name.startsWith(id),
       );
       const recent = files.filter((file) => query.since === undefined || file.mtimeMs >= query.since);
-      const sessions = await mapLimited(recent, 8, (file) => readClaudeSession(file).catch(() => null));
+      const sessions = await mapLimited(recent, 8, async (file) => {
+        const info = await readClaudeSession(file).catch(() => null);
+        if (info) await resolveClaudeMode(info, file, query.signal);
+        return info;
+      });
       return sessions.filter(
         (session): session is SessionInfo =>
           session !== null && (query.cwd === undefined || (!!session.cwd && isWithin(session.cwd, query.cwd))),

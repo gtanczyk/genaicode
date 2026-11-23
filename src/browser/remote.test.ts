@@ -434,4 +434,12 @@ describe('remote', () => {
     expect(turn.entries).toEqual([{ kind: 'text', text: 'Hello from the server.', streaming: false }]);
     expect(turn.result).toMatchObject({ ok: true });
   });
+
+  it('refuses Plan mode before contacting the backend', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const result = await remote({ url: '/api/assistant', fetch }).run({ prompt: 'plan it', cwd: '', mode: 'plan' })
+      .result;
+    expect(result).toMatchObject({ status: 'failed', error: 'assistant does not support Plan mode in this driver.' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });

@@ -236,6 +236,53 @@ describe('withFallback', () => {
     await both.run({ prompt: 'b', cwd: dir }).result;
     expect(claude.tasks.map((task) => task.prompt)).toEqual(['a', 'b']);
   });
+
+  it('skips non-plan agents when failing over a Plan mode task', async () => {
+    const primary = fake('claude', [out('quota')]);
+    primary.agent.capabilities.plan = true;
+    const noPlan = fake('opencode');
+    const backup = fake('codex', [{ text: 'planned' }]);
+    backup.agent.capabilities.plan = true;
+
+    const result = await withFallback([primary.agent, noPlan.agent, backup.agent]).run({
+      prompt: 'plan auth',
+      cwd: dir,
+      mode: 'plan',
+    }).result;
+    expect(result).toMatchObject({ status: 'completed', ok: true, text: 'planned' });
+    expect(noPlan.tasks).toHaveLength(0);
+    expect(backup.tasks[0]?.mode).toBe('plan');
+
+    // Inherited Plan mode from a resumed thread's session event also skips non-plan backups and retries in Plan mode.
+    const resumed = fake('codex', [out('quota')], [{ type: 'session', sessionId: 'th-plan', mode: 'plan' }]);
+    resumed.agent.capabilities.plan = true;
+    const noPlan2 = fake('opencode');
+    const backup2 = fake('claude', [{ text: 'planned-backup' }]);
+    backup2.agent.capabilities.plan = true;
+    const inherited = await withFallback([resumed.agent, noPlan2.agent, backup2.agent]).run({
+      prompt: 'continue plan',
+      cwd: dir,
+      resume: 'th-plan',
+    }).result;
+    expect(inherited).toMatchObject({ status: 'completed', ok: true, text: 'planned-backup' });
+    expect(noPlan2.tasks).toHaveLength(0);
+    expect(backup2.tasks[0]?.mode).toBe('plan');
+
+    // Retains known Plan mode when the owner fails before init on a resumed turn with mode omitted.
+    const owner = fake('codex', [{ text: 'plan ready', sessionId: 'th-saved' }, out('unavailable')]);
+    owner.agent.capabilities.plan = true;
+    owner.agent.capabilities.resume = true;
+    const noPlan3 = fake('opencode');
+    const backup3 = fake('claude', [{ text: 'resumed-plan' }]);
+    backup3.agent.capabilities.plan = true;
+    const chain = withFallback([owner.agent, noPlan3.agent, backup3.agent]);
+    const firstTurn = await chain.run({ prompt: 'plan it', cwd: dir, mode: 'plan' }).result;
+    expect(firstTurn.sessionId).toBe('th-saved');
+    const secondTurn = await chain.run({ prompt: 'refine it', cwd: dir, resume: 'th-saved' }).result;
+    expect(secondTurn).toMatchObject({ status: 'completed', ok: true, text: 'resumed-plan' });
+    expect(noPlan3.tasks).toHaveLength(0);
+    expect(backup3.tasks[0]?.mode).toBe('plan');
+  });
 });
 
 describe('session failover', () => {

@@ -8,6 +8,7 @@ import { limitsAgent, type KnownLimit } from './sessions/limits.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { ownMcpServers } from './agent-mcp.js';
 import { startLocalMcpServer } from './mcp-server.js';
+import { unsupportedMode } from './prepare.js';
 import { isReadOnlyApproval } from './read-only.js';
 import type { McpTool } from './mcp-tools.js';
 import {
@@ -31,6 +32,7 @@ import { addUsage, remainingBudget, tokenCount } from './usage.js';
 import type {
   AgentEvent,
   AgentFailure,
+  AgentMode,
   AgentResult,
   AgentRun,
   AgentTask,
@@ -92,6 +94,8 @@ export interface PackMember {
   /** Delegated tasks it is running now. */
   running: number;
   steer: boolean;
+  /** Supports Plan mode (`AgentTask.mode: 'plan'`). */
+  plan?: boolean;
   /** `effort` values `delegate` accepts for it. Absent: effort is not configurable. */
   effort?: readonly string[];
   /** The latest plan limits it reported, by window. */
@@ -229,6 +233,8 @@ interface Sub {
   mcpServers?: McpServer[];
   quotaHint?: QuotaHint;
   mode: 'worktree' | 'shared';
+  /** Collaboration mode the delegated worker started in. */
+  agentMode?: AgentMode;
   cwd: string;
   repo?: string;
   dir?: string;
@@ -461,6 +467,7 @@ export function pack(options: PackOptions): Pack {
             (sub.reviewer?.name === name && sub.checks?.review?.status === 'running'),
         ).length,
         steer: !!capabilities.steer,
+        ...(capabilities.plan ? { plan: true } : {}),
         ...(capabilities.effort?.length ? { effort: capabilities.effort } : {}),
         ...(known.length ? { limits: known } : {}),
         ...(hints.has(name) ? { quotaHint: hints.get(name) } : {}),
@@ -560,6 +567,8 @@ export function pack(options: PackOptions): Pack {
       })();
       let leadRun: AgentRun | undefined;
       let stopped = false;
+      // Tracks the lead's effective mode: explicit `task.mode`, or Plan inherited via its `session` event.
+      let effectiveMode: AgentMode | undefined = task.mode;
       let leadUsage: TokenUsage | undefined;
       let leadCost: number | undefined;
       let reviewUsage: TokenUsage | undefined;
@@ -635,6 +644,14 @@ export function pack(options: PackOptions): Pack {
         if (!agent)
           throw new Error(`No agent ${String(args.agent)}. Available: ${roster.map((m) => m.name).join(', ')}.`);
         if (findExecutable(agent.command, task.env) === null) throw new Error(`${agent.name} is not installed.`);
+        if (effectiveMode === 'plan' && !agent.capabilities.plan) {
+          const capable = members.filter((member) => member.capabilities.plan).map((member) => member.name);
+          throw new Error(
+            capable.length
+              ? `${agent.name} does not support Plan mode. Plan-capable agents: ${capable.join(', ')}.`
+              : `${agent.name} does not support Plan mode.`,
+          );
+        }
         if (ended.signal.aborted) throw new Error('The run has ended.');
         const running = occupied();
         if (running >= maxParallel)
@@ -724,6 +741,7 @@ export function pack(options: PackOptions): Pack {
           ...(extra.effort ? { effort: extra.effort } : {}),
           ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           mode,
+          ...(effectiveMode !== undefined ? { agentMode: effectiveMode } : {}),
           cwd: base === leadCwd ? task.cwd : base,
           status: 'running',
           ended: new Promise<void>((resolve) => (settle = resolve)),
@@ -781,6 +799,7 @@ export function pack(options: PackOptions): Pack {
           cwd: sub.cwd,
           ...(extra.model ? { model: extra.model } : {}),
           ...(extra.effort ? { effort: extra.effort } : {}),
+          ...(effectiveMode !== undefined ? { mode: effectiveMode } : {}),
           ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           ...(task.env ? { env: task.env } : {}),
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
@@ -1188,7 +1207,12 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, text: { type: 'string' } },
             required: ['id', 'text'],
           },
-          call: (args) => steer(find(args.id), args.text),
+          call: (args) => {
+            const sub = find(args.id);
+            if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
+              throw new Error(`Cannot steer ${sub.id} while in Plan mode: it is running outside Plan mode.`);
+            return steer(sub, args.text);
+          },
         },
         {
           name: 'stop',
@@ -1246,14 +1270,23 @@ export function pack(options: PackOptions): Pack {
             },
             required: ['id'],
           },
-          call: (args) =>
-            merge(find(args.id), args.threeWay === true, typeof args.revision === 'string' ? args.revision : undefined),
+          call: (args) => {
+            if (effectiveMode === 'plan') throw new Error('Cannot merge changes while in Plan mode.');
+            return merge(
+              find(args.id),
+              args.threeWay === true,
+              typeof args.revision === 'string' ? args.revision : undefined,
+            );
+          },
         },
         {
           name: 'discard',
           description: "Drop a finished worktree task's changes and remove its worktree.",
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: (args) => discard(find(args.id)),
+          call: (args) => {
+            if (effectiveMode === 'plan') throw new Error('Cannot discard changes while in Plan mode.');
+            return discard(find(args.id));
+          },
         },
       ];
 
@@ -1268,6 +1301,8 @@ export function pack(options: PackOptions): Pack {
 
       const result = (async (): Promise<AgentResult> => {
         if (!lead.capabilities.mcp) return failed(`${lead.name} cannot attach MCP servers, so it cannot lead a pack.`);
+        const refusedMode = unsupportedMode(lead.name, lead.capabilities, task);
+        if (refusedMode) return failed(refusedMode);
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
@@ -1292,6 +1327,7 @@ export function pack(options: PackOptions): Pack {
               if (event.costUsd !== undefined) leadCost = event.costUsd;
               usageChanged();
             } else {
+              if (event.type === 'session' && event.mode) effectiveMode = event.mode;
               observeAgent(lead.name, event, task.model);
               events.push(event);
               await events.room();

@@ -153,4 +153,24 @@ describe('hostedAgent', () => {
     await run.result;
     expect(sent).toEqual(['more']);
   });
+
+  it('forwards mode when capabilities.plan is declared and refuses Plan mode otherwise', async () => {
+    const seen: Array<string | undefined> = [];
+    const { impl } = provider([{ state: 'completed' }], {
+      capabilities: { plan: true },
+      async start(task) {
+        seen.push(task.mode);
+        return { id: 'r-1' };
+      },
+    });
+    expect(
+      (await hostedAgent(impl, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.', mode: 'plan' }).result).status,
+    ).toBe('completed');
+    expect(seen).toEqual(['plan']);
+
+    const { impl: plain, calls } = provider([]);
+    const refused = await hostedAgent(plain, { pollIntervalMs: 1 }).run({ prompt: 'p', cwd: '.', mode: 'plan' }).result;
+    expect(refused).toMatchObject({ status: 'failed', error: 'remote does not support Plan mode in this driver.' });
+    expect(calls).toEqual([]);
+  });
 });

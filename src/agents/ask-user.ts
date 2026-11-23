@@ -6,6 +6,38 @@ import type { AgentQuestion, ApprovalRequest, McpServer, QuestionAnswers, Questi
 /** The tool an agent calls to ask the person to choose. */
 export const ASK_USER_TOOL = 'ask_user';
 
+/** Default MCP server name for `startQuestionChannel()`. */
+export const QUESTION_SERVER_NAME = 'genaicode_ask';
+
+// Shared across bundles in the same process (CLI and bundled UI).
+const QUESTION_CHANNEL = Symbol.for('genaicode.questionChannel');
+const QUESTION_CHANNEL_HANDLER = Symbol.for('genaicode.questionChannel.handler');
+
+/** Mark an MCP server as a session-injected `ask_user` fallback, independent of its name. */
+export function markQuestionChannelServer<T extends McpServer>(
+  server: T,
+  handler?: () => QuestionHandler | undefined,
+): T {
+  const existing = (server as Record<symbol, unknown>)[QUESTION_CHANNEL_HANDLER];
+  const getter = handler ?? (typeof existing === 'function' ? existing : undefined);
+  return Object.assign(
+    { ...server },
+    { [QUESTION_CHANNEL]: true as const },
+    getter ? { [QUESTION_CHANNEL_HANDLER]: getter } : {},
+  );
+}
+
+/** Whether `server` is a question-channel MCP server (`startQuestionChannel()` or session `questions`). */
+export function isQuestionChannelServer(server: McpServer): boolean {
+  return Boolean((server as Record<symbol, unknown>)[QUESTION_CHANNEL]);
+}
+
+/** Live getter for the handler bound on a `startQuestionChannel()` server, when present. */
+export function questionChannelHandler(server: McpServer): (() => QuestionHandler | undefined) | undefined {
+  const getter = (server as Record<symbol, unknown>)[QUESTION_CHANNEL_HANDLER];
+  return typeof getter === 'function' ? (getter as () => QuestionHandler | undefined) : undefined;
+}
+
 const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 8;
 const MAX_TEXT = 2_000;
@@ -135,14 +167,14 @@ export interface QuestionChannel {
 export async function startQuestionChannel(options: { name?: string } = {}): Promise<QuestionChannel> {
   let handler: QuestionHandler | undefined;
   const server = await startLocalMcpServer({
-    name: options.name ?? 'genaicode_ask',
+    name: options.name ?? QUESTION_SERVER_NAME,
     tools: [askUserTool(() => handler)],
     instructions: `Use ${ASK_USER_TOOL} when a choice is the user's to make; it shows them your options.`,
   });
   return {
     // The call waits for a person: agents that can be told so wait up to a day (Codex: 60 s by default).
     // Its tool only asks the person: agents need no permission prompt in front of the question.
-    mcpServer: { ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true },
+    mcpServer: markQuestionChannelServer({ ...server.mcpServer, toolTimeoutSec: 86_400, trusted: true }, () => handler),
     bind(next) {
       handler = next;
     },

@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- Plan mode (`task.mode: 'plan'`, `capabilities.plan`, `AgentSession.setMode()`, `CodexLiveOptions.collaborationMode`, and `/plan` + the Plan toggle in `genaicode chat`, `ui` and the desktop app): Codex enters app-server Plan mode (re-sent on resume only when changed), Claude Code uses `--permission-mode plan` and Gemini uses `--approval-mode plan`. When Codex offers its own `request_user_input` tool (Plan mode or `features.default_mode_request_user_input`), `codexLive()` drops `genaicode_ask` so Codex gets only one question tool per turn (#328)
 - `sessions_send` in `genaicode ui`, `chat`, the desktop app and `<AgentChat>`: messages passed to another session show as live cards (`Queued` → `Working` with current step → `Answered` / `Failed`) with the target agent's avatar, project chip, collapsible sent prompt and Markdown-rendered reply instead of a raw monospace notice. Settled replies are passed into the active chat agent's context on the next prompt and trigger background notifications, and `sessions_send` tells the agent not to promise polling or checking back later (#323)
 - `genaicode ui` and the desktop app: developer transcript export in the chat header (`session …` menu), in **Chats** / **Sessions** rows (`⋯`), and in the desktop app's **Developer** menu — copy the full session ID, the session file path on disk, the Markdown transcript (metadata, turns, tool calls, diffs, approvals, questions, pack tasks, notices) or raw JSON state, or save/download `.md` and `.json` files (with a native Save dialog in the desktop app) (#322)
 - The desktop app shows the installed version and what changed after an update. Reopen **What’s new** from the window header or run `genaicode whats-new` (#327)
@@ -26,6 +27,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- `codexLive()` and `codexTurns()` read Codex's Plan-mode output (`item/plan/delta` and completed `plan` items) instead of dropping it (#328)
 - Chat renders Markdown links with angle-delimited destinations, including paths with spaces or parentheses. The desktop file panel offers Reveal for linked project folders (#329)
 
 ### Internal
