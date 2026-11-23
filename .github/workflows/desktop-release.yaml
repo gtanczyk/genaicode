@@ -400,7 +400,15 @@ jobs:
             gh release upload "v$VERSION" out/latest.json --clobber --repo "$GITHUB_REPOSITORY"
           fi
           # Now the links to the newest download may point here: publish.yaml left the release out of
-          # "latest" until it had its files. Never back to an older version, when one is built again.
+          # "latest" until it had its files. Only with every download the README links to, and never
+          # back to an older version, when one is built again.
+          have="$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          for name in Genaicode-macos-arm64.dmg Genaicode-macos-x86_64.dmg Genaicode-linux-x86_64.AppImage Genaicode-linux-x86_64.deb; do
+            if ! grep -qxF "$name" <<<"$have"; then
+              echo "::warning::v$VERSION has no $name: it is not made the latest release."
+              exit 0
+            fi
+          done
           newest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
           if [ "$(printf '%s\n' "${newest#v}" "$VERSION" | sort -V | tail -n 1)" = "$VERSION" ]; then
             gh release edit "v$VERSION" --latest --repo "$GITHUB_REPOSITORY"
