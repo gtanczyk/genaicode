@@ -16,7 +16,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Fixed
 
 - Desktop app: the loading screen shows the Genaicode wolf with a soft glow and a progress bar, in the chat page's light or dark colors, instead of plain "Genaicode / Starting…" text (#305)
-- `ask_user` reaches the person on Codex and Antigravity: Codex no longer rejects the call (it asked for an MCP tool approval nobody answered), and Antigravity no longer shows a "Run mcp_genaicode_ask_ask_user" approval before the question. New `McpServer.trusted` for servers whose tools need no permission prompt. `AgentSession.approve()` refuses a decision other than `approve` / `deny` instead of dropping the request (#PRNUM)
+- `ask_user` reaches the person on Codex and Antigravity: Codex no longer rejects the call (it asked for an MCP tool approval nobody answered), and Antigravity no longer shows a "Run mcp_genaicode_ask_ask_user" approval before the question. New `McpServer.trusted` for servers whose tools need no permission prompt. `AgentSession.approve()` refuses a decision other than `approve` / `deny` instead of dropping the request (#306)
 
 ## 2.53.0 — 2026-11-22
 
