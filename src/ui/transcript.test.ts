@@ -283,4 +283,31 @@ describe('transcript export', () => {
       }),
     ).toBe('genaicode-codex-2026-11-23T21-05-09.md');
   });
+
+  it('preserves multiline and long string tool inputs when omitted inline', () => {
+    const patch = '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch';
+    const longInput = 'x'.repeat(200);
+    const view = baseView({
+      turns: [
+        {
+          id: 1,
+          agent: 'codex',
+          prompt: 'Patch the file',
+          startedAt: Date.parse('2026-11-23T21:00:00.000Z'),
+          endedAt: Date.parse('2026-11-23T21:00:02.000Z'),
+          entries: [
+            { kind: 'tool', name: 'apply_patch', input: patch, output: 'Patched', done: true },
+            { kind: 'tool', name: 'custom', input: longInput, done: true },
+            { kind: 'tool', name: 'shell', input: 'git status', done: true },
+          ],
+        },
+      ],
+    });
+    const md = formatChatTranscriptMarkdown({ view, exportedAt: '2026-11-23T21:05:00.000Z' });
+    expect(md).toContain(`- **Tool** \`apply_patch\` (ok)\n\n\`\`\`\n${patch}\n\`\`\``);
+    expect(md).toContain(`- **Tool** \`custom\` (ok)\n\n\`\`\`\n${longInput}\n\`\`\``);
+    // Short single-line string input stays inline without a duplicate fenced block.
+    expect(md).toContain('- **Tool** `shell` `git status` (ok)');
+    expect(md).not.toContain('```\ngit status\n```');
+  });
 });

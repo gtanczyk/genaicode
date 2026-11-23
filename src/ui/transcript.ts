@@ -339,11 +339,12 @@ function renderEntry(
     case 'tool': {
       const arg = toolArgument(entry.input, context.cwd);
       const status = !entry.done ? 'running' : entry.isError ? 'failed' : 'ok';
-      const argShown = arg && !arg.includes('\n') && arg.length <= 160 ? ` \`${arg}\`` : '';
+      const inlineArg = arg && !arg.includes('\n') && arg.length <= 160 ? arg : '';
+      const argShown = inlineArg ? ` ${inlineCode(inlineArg)}` : '';
       out.push(`- **Tool** \`${entry.name}\`${argShown} (${status})`);
       if (entry.input !== undefined) {
         const serialized = serializeInput(entry.input);
-        if (serialized && serialized !== arg) {
+        if (serialized && serialized !== inlineArg) {
           out.push('', fence(serialized, typeof entry.input === 'string' ? '' : 'json'));
         }
       }
@@ -434,6 +435,12 @@ function serializeInput(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function inlineCode(text: string): string {
+  const ticks = '`'.repeat(Math.max(1, ...[...text.matchAll(/`+/g)].map((match) => match[0].length + 1)));
+  const pad = text.startsWith('`') || text.endsWith('`') ? ' ' : '';
+  return `${ticks}${pad}${text}${pad}${ticks}`;
 }
 
 function fence(text: string, lang = ''): string {
