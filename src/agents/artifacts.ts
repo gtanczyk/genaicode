@@ -1,6 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
-import { basename, extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { basename, extname } from 'node:path';
+import {
+  contentHeaders,
+  mediaTypeFor,
+  normalizeScriptHosts,
+  parseByteRange,
+  resolveInRoots,
+  type ContentKind,
+  type RootsInput,
+} from './media.js';
 import { startLocalMcpServer } from './mcp-server.js';
 import type { McpTool } from './mcp-tools.js';
 import type { Artifact, McpServer } from './types.js';
@@ -9,13 +18,24 @@ import type { Artifact, McpServer } from './types.js';
 export const PUBLISH_ARTIFACT_TOOL = 'publish_artifact';
 
 export interface ArtifactStoreOptions {
-  /** Files are published from inside this directory only. A function is read on every publish. */
-  cwd: string | (() => string);
+  /**
+   * Files are published from inside these directories only. Accepts one directory, a list of
+   * allowed roots, or a function read on every publish (relative paths resolve against the first
+   * root first, then the rest in order).
+   */
+  cwd: RootsInput;
+  /**
+   * Opt-in CDN hosts HTML artifacts may load scripts, stylesheets and fonts from (e.g.
+   * `['cdn.jsdelivr.net', 'unpkg.com']`). Default empty (no network). `connect-src`, `img-src`,
+   * `media-src` and `form-action` stay closed. A function is read dynamically on every response
+   * and tool listing.
+   */
+  allowScriptHosts?: readonly string[] | (() => readonly string[]);
   /** Largest artifact, in bytes. Default 5 MB. */
   maxBytes?: number;
   /** Largest audio or video file, in bytes. Default 50 MB, and never less than `maxBytes`. */
   maxMediaBytes?: number;
-  /** Most content kept in memory, in bytes; the oldest artifacts are dropped beyond that. Default 200 MB. */
+  /** Most content kept in memory, in bytes; older versions and artifacts are dropped beyond that. Default 200 MB. */
   maxTotalBytes?: number;
   /** Most artifacts kept; the oldest is dropped beyond that. Default 30. */
   maxArtifacts?: number;
@@ -23,7 +43,7 @@ export interface ArtifactStoreOptions {
 
 export interface PublishArtifact {
   title: string;
-  /** A file inside `cwd`. Its content is copied now; later edits need another publish. */
+  /** A file inside an allowed root. Its content is copied now; later edits need another publish. */
   path?: string;
   /** The content itself, instead of `path`. */
   content?: string;
@@ -35,11 +55,18 @@ export interface PublishArtifact {
 
 /** Artifacts an agent published, with a copy of their content, held in memory. */
 export interface ArtifactStore {
-  /** Throws `ArtifactError` when the request is refused (outside cwd, secret file, too large...). */
+  /** Throws `ArtifactError` when the request is refused (outside roots, secret file, too large...). */
   publish(input: PublishArtifact): Promise<Artifact>;
   list(): Artifact[];
-  /** The artifact and the content of its latest version. */
-  read(id: string): { artifact: Artifact; body: Buffer } | undefined;
+  /**
+   * The artifact and its content. Without `version`, returns the latest version; with `version`,
+   * returns that specific version if still retained in memory.
+   */
+  read(id: string, version?: number): { artifact: Artifact; body: Buffer } | undefined;
+  /** All retained versions of `id`, oldest first. */
+  versions?(id: string): Artifact[];
+  /** Normalized CDN origins allowed for HTML artifacts (`allowScriptHosts`). */
+  allowScriptHosts?(): readonly string[];
   /** Forget every artifact; their addresses stop working. */
   clear(): void;
   /** Called after every publish. Returns the unsubscribe function. */
@@ -53,39 +80,6 @@ export class ArtifactError extends Error {
   override name = 'ArtifactError';
 }
 
-const TEXT = 'text/plain; charset=utf-8';
-// Extension → what the browser is told. Anything else downloads as a file.
-const TYPES: Record<string, { kind: Artifact['kind']; mimeType: string }> = {
-  '.html': { kind: 'html', mimeType: 'text/html; charset=utf-8' },
-  '.htm': { kind: 'html', mimeType: 'text/html; charset=utf-8' },
-  '.png': { kind: 'image', mimeType: 'image/png' },
-  '.jpg': { kind: 'image', mimeType: 'image/jpeg' },
-  '.jpeg': { kind: 'image', mimeType: 'image/jpeg' },
-  '.gif': { kind: 'image', mimeType: 'image/gif' },
-  '.webp': { kind: 'image', mimeType: 'image/webp' },
-  '.avif': { kind: 'image', mimeType: 'image/avif' },
-  '.svg': { kind: 'image', mimeType: 'image/svg+xml' },
-  '.mp3': { kind: 'audio', mimeType: 'audio/mpeg' },
-  '.wav': { kind: 'audio', mimeType: 'audio/wav' },
-  '.ogg': { kind: 'audio', mimeType: 'audio/ogg' },
-  '.oga': { kind: 'audio', mimeType: 'audio/ogg' },
-  '.opus': { kind: 'audio', mimeType: 'audio/ogg' },
-  '.m4a': { kind: 'audio', mimeType: 'audio/mp4' },
-  '.aac': { kind: 'audio', mimeType: 'audio/aac' },
-  '.flac': { kind: 'audio', mimeType: 'audio/flac' },
-  '.mp4': { kind: 'video', mimeType: 'video/mp4' },
-  '.m4v': { kind: 'video', mimeType: 'video/mp4' },
-  '.webm': { kind: 'video', mimeType: 'video/webm' },
-  '.mov': { kind: 'video', mimeType: 'video/quicktime' },
-  '.ogv': { kind: 'video', mimeType: 'video/ogg' },
-  '.md': { kind: 'text', mimeType: 'text/markdown; charset=utf-8' },
-  ...Object.fromEntries(
-    ['.txt', '.log', '.json', '.csv', '.tsv', '.xml', '.yaml', '.yml', '.toml', '.diff', '.patch'].map((ext) => [
-      ext,
-      { kind: 'text' as const, mimeType: TEXT },
-    ]),
-  ),
-};
 const FORMATS: Record<NonNullable<PublishArtifact['format']>, string> = {
   html: '.html',
   markdown: '.md',
@@ -93,40 +87,45 @@ const FORMATS: Record<NonNullable<PublishArtifact['format']>, string> = {
   svg: '.svg',
 };
 
-// Folders and files that hold credentials. An agent with a shell can read them anyway; this
-// keeps a confused or prompt-injected agent from putting them on screen through this tool.
-const SECRET_DIRS = new Set(['.git', '.genaicode', '.ssh', '.aws', '.gnupg', '.kube', '.docker']);
-const SECRET_FILE =
-  /^(\.env(\..*)?|\.npmrc|\.netrc|\.pypirc|id_(rsa|dsa|ecdsa|ed25519).*|.*\.(pem|key|p12|pfx|keystore))$/i;
-
 export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStore {
   const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
   const maxMediaBytes = Math.max(maxBytes, options.maxMediaBytes ?? 50 * 1024 * 1024);
   const maxTotalBytes = options.maxTotalBytes ?? 200 * 1024 * 1024;
   const maxArtifacts = Math.max(1, options.maxArtifacts ?? 30);
-  // Insertion order is age: a republished artifact moves to the end.
-  const byName = new Map<string, { artifact: Artifact; body: Buffer }>();
+  // Validate static host lists up front; dynamic providers are normalized on every read.
+  const staticHosts =
+    typeof options.allowScriptHosts === 'function' ? undefined : normalizeScriptHosts(options.allowScriptHosts);
+  const allowedHosts = (): readonly string[] => {
+    if (typeof options.allowScriptHosts === 'function') {
+      try {
+        return normalizeScriptHosts(options.allowScriptHosts());
+      } catch {
+        return [];
+      }
+    }
+    return staticHosts ?? [];
+  };
+
+  // Insertion order is age: a republished artifact moves to the end. Each entry keeps versions oldest → newest.
+  const byName = new Map<string, Array<{ artifact: Artifact; body: Buffer }>>();
   const listeners = new Set<(artifact: Artifact) => void>();
 
   const fromFile = async (path: string) => {
-    let root: string;
-    let real: string;
-    try {
-      root = await fs.realpath(typeof options.cwd === 'function' ? options.cwd() : options.cwd);
-      // Through symlinks: a link inside the workspace must not reach a file outside it.
-      real = await fs.realpath(resolve(root, path));
-    } catch {
+    const resolved = await resolveInRoots(path, options.cwd);
+    if (!resolved.ok) {
+      if (resolved.reason === 'outside') {
+        throw new ArtifactError('Only files inside the working directory can be published.');
+      }
+      if (resolved.reason === 'secret') {
+        throw new ArtifactError(
+          `${resolved.relative ?? path} looks like a credential or internal file and cannot be published.`,
+        );
+      }
       throw new ArtifactError(`No such file: ${path}`);
     }
-    const inside = relative(root, real);
-    if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-      throw new ArtifactError('Only files inside the working directory can be published.');
-    }
-    const parts = inside.split(sep);
-    if (parts.slice(0, -1).some((part) => SECRET_DIRS.has(part)) || SECRET_FILE.test(parts.at(-1)!)) {
-      throw new ArtifactError(`${inside} looks like a credential or internal file and cannot be published.`);
-    }
-    const kind = TYPES[extname(real).toLowerCase()]?.kind;
+    const { real, relative: rel } = resolved;
+    const extension = extname(real).toLowerCase();
+    const kind = mediaTypeFor(extension)?.artifactKind;
     const limit = kind === 'audio' || kind === 'video' ? maxMediaBytes : maxBytes;
     const file = await fs.open(real, 'r').catch(() => {
       throw new ArtifactError(`Cannot read ${path}.`);
@@ -139,10 +138,54 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       // The file may have grown since `stat`.
       if (body.length > limit) throw new ArtifactError(tooLarge(body.length, limit));
       // The type comes from the name the file really has, not from the link that led to it.
-      return { body, relative: parts.join('/'), extension: extname(real).toLowerCase() };
+      return { body, relative: rel, extension };
     } finally {
       await file.close();
     }
+  };
+
+  const totalBytes = () => {
+    let sum = 0;
+    for (const versions of byName.values()) {
+      for (const entry of versions) sum += entry.body.length;
+    }
+    return sum;
+  };
+
+  const trim = () => {
+    // First drop superseded older versions before dropping whole artifacts.
+    while (totalBytes() > maxTotalBytes) {
+      let dropped = false;
+      for (const versions of byName.values()) {
+        if (versions.length > 1) {
+          versions.shift();
+          dropped = true;
+          break;
+        }
+      }
+      if (!dropped) break;
+    }
+    // The one just published stays, whatever its size.
+    while (byName.size > 1 && (byName.size > maxArtifacts || totalBytes() > maxTotalBytes)) {
+      byName.delete(byName.keys().next().value!);
+    }
+  };
+
+  const toolDescription = () => {
+    const hosts = allowedHosts();
+    const htmlRule = hosts.length
+      ? `HTML runs in a sandbox: fetch, images, media and forms cannot reach the network, except scripts, stylesheets and fonts may load from ${hosts.join(', ')} (prefer pinning versions with Subresource Integrity \`integrity\` attributes). Put everything else inline or as data: URIs.`
+      : 'HTML runs in a sandbox with no network: make it one self-contained file with inline CSS and JS and data: images; nothing loads from a CDN.';
+    return (
+      'Show the user something to look at in the chat: a report, a chart, a diagram, a mockup, a form, an image ' +
+      '(a screenshot), a sound, a video or a document. Give `path` (a file in the working directory or an opened ' +
+      'session directory; the only way for images, audio and video) or `content` with `format`. The user sees a ' +
+      `card and opens it in a preview. ${htmlRule} To ask the user something with a page (a questionnaire, a ` +
+      'choice between options), have the page call `parent.postMessage({ genaicode: "submit", data: <JSON> }, "*")` ' +
+      'when they are done, e.g. from a button (a <form> cannot submit): the user confirms and you receive `data` ' +
+      'as their next message. The content is copied when you call this, so call it again with the same `name` ' +
+      'after you change it. Not for source files the user edits: just edit those.'
+    );
   };
 
   const store: ArtifactStore = {
@@ -168,26 +211,27 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
         if (!Object.hasOwn(FORMATS, format)) throw new ArtifactError('format must be html, markdown, text or svg.');
         extension = FORMATS[format];
       }
-      const type = TYPES[extension] ?? { kind: 'file' as const, mimeType: 'application/octet-stream' };
+      const media = mediaTypeFor(extension);
+      const type = media
+        ? { kind: media.artifactKind, mimeType: media.mimeType }
+        : { kind: 'file' as const, mimeType: 'application/octet-stream' };
       const name = clean(input.name, 200) || path || title;
-      const before = byName.get(name);
+      const previous = byName.get(name);
+      const latest = previous?.at(-1);
       const artifact: Artifact = {
-        id: before?.artifact.id ?? randomBytes(16).toString('hex'),
+        id: latest?.artifact.id ?? randomBytes(16).toString('hex'),
         name,
         title,
         kind: type.kind,
         mimeType: type.mimeType,
         bytes: body.length,
-        version: (before?.artifact.version ?? 0) + 1,
+        version: (latest?.artifact.version ?? 0) + 1,
         ...(path ? { path } : {}),
       };
+      const versions = previous ? [...previous, { artifact, body }] : [{ artifact, body }];
       byName.delete(name);
-      byName.set(name, { artifact, body });
-      const total = () => [...byName.values()].reduce((sum, entry) => sum + entry.body.length, 0);
-      // The one just published stays, whatever its size.
-      while (byName.size > 1 && (byName.size > maxArtifacts || total() > maxTotalBytes)) {
-        byName.delete(byName.keys().next().value!);
-      }
+      byName.set(name, versions);
+      trim();
       for (const listener of [...listeners]) {
         try {
           listener(artifact);
@@ -197,11 +241,22 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       }
       return artifact;
     },
-    list: () => [...byName.values()].map((entry) => entry.artifact),
-    read(id) {
-      for (const entry of byName.values()) if (entry.artifact.id === id) return entry;
+    list: () => [...byName.values()].map((versions) => versions.at(-1)!.artifact),
+    read(id, version) {
+      for (const versions of byName.values()) {
+        if (versions.at(-1)?.artifact.id !== id) continue;
+        if (version === undefined) return versions.at(-1);
+        return versions.find((entry) => entry.artifact.version === version);
+      }
       return undefined;
     },
+    versions(id) {
+      for (const versions of byName.values()) {
+        if (versions.at(-1)?.artifact.id === id) return versions.map((entry) => entry.artifact);
+      }
+      return [];
+    },
+    allowScriptHosts: allowedHosts,
     clear: () => byName.clear(),
     subscribe(listener) {
       listeners.add(listener);
@@ -209,21 +264,14 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
     },
     tool: () => ({
       name: PUBLISH_ARTIFACT_TOOL,
-      description:
-        'Show the user something to look at in the chat: a report, a chart, a diagram, a mockup, a form, an image ' +
-        '(a screenshot), a sound, a video or a document. Give `path` (a file in the working directory; the only ' +
-        'way for images, audio and video) or `content` with `format`. The user sees a card and opens it in a ' +
-        'preview. HTML runs in a sandbox with no network: make it one self-contained file with inline CSS and JS ' +
-        'and data: images; nothing loads from a CDN. To ask the user something with a page (a questionnaire, a ' +
-        'choice between options), have the page call `parent.postMessage({ genaicode: "submit", data: <JSON> }, "*")` ' +
-        'when they are done, e.g. from a button (a <form> cannot submit): the user confirms and you receive `data` ' +
-        'as their next message. The content is copied when you call this, so call it again with the same `name` ' +
-        'after you change it. Not for source files the user edits: just edit those.',
+      get description() {
+        return toolDescription();
+      },
       inputSchema: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Short title shown on the card.' },
-          path: { type: 'string', description: 'File to publish, relative to the working directory.' },
+          path: { type: 'string', description: 'File to publish, relative to the working directory or absolute.' },
           content: { type: 'string', description: 'The content itself, instead of path.' },
           format: {
             type: 'string',
@@ -265,31 +313,19 @@ function tooLarge(bytes: number, max: number): string {
   return `Too large: ${bytes} bytes, the limit is ${max}.`;
 }
 
-// What an HTML artifact may do: run its own inline code and nothing else. No network (so it
-// cannot send what it shows anywhere), no forms, and `sandbox` gives it an origin of its own
-// even when the URL is opened directly, so it never reads the host page's cookies or storage.
-const HTML_CSP = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  'img-src data: blob:',
-  'media-src data: blob:',
-  'font-src data:',
-  "form-action 'none'",
-  "base-uri 'none'",
-  "webrtc 'block'",
-  'sandbox allow-scripts',
-].join('; ');
-// Everything else is inert: an SVG opened directly must not run its scripts.
-const INERT_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
-// A picture, sound or film opened in a tab of its own: the browser's viewer loads this same URL.
-const MEDIA_CSP = "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox";
-
 export interface ArtifactResponse {
   /** 200, 206 for the part a `Range` asked for, or 416 for a range outside the content. */
   status: number;
   headers: Record<string, string>;
   body: Buffer;
+}
+
+export interface ArtifactResponseRequest {
+  range?: string;
+  /** Opt-in CDN hosts added to HTML CSP `script-src`, `style-src` and `font-src`. */
+  allowScriptHosts?: readonly string[];
+  /** Force `Content-Disposition: attachment` for Download actions. */
+  download?: boolean;
 }
 
 /**
@@ -298,40 +334,39 @@ export interface ArtifactResponse {
  * what keeps agent-written HTML away from the page that shows it. Pass the request's `Range`
  * header so that audio and video can be seeked (some browsers play nothing without it).
  */
-export function artifactResponse(artifact: Artifact, body: Buffer, request: { range?: string } = {}): ArtifactResponse {
+export function artifactResponse(
+  artifact: Artifact,
+  body: Buffer,
+  request: ArtifactResponseRequest = {},
+): ArtifactResponse {
   const fallback = FORMATS[artifact.kind === 'html' ? 'html' : 'text'];
   const filename =
     basename(artifact.path ?? '') || `${artifact.title.replace(/[^\w.-]+/g, '-') || 'artifact'}${fallback}`;
-  const media = artifact.kind === 'image' || artifact.kind === 'audio' || artifact.kind === 'video';
-  const headers: Record<string, string> = {
-    'content-type': artifact.mimeType,
-    'content-length': String(body.length),
-    'content-security-policy': artifact.kind === 'html' ? HTML_CSP : media ? MEDIA_CSP : INERT_CSP,
-    'content-disposition': `${artifact.kind === 'file' ? 'attachment' : 'inline'}; filename="${filename.replace(/[^\w.-]/g, '_')}"`,
-    'x-content-type-options': 'nosniff',
-    'referrer-policy': 'no-referrer',
-    'cache-control': 'no-store',
-    'accept-ranges': 'bytes',
-  };
-  // One range only; anything else gets the whole content, which HTTP allows.
-  const range = /^bytes=(\d*)-(\d*)$/.exec(request.range?.trim() ?? '');
-  if (!range || (!range[1] && !range[2])) return { status: 200, headers, body };
-  const size = body.length;
-  // `-N` is the last N bytes.
-  const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
-  const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
-  if (start >= size || start > end) {
+  const kind: ContentKind =
+    artifact.mimeType === 'application/pdf' && !request.download ? 'pdf' : (artifact.kind as ContentKind);
+  const headers = contentHeaders({
+    kind,
+    mimeType: artifact.mimeType,
+    filename,
+    size: body.length,
+    allowScriptHosts: request.allowScriptHosts,
+    download: request.download,
+  });
+  const parsed = parseByteRange(request.range, body.length);
+  if (!parsed) return { status: 200, headers, body };
+  if (parsed.status === 416) {
     return {
       status: 416,
-      headers: { ...headers, 'content-range': `bytes */${size}`, 'content-length': '0' },
+      headers: { ...headers, 'content-range': `bytes */${body.length}`, 'content-length': '0' },
       body: Buffer.alloc(0),
     };
   }
+  const { start, end } = parsed;
   return {
     status: 206,
     headers: {
       ...headers,
-      'content-range': `bytes ${start}-${end}/${size}`,
+      'content-range': `bytes ${start}-${end}/${body.length}`,
       'content-length': String(end - start + 1),
     },
     body: body.subarray(start, end + 1),

@@ -167,6 +167,11 @@ export interface ChatOptions {
   allowNoAgent?: boolean;
   /** Called when a turn fails with `failure.kind === 'auth'`, so the host can refresh agent status. */
   onAuthFailure?(agent: string): void;
+  /**
+   * Called when the user opens or sends to another session (`continueSession`, `sessions_send`,
+   * tower inbox), so the host can allow files and artifacts from that session's directory.
+   */
+  onRoot?(dir: string): void;
 }
 
 export interface ChatController {
@@ -737,6 +742,8 @@ export function createChatController(options: ChatOptions): ChatController {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }
+      if (resolved.cwd) options.onRoot?.(resolved.cwd);
+      if (theirs.cwd) options.onRoot?.(theirs.cwd);
       publish();
       const count = turns.length ? ` (${turns.length} turns)` : '';
       if (setup) {
@@ -778,18 +785,23 @@ export function createChatController(options: ChatOptions): ChatController {
   };
   let sends = 0;
   const offSend = options.sessionSend?.attach({
-    confirm: async (target, text, { queued } = {}) =>
-      (await session.ask({
-        id: `sessions-send-${++sends}`,
-        kind: 'other',
-        summary: plainSessionText(
-          `${queued ? 'Queue for' : 'Send to'} ${label(target)} (${target.cwd})${queued ? ', after its current turn' : ''}:\n${text}`,
-        ),
-        detail: { tool: 'sessions_send', target, text, ...(queued ? { queued } : {}) },
-      })) === 'approve',
+    confirm: async (target, text, { queued } = {}) => {
+      const ok =
+        (await session.ask({
+          id: `sessions-send-${++sends}`,
+          kind: 'other',
+          summary: plainSessionText(
+            `${queued ? 'Queue for' : 'Send to'} ${label(target)} (${target.cwd})${queued ? ', after its current turn' : ''}:\n${text}`,
+          ),
+          detail: { tool: 'sessions_send', target, text, ...(queued ? { queued } : {}) },
+        })) === 'approve';
+      if (ok && target.cwd) options.onRoot?.(target.cwd);
+      return ok;
+    },
     queued: (target) =>
       notice(plainSessionText(`${label(target)} is working: the message goes when its current turn ends.`)),
     done: (target, { result, error }) => {
+      if (target.cwd) options.onRoot?.(target.cwd);
       const failed = error ?? (result && !result.ok ? (result.error ?? result.status) : undefined);
       if (failed) return notice(plainSessionText(`${label(target)} did not take the message: ${failed}`), 'error');
       const reply = result?.text?.trim().slice(0, 800);
@@ -1007,7 +1019,14 @@ export function createChatController(options: ChatOptions): ChatController {
     note: (text, tone) => notice(text, tone),
     approve: (id, decision) => session.approve(id, decision),
     answer: (id, answers) => session.answer(id, answers),
-    decideTower: (id, decision) => inbox?.decide(session, id, decision) ?? Promise.resolve(false),
+    decideTower: (id, decision) => {
+      if (!inbox) return Promise.resolve(false);
+      if (decision === 'send' || decision === 'approve') {
+        const cwd = inbox.view(session.get()).items.find((item) => item.id === id)?.cwd;
+        if (cwd) options.onRoot?.(cwd);
+      }
+      return inbox.decide(session, id, decision);
+    },
     selectAgent,
     updateAgents,
     continueSession,

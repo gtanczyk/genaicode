@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
 import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
+import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
@@ -24,6 +25,7 @@ import {
   agentSessionSources,
   answerAsk,
   archiveSessions,
+  findSession,
   isSameDir,
   listSessions,
   pendingAsks,
@@ -32,7 +34,14 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
-import { startWebUi, type HostApp, type HostUpdate, type WebAsset, type WebUi } from './web/server.js';
+import {
+  startWebUi,
+  type HostApp,
+  type HostUpdate,
+  type WebAsset,
+  type WebSettings,
+  type WebUi,
+} from './web/server.js';
 
 export { NoAgentError };
 
@@ -56,6 +65,10 @@ export interface UiRunOptions extends ChatOptions {
   firstPrompt?: string;
   /** A session to take over before anything is sent (`ChatController.continueSession`). */
   continueFrom?: string;
+  /** Additional allowed roots added as sessions are opened or sent to (`--sessions`). */
+  extraRoots?: ReadonlySet<string>;
+  /** Opt-in CDN hosts allowed in HTML artifacts (`--artifact-cdn`). */
+  artifactCdn?: readonly string[];
 }
 
 export interface WebRunOptions extends UiRunOptions {
@@ -108,24 +121,54 @@ export function loadAssets(dir: URL): Map<string, WebAsset> {
   return assets;
 }
 
+/** Build the dynamic list of allowed roots: session cwd first, server cwd, pack task worktrees, opened sessions. */
+function makeRoots(
+  options: UiRunOptions,
+  getController: () => ChatController | undefined,
+  localRoots: ReadonlySet<string>,
+): () => string[] {
+  return () => {
+    const out: string[] = [];
+    const push = (dir: string | undefined) => {
+      if (dir && !out.includes(dir)) out.push(dir);
+    };
+    const session = getController()?.get().session;
+    push(session?.cwd);
+    push(options.cwd);
+    for (const turn of session?.turns ?? []) {
+      for (const task of turn.pack?.tasks ?? []) push(task.cwd);
+    }
+    for (const dir of options.extraRoots ?? []) push(dir);
+    for (const dir of localRoots) push(dir);
+    return out;
+  };
+}
+
 /** The agent's way to publish artifacts. A port that will not open only means no artifacts. */
 async function openArtifacts(
   options: ChatOptions,
-  getController?: () => ChatController | undefined,
+  cwd: RootsInput,
+  allowScriptHosts?: () => readonly string[],
 ): Promise<ArtifactChannel | undefined> {
   if (options.artifacts === false) return undefined;
-  return startArtifactChannel({ cwd: () => getController?.()?.get().session.cwd ?? options.cwd }).catch(
-    () => undefined,
-  );
+  return startArtifactChannel({
+    cwd,
+    ...(allowScriptHosts ? { allowScriptHosts } : {}),
+  }).catch(() => undefined);
 }
 
 /**
  * The session's MCP servers: artifacts, `ask_user` for agents that cannot ask on their own, and
  * `open_project` in `--home` mode. A port that will not open only means the agent goes without that one.
  */
-async function openChannels(options: ChatOptions, getController?: () => ChatController | undefined) {
+async function openChannels(
+  options: ChatOptions,
+  getController: (() => ChatController | undefined) | undefined,
+  cwd: RootsInput,
+  allowScriptHosts?: () => readonly string[],
+) {
   const [artifactChannel, questionChannel, openProjectChannel] = await Promise.all([
-    openArtifacts(options, getController),
+    openArtifacts(options, cwd, allowScriptHosts),
     startQuestionChannel().catch(() => undefined),
     options.home
       ? startProjectChannel({
@@ -162,15 +205,25 @@ export async function runChat(options: WebRunOptions): Promise<number> {
     getEnv: () => liveEnv,
     onUpdate: (inspections) => controller?.updateAgents(inspections),
   });
-  const web = webLink({ ...options, env: liveEnv }, () => controller!, inspector);
+  const localRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    localRoots.add(dir);
+    options.onRoot?.(dir);
+  };
+  const chatOptions: WebRunOptions = { ...options, env: liveEnv };
+  const roots = makeRoots(chatOptions, () => controller, localRoots);
+  const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
+  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
-    { ...options, env: liveEnv },
+    chatOptions,
     () => controller,
+    roots,
+    () => cdnHosts,
   );
   try {
     controller = createChatController({
-      ...options,
-      env: liveEnv,
+      ...chatOptions,
+      onRoot: addRoot,
       web,
       artifactChannel,
       questionChannel,
@@ -201,10 +254,16 @@ export async function runChat(options: WebRunOptions): Promise<number> {
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
 /** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
 const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;
+/** What the host app writes to stdin when settings change from its native menu. */
+const SETTINGS_IN_PREFIX = 'settings ';
 /** What the host app reads from stderr when the page asks for that relaunch. */
 export const RELAUNCH_LINE = 'Relaunch to update';
 /** What the host app reads from stderr when Check again asks to re-read the login shell environment. */
 export const REFRESH_ENV_LINE = 'Refresh env';
+/** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
+export const REVEAL_PREFIX = 'Reveal ';
+/** What the host app reads from stderr when the page saves desktop settings. */
+export const SETTINGS_PREFIX = 'Settings ';
 /** Max buffered bytes for one partial stdin line from the host shell (a full login env JSON). */
 const HOST_LINE_MAX = 256 * 1024;
 /** Max wait for the desktop shell to reply with `env <json>` (just above its 5 s login-shell cap). */
@@ -220,7 +279,8 @@ interface ManagedHostApp extends HostApp {
  * `update-ready <version>` once that waits, `update-installing <version>` while it replaces itself
  * and `update-none` when a download failed; the page shows each and offers "Relaunch to update"
  * for the one that waits, and a click prints `RELAUNCH_LINE` on stderr. `open-session <id>`
- * brings a session from the menu bar directly into the chat.
+ * brings a session from the menu bar directly into the chat, and the app listens for
+ * `Reveal <json-path>` and `Settings <json>` lines on stderr.
  *
  * When started by the desktop shell (`GENAICODE_DESKTOP_SHELL=1`), clicking Check again prints
  * `REFRESH_ENV_LINE` on stderr and the shell replies with `env <json>` containing the refreshed
@@ -229,7 +289,7 @@ interface ManagedHostApp extends HostApp {
 function hostApp(
   options: WebRunOptions,
   liveEnv: NodeJS.ProcessEnv,
-  onOpenSession?: (id: string) => void,
+  handlers: { onOpenSession?: (id: string) => void; onSettings?: (hosts: readonly string[]) => void } = {},
 ): ManagedHostApp {
   let update: HostUpdate | undefined;
   let rest = '';
@@ -276,7 +336,18 @@ function hostApp(
       }
       const openMatch = OPEN_SESSION_LINE.exec(line);
       if (openMatch?.[1]) {
-        onOpenSession?.(openMatch[1]);
+        handlers.onOpenSession?.(openMatch[1]);
+        continue;
+      }
+      if (line.startsWith(SETTINGS_IN_PREFIX) && handlers.onSettings) {
+        try {
+          const parsed = JSON.parse(line.slice(SETTINGS_IN_PREFIX.length)) as { artifactCdn?: unknown };
+          if (Array.isArray(parsed?.artifactCdn) && parsed.artifactCdn.every((item) => typeof item === 'string')) {
+            handlers.onSettings(normalizeScriptHosts(parsed.artifactCdn as string[]));
+          }
+        } catch {
+          // Malformed settings line ignored.
+        }
         continue;
       }
       const found = UPDATE_LINE.exec(line);
@@ -306,6 +377,8 @@ function hostApp(
       return () => listeners.delete(listener);
     },
     relaunch: () => void options.stderr.write(`${RELAUNCH_LINE}\n`),
+    reveal: (path) => void options.stderr.write(`${REVEAL_PREFIX}${JSON.stringify(path)}\n`),
+    saveSettings: (settings) => void options.stderr.write(`${SETTINGS_PREFIX}${JSON.stringify(settings)}\n`),
     ...(canRefreshEnv
       ? {
           refreshEnv() {
@@ -339,7 +412,17 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     if (controller) void controller.continueSession(id);
     else pendingOpen = id;
   };
-  const host = watchEnd ? hostApp(options, liveEnv, openSession) : undefined;
+  let cdnHosts: readonly string[] = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
+  const settingsListeners = new Set<() => void>();
+  const setArtifactCdn = (hosts: readonly string[]) => {
+    const next = normalizeScriptHosts(hosts);
+    if (JSON.stringify(cdnHosts) === JSON.stringify(next)) return;
+    cdnHosts = next;
+    for (const listener of settingsListeners) listener();
+  };
+  const host = watchEnd
+    ? hostApp(options, liveEnv, { onOpenSession: openSession, onSettings: setArtifactCdn })
+    : undefined;
   const webOptions: WebRunOptions = { ...options, env: liveEnv, ...(host ? { hostApp: host } : {}) };
   const inspector = createAgentInspector({
     agents: webOptions.agents,
@@ -347,14 +430,34 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     refreshEnv: host?.refreshEnv,
     onUpdate: (inspections) => controller?.updateAgents(inspections),
   });
-  const web = webLink(webOptions, () => controller!, inspector);
+  const localRoots = new Set<string>();
+  const addRoot = (dir: string) => {
+    localRoots.add(dir);
+    webOptions.onRoot?.(dir);
+  };
+  const roots = makeRoots(webOptions, () => controller, localRoots);
+  const settings: WebSettings | undefined =
+    webOptions.hostApp && webOptions.artifacts !== false
+      ? {
+          artifactCdn: () => cdnHosts,
+          setArtifactCdn,
+          subscribe(listener) {
+            settingsListeners.add(listener);
+            return () => settingsListeners.delete(listener);
+          },
+        }
+      : undefined;
+  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, inspector);
   const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
     webOptions,
     () => controller,
+    roots,
+    () => cdnHosts,
   );
   try {
     controller = createChatController({
       ...webOptions,
+      onRoot: addRoot,
       web,
       artifactChannel,
       questionChannel,
@@ -474,6 +577,9 @@ async function runTerminal(controller: ChatController, options: UiRunOptions) {
 function webLink(
   options: WebRunOptions,
   controller: () => ChatController,
+  roots: RootsInput,
+  addRoot: (dir: string) => void,
+  settings?: WebSettings,
   inspector?: AgentInspector,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
@@ -495,12 +601,13 @@ function webLink(
         ...(options.home ? { home: true } : {}),
       },
       uploads: createUploads(() => controller().get().session.cwd),
-      files: createProjectFiles(() => controller().get().session.cwd),
+      files: createProjectFiles(roots),
       host: options.host,
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
       ...(inspector ? { agents: (query) => inspector.check(query) } : {}),
+      settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async ({ own, ...query }) => {
@@ -552,13 +659,21 @@ function webLink(
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
       },
-      sendPrompt: (source, id, prompt, sandbox, signal) =>
-        sendSession(agents, id, prompt, {
+      sendPrompt: async (source, id, prompt, sandbox, signal) => {
+        const sources = options.sessionSources ?? agentSessionSources(agents);
+        const found = await findSession(
+          sources.filter((s) => s.name === source),
+          id,
+          { env: options.env, signal },
+        ).catch(() => undefined);
+        if (found?.session.cwd) addRoot(found.session.cwd);
+        return sendSession(agents, id, prompt, {
           source,
           env: options.env,
           signal,
           permissions: sandbox ? { sandbox } : undefined,
-        }),
+        });
+      },
       limits: () => knownLimits(options.env),
       projectTeams: options.projectTeams,
       // Automatic runs too: they use the plan like everything else.
@@ -615,7 +730,7 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options);
+  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options, undefined, options.cwd);
   let controller: ChatController;
   try {
     controller = createChatController({ ...options, artifactChannel, questionChannel });

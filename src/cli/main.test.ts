@@ -74,6 +74,20 @@ function pathWith(...commands: string[]): string {
 }
 
 describe('parseCli', () => {
+  it('parses and validates --artifact-cdn hosts for ui, chat and tower', () => {
+    const ui = parseCli(['ui', '--artifact-cdn', 'cdn.jsdelivr.net,unpkg.com', '--artifact-cdn', 'esm.sh']);
+    expect(ui).toMatchObject({
+      kind: 'ui',
+      artifactCdn: ['https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://esm.sh'],
+    });
+    const chat = parseCli(['chat', '--artifact-cdn', 'http://127.0.0.1:8080']);
+    expect(chat).toMatchObject({ kind: 'chat', artifactCdn: ['http://127.0.0.1:8080'] });
+    expect(() => parseCli(['ui', '--artifact-cdn', '*'])).toThrow(UsageError);
+    expect(() => parseCli(['ui', '--artifact-cdn', 'cdn.jsdelivr.net', '--no-artifacts'])).toThrow(UsageError);
+    expect(() => parseCli(['ui', '--artifact-cdn', 'http://public.example'])).toThrow(UsageError);
+    expect(helpText).toContain('--artifact-cdn');
+  });
+
   it('uses the resumable interactive Codex and Muse drivers in the tower inbox', async () => {
     const inspect = async (launch: UiLaunch) => {
       expect(launch.towerInbox).toBeDefined();

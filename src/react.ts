@@ -13,9 +13,12 @@
  */
 export { AgentChat, artifactSubmission } from './react/agent-chat.js';
 export type { AgentChatProps, ChatCompletion, ChatNotice } from './react/agent-chat.js';
+export { ArtifactPanel } from './react/artifact-panel.js';
+export type { ArtifactPanelProps } from './react/artifact-panel.js';
 export { matchesAccept } from './react/attachments.js';
 export type { ChatAttachments } from './react/attachments.js';
-export { Markdown } from './react/markdown.js';
+export { formatFilePosition, Markdown, parseFileTarget, readFileLinkPosition } from './react/markdown.js';
+export type { FilePosition, MarkdownProps } from './react/markdown.js';
 export { AppAgentChat, useAppAgent } from './react/app-agent-chat.js';
 export type { AppAgentChatProps, AppAgentClient, AppAgentClientOptions } from './react/app-agent-chat.js';
 export { PageAgentChat, usePageAgent } from './react/page-agent-chat.js';
