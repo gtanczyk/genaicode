@@ -89,4 +89,18 @@ describe('project files shown in the page', () => {
       controller.close();
     }
   });
+
+  it('follows dynamic conversation roots when given a function', () => {
+    const first = project();
+    const second = project();
+    writeFileSync(join(first, 'a.txt'), 'from first');
+    writeFileSync(join(second, 'b.txt'), 'from second');
+    let current = first;
+    const files = createProjectFiles(() => current);
+    expect(files.read('a.txt')).toMatchObject({ path: 'a.txt', text: 'from first' });
+    expect(files.read(join(second, 'b.txt'))).toBe('outside');
+    current = second;
+    expect(files.read('b.txt')).toMatchObject({ path: 'b.txt', text: 'from second' });
+    expect(files.read(join(first, 'a.txt'))).toBe('outside');
+  });
 });

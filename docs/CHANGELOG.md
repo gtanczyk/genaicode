@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - `genaicode ui` and the desktop app: developer transcript export in the chat header (`session …` menu), in **Chats** / **Sessions** rows (`⋯`), and in the desktop app's **Developer** menu — copy the full session ID, the session file path on disk, the Markdown transcript (metadata, turns, tool calls, diffs, approvals, questions, pack tasks, notices) or raw JSON state, or save/download `.md` and `.json` files (with a native Save dialog in the desktop app) (#322)
+- Desktop app and `genaicode ui --home`: per-conversation working directories without a fixed project folder. Cross-project chats start in `~/.genaicode/home`; **New chat** on a topic card opens in that topic's most recent non-automated directory; continuing any local session (from Sessions, Chats, the menu bar or `/continue`) resolves its directory or repository root; and `open_project` lets an agent move a conversation into an existing or new directory after one confirmation card. The header shows the conversation title and topic instead of a path (hover or `/where` shows the directory), file panel and upload roots follow the conversation, and Codex asks to trust a new directory via a question card. `genaicode ui --cwd` behaves as before (#318)
 
 ### Internal
 

@@ -1,9 +1,9 @@
 //! The genaicode desktop shell.
 //!
-//! It owns no chat logic. It starts the bundled Node.js on the bundled `genaicode ui`, waits for
-//! the address that server prints, and shows that page in the window. The app has no project
-//! folder: its chat is about the sessions of every agent, each of which has its own, so the server
-//! runs in a directory of the app's own and its page names none. The page gets no Tauri
+//! It owns no chat logic. It starts the bundled Node.js on the bundled `genaicode ui --home`, waits
+//! for the address that server prints, and shows that page in the window. The app has no project
+//! folder: each conversation resolves its own working directory from context (starting in the
+//! neutral home `~/.genaicode/home`), and its page names no folder. The page gets no Tauri
 //! commands: there are no capabilities, so it is the same page a browser would load.
 //!
 //! Beside the window it keeps an icon in the menu bar: the sessions of every agent that wait for
@@ -17,7 +17,7 @@ mod update;
 use std::{
     env, fs,
     io::{BufRead, BufReader, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
@@ -161,21 +161,22 @@ fn genaicode(app: &AppHandle, shell: &mut Shell) -> Result<Command, String> {
     Ok(command)
 }
 
-/// Where the app's own chat runs: a directory of its own under the user's `~/.genaicode`, outside
-/// every project. `GENAICODE_DESKTOP_CWD` names another one, for development.
-fn home_folder(app: &AppHandle) -> Result<PathBuf, String> {
-    let folder = match env::var_os("GENAICODE_DESKTOP_CWD") {
-        Some(folder) => PathBuf::from(folder),
-        None => app
-            .path()
-            .home_dir()
-            .map_err(|error| error.to_string())?
-            .join(".genaicode")
-            .join("home"),
-    };
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create {}: {error}", folder.display()))?;
-    Ok(folder)
+/// Delete the saved folder file left behind by earlier versions of the desktop app, if present.
+fn remove_legacy_saved_folder(config_dir: &Path) {
+    let _ = fs::remove_file(config_dir.join("folder"));
+}
+
+/// Format an `open-session <id>` stdin command for the server, rejecting malformed session ids.
+fn open_session_command(id: &str) -> Option<String> {
+    if id.is_empty()
+        || id.len() > 200
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b':' | b'-'))
+    {
+        return None;
+    }
+    Some(format!("open-session {id}"))
 }
 
 fn fail(app: &AppHandle, message: String) {
@@ -217,7 +218,6 @@ fn start(app: &AppHandle) {
 }
 
 fn try_start(app: &AppHandle) -> Result<(), String> {
-    let folder = home_folder(app)?;
     let state = app.state::<ShellState>();
     let mut shell = state.lock().map_err(|_| "the shell state is poisoned")?;
     let mut command = genaicode(app, &mut shell)?;
@@ -229,15 +229,12 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             "ui",
             "--sessions",
             "--delegate",
-            "--no-project",
+            "--home",
             "--no-open",
             "--exit-with-stdin",
             // A restart, for an update or not, comes back to the conversation it left.
             "--restore",
-            "--cwd",
         ])
-        .arg(&folder)
-        .current_dir(&folder)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -720,8 +717,34 @@ fn save_transcript(app: &AppHandle, request: transcript::SaveRequest) {
     });
 }
 
+/// Tell the running `genaicode ui --home` server to open the session clicked in the menu bar.
+fn open_session(app: &AppHandle, index: usize) {
+    let state = app.state::<ShellState>();
+    let Ok(mut shell) = state.lock() else { return };
+    let Some(line) = shell
+        .waiting
+        .get(index)
+        .and_then(|session| open_session_command(&session.id))
+    else {
+        return;
+    };
+    if let Some(stdin) = shell
+        .server
+        .as_mut()
+        .and_then(|server| server.stdin.as_mut())
+    {
+        let _ = writeln!(stdin, "{line}");
+        let _ = stdin.flush();
+    }
+}
+
 fn on_menu(app: &AppHandle, id: &str) {
-    if id == SHOW || id.starts_with("open:") {
+    if id == SHOW {
+        show(app);
+    } else if let Some(index) = id.strip_prefix("open:") {
+        if let Ok(index) = index.parse::<usize>() {
+            open_session(app, index);
+        }
         show(app);
     } else if id == RELAUNCH {
         update::relaunch(app);
@@ -866,6 +889,9 @@ pub fn run() {
             if tray.build(app).is_ok() {
                 watch(handle);
             }
+            if let Ok(config_dir) = handle.path().app_config_dir() {
+                remove_legacy_saved_folder(&config_dir);
+            }
             start(handle);
             update::watch(handle);
             Ok(())
@@ -889,4 +915,34 @@ pub fn run() {
         RunEvent::Reopen { .. } => show(app),
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removes_legacy_saved_folder_on_upgrade() {
+        let dir = env::temp_dir().join(format!("genaicode-desktop-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let saved = dir.join("folder");
+        fs::write(&saved, "/Users/me/src/knights").unwrap();
+        assert!(saved.exists());
+        remove_legacy_saved_folder(&dir);
+        assert!(!saved.exists());
+        // Second call when missing is a no-op.
+        remove_legacy_saved_folder(&dir);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validates_open_session_stdin_command() {
+        assert_eq!(
+            open_session_command("abc-123_def.456:789").as_deref(),
+            Some("open-session abc-123_def.456:789")
+        );
+        assert_eq!(open_session_command(""), None);
+        assert_eq!(open_session_command("id\nupdate-ready 1.0.0"), None);
+        assert_eq!(open_session_command("bad id"), None);
+    }
 }

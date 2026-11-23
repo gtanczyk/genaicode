@@ -122,4 +122,19 @@ describe('files sent with a prompt', () => {
       controller.close();
     }
   });
+
+  it('saves into the current conversation cwd while keeping earlier uploads readable', () => {
+    const first = project();
+    const second = project();
+    let current = first;
+    const uploads = createUploads(() => current);
+    const a = uploads.save('one.png', Buffer.from('one'));
+    expect(a.path.startsWith(join(first, '.genaicode', 'uploads'))).toBe(true);
+    current = second;
+    const b = uploads.save('two.png', Buffer.from('two'));
+    expect(b.path.startsWith(join(second, '.genaicode', 'uploads'))).toBe(true);
+    expect(uploads.find(a.id)?.path).toBe(a.path);
+    expect(uploads.image(a.id)).toEqual({ type: 'image/png', body: Buffer.from('one') });
+    expect(uploads.find(b.id)?.path).toBe(b.path);
+  });
 });
