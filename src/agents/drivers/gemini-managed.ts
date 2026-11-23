@@ -252,6 +252,7 @@ export function geminiManagedProvider(options: GeminiManagedOptions = {}): Manag
     // The Interactions API has no list operation: an interaction is reached by its id only.
     sessions: null,
     capabilities: {
+      remote: true,
       usage: true,
       mcp: true,
       resume: true,

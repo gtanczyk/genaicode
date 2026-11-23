@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { PackAction, PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
-import { packCheckLabel, packMetrics, packTaskStatus, relativePath } from './format.js';
+import { packCheckLabel, packMetrics, packTaskStatus, packTaskTitle, relativePath } from './format.js';
 import { Markdown } from './markdown.js';
 
 export type PackActionHandler = (turnId: number, id: string, action: PackAction) => Promise<string>;
@@ -25,6 +25,8 @@ export function PackTasks({
   const id = selected ?? pack.tasks[0]?.id ?? (pending.length ? 'queue' : undefined);
   const task = pack.tasks.find((item) => item.id === id);
   const waiting = pending.filter((request) => request.subtaskId === id);
+  // One task needs no list beside it: its card takes the whole width.
+  const single = pack.tasks.length === 1 && id !== 'queue';
   return (
     <section className="gc-pack" aria-label="Pack tasks">
       <div className="gc-pack-head">
@@ -34,28 +36,37 @@ export function PackTasks({
             {pack.lead} leads · {packMetrics(turn)}
           </small>
         </div>
-        <button type="button" className="gc-btn" aria-pressed={id === 'queue'} onClick={() => select('queue')}>
-          Approvals · {pending.length}
-        </button>
+        {pending.length || id === 'queue' ? (
+          <button
+            type="button"
+            className={pending.length ? 'gc-btn gc-pack-asks' : 'gc-btn'}
+            aria-pressed={id === 'queue'}
+            onClick={() => select(id === 'queue' ? undefined : 'queue')}
+          >
+            Approvals · {pending.length}
+          </button>
+        ) : null}
       </div>
       {pack.tasks.length || id === 'queue' ? (
-        <div className="gc-pack-work">
-          <div className="gc-pack-list" role="group" aria-label="Delegated tasks">
-            {pack.tasks.map((item) => {
-              const asks = pending.some((request) => request.subtaskId === item.id);
-              return (
-                <button type="button" key={item.id} aria-pressed={id === item.id} onClick={() => select(item.id)}>
-                  <code>{item.id}</code>
-                  <span>
-                    <strong>{item.prompt}</strong>
-                    <small>
-                      {item.agent} · <span className={asks ? 'gc-pack-warn' : ''}>{packTaskStatus(item, asks)}</span>
-                    </small>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div className={single ? 'gc-pack-work gc-pack-single' : 'gc-pack-work'}>
+          {single ? null : (
+            <div className="gc-pack-list" role="group" aria-label="Delegated tasks">
+              {pack.tasks.map((item) => {
+                const asks = pending.some((request) => request.subtaskId === item.id);
+                return (
+                  <button type="button" key={item.id} aria-pressed={id === item.id} onClick={() => select(item.id)}>
+                    <code>{item.id}</code>
+                    <span>
+                      <strong title={item.prompt}>{packTaskTitle(item)}</strong>
+                      <small>
+                        {item.agent} · <span className={asks ? 'gc-pack-warn' : ''}>{packTaskStatus(item, asks)}</span>
+                      </small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {id === 'queue' ? (
             <section className="gc-pack-detail" aria-label="Approval queue">
               <strong>Approval queue</strong>
@@ -66,7 +77,14 @@ export function PackTasks({
               )}
             </section>
           ) : task ? (
-            <TaskDetail key={task.id} task={task} cwd={cwd} turnId={turn.id} act={pack.interactive ? act : undefined}>
+            <TaskDetail
+              key={task.id}
+              task={task}
+              cwd={cwd}
+              turnId={turn.id}
+              asks={waiting.length > 0}
+              act={pack.interactive ? act : undefined}
+            >
               {waiting.map((request) => (
                 <div key={request.id}>{approval(request)}</div>
               ))}
@@ -82,12 +100,14 @@ function TaskDetail({
   task,
   cwd,
   turnId,
+  asks,
   act,
   children,
 }: {
   task: PackTask;
   cwd: string;
   turnId: number;
+  asks: boolean;
   act?: PackActionHandler;
   children: ReactNode;
 }) {
@@ -126,16 +146,45 @@ function TaskDetail({
   const confirm = (mode === 'stop' && running) || (mode === 'discard' && worktree && !running);
   return (
     <section className="gc-pack-detail" aria-label={'Task ' + task.id}>
-      <small>
-        {task.id} · {task.agent} · {task.mode === 'shared' ? 'Shared directory' : 'Worktree'}
+      <div className="gc-pack-title">
+        <strong>{packTaskTitle(task)}</strong>
+        <span
+          className="gc-pack-status"
+          data-status={asks ? 'asks' : task.state === 'unmerged' ? 'ready' : task.status}
+        >
+          {packTaskStatus(task, asks)}
+        </span>
+      </div>
+      <small className="gc-pack-meta">
+        {[
+          task.id,
+          task.agent,
+          task.model,
+          task.effort && `effort ${task.effort}`,
+          task.mode === 'shared' ? 'shared directory' : 'worktree',
+          task.mcpServers?.length ? `MCP: ${task.mcpServers.join(', ')}` : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ')}{' '}
+        · <code title={task.cwd}>{relativePath(task.cwd, cwd)}</code>
       </small>
-      <strong>{task.prompt}</strong>
-      <code className="gc-pack-path" title={task.cwd}>
-        {relativePath(task.cwd, cwd)}
-      </code>
-      {task.text && <Markdown text={task.text} />}
+      {running ? (
+        task.text ? (
+          <p className="gc-pack-now">
+            <span>Now</span> {task.text.split('\n')[0]}
+          </p>
+        ) : null
+      ) : task.text ? (
+        <div className="gc-pack-result" aria-label="Result">
+          <Markdown text={task.text} />
+        </div>
+      ) : null}
       {task.error && <p className="gc-err">{task.error}</p>}
       {children}
+      <details className="gc-pack-prompt">
+        <summary>Prompt</summary>
+        <p>{task.prompt}</p>
+      </details>
       {task.changes?.length ? (
         <ul>
           {task.changes.map((line) => (

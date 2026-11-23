@@ -88,6 +88,7 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
   const tools = new Map<string, ActiveTool>();
 
   const servers = (task.mcpServers ?? []).map((server) => server.name);
+  const trusted = (task.mcpServers ?? []).filter((server) => server.trusted).map((server) => server.name);
   session.onNotification((method, params) => {
     if (method !== 'session/update' || !isObject(params)) return;
     if (!ids.session || stringField(params, 'sessionId') !== ids.session) return;
@@ -115,10 +116,13 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
           kind: stringField(choice, 'kind'),
         }))
       : [];
-    const decision = await session.approve(
-      { id, kind, scope: 'once', ...(summary ? { summary } : {}), detail: params },
-      context.signal,
-    );
+    // A tool of a trusted server (genaicode's own `ask_user`) runs without a permission prompt.
+    const decision = antigravityTrustedTool(toolCall, trusted, servers)
+      ? 'approve'
+      : await session.approve(
+          { id, kind, scope: 'once', ...(summary ? { summary } : {}), detail: params },
+          context.signal,
+        );
     if (context.signal.aborted || session.signal.aborted) {
       return { outcome: { outcome: 'cancelled' } };
     }
@@ -216,13 +220,43 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
 }
 
 /**
+ * Whether a permission request is for a tool of a `trusted` server. Antigravity names it
+ * `mcp_<server>_<tool>` (the title reads e.g. "Run mcp_genaicode_ask_ask_user"); the longest
+ * attached server name wins, so another server whose name starts the same is not taken for it.
+ */
+export function antigravityTrustedTool(
+  toolCall: Record<string, unknown>,
+  trusted: readonly string[],
+  servers: readonly string[],
+): boolean {
+  if (!trusted.length) return false;
+  // Commands and edits always ask: a command line could mention a tool name.
+  const kind = stringField(toolCall, 'kind');
+  if (kind === 'execute' || kind === 'edit' || kind === 'delete') return false;
+  const names = [stringField(toolCall, 'title'), stringField(toolCall, 'name')].filter(
+    (name): name is string => !!name,
+  );
+  // The whole title is the tool, alone or after "Run".
+  return names.some((name) => {
+    const tool = /^(?:Run\s+)?(\S+)$/.exec(name.trim())?.[1];
+    const server = tool ? antigravityServer(tool, servers) : undefined;
+    return !!server && trusted.includes(server);
+  });
+}
+
+/** The attached server an Antigravity tool name `mcp_<server>_<tool>` belongs to: the longest that fits. */
+function antigravityServer(name: string, servers: readonly string[]): string | undefined {
+  return [...servers]
+    .sort((a, b) => b.length - a.length)
+    .find((s) => name.startsWith(`mcp_${s}_`) && name.length > s.length + 5);
+}
+
+/**
  * Antigravity names an MCP tool `mcp_<server>_<tool>`; other drivers report `mcp__<server>__<tool>`.
  * Rename a tool of an attached server to that form, so apps match MCP tools the same way for every agent.
  */
 export function antigravityToolName(name: string, servers: readonly string[]): string {
-  const server = [...servers]
-    .sort((a, b) => b.length - a.length)
-    .find((s) => name.startsWith(`mcp_${s}_`) && name.length > s.length + 5);
+  const server = antigravityServer(name, servers);
   return server ? `mcp__${server}__${name.slice(server.length + 5)}` : name;
 }
 

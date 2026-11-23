@@ -1608,6 +1608,44 @@ describe('conversation across switches', () => {
     expect(await answered).toBe('approve');
     expect((await post(base, '/approvals/ap1', { decision: 'approve' })).status).toBe(404);
   });
+
+  it('answers a question of the agent CLI through the handler', async () => {
+    let resolveAnswers: (answers: unknown) => void = () => {};
+    const request = {
+      id: 'q1',
+      kind: 'question' as const,
+      questions: [{ id: 'db', question: 'Which database?', options: [{ label: 'Postgres' }, { label: 'SQLite' }] }],
+    };
+    const asked: CodingAgent = {
+      name: 'asker',
+      command: process.execPath,
+      capabilities: { approvals: true, questions: true },
+      run(task): AgentRun {
+        const result = Promise.resolve(task.onQuestion!(request)).then((answers) => {
+          resolveAnswers(answers);
+          return { status: 'completed', ok: true, exitCode: 0, signal: null } as AgentResult;
+        });
+        return {
+          result,
+          abort() {},
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'approval-request', request } as AgentEvent;
+            yield { type: 'done', result: await result } as AgentEvent;
+          },
+        };
+      },
+    };
+    const answered = new Promise<unknown>((resolve) => (resolveAnswers = resolve));
+    const { agent, base } = await serve({ name: 'app', agents: () => [asked] });
+    await post(base, '/send', { text: 'set it up' });
+    for (let i = 0; i < 100 && !agent.get().session?.approvals.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect((await post(base, '/approvals/q1', { answers: { db: 'SQLite' } })).status).toBe(400);
+    expect((await post(base, '/approvals/q1', { answers: { db: ['SQLite'] } })).status).toBe(200);
+    expect(await answered).toEqual({ db: ['SQLite'] });
+    expect((await post(base, '/approvals/q1', { answers: { db: ['SQLite'] } })).status).toBe(404);
+  });
 });
 
 describe('createAppAgentHandler', () => {

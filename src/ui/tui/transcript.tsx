@@ -4,7 +4,7 @@ import { describeFailover } from '../../agents/failover.js';
 import { outputTail, relativePath, toolLabel, toolSummary, turnFooter } from '../format.js';
 import type { Notice } from '../controller.js';
 import { plainSessionText } from '../controller.js';
-import { packMetrics, packTaskStatus } from '../../react/format.js';
+import { packMetrics, packTaskStatus, packTaskTitle } from '../../react/format.js';
 import type { ApprovalRequest } from '../../agents/types.js';
 
 /** Inline `code` and **bold**, the two marks agents use most in terminal answers. */
@@ -256,7 +256,7 @@ export function TurnView({
                 {' · '}
                 {packTaskStatus(task, waiting)}
                 {' · '}
-                {plainSessionText(task.prompt).split('\n')[0]}
+                {plainSessionText(packTaskTitle(task))}
               </Text>
             );
           })}

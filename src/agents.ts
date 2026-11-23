@@ -20,6 +20,8 @@ export type {
   AgentEvent,
   AgentFailure,
   AgentPermissions,
+  AgentQuestion,
+  AgentQuestionOption,
   AgentResult,
   AgentRun,
   AgentStatus,
@@ -33,12 +35,22 @@ export type {
   BudgetWarning,
   CodingAgent,
   McpServer,
+  QuestionAnswers,
+  QuestionHandler,
   RateLimit,
   SandboxPolicy,
 } from './agents/types.js';
 export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
-export { decideApproval, liveAgent, uuidv7 } from './agents/live-agent.js';
-export type { LiveAgentDefinition, LiveApprovalIds, LiveApprovals, LiveSession } from './agents/live-agent.js';
+export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
+export { ASK_USER_TOOL, askUserTool, startQuestionChannel } from './agents/ask-user.js';
+export type { QuestionChannel } from './agents/ask-user.js';
+export type {
+  ApprovalOutcome,
+  LiveAgentDefinition,
+  LiveApprovalIds,
+  LiveApprovals,
+  LiveSession,
+} from './agents/live-agent.js';
 export { RpcError, RpcPeer } from './agents/rpc.js';
 export type { RequestId, RpcHandlers, RpcRequestContext } from './agents/rpc.js';
 export { codexApprovals } from './agents/drivers/codex-approvals.js';
@@ -46,6 +58,7 @@ export { museApprovals } from './agents/drivers/muse-approvals.js';
 export type { MuseApprovalOptions } from './agents/drivers/muse-approvals.js';
 export {
   CLAUDE_APPROVAL_TOOL,
+  CLAUDE_QUESTION_TOOL,
   claudeApprovalArgs,
   claudeApprovalEnv,
   claudeApprovalRequest,
@@ -69,6 +82,7 @@ export type { ScrubEnvOptions } from './agents/env.js';
 export { runWithVerify } from './agents/verify.js';
 export { describeFailover, shouldFailOver, withFallback } from './agents/failover.js';
 export { delegationBrief, pack, PackActionError } from './agents/pack.js';
+export { claudeMcpServers, ownMcpServers } from './agents/agent-mcp.js';
 export { isReadOnlyCommand } from './agents/read-only.js';
 export type { PackCheckContext, PackCheckResult, PackTaskChecks, PackVerification } from './agents/pack-checks.js';
 export type {

@@ -57,7 +57,7 @@ export function fromHosted(provider: HostedAgentProvider): ManagedProvider {
     name: provider.name,
     // A hosted provider is asked about one task at a time; it lists nothing.
     sessions: null,
-    capabilities: provider.capabilities ?? {},
+    capabilities: { remote: true, ...provider.capabilities },
     async start(request: ManagedStart, signal?: AbortSignal) {
       const task: HostedTaskRequest = {
         prompt: request.prompt,

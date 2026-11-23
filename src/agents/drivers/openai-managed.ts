@@ -204,6 +204,7 @@ export function openaiManagedProvider(options: OpenAiManagedOptions = {}): Manag
     // The Responses API has no list operation: a response is reached by its id only.
     sessions: null,
     capabilities: {
+      remote: true,
       usage: true,
       mcp: true,
       resume: true,

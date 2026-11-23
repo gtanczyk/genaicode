@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { defaultAgents } from './agents/defaults.js';
 import type { AgentSession, SessionState } from './agents/session.js';
-import type { AgentTask, ApprovalDecision, CodingAgent } from './agents/types.js';
+import type { AgentTask, ApprovalDecision, CodingAgent, QuestionAnswers } from './agents/types.js';
 import { createOverlay, type Overlay, type OverlayLog } from './overlay/server.js';
 
 /**
@@ -53,6 +53,8 @@ export interface EmbeddedChatController {
   submit(text: string): 'ok' | 'quit';
   stop(): void;
   approve(id: string, decision: ApprovalDecision): boolean;
+  /** Answer a pending question of the agent: chosen option labels or typed text per question id. */
+  answer(id: string, answers: QuestionAnswers): boolean;
   /** Show a line from the host in the transcript. */
   note(text: string, tone?: 'info' | 'error'): void;
   get(): { session: SessionState };

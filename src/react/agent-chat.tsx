@@ -13,7 +13,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
-import type { ApprovalDecision, Artifact } from '../agents/types.js';
+import type { ApprovalDecision, Artifact, QuestionAnswers } from '../agents/types.js';
+import { answerSummary, QuestionCard } from './question-card.js';
 import { describeFailover } from '../agents/failover.js';
 import { PendingAttachments, TurnAttachments, useAttachments, type ChatAttachments } from './attachments.js';
 import { useFollowScroll } from './follow-scroll.js';
@@ -81,6 +82,12 @@ export interface AgentChatProps {
    * show as waiting, with no buttons.
    */
   onApprove?(id: string, decision: ApprovalDecision): void;
+  /**
+   * Answer a question the agent asked (a request of `kind: 'question'` in `state.approvals`):
+   * the chosen option labels or typed text per question id. Skip goes to `onApprove(id, 'deny')`.
+   * Without it a question shows as waiting, with its options disabled.
+   */
+  onAnswer?(id: string, answers: QuestionAnswers): void;
   /**
    * Approve pending requests and turn on auto-approve for future requests in this session.
    * Shown beside Approve and Deny when `onApprove` is also set.
@@ -165,6 +172,8 @@ export interface AgentChatProps {
  */
 /** The host's `onOpenFile`, for the entries deep in the transcript. */
 const OpenFile = createContext<AgentChatProps['onOpenFile']>(undefined);
+/** The host's `onAnswer`, for the question cards deep in the transcript. */
+const AnswerQuestion = createContext<AgentChatProps['onAnswer']>(undefined);
 
 export function AgentChat(props: AgentChatProps) {
   const state = props.state ?? NO_SESSION;
@@ -405,151 +414,153 @@ export function AgentChat(props: AgentChatProps) {
   ) : null;
 
   return (
-    <OpenFile.Provider value={props.onOpenFile}>
-      <div
-        className={rootClass}
-        data-theme={theme}
-        data-status={state.status}
-        style={props.style}
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        // A file link in a reply (`data-gc-file`, from the Markdown) opens like any other path.
-        onClick={
-          onOpenFile
-            ? (event) => {
-                const path = (event.target as Element).closest?.('[data-gc-file]')?.getAttribute('data-gc-file');
-                if (path) onOpenFile(path);
-              }
-            : undefined
-        }
-      >
-        {props.header !== undefined ? (
-          props.header
-        ) : (
-          <div className="gc-header">
-            {state.agent ? (
-              <span className="gc-avatar" aria-hidden="true">
-                {state.agent.slice(0, 2)}
-              </span>
-            ) : null}
-            <b className="gc-agent">{state.agent || 'Agent'}</b>
-            {state.model ? <span className="gc-model">{state.model}</span> : null}
-            {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
-            <span className="gc-spacer" />
-            {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
-            {usage ? <span className="gc-chip">{usage}</span> : null}
-            {limits.map((chip) => (
-              <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
-                {chip.text}
-              </span>
-            ))}
-            {props.headerExtras}
-          </div>
-        )}
-        <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
-          <div className="gc-thread" role="log" aria-live="polite">
-            {state.turns.length === 0
-              ? (props.emptyState ?? (
-                  <div className="gc-empty">
-                    <div className="gc-empty-title">What should {agentName} work on?</div>
-                  </div>
-                ))
-              : null}
-            {items}
-            {footer !== undefined && footer !== null && footer !== false ? (
-              <div className="gc-footer-slot">{footer}</div>
-            ) : null}
-          </div>
-        </div>
-        <div className="gc-composer">
-          {state.queued.length ? (
-            <div className="gc-queued">
-              {state.queued.map((prompt, i) => {
-                const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
-                return shown === null || shown === undefined || shown === false ? null : (
-                  <span key={i}>⏸ {shown}</span>
-                );
-              })}
-            </div>
-          ) : null}
-          {choice ? (
-            <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
-              {offered.map((one, index) => (
-                <li
-                  key={one.name}
-                  id={optionId(index)}
-                  ref={one === choice ? chosen : undefined}
-                  role="option"
-                  aria-selected={one === choice}
-                  // Before the box loses focus.
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    complete(one);
-                  }}
-                >
-                  <span className="gc-completion-name">
-                    <b>{one.name}</b>
-                    {one.args ? <code>{one.args}</code> : null}
-                  </span>
-                  {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
-                </li>
+    <AnswerQuestion.Provider value={props.onAnswer}>
+      <OpenFile.Provider value={props.onOpenFile}>
+        <div
+          className={rootClass}
+          data-theme={theme}
+          data-status={state.status}
+          style={props.style}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          // A file link in a reply (`data-gc-file`, from the Markdown) opens like any other path.
+          onClick={
+            onOpenFile
+              ? (event) => {
+                  const path = (event.target as Element).closest?.('[data-gc-file]')?.getAttribute('data-gc-file');
+                  if (path) onOpenFile(path);
+                }
+              : undefined
+          }
+        >
+          {props.header !== undefined ? (
+            props.header
+          ) : (
+            <div className="gc-header">
+              {state.agent ? (
+                <span className="gc-avatar" aria-hidden="true">
+                  {state.agent.slice(0, 2)}
+                </span>
+              ) : null}
+              <b className="gc-agent">{state.agent || 'Agent'}</b>
+              {state.model ? <span className="gc-model">{state.model}</span> : null}
+              {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
+              <span className="gc-spacer" />
+              {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
+              {usage ? <span className="gc-chip">{usage}</span> : null}
+              {limits.map((chip) => (
+                <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
+                  {chip.text}
+                </span>
               ))}
-            </ul>
-          ) : null}
-          {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
-          {attached.problem ? (
-            <div className="gc-attach-problem" role="alert">
-              {attached.problem}
-            </div>
-          ) : null}
-          <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
-            <textarea
-              ref={input}
-              rows={1}
-              autoFocus={props.autoFocus}
-              value={draft}
-              placeholder={placeholder}
-              title={props.composerTitle}
-              aria-label="Message"
-              onChange={(event) => {
-                setDraft(event.target.value);
-                setPicked(0);
-                setClosedAt(undefined);
-              }}
-              aria-autocomplete={props.completions ? 'list' : undefined}
-              role={props.completions ? 'combobox' : undefined}
-              aria-expanded={props.completions ? !!choice : undefined}
-              aria-controls={choice ? listId : undefined}
-              aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
-              onKeyDown={onKeyDown}
-              onPaste={onPaste}
-            />
-            {hasExtras ? null : attachButtons}
-            {stacked ? <span className="gc-grow" /> : null}
-            {(running || props.canStop) && props.onStop ? (
-              <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
-                Stop
-              </button>
-            ) : null}
-            <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
-              {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
-            </button>
-          </div>
-          {hasExtras ? (
-            <div className="gc-under">
-              {attachButtons}
-              <span className="gc-grow" />
-              {extras}
-            </div>
-          ) : null}
-          {props.hint === null ? null : (
-            <div className="gc-hint">
-              {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+              {props.headerExtras}
             </div>
           )}
+          <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
+            <div className="gc-thread" role="log" aria-live="polite">
+              {state.turns.length === 0
+                ? (props.emptyState ?? (
+                    <div className="gc-empty">
+                      <div className="gc-empty-title">What should {agentName} work on?</div>
+                    </div>
+                  ))
+                : null}
+              {items}
+              {footer !== undefined && footer !== null && footer !== false ? (
+                <div className="gc-footer-slot">{footer}</div>
+              ) : null}
+            </div>
+          </div>
+          <div className="gc-composer">
+            {state.queued.length ? (
+              <div className="gc-queued">
+                {state.queued.map((prompt, i) => {
+                  const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
+                  return shown === null || shown === undefined || shown === false ? null : (
+                    <span key={i}>⏸ {shown}</span>
+                  );
+                })}
+              </div>
+            ) : null}
+            {choice ? (
+              <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+                {offered.map((one, index) => (
+                  <li
+                    key={one.name}
+                    id={optionId(index)}
+                    ref={one === choice ? chosen : undefined}
+                    role="option"
+                    aria-selected={one === choice}
+                    // Before the box loses focus.
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      complete(one);
+                    }}
+                  >
+                    <span className="gc-completion-name">
+                      <b>{one.name}</b>
+                      {one.args ? <code>{one.args}</code> : null}
+                    </span>
+                    {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
+            {attached.problem ? (
+              <div className="gc-attach-problem" role="alert">
+                {attached.problem}
+              </div>
+            ) : null}
+            <div className={stacked ? 'gc-box gc-stacked' : 'gc-box'}>
+              <textarea
+                ref={input}
+                rows={1}
+                autoFocus={props.autoFocus}
+                value={draft}
+                placeholder={placeholder}
+                title={props.composerTitle}
+                aria-label="Message"
+                onChange={(event) => {
+                  setDraft(event.target.value);
+                  setPicked(0);
+                  setClosedAt(undefined);
+                }}
+                aria-autocomplete={props.completions ? 'list' : undefined}
+                role={props.completions ? 'combobox' : undefined}
+                aria-expanded={props.completions ? !!choice : undefined}
+                aria-controls={choice ? listId : undefined}
+                aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+              />
+              {hasExtras ? null : attachButtons}
+              {stacked ? <span className="gc-grow" /> : null}
+              {(running || props.canStop) && props.onStop ? (
+                <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
+                  Stop
+                </button>
+              ) : null}
+              <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
+                {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
+              </button>
+            </div>
+            {hasExtras ? (
+              <div className="gc-under">
+                {attachButtons}
+                <span className="gc-grow" />
+                {extras}
+              </div>
+            ) : null}
+            {props.hint === null ? null : (
+              <div className="gc-hint">
+                {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </OpenFile.Provider>
+      </OpenFile.Provider>
+    </AnswerQuestion.Provider>
   );
 }
 
@@ -758,6 +769,7 @@ function Entry({
   toolName: (name: string) => string;
 }) {
   const openFile = useContext(OpenFile);
+  const onAnswer = useContext(AnswerQuestion);
   switch (entry.kind) {
     case 'text':
       return <Markdown text={entry.text} streaming={entry.streaming} />;
@@ -834,6 +846,17 @@ function Entry({
         entry.request.kind === 'command' ? 'run' : entry.request.kind === 'file-change' ? 'apply edits to' : 'do';
       const subject = entry.request.summary ?? entry.request.id;
       const waiting = pending.some((request) => request.id === entry.request.id);
+      if (entry.request.kind === 'question' && entry.request.questions?.length) {
+        if (!entry.decision && waiting)
+          return <QuestionCard agent={agent} request={entry.request} onAnswer={onAnswer} onApprove={onApprove} />;
+        const given = entry.decision === 'approve' ? answerSummary(entry.request, entry.answers) : '';
+        return (
+          <div className="gc-approval gc-done">
+            {given ? '✓ Answered' : entry.decision ? '– Skipped' : '– Not answered'}:&nbsp;
+            <span className="gc-what">{given || subject}</span>
+          </div>
+        );
+      }
       if (entry.decision || !waiting) {
         // Not pending and no decision: the turn ended (or was stopped) before an answer.
         const label =

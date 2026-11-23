@@ -24,10 +24,10 @@ fail() {
   exit 1
 }
 
-command -v node >/dev/null 2>&1 || fail "needs Node.js 20 or newer (https://nodejs.org)"
+command -v node >/dev/null 2>&1 || fail "needs Node.js 22.5 or newer (https://nodejs.org)"
 command -v npm >/dev/null 2>&1 || fail "needs npm (it comes with Node.js)"
-major=$(node -p "process.versions.node.split('.')[0]")
-[ "$major" -ge 20 ] || fail "Node.js $(node -v) is too old; genaicode needs 20 or newer"
+recent=$(node -p "const [a, b] = process.versions.node.split('.').map(Number); a > 22 || (a === 22 && b >= 5) ? 1 : 0")
+[ "$recent" = 1 ] || fail "Node.js $(node -v) is too old; genaicode needs 22.5 or newer"
 
 mkdir -p "$HOME_DIR/versions"
 staging="$HOME_DIR/versions/.staging-install-$$"

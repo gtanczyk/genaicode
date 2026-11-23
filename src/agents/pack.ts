@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { TokenUsage } from '../core/types.js';
 import { findExecutable } from './discovery.js';
 import { approximateSize, EventQueue } from './event-queue.js';
+import { ownMcpServers } from './agent-mcp.js';
 import { startLocalMcpServer } from './mcp-server.js';
 import { isReadOnlyApproval } from './read-only.js';
 import type { McpTool } from './mcp-tools.js';
@@ -34,6 +35,7 @@ import type {
   ApprovalRequest,
   BudgetWarning,
   CodingAgent,
+  McpServer,
   RateLimit,
 } from './types.js';
 
@@ -48,8 +50,17 @@ export interface PackOptions {
   maxParallel?: number;
   /** Let the lead draft a message for the tower operator to review. */
   sessionProposalTool?: McpTool;
-  /** Replaces the briefing put in front of the lead's first prompt. */
-  brief?(members: readonly PackMember[]): string;
+  /**
+   * Replaces the briefing put in front of the lead's first prompt. `mcpServers` names the
+   * servers the lead can pass on to a task (`delegate`'s `mcpServers`).
+   */
+  brief?(members: readonly PackMember[], mcpServers?: readonly string[]): string;
+  /**
+   * MCP servers the lead may pass on to a delegated task by name, besides the task's own
+   * `mcpServers`. Default: the servers in the lead CLI's own config (`ownMcpServers`), so a
+   * worker can reach what the lead reaches (Claude Code only for now).
+   */
+  shareableMcpServers?(cwd: string, env: NodeJS.ProcessEnv | undefined): Promise<readonly McpServer[]>;
   /** Where worktrees go, relative to the repository root. Default `.genaicode/worktrees`. */
   worktreeDir?: string;
   /**
@@ -75,6 +86,8 @@ export interface PackMember {
   /** Delegated tasks it is running now. */
   running: number;
   steer: boolean;
+  /** `effort` values `delegate` accepts for it. Absent: effort is not configurable. */
+  effort?: readonly string[];
   /** The latest plan limits it reported, by window. */
   limits?: RateLimit[];
   /** How its last delegated task failed, when the agent itself was at fault. */
@@ -87,7 +100,14 @@ export type PackTaskStatus = 'running' | AgentResult['status'];
 export interface PackTask {
   id: string;
   agent: string;
+  /** A short name the lead gave the task. */
+  title?: string;
   prompt: string;
+  /** The model and effort the lead asked for, when it chose one. */
+  model?: string;
+  effort?: string;
+  /** Names of the MCP servers the task got from the lead. */
+  mcpServers?: string[];
   mode: 'worktree' | 'shared';
   status: PackTaskStatus;
   /** This running task accepts steering input. */
@@ -193,7 +213,11 @@ export function packApproval(id: string, agent: string, request: ApprovalRequest
 interface Sub {
   id: string;
   agent: CodingAgent;
+  title?: string;
   prompt: string;
+  model?: string;
+  effort?: string;
+  mcpServers?: McpServer[];
   mode: 'worktree' | 'shared';
   cwd: string;
   repo?: string;
@@ -218,6 +242,14 @@ interface Sub {
   ended: Promise<void>;
 }
 
+/** What `delegate` takes besides the agent, prompt, mode and directory. */
+interface TaskOptions {
+  title?: string;
+  model?: string;
+  effort?: string;
+  mcpServers?: McpServer[];
+}
+
 const CLIP = 4_000;
 const MAX_DIFF = 60_000;
 
@@ -233,7 +265,18 @@ function projectDirectory(cwd: string): string {
   }
 }
 
-function defaultBrief(members: readonly PackMember[], operatorMerge = false): string {
+/** Briefing lines on what a task can be given: a model, effort and the lead's MCP servers. */
+function taskBrief(mcpServers: readonly string[] = []): string[] {
+  return [
+    "- When the person names a model or effort for the work, pass it as `model` / `effort`; the agent's CLI decides",
+    '  which model names it knows. Give each task a short `title` for its card.',
+    mcpServers.length
+      ? `- A task gets none of your MCP servers unless you pass them by name in \`mcpServers\`. Yours: ${mcpServers.join(', ')}.`
+      : '- A task gets none of your MCP servers; give it the tools it needs in the prompt (a CLI it can run).',
+  ];
+}
+
+function defaultBrief(members: readonly PackMember[], operatorMerge = false, mcpServers?: readonly string[]): string {
   const names = members.filter((member) => member.installed).map((member) => member.name);
   return [
     'You lead a pack of coding agents on this machine. Besides doing work yourself, you can hand parts of it to the',
@@ -248,6 +291,7 @@ function defaultBrief(members: readonly PackMember[], operatorMerge = false): st
       ? '- Leave finished worktrees on their task cards for the operator to review, test and merge. Merge or discard them when the operator requests it.'
       : '- Wait for, and then merge or discard, every task before you finish.',
     '- Use `review` for an independent read-only review of a finished worker’s exact patch when requested.',
+    ...taskBrief(mcpServers),
     '- Delegate what gains from it: independent pieces in parallel, a second opinion or review from a different',
     '  agent, or work for an agent that still has quota when another ran out. Small tasks are faster done yourself.',
   ].join('\n');
@@ -257,14 +301,17 @@ function defaultBrief(members: readonly PackMember[], operatorMerge = false): st
  * A short briefing for an agent that works by itself and may hand work to others, as in
  * `genaicode ui --delegate`: the pack tools are there when the person asks for another agent.
  */
-export function delegationBrief(members: readonly PackMember[]): string {
+export function delegationBrief(members: readonly PackMember[], mcpServers?: readonly string[]): string {
   const names = members.filter((member) => member.installed).map((member) => member.name);
   return [
     `Other coding agents on this machine (${names.join(', ') || 'none'}) are available through the \`pack\` MCP tools.`,
     'When asked to involve another agent (a second opinion, a review, a parallel piece of work), use `delegate`',
     'and `wait`, never its CLI from a shell: started from a shell it cannot ask for approval, so it gets nothing done.',
+    'The request is the go-ahead: delegate right away instead of asking to confirm a plan, and ask only when you cannot',
+    'tell what the person wants. When the agent they name is not listed, pick the closest one and say so in one line.',
     'Give `delegate` a complete prompt and, for work in another directory, its `cwd`. Use mode `shared` for read-only',
     'work; a `worktree` task stays on its card for the person to review and merge.',
+    ...taskBrief(mcpServers),
   ].join('\n');
 }
 
@@ -365,6 +412,7 @@ export function pack(options: PackOptions): Pack {
             (sub.reviewer === member && sub.checks?.review?.status === 'running'),
         ).length,
         steer: !!member.capabilities.steer,
+        ...(member.capabilities.effort?.length ? { effort: member.capabilities.effort } : {}),
         ...(known.length ? { limits: known } : {}),
         ...(failure ? { lastFailure: failure } : {}),
       };
@@ -373,7 +421,11 @@ export function pack(options: PackOptions): Pack {
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
     agent: sub.agent.name,
+    ...(sub.title ? { title: sub.title } : {}),
     prompt: sub.prompt,
+    ...(sub.model ? { model: sub.model } : {}),
+    ...(sub.effort ? { effort: sub.effort } : {}),
+    ...(sub.mcpServers?.length ? { mcpServers: sub.mcpServers.map((server) => server.name) } : {}),
     mode: sub.mode,
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
@@ -434,6 +486,17 @@ export function pack(options: PackOptions): Pack {
       const reviewers = [lead, ...members].filter(
         (agent) => agent.runText && findExecutable(agent.command, task.env) !== null,
       );
+      // What the lead may pass on to a task: the servers it was given, then those of its own config.
+      const shareable: Promise<McpServer[]> = (async () => {
+        const own = await (options.shareableMcpServers ?? ((cwd, env) => ownMcpServers(lead.name, cwd, env)))(
+          leadCwd,
+          task.env,
+        ).catch(() => []);
+        const byName = new Map<string, McpServer>();
+        for (const server of [...own, ...(task.mcpServers ?? [])])
+          if (server.name !== 'pack') byName.set(server.name, server);
+        return [...byName.values()];
+      })();
       let leadRun: AgentRun | undefined;
       let stopped = false;
       let leadUsage: TokenUsage | undefined;
@@ -515,7 +578,7 @@ export function pack(options: PackOptions): Pack {
           throw new Error(`${running} tasks are running already (the most allowed). Wait for one to finish.`);
         // Taken before the first await, so calls made at the same moment cannot share a slot.
         starting += 1;
-        const setup = start(agent, prompt, args.mode, args.cwd).finally(() => {
+        const setup = start(agent, prompt, args).finally(() => {
           starting -= 1;
           settingUp.delete(setup);
         });
@@ -523,7 +586,45 @@ export function pack(options: PackOptions): Pack {
         return setup;
       };
 
-      const start = async (agent: CodingAgent, prompt: string, wanted: unknown, where: unknown): Promise<string> => {
+      const taskOptions = async (agent: CodingAgent, args: Record<string, unknown>): Promise<TaskOptions> => {
+        const text = (key: string) => {
+          const value = args[key];
+          if (value === undefined || value === null || value === '') return undefined;
+          if (typeof value !== 'string') throw new Error(`\`${key}\` is a string.`);
+          return value.trim() || undefined;
+        };
+        const title = text('title')?.replace(/\s+/g, ' ').slice(0, 80);
+        const model = text('model');
+        const effort = text('effort');
+        const levels = agent.capabilities.effort ?? [];
+        if (effort && !levels.includes(effort))
+          throw new Error(
+            levels.length
+              ? `${agent.name} takes effort ${levels.join(', ')}.`
+              : `${agent.name} has no configurable effort; leave \`effort\` out.`,
+          );
+        const names = args.mcpServers ?? [];
+        if (!Array.isArray(names) || names.some((name) => typeof name !== 'string'))
+          throw new Error('`mcpServers` is a list of server names.');
+        let mcpServers: McpServer[] | undefined;
+        if (names.length) {
+          if (!agent.capabilities.mcp) throw new Error(`${agent.name} cannot attach MCP servers.`);
+          const available = await shareable;
+          mcpServers = (names as string[]).map((name) => {
+            const server = available.find((candidate) => candidate.name === name);
+            if (!server)
+              throw new Error(
+                `No MCP server ${name} to pass on. Available: ${available.map((s) => s.name).join(', ') || 'none'}.`,
+              );
+            return server;
+          });
+        }
+        return { title, model, effort, mcpServers };
+      };
+
+      const start = async (agent: CodingAgent, prompt: string, args: Record<string, unknown>): Promise<string> => {
+        const { mode: wanted, cwd: where } = args;
+        const extra = await taskOptions(agent, args);
         if (where !== undefined && (typeof where !== 'string' || !where.trim()))
           throw new Error('`cwd` is a directory path.');
         const base = typeof where === 'string' ? projectDirectory(path.resolve(leadCwd, where)) : leadCwd;
@@ -543,6 +644,10 @@ export function pack(options: PackOptions): Pack {
           id,
           agent,
           prompt,
+          ...(extra.title ? { title: extra.title } : {}),
+          ...(extra.model ? { model: extra.model } : {}),
+          ...(extra.effort ? { effort: extra.effort } : {}),
+          ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           mode,
           cwd: base === leadCwd ? task.cwd : base,
           status: 'running',
@@ -579,6 +684,7 @@ export function pack(options: PackOptions): Pack {
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
 
         const onApproval = task.onApproval;
+        const onQuestion = task.onQuestion;
         // Only inside a repository the lead named, never `/` or the home folder as a whole.
         const readOnly =
           options.readOnlyCommands !== 'ask' &&
@@ -588,6 +694,9 @@ export function pack(options: PackOptions): Pack {
         const run = startRun(agent, {
           prompt,
           cwd: sub.cwd,
+          ...(extra.model ? { model: extra.model } : {}),
+          ...(extra.effort ? { effort: extra.effort } : {}),
+          ...(extra.mcpServers?.length ? { mcpServers: extra.mcpServers } : {}),
           ...(task.env ? { env: task.env } : {}),
           ...(task.permissions !== undefined ? { permissions: task.permissions } : {}),
           ...(onApproval
@@ -597,6 +706,9 @@ export function pack(options: PackOptions): Pack {
                     ? 'approve'
                     : onApproval(packApproval(id, agent.name, request), signal),
               }
+            : {}),
+          ...(onQuestion
+            ? { onQuestion: (request, signal) => onQuestion(packApproval(id, agent.name, request), signal) }
             : {}),
         });
         sub.run = run;
@@ -878,7 +990,23 @@ export function pack(options: PackOptions): Pack {
             type: 'object',
             properties: {
               agent: { type: 'string', description: 'Agent name, from `agents`.' },
+              title: {
+                type: 'string',
+                description: 'A short name for the task card, a few words (e.g. "Visual uplift of the game").',
+              },
               prompt: { type: 'string', description: 'The complete task, with all the context the agent needs.' },
+              model: {
+                type: 'string',
+                description:
+                  "Model for this task, in the agent's own naming, when the person asked for one. Leave out for the agent's default.",
+              },
+              effort: { type: 'string', description: 'Reasoning effort, one of the values `agents` lists for it.' },
+              mcpServers: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  'Names of your MCP servers the task needs (listed in your briefing): the agent gets them too, with your access.',
+              },
               mode: { type: 'string', enum: ['worktree', 'shared'] },
               cwd: {
                 type: 'string',
@@ -1004,9 +1132,10 @@ export function pack(options: PackOptions): Pack {
         let own: AgentResult;
         try {
           const roster = describeMembers(task.env);
+          const passable = (await shareable).map((server) => server.name);
           const brief = task.resume
             ? ''
-            : `${options.brief ? options.brief(roster) : defaultBrief(roster, options.operatorMerge)}\n\n`;
+            : `${options.brief ? options.brief(roster, passable) : defaultBrief(roster, options.operatorMerge, passable)}\n\n`;
           const run = startRun(lead, {
             ...task,
             prompt: `${brief}${task.prompt}`,
