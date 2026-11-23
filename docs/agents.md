@@ -665,8 +665,7 @@ turns are there to show. Only the end of a very long transcript is read (the las
 What a store does not keep stays undefined: Cursor has no usage, Antigravity and Vibe no model,
 and stores listed from an index without opening transcripts (Muse, Antigravity) give no latest
 reply. Codex, Muse, Antigravity, Cursor and Copilot's `session-store.db` fallback read SQLite
-files with `node:sqlite` (Node 22.5 or newer; on an older Node Codex, Muse and Antigravity land
-in `errors`, Cursor skips the model and Copilot needs `events.jsonl`). Subagent sessions and
+files with `node:sqlite`. Subagent sessions and
 archived threads are left out.
 
 A hosted driver lists what its platform lists, with `where: 'cloud'` and, where there is one, a

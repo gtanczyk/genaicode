@@ -48,6 +48,7 @@ export function parse(text) {
         version: head[1],
         date: head[5] ?? null,
         categories: Object.fromEntries(CATEGORIES.map((c) => [c, []])),
+        intro: [],
         start: index,
         end: lines.length,
       };
@@ -76,7 +77,10 @@ export function parse(text) {
     if (/^\s+\S/.test(line) && section && category) {
       const list = section.categories[category];
       if (list.length) list[list.length - 1] += ` ${line.trim()}`;
+      return;
     }
+    // Prose between a version's heading and its first category opens the release notes.
+    if (section && !category && (line.trim() || section.intro.length)) section.intro.push(line);
   });
   const unreleased = sections.filter((s) => s.version === UNRELEASED);
   if (unreleased.length !== 1)
@@ -110,7 +114,8 @@ export function nextVersion(current, section) {
 }
 
 function render(section, includeInternal) {
-  const out = [];
+  const intro = section.intro.join('\n').trim();
+  const out = intro ? [intro, ''] : [];
   for (const name of CATEGORIES) {
     if (name === 'Internal' && !includeInternal) continue;
     if (!section.categories[name].length) continue;
@@ -134,13 +139,7 @@ export function notes(text, version) {
   const section = parsed.sections.find((s) => s.version === version);
   if (!section) return null;
   const body = render(section, false);
-  if (body.length) return body.join('\n').trim();
-  return (
-    parsed.lines
-      .slice(section.start + 1, section.end)
-      .join('\n')
-      .trim() || null
-  );
+  return body.length ? body.join('\n').trim() : null;
 }
 
 function baseChangelog(ref) {
