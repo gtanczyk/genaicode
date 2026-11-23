@@ -17,6 +17,12 @@ export interface AgentTask {
   model?: string;
   /** Reasoning effort, in the agent's own vocabulary (see `capabilities.effort`). */
   effort?: string;
+  /**
+   * Collaboration / planning mode (`capabilities.plan`): `'plan'` asks the agent to research,
+   * clarify and produce a plan without editing files; `'default'` leaves Plan mode on a resumed
+   * session. Omitted keeps the driver's default (or the resumed session's mode).
+   */
+  mode?: AgentMode;
   /** Upper bound on agent turns / model steps, where the agent supports one. */
   maxTurns?: number;
   /** Child environment. Defaults to `process.env`. */
@@ -122,6 +128,13 @@ export interface AgentPermissions {
   approval?: ApprovalPolicy;
   sandbox?: SandboxPolicy;
 }
+
+/**
+ * How the agent approaches a task (`AgentTask.mode`, `capabilities.plan`).
+ * - `default`: normal editing/execution behavior (and leaves Plan mode on a resumed session).
+ * - `plan`: research, ask clarifying questions and propose a plan without editing files.
+ */
+export type AgentMode = 'default' | 'plan';
 
 export type ApprovalHandler = (
   request: ApprovalRequest,
@@ -337,6 +350,8 @@ export interface AgentCapabilities {
   remote?: boolean;
   /** Honors `AgentTask.resume`. */
   resume?: boolean;
+  /** Honors `AgentTask.mode` (`'plan'`): plans and asks clarifying questions without editing files. */
+  plan?: boolean;
   /** `AgentTask.permissions` values the driver can translate. Absent: none. */
   permissions?: {
     approval?: readonly ApprovalPolicy[];

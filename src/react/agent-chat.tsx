@@ -444,6 +444,7 @@ export function AgentChat(props: AgentChatProps) {
               ) : null}
               <b className="gc-agent">{state.agent || 'Agent'}</b>
               {state.model ? <span className="gc-model">{state.model}</span> : null}
+              {state.mode === 'plan' ? <span className="gc-chip">plan</span> : null}
               {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
               <span className="gc-spacer" />
               {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}

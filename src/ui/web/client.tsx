@@ -346,7 +346,10 @@ function App() {
     });
   };
 
-  const efforts = view?.agents.find((agent) => agent.name === session?.agent)?.effort ?? [];
+  const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
+  const efforts = currentAgent?.effort ?? [];
+  const canPlan = !!currentAgent?.plan;
+  const planOn = session?.mode === 'plan';
   // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
   const controls =
     view && session ? (
@@ -403,6 +406,21 @@ function App() {
               </option>
             ))}
           </select>
+        )}
+        {canPlan && (
+          <button
+            type="button"
+            className={planOn ? 'plan-on' : undefined}
+            title={
+              planOn
+                ? 'Plan mode on: the agent plans and asks without editing. Click to leave it.'
+                : 'Plan mode: from the next prompt, the agent plans and asks without editing'
+            }
+            aria-pressed={planOn}
+            onClick={() => control(`/plan ${planOn ? 'off' : 'on'}`)}
+          >
+            {planOn ? '✓ Plan' : 'Plan'}
+          </button>
         )}
         <button
           type="button"

@@ -178,6 +178,9 @@ describe('AgentChat', () => {
     expect($('.gc-header').textContent).toContain('1.5k tokens · $0.012');
     expect($('.gc-chat').dataset.status).toBe('running');
     expect(button('Queue')).toBeTruthy();
+
+    render({ state: fixture({ mode: 'plan' }) });
+    expect(text('.gc-header .gc-chip')).toContain('plan');
   });
 
   it('shows the whole tool argument, not a cut one', () => {

@@ -77,6 +77,7 @@ const contract = {
 const items = {
   userMessage: ['id', 'content'],
   agentMessage: ['id', 'text'],
+  plan: ['id', 'text'],
   commandExecution: ['id', 'command', 'cwd', 'aggregatedOutput', 'exitCode'],
   fileChange: ['id', 'changes', 'status'],
   mcpToolCall: ['id', 'server', 'tool', 'arguments', 'result', 'error'],

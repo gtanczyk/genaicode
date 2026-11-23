@@ -58,6 +58,7 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
     command: options.command ?? 'gemini',
     capabilities: {
       usage: true,
+      plan: true,
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
     args: (task) => geminiArgs(task, options),
@@ -74,9 +75,19 @@ export function geminiArgs(task: AgentTask, options: GeminiAgentOptions = {}): s
   const flags = geminiPermissionFlags(permissions);
   const owned = flags.args.includes('--approval-mode');
   exclusiveOption('gemini', 'approvalMode', options.approvalMode !== undefined, 'approval/sandbox', owned);
+  if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
+    throw new Error(`Invalid task.mode for gemini: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   const args = ['--output-format', 'stream-json'];
-  if (!owned) args.push('--approval-mode', options.approvalMode ?? 'auto_edit');
-  args.push(...flags.args);
+  if (task.mode === 'plan') {
+    args.push('--approval-mode', 'plan');
+    for (let i = 0; i < flags.args.length; i++) {
+      if (flags.args[i] === '--approval-mode') i++;
+      else args.push(flags.args[i]!);
+    }
+  } else {
+    if (!owned) args.push('--approval-mode', options.approvalMode ?? 'auto_edit');
+    args.push(...flags.args);
+  }
   if (options.trustWorkspace ?? true) args.push('--skip-trust');
   if (task.model) args.push('--model', task.model);
   if (task.extraArgs) args.push(...task.extraArgs);

@@ -173,6 +173,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       rateLimits: true,
       mcp: true,
       resume: true,
+      plan: true,
       approvals: true,
       questions: true,
       permissions: {
@@ -349,6 +350,8 @@ export function claudeArgs(
   const permissions = resolvePermissions(task.permissions);
   const owned = permissions.approval !== undefined || permissions.sandbox !== undefined;
   exclusiveOption('claude', 'permissionMode', options.permissionMode !== undefined, 'approval/sandbox', owned);
+  if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
+    throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   args.push('--output-format', 'stream-json');
   if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
   const inheritMode = inheritPermissionMode ?? hasDefaultModeInSettings(undefined, options.settings);
@@ -359,6 +362,11 @@ export function claudeArgs(
       : inheritMode
         ? []
         : ['--permission-mode', 'acceptEdits'];
+  if (task.mode === 'plan') {
+    const at = modeArgs.indexOf('--permission-mode');
+    if (at >= 0) modeArgs[at + 1] = 'plan';
+    else modeArgs.push('--permission-mode', 'plan');
+  }
   if (options.settings) {
     // One `--settings`: a second one would replace the first.
     const at = modeArgs.indexOf('--settings');

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { handoffTranscript } from './handoff.js';
 import { createAgentSession } from './session.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
 
@@ -902,5 +903,74 @@ describe('createAgentSession', () => {
     session.setAgent(fixed);
     expect(session.get()).toMatchObject({ sessionId: 's-1', effort: 'low' });
     expect(() => session.setEffort('high')).toThrow(/keeps the effort/);
+  });
+
+  it('toggles Plan mode per turn, sends mode default when leaving Plan on resume, and clears it on unsupported agents', async () => {
+    const planner = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-plan' });
+        },
+        async () => {},
+        async () => {},
+        async () => {},
+      ],
+      { resume: true, plan: true },
+      'planner',
+    );
+    const plain = fakeAgent([async () => {}], { resume: true }, 'plain');
+    const session = createAgentSession({ agent: planner.agent, cwd: '/w' });
+    expect(session.get().mode).toBeUndefined();
+    session.setMode('plan');
+    expect(session.get().mode).toBe('plan');
+    session.send('plan one');
+    await session.idle();
+    session.send('plan two');
+    await session.idle();
+    session.setMode('default');
+    expect(session.get().mode).toBeUndefined();
+    session.send('build it');
+    await session.idle();
+    session.send('polish it');
+    await session.idle();
+    expect(planner.tasks.map((task) => [task.resume, task.mode])).toEqual([
+      [undefined, 'plan'],
+      ['s-plan', 'plan'],
+      ['s-plan', 'default'],
+      ['s-plan', undefined],
+    ]);
+
+    session.setMode('plan');
+    session.setAgent(plain.agent);
+    expect(session.get().mode).toBeUndefined();
+    expect(() => session.setMode('plan')).toThrow(/has no Plan mode/);
+    session.close();
+  });
+
+  it('never writes a secret question answer into the handoff transcript', async () => {
+    const { agent } = fakeAgent([
+      async (task, emit) => {
+        const request = {
+          id: 'q-sec',
+          kind: 'question' as const,
+          summary: 'API token?',
+          questions: [{ id: 'tok', question: 'API token?', options: [], freeText: true, secret: true }],
+        };
+        emit({ type: 'approval-request', request });
+        const answers = await task.onQuestion!(request);
+        expect(answers).toEqual({ tok: ['super-secret-value'] });
+        emit({ type: 'approval-resolved', id: 'q-sec', decision: 'approve', answers: { tok: ['••••'] } });
+        emit({ type: 'message', text: 'Saved.' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('configure');
+    await expect.poll(() => session.get().approvals.length).toBe(1);
+    expect(session.answer('q-sec', { tok: ['super-secret-value'] })).toBe(true);
+    await session.idle();
+    const transcript = handoffTranscript(session.get().turns);
+    expect(transcript).not.toContain('super-secret-value');
+    expect(JSON.stringify(session.get())).not.toContain('super-secret-value');
+    session.close();
   });
 });

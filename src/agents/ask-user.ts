@@ -6,6 +6,9 @@ import type { AgentQuestion, ApprovalRequest, McpServer, QuestionAnswers, Questi
 /** The tool an agent calls to ask the person to choose. */
 export const ASK_USER_TOOL = 'ask_user';
 
+/** Default MCP server name for `startQuestionChannel()`. Drivers with a mode-specific native question tool drop it in those modes. */
+export const QUESTION_SERVER_NAME = 'genaicode_ask';
+
 const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 8;
 const MAX_TEXT = 2_000;
@@ -135,7 +138,7 @@ export interface QuestionChannel {
 export async function startQuestionChannel(options: { name?: string } = {}): Promise<QuestionChannel> {
   let handler: QuestionHandler | undefined;
   const server = await startLocalMcpServer({
-    name: options.name ?? 'genaicode_ask',
+    name: options.name ?? QUESTION_SERVER_NAME,
     tools: [askUserTool(() => handler)],
     instructions: `Use ${ASK_USER_TOOL} when a choice is the user's to make; it shows them your options.`,
   });

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { defaultAgents } from './agents/defaults.js';
 import type { AgentSession, SessionState } from './agents/session.js';
-import type { AgentTask, ApprovalDecision, CodingAgent, QuestionAnswers } from './agents/types.js';
+import type { AgentMode, AgentTask, ApprovalDecision, CodingAgent, QuestionAnswers } from './agents/types.js';
 import { createOverlay, type Overlay, type OverlayLog } from './overlay/server.js';
 
 /**
@@ -25,12 +25,13 @@ export interface EmbeddedWebOptions {
   agent?: string;
   model?: string;
   effort?: string;
+  mode?: AgentMode;
   /** Continue this agent session on the first turn. */
   resume?: string;
   /** Environment for the agent CLIs. Default: `process.env`. */
   env?: NodeJS.ProcessEnv;
   /** Task fields for every turn: `mcpServers`, `timeoutMs`, `maxTurns`, `extraArgs`. */
-  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
+  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'mode' | 'resume' | 'signal' | 'onApproval' | 'env'>;
   /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
   transformPrompt?(prompt: string): string;
   /** Approve every permission request without asking. */

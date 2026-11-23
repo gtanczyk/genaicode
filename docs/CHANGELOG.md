@@ -8,6 +8,14 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- Plan mode (`task.mode: 'plan'`, `capabilities.plan`, `AgentSession.setMode()`, `CodexLiveOptions.collaborationMode`, and `/plan` + the Plan toggle in `genaicode chat`, `ui` and the desktop app): Codex enters app-server Plan mode (re-sent on resume only when changed), Claude Code uses `--permission-mode plan` and Gemini uses `--approval-mode plan`. When Codex offers its own `request_user_input` tool (Plan mode or `features.default_mode_request_user_input`), `codexLive()` drops `genaicode_ask` so Codex gets only one question tool per turn (#309)
+
+### Fixed
+
+- `codexLive()` and `codexTurns()` read Codex's Plan-mode output (`item/plan/delta` and completed `plan` items) instead of dropping it (#309)
+
 ## 3.0.1 — 2026-11-23
 
 **Genaicode 3 is a desktop app.** Run Claude Code, Codex, Antigravity and six more coding agents together, on the logins you already have: you give one prompt, a lead agent splits the work, the others take a task each, and you review the changes and merge. [Download it for macOS or Linux](https://grzegorz.tanczyk.pl/genaicode/), or `brew trust gtanczyk/genaicode && brew install --cask gtanczyk/genaicode/genaicode`. The command line and the TypeScript API stay: `npx genaicode`.

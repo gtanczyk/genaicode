@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { claudeArgs, createClaudeParser } from './claude.js';
 import { codexArgs, createCodexParser } from './codex.js';
-import { codexChangesDiff } from './codex-live.js';
+import { codexChangesDiff, codexNotification } from './codex-live.js';
 import { createMuseParser, museArgs } from './muse.js';
 import { museNotification } from './muse-live.js';
 import type { AgentOutputParser } from '../cli-agent.js';
@@ -90,6 +90,21 @@ describe('claude driver', () => {
       '--permission-mode',
       'plan',
     ]);
+    // task.mode: 'plan' forces --permission-mode plan even when inheriting defaultMode or setting permissions.
+    const planned = claudeArgs({ prompt: 'hi', cwd: '.', mode: 'plan' }, {}, undefined, undefined, false, true);
+    expect(planned.slice(planned.indexOf('--permission-mode'), planned.indexOf('--permission-mode') + 2)).toEqual([
+      '--permission-mode',
+      'plan',
+    ]);
+    const plannedPerms = claudeArgs({
+      prompt: 'hi',
+      cwd: '.',
+      mode: 'plan',
+      permissions: { approval: 'ask', sandbox: 'workspace-write' },
+    });
+    expect(
+      plannedPerms.slice(plannedPerms.indexOf('--permission-mode'), plannedPerms.indexOf('--permission-mode') + 2),
+    ).toEqual(['--permission-mode', 'plan']);
   });
 
   it('decodes stream-json into agent events', () => {
@@ -287,6 +302,15 @@ describe('codex driver', () => {
     ).toEqual([
       { type: 'stderr', text: note },
       { type: 'error', message: 'stream disconnected' },
+    ]);
+  });
+
+  it('maps Codex Plan mode deltas and completed plan items to text events', () => {
+    expect(codexNotification('item/plan/delta', { delta: '## Plan\n' })).toEqual([
+      { type: 'text-delta', text: '## Plan\n' },
+    ]);
+    expect(codexNotification('item/completed', { item: { id: 'p1', type: 'plan', text: '## Plan\nDo X.' } })).toEqual([
+      { type: 'message', text: '## Plan\nDo X.' },
     ]);
   });
 });

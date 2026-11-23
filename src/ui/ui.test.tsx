@@ -11,7 +11,16 @@ import { PackActionError, type PackTask } from '../agents/pack.js';
 import { sessionTools, type SessionInfo, type SessionSource } from '../agents/sessions/index.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import { createChatController, NoAgentError } from './controller.js';
-import { needsAttention, parseShell, parseSlash, relativePath, shortId, toolSummary, turnFooter } from './format.js';
+import {
+  needsAttention,
+  parseShell,
+  parseSlash,
+  relativePath,
+  shortId,
+  statusParts,
+  toolSummary,
+  turnFooter,
+} from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { parseCommand, startWebUi } from './web/server.js';
@@ -89,6 +98,10 @@ describe('format helpers', () => {
     expect(parseSlash('/bark')).toEqual({ kind: 'bark' });
     expect(parseSlash('/bark off')).toEqual({ kind: 'bark', on: false });
     expect(parseSlash('/bark of')).toEqual({ kind: 'bark', invalid: 'of' });
+    expect(parseSlash('/plan')).toEqual({ kind: 'plan' });
+    expect(parseSlash('/plan on')).toEqual({ kind: 'plan', on: true });
+    expect(parseSlash('/plan off')).toEqual({ kind: 'plan', on: false });
+    expect(parseSlash('/plan maybe')).toEqual({ kind: 'plan', invalid: 'maybe' });
     expect(parseSlash('/web')).toEqual({ kind: 'web', off: false });
     expect(parseSlash('/ui off')).toEqual({ kind: 'web', off: true });
     expect(parseSlash('/web now')).toEqual({ kind: 'web', off: false, invalid: 'now' });
@@ -360,6 +373,39 @@ describe('chat controller', () => {
     expect(both.get().session.effort).toBe('low');
     await both.session.idle();
     both.close();
+  });
+
+  it('toggles Plan mode with /plan, exposes it in agents and statusParts, and rejects unsupported agents', async () => {
+    const planner = { ...echoAgent('planner'), capabilities: { resume: true, plan: true } };
+    const plain = echoAgent('plain');
+    const chat = createChatController({ agents: [planner, plain], cwd: '/w', env });
+    expect(chat.get().agents.map((agent) => [agent.name, agent.plan])).toEqual([
+      ['planner', true],
+      ['plain', undefined],
+    ]);
+    chat.submit('/plan');
+    expect(chat.get().session.mode).toBe('plan');
+    expect(statusParts(chat.get().session)).toContain('plan');
+    chat.submit('design it');
+    await chat.session.idle();
+    expect(planner.tasks[0].mode).toBe('plan');
+
+    chat.submit('/plan off');
+    expect(chat.get().session.mode).toBeUndefined();
+    expect(statusParts(chat.get().session)).not.toContain('plan');
+    chat.submit('build it');
+    await chat.session.idle();
+    expect(planner.tasks[1].mode).toBe('default');
+
+    chat.submit('/plan bogus');
+    expect(chat.get().notices.at(-1)?.tone).toBe('error');
+
+    chat.submit('/plan on');
+    chat.submit('/agent plain');
+    expect(chat.get().session.mode).toBeUndefined();
+    chat.submit('/plan');
+    expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: 'plain has no Plan mode.' });
+    chat.close();
   });
 
   it('toggles the bark', () => {

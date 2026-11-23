@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { prepareCodex } from './codex.js';
-import { codexLive, prepareCodexLive } from './codex-live.js';
+import { codexHasOwnQuestionTool, codexLive, prepareCodexLive } from './codex-live.js';
 import { prepareCopilot } from './copilot.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'genaicode-mcp-isolation-'));
@@ -134,5 +134,47 @@ describe.skipIf(process.platform === 'win32')('only the task MCP servers', () =>
     await expect(prepareCodex({ prompt: 'go', cwd: dir }, { command, onlyTaskMcpServers: true })).rejects.toThrow(
       /could not list/,
     );
+  });
+
+  it('drops genaicode_ask in prepareCodexLive when Codex offers its own request_user_input', async () => {
+    const ask = { name: 'genaicode_ask', url: 'http://127.0.0.1:2/mcp', toolTimeoutSec: 86_400, trusted: true };
+    const command = fakeCli('codex-plan', [{ name: 'github' }]);
+    const base = { prompt: 'plan', cwd: dir, mcpServers: [app, ask] };
+
+    // Normal mode: both servers reach Codex.
+    const normal = await prepareCodexLive(base, { command });
+    expect(normal.args.join(' ')).toContain('mcp_servers.genaicode_ask.url=');
+    expect(normal.args.join(' ')).toContain('mcp_servers.app.url=');
+
+    // Plan mode (task.mode or options.collaborationMode): genaicode_ask is dropped, other servers stay.
+    for (const [task, opts] of [
+      [{ ...base, mode: 'plan' as const }, { command }],
+      [base, { command, collaborationMode: 'plan' as const }],
+      [{ ...base, extraArgs: ['-c', 'features.default_mode_request_user_input=true'] }, { command }],
+      [{ ...base, extraArgs: ['--enable', 'default_mode_request_user_input'] }, { command }],
+      [{ ...base, extraArgs: ['--enable=default_mode_request_user_input'] }, { command }],
+      [{ ...base, extraArgs: ['--config=features.default_mode_request_user_input = true'] }, { command }],
+    ] as const) {
+      const prepared = await prepareCodexLive(task, opts);
+      expect(prepared.args.join(' ')).not.toContain('genaicode_ask');
+      expect(prepared.args.join(' ')).toContain('mcp_servers.app.url=');
+    }
+
+    // Disabling the feature flag later or overriding collaborationMode to 'default' keeps genaicode_ask.
+    expect(
+      codexHasOwnQuestionTool(
+        {
+          mode: 'default',
+          extraArgs: [
+            '-c',
+            'features.default_mode_request_user_input=true',
+            '--disable',
+            'default_mode_request_user_input',
+          ],
+        },
+        { collaborationMode: 'plan' },
+      ),
+    ).toBe(false);
+    expect(codexHasOwnQuestionTool({ extraArgs: ['--', '--enable', 'default_mode_request_user_input'] })).toBe(false);
   });
 });

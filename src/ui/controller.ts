@@ -16,6 +16,7 @@ import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/to
 import { label, type SessionSendGate } from '../agents/sessions/send-tool.js';
 import type {
   AgentBudget,
+  AgentMode,
   AgentTask,
   ApprovalDecision,
   CodingAgent,
@@ -32,6 +33,8 @@ export interface AgentChoice {
   steer: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
+  /** Supports Plan mode (`/plan`). */
+  plan?: boolean;
 }
 
 /** A line from the front end itself (agent switched, help...), shown after turn `afterTurn`. */
@@ -91,6 +94,7 @@ export interface ChatOptions {
   cwd: string;
   model?: string;
   effort?: string;
+  mode?: AgentMode;
   resume?: string;
   env?: NodeJS.ProcessEnv;
   /** Approve every permission request without asking. */
@@ -101,7 +105,7 @@ export interface ChatOptions {
   transformPrompt?(prompt: string): string;
   /** Backs `/web`. Without it, `/web` only says the browser UI is not available here. */
   web?: WebHandoff;
-  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'resume' | 'signal' | 'onApproval' | 'env'>;
+  task?: Omit<AgentTask, 'prompt' | 'cwd' | 'model' | 'effort' | 'mode' | 'resume' | 'signal' | 'onApproval' | 'env'>;
   /** Caps on the whole session (`AgentSessionOptions.budget`). */
   budget?: AgentBudget;
   /** Let the agent publish artifacts (`genaicode chat` and `ui` do unless `--no-artifacts`). Default true. */
@@ -157,6 +161,7 @@ export function createChatController(options: ChatOptions): ChatController {
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
+    ...(agent.capabilities.plan ? { plan: true } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
   let initial: CodingAgent | undefined;
@@ -186,6 +191,7 @@ export function createChatController(options: ChatOptions): ChatController {
     cwd: options.cwd,
     model: options.model,
     effort: options.effort,
+    mode: options.mode,
     resume: options.resume,
     task: { ...options.task, env },
     ...(options.budget ? { budget: options.budget } : {}),
@@ -621,6 +627,24 @@ export function createChatController(options: ChatOptions): ChatController {
               : 'Auto-approve off: the agent asks again.',
           );
           return 'ok';
+        case 'plan': {
+          if (command.invalid !== undefined) {
+            notice(`Use /plan, /plan on or /plan off (not "${command.invalid}").`, 'error');
+            return 'ok';
+          }
+          const on = command.on ?? session.get().mode !== 'plan';
+          try {
+            session.setMode(on ? 'plan' : 'default');
+            notice(
+              on
+                ? 'Plan mode on: from the next prompt, the agent plans and asks without editing. /plan off leaves it.'
+                : 'Plan mode off: back to normal mode from the next prompt.',
+            );
+          } catch (error) {
+            notice(errorText(error), 'error');
+          }
+          return 'ok';
+        }
         case 'web':
           web(command, source);
           return 'ok';

@@ -19,6 +19,7 @@ export type {
   AgentCapabilities,
   AgentEvent,
   AgentFailure,
+  AgentMode,
   AgentPermissions,
   AgentQuestion,
   AgentQuestionOption,
@@ -42,7 +43,7 @@ export type {
 } from './agents/types.js';
 export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
-export { ASK_USER_TOOL, askUserTool, startQuestionChannel } from './agents/ask-user.js';
+export { ASK_USER_TOOL, askUserTool, QUESTION_SERVER_NAME, startQuestionChannel } from './agents/ask-user.js';
 export type { QuestionChannel } from './agents/ask-user.js';
 export type {
   ApprovalOutcome,
@@ -73,8 +74,16 @@ export type {
   ClaudeApprovalToolOptions,
   McpToolResult,
 } from './agents/drivers/claude-approvals.js';
-export { codexLive, codexNotification, codexRateLimits, codexThreadPolicy } from './agents/drivers/codex-live.js';
-export type { CodexLiveOptions } from './agents/drivers/codex-live.js';
+export {
+  codexCollaborationMode,
+  codexHasOwnQuestionTool,
+  codexLive,
+  codexNotification,
+  codexRateLimits,
+  codexThreadPolicy,
+  prepareCodexLive,
+} from './agents/drivers/codex-live.js';
+export type { CodexCollaborationMode, CodexLiveOptions } from './agents/drivers/codex-live.js';
 export { museLive, museNotification } from './agents/drivers/muse-live.js';
 export type { MuseLiveOptions } from './agents/drivers/muse-live.js';
 export { PROVIDER_CREDENTIAL_VARS, scrubEnv, withoutProviderCredentials } from './agents/env.js';

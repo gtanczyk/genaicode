@@ -21,7 +21,9 @@ const codex = process.argv.includes('app-server');
 const mode = process.env.FAKE_MODE ?? 'basic';
 const send = (value) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\\n');
 const note = (method, params) => send({ method, params: codex ? { threadId: 'th-1', ...params } : { sessionId: 'se-1', ...params } });
+let initParams = {};
 let started = {};
+let turnParams = {};
 let receipt;
 const decisions = [];
 let decidedAll = false;
@@ -67,16 +69,23 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     decidedAll = true;
     return museFinish();
   }
-  if (msg.method === 'initialize') return send({ id: msg.id, result: {} });
-  if (msg.method === 'thread/start') { started = msg.params; return send({ id: msg.id, result: { thread: { id: 'th-1' } } }); }
+  if (msg.method === 'initialize') { initParams = msg.params ?? {}; return send({ id: msg.id, result: {} }); }
+  if (msg.method === 'thread/start') {
+    started = msg.params;
+    return send({ id: msg.id, result: { thread: { id: 'th-1' }, model: 'gpt-5', reasoningEffort: 'medium' } });
+  }
   if (msg.method === 'thread/resume') {
     started = { ...msg.params, resumed: msg.params.threadId };
     if (mode === 'usage-replay') note('thread/tokenUsage/updated', { turnId: 'old', tokenUsage: { total: { inputTokens: 1000, outputTokens: 80, cachedInputTokens: 500 } } });
-    return send({ id: msg.id, result: { thread: { id: 'th-1', status: { type: mode === 'busy' ? 'active' : 'idle' } } } });
+    const collab = process.env.FAKE_COLLAB_MODE
+      ? { mode: process.env.FAKE_COLLAB_MODE, settings: { model: 'gpt-5', reasoning_effort: 'medium', developer_instructions: '' } }
+      : null;
+    return send({ id: msg.id, result: { thread: { id: 'th-1', status: { type: mode === 'busy' ? 'active' : 'idle' } }, model: 'gpt-5', reasoningEffort: 'medium', collaborationMode: collab } });
   }
   if (msg.method === 'session/start') { started = msg.params; return send({ id: msg.id, result: { session: { sessionId: 'se-1' } } }); }
   if (msg.method === 'session/resume') { started = { resumed: msg.params.sessionId, excludeItems: msg.params.excludeItems }; return send({ id: msg.id, result: { session: { sessionId: 'se-1' }, history: { mode: 'none' }, pendingRequests: [] } }); }
   if (msg.method === 'turn/start') {
+    turnParams = msg.params ?? {};
     if (mode === 'usage-replay' || mode === 'usage-last') {
       const update = (input, output, cached, last) => note('thread/tokenUsage/updated', { turnId: 'tu-1', tokenUsage: {
         total: { inputTokens: input, outputTokens: output, cachedInputTokens: cached }, last,
@@ -115,6 +124,15 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     }
     if (mode === 'basic') finishTurn(started.resumed ? 'resumed ' + started.resumed + ' excludeItems:' + started.excludeItems : 'started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
     if (mode === 'policy') finishTurn(JSON.stringify({ approvalPolicy: started.approvalPolicy, approvalMode: started.approvalMode, sandbox: started.sandbox }));
+    if (mode === 'plan-echo' && codex) {
+      note('item/plan/delta', { itemId: 'p1', delta: 'Step 1. ' });
+      note('item/completed', { item: { id: 'p1', type: 'plan', text: JSON.stringify({ init: initParams.capabilities, collaborationMode: turnParams.collaborationMode, effort: turnParams.effort }) } });
+      note('turn/completed', { turn: { id: 'tu-1', status: 'completed' } });
+    }
+    if (mode === 'question-secret' && codex) {
+      send({ id: 99, method: 'item/tool/requestUserInput', params: { threadId: 'th-1', turnId: 'tu-1', itemId: 'call_sec', isBlocking: true, autoResolutionMs: null, questions: [{ id: 'tok', header: 'Token', question: 'Enter token', isOther: false, isSecret: true, options: null }] } });
+      return;
+    }
     return;
   }
   if (msg.method === 'turn/steer') {
@@ -299,6 +317,134 @@ describe('codexLive', () => {
     const run = codexLive({ command: codexBin }).run({ prompt: 'go', cwd: dir, env: env('steer') });
     setTimeout(() => run.abort(), 200);
     await expect(run.result).resolves.toMatchObject({ status: 'aborted' });
+  });
+
+  it('sends collaborationMode for Plan mode, re-sends on resume only when changed, and reads plan items', async () => {
+    const ask = async (
+      task: Parameters<ReturnType<typeof codexLive>['run']>[0],
+      options: Parameters<typeof codexLive>[0] = {},
+    ) => {
+      const run = codexLive({ command: codexBin, ...options }).run(task);
+      const events = await collect(run);
+      const result = await run.result;
+      expect(result.ok).toBe(true);
+      expect(events).toContainEqual({ type: 'text-delta', text: 'Step 1. ' });
+      return JSON.parse(result.text!) as Record<string, unknown>;
+    };
+
+    // Normal fresh turn: neither experimentalApi nor collaborationMode is sent.
+    expect(await ask({ prompt: 'go', cwd: dir, env: env('plan-echo') })).toEqual({});
+
+    // Fresh turn in Plan mode via task.mode: opts into experimentalApi and sends collaborationMode.
+    expect(await ask({ prompt: 'plan', cwd: dir, mode: 'plan', env: env('plan-echo') })).toEqual({
+      init: { experimentalApi: true },
+      collaborationMode: {
+        mode: 'plan',
+        settings: { model: 'gpt-5', reasoning_effort: 'medium', developer_instructions: null },
+      },
+    });
+
+    // Driver option collaborationMode, with explicit model and effort.
+    expect(
+      await ask(
+        { prompt: 'plan', cwd: dir, model: 'o3', effort: 'low', env: env('plan-echo') },
+        { collaborationMode: 'plan' },
+      ),
+    ).toEqual({
+      init: { experimentalApi: true },
+      effort: 'low',
+      collaborationMode: {
+        mode: 'plan',
+        settings: { model: 'o3', reasoning_effort: 'low', developer_instructions: null },
+      },
+    });
+
+    // Resuming a thread already in Plan mode with mode: 'plan' does NOT re-send collaborationMode.
+    expect(
+      await ask({
+        prompt: 'refine',
+        cwd: dir,
+        resume: 'th-1',
+        mode: 'plan',
+        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'plan' },
+      }),
+    ).toEqual({ init: { experimentalApi: true } });
+
+    // Resuming a thread in default mode with mode: 'plan' enters Plan mode.
+    expect(
+      await ask({
+        prompt: 'plan now',
+        cwd: dir,
+        resume: 'th-1',
+        mode: 'plan',
+        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'default' },
+      }),
+    ).toEqual({
+      init: { experimentalApi: true },
+      collaborationMode: {
+        mode: 'plan',
+        settings: { model: 'gpt-5', reasoning_effort: 'medium', developer_instructions: null },
+      },
+    });
+
+    // Resuming a thread in Plan mode with mode: 'default' switches back to default.
+    expect(
+      await ask({
+        prompt: 'implement',
+        cwd: dir,
+        resume: 'th-1',
+        mode: 'default',
+        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'plan' },
+      }),
+    ).toEqual({
+      init: { experimentalApi: true },
+      collaborationMode: {
+        mode: 'default',
+        settings: { model: 'gpt-5', reasoning_effort: 'medium', developer_instructions: null },
+      },
+    });
+
+    // Resuming a thread already in default mode with mode: 'default' does NOT re-send collaborationMode.
+    expect(
+      await ask({
+        prompt: 'keep going',
+        cwd: dir,
+        resume: 'th-1',
+        mode: 'default',
+        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'default' },
+      }),
+    ).toEqual({ init: { experimentalApi: true } });
+
+    // Resuming a thread in Plan mode with mode omitted inherits Plan mode without sending collaborationMode.
+    expect(
+      await ask({
+        prompt: 'keep planning',
+        cwd: dir,
+        resume: 'th-1',
+        env: { ...env('plan-echo'), FAKE_COLLAB_MODE: 'plan' },
+      }),
+    ).toEqual({});
+  });
+
+  it('masks secret requestUserInput answers in events while sending the real value to Codex', async () => {
+    const run = codexLive({ command: codexBin }).run({
+      prompt: 'ask secret',
+      cwd: dir,
+      mode: 'plan',
+      env: env('question-secret'),
+      onQuestion: () => ({ tok: ['s3cret-token-value'] }),
+    });
+    const events = await collect(run);
+    expect(events).toContainEqual({
+      type: 'approval-resolved',
+      id: 'call_sec',
+      decision: 'approve',
+      answers: { tok: ['••••'] },
+    });
+    expect(JSON.stringify(events.filter((event) => event.type !== 'message' && event.type !== 'done'))).not.toContain(
+      's3cret-token-value',
+    );
+    expect((await run.result).text).toBe('decision:{"answers":{"tok":{"answers":["s3cret-token-value"]}}}');
   });
 });
 

@@ -141,6 +141,17 @@ describe('sessions asked of the Codex app server', () => {
     expect(read[1]!.entries).toMatchObject([{ kind: 'tool', name: 'docs.search', isError: true }, { kind: 'text' }]);
     expect(read[0]!.startedAt).toBe(100_000);
     expect(codexTurns([null, { items: 'no' }])).toEqual([]);
+    expect(
+      codexTurns([
+        {
+          id: 't-plan',
+          items: [
+            { type: 'userMessage', id: 'u1', content: [{ type: 'text', text: 'plan it' }] },
+            { type: 'plan', id: 'p1', text: '1. Do A.\n2. Do B.' },
+          ],
+        },
+      ]),
+    ).toMatchObject([{ prompt: 'plan it', entries: [{ kind: 'text', text: '1. Do A.\n2. Do B.' }] }]);
   });
 });
 
