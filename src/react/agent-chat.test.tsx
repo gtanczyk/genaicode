@@ -225,6 +225,17 @@ describe('AgentChat', () => {
     expect(text('ol li')).toEqual(['one', 'two']);
   });
 
+  it('renders angle-delimited web links and keeps unsupported schemes as text', () => {
+    act(() =>
+      root.render(
+        <Markdown text="[docs](<https://example.org/a_(b)>), [mail](<mailto:a@example.org>) or [bad](<javascript:alert(1)>)." />,
+      ),
+    );
+    expect(text('a')).toEqual(['docs', 'mail']);
+    expect($$('a').map((a) => a.getAttribute('href'))).toEqual(['https://example.org/a_(b)', 'mailto:a@example.org']);
+    expect($('.gc-md').textContent).toBe('docs, mail or [bad](<javascript:alert(1)>).');
+  });
+
   it('renders headings, quotes, rules and item continuations, and stays fast on hostile text', () => {
     act(() =>
       root.render(<Markdown text={'## Plan\n\n> quoted *note*\n\n---\n\n- one\n  more\n- two\n\n#not a heading'} />),
@@ -1134,7 +1145,7 @@ describe('AgentChat', () => {
           entries: [
             {
               kind: 'text',
-              text: 'See [one](/w/a.ts:12:3), [range](./b.ts#L5-L9) and [plain](/w/c.ts).',
+              text: 'See [one](/w/a.ts:12:3), [range](<./My Project (draft)/b.ts#L5-L9>) and [podroz-po-calym-swiecie](</work/podroz-po-calym-swiecie>).',
               streaming: false,
             },
           ],
@@ -1144,13 +1155,14 @@ describe('AgentChat', () => {
     render({ state, onOpenFile });
     const links = $$('.gc-file-link');
     expect(links).toHaveLength(3);
+    expect(links.map((element) => element.textContent)).toEqual(['one', 'range', 'podroz-po-calym-swiecie']);
     click(links[0]!);
     click(links[1]!);
     click(links[2]!);
     expect(onOpenFile.mock.calls).toEqual([
       ['/w/a.ts', { line: 12, column: 3 }],
-      ['./b.ts', { line: 5, endLine: 9 }],
-      ['/w/c.ts'],
+      ['./My Project (draft)/b.ts', { line: 5, endLine: 9 }],
+      ['/work/podroz-po-calym-swiecie'],
     ]);
   });
 

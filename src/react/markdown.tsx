@@ -35,10 +35,30 @@ export interface MarkdownProps {
 
 // Every repetition is bounded, so text full of unclosed markers stays linear to scan.
 // Images must precede links so `![alt](target)` is not split into `!` + link.
-const INLINE =
-  /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)|(!\[[^[\]\n]{0,500}\]\((https?:\/\/[^)\s]{1,2000})\))|(!\[[^[\]\n]{0,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))|(\[[^[\]\n]{1,500}\]\(((?:https?:\/\/|mailto:)[^)\s]{1,2000})\))|(https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"])|(\[[^[\]\n]{1,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\))/g;
+// Angle-delimited destinations can include spaces and parentheses. Use the same grammar for
+// thumbnails discovered by the host and links rendered in the transcript.
+function destination(prefix: RegExp): string {
+  return String.raw`(?:<${prefix.source}[^<>\r\n]{1,2000}>|${prefix.source}[^)\s]{1,2000})`;
+}
+const localTarget = destination(/(?:\/|\.{1,2}\/|[A-Za-z]:[\\/])/);
+const imageLabel = /!\[[^[\]\n]{0,500}\]\(/;
+const linkLabel = /\[[^[\]\n]{1,500}\]\(/;
+const LOCAL_IMAGE = new RegExp(String.raw`${imageLabel.source}(?<localImage>${localTarget})\)`, 'g');
+const INLINE = new RegExp(
+  [
+    /(`[^`\n]{1,1000}`)|(\*\*[^*\n]{1,1000}\*\*)|(~~[^~\n]{1,1000}~~)|(\*[^*\s][^*\n]{0,1000}\*)/.source,
+    String.raw`${imageLabel.source}(?<remoteImage>${destination(/https?:\/\//)})\)`,
+    LOCAL_IMAGE.source,
+    String.raw`${linkLabel.source}(?<url>${destination(/(?:https?:\/\/|mailto:)/)})\)`,
+    String.raw`${linkLabel.source}(?<file>${localTarget})\)`,
+    /https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"]/.source,
+  ].join('|'),
+  'g',
+);
 
-const LOCAL_IMAGE = /!\[[^[\]\n]{0,500}\]\(((?:\/|\.{1,2}\/|[A-Za-z]:[\\/])[^)\s]{1,2000})\)/g;
+function unwrapDestination(target: string): string {
+  return target.startsWith('<') ? target.slice(1, -1) : target;
+}
 
 /** Split a file link target into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
 export function parseFileTarget(target: string): { path: string; position?: FilePosition } {
@@ -121,7 +141,7 @@ export function extractLocalImagePaths(text: string): string[] {
       continue;
     }
     for (const match of line.matchAll(LOCAL_IMAGE)) {
-      const { path } = parseFileTarget(match[1]!);
+      const { path } = parseFileTarget(unwrapDestination(match.groups!.localImage!));
       if (path && !found.includes(path)) found.push(path);
     }
   }
@@ -275,10 +295,10 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
     else if (match[2]) out.push(<strong key={key++}>{inline(token.slice(2, -2), options, links)}</strong>);
     else if (match[3]) out.push(<del key={key++}>{inline(token.slice(2, -2), options, links)}</del>);
     else if (match[4]) out.push(<em key={key++}>{inline(token.slice(1, -1), options, links)}</em>);
-    else if (match[5]) {
+    else if (match.groups?.remoteImage) {
       // Remote image: ![alt](https://...)
       const alt = token.slice(2, token.indexOf(']'));
-      const src = match[6]!;
+      const src = unwrapDestination(match.groups.remoteImage);
       out.push(
         links ? (
           <RemoteImage key={`${key++}:${src}`} src={src} alt={alt} autoLoad={options.remoteImages === 'load'} />
@@ -286,10 +306,10 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
           <span key={key++}>{alt || remoteLabel(src)}</span>
         ),
       );
-    } else if (match[7]) {
+    } else if (match.groups?.localImage) {
       // Local image: ![alt](/abs/or/./rel)
       const alt = token.slice(2, token.indexOf(']'));
-      const target = match[8]!;
+      const target = unwrapDestination(match.groups.localImage);
       const { path: rawPath } = parseFileTarget(target);
       const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
       const openable = isWithinFileRoots(path, options.fileRoot);
@@ -311,13 +331,19 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       } else {
         out.push(<span key={key++}>{alt || path}</span>);
       }
-    } else if (match[9]) {
+    } else if (match.groups?.url) {
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
-      out.push(links ? link(match[10]!, label, key++) : <span key={key++}>{label}</span>);
-    } else if (match[12]) {
+      out.push(links ? link(unwrapDestination(match.groups.url), label, key++) : <span key={key++}>{label}</span>);
+    } else if (match.groups?.file) {
       // A link to a file on disk, as agents write them: the label, path, and optional line position.
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
-      out.push(links ? fileButton(match[13]!, label, key++, options) : <span key={key++}>{label}</span>);
+      out.push(
+        links ? (
+          fileButton(unwrapDestination(match.groups.file), label, key++, options)
+        ) : (
+          <span key={key++}>{label}</span>
+        ),
+      );
     } else {
       out.push(links ? link(token, token, key++) : token);
     }
