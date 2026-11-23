@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
 import { detectAgents } from '../agents/discovery.js';
+import { isAgentUsable, type AgentAuthState, type AgentInspection } from '../agents/status.js';
 import type { ArtifactStore } from '../agents/artifacts.js';
 import { outputText, type McpTool } from '../agents/mcp-tools.js';
 import {
@@ -51,6 +52,18 @@ export interface AgentChoice {
   canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
+  /** Local sign-in state when inspected: `ready`, `signed-out`, or `unknown`. */
+  auth?: AgentAuthState;
+  /** True when the binary exists on PATH but failed to execute. */
+  broken?: boolean;
+  /** Resolved executable path on PATH. */
+  path?: string;
+  /** CLI version when reported by `--version`. */
+  version?: string;
+  /** Plan or auth method label reported by the CLI (e.g. `Max`, `ChatGPT`, `API key`). */
+  plan?: string;
+  /** Actionable note (broken binary error, duplicate installs, etc.). */
+  hint?: string;
 }
 
 /** A line from the front end itself (agent switched, help...), shown after turn `afterTurn`. */
@@ -81,6 +94,8 @@ export interface ChatView {
   tower?: TowerView;
   /** `!commands` still running; stop() ends them. */
   shells: number;
+  /** True when no agent is ready/usable yet (`genaicode ui` onboarding setup state). */
+  setup?: boolean;
   /** Active conversation metadata when running in `--home` mode. */
   conversation?: ConversationMeta;
 }
@@ -148,6 +163,10 @@ export interface ChatOptions {
   home?: boolean;
   /** Opt-in failover: agents (by name) a turn moves to when the current one is out. `/fallback` changes it. */
   fallback?: readonly string[];
+  /** Start in `setup` state when no agent CLI is installed instead of throwing `NoAgentError` (`genaicode ui`). */
+  allowNoAgent?: boolean;
+  /** Called when a turn fails with `failure.kind === 'auth'`, so the host can refresh agent status. */
+  onAuthFailure?(agent: string): void;
   /**
    * Called when the user opens or sends to another session (`continueSession`, `sessions_send`,
    * tower inbox), so the host can allow files and artifacts from that session's directory.
@@ -170,6 +189,8 @@ export interface ChatController {
   decideTower(id: string, decision: TowerDecision): Promise<boolean>;
   /** Switch agents. The conversation is handed over unless `fresh`. */
   selectAgent(name: string, options?: { fresh?: boolean }): boolean;
+  /** Apply fresh local inspection results (presence, sign-in, broken binaries) and update `setup` state. */
+  updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
   /**
    * Take over the session with this id (any agent's, in this directory or below it, or anywhere
@@ -197,18 +218,23 @@ export class NoAgentError extends Error {
 export function createChatController(options: ChatOptions): ChatController {
   const env = options.env ?? process.env;
   const found = detectAgents(options.agents, env);
-  const agents: AgentChoice[] = found.map(({ agent, path }) => ({
+  const canAgentAsk = (agent: CodingAgent): boolean =>
+    !!agent.capabilities.questions ||
+    (!!options.questionChannel && !!agent.capabilities.mcp && !agent.capabilities.remote);
+  let agents: AgentChoice[] = found.map(({ agent, path }) => ({
     name: agent.name,
     command: agent.command,
     installed: path !== null,
+    ...(path ? { path } : {}),
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
-    canAsk:
-      !!agent.capabilities.questions ||
-      (!!options.questionChannel && !!agent.capabilities.mcp && !agent.capabilities.remote),
+    canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
+  const explicitAgent = !!options.agent;
+  let userSelectedAgent = false;
+  let setup = false;
   let initial: CodingAgent | undefined;
   if (options.agent) {
     initial = byName.get(options.agent);
@@ -217,9 +243,14 @@ export function createChatController(options: ChatOptions): ChatController {
   } else {
     initial = found.find(({ path }) => path)?.agent;
     if (!initial) {
-      throw new NoAgentError(
-        `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
-      );
+      if (options.allowNoAgent && options.agents.length) {
+        initial = options.agents[0];
+        setup = true;
+      } else {
+        throw new NoAgentError(
+          `No supported agent CLI found on PATH. Install one of: ${options.agents.map((a) => a.command).join(', ')}.`,
+        );
+      }
     }
   }
 
@@ -263,7 +294,7 @@ export function createChatController(options: ChatOptions): ChatController {
     if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
     if (!next.title && state.turns.length) next = { ...next, title: oneLine(state.turns[0]!.prompt, 120) };
     conversation = next;
-    if (!state.turns.length && !state.sessionId && next.origin !== 'project') return;
+    if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
     const source = byName.get(state.agent)?.sessions?.name;
     const key = JSON.stringify([
       next.id,
@@ -301,6 +332,7 @@ export function createChatController(options: ChatOptions): ChatController {
       bark,
       autoApprove,
       shells: shells.size,
+      ...(setup ? { setup: true } : {}),
       ...(inbox ? { tower: inbox.view(state) } : {}),
       ...(conversation ? { conversation } : {}),
     };
@@ -319,7 +351,17 @@ export function createChatController(options: ChatOptions): ChatController {
       }
     }
   };
-  const unsubscribe = session.subscribe(publish);
+  const reportedAuthTurns = new Set<number>();
+  const unsubscribe = session.subscribe((state) => {
+    publish();
+    if (!options.onAuthFailure) return;
+    for (const turn of state.turns) {
+      if (turn.result?.failure?.kind === 'auth' && !reportedAuthTurns.has(turn.id)) {
+        reportedAuthTurns.add(turn.id);
+        options.onAuthFailure(turn.agent);
+      }
+    }
+  });
   const notice = (text: string, tone: Notice['tone'] = 'info') => {
     if (closed) return;
     notices = [...notices, { id: nextNotice++, afterTurn: session.get().turns.length, text, tone }].slice(-200);
@@ -433,7 +475,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }, 3000).unref?.();
   };
 
-  const selectAgent = (name: string, options?: { fresh?: boolean }): boolean => {
+  const selectAgent = (name: string, selectOptions?: { fresh?: boolean }): boolean => {
     const agent = byName.get(name);
     if (!agent) {
       notice(`Unknown agent "${name}". Known agents: ${[...byName.keys()].join(', ')}.`, 'error');
@@ -443,23 +485,68 @@ export function createChatController(options: ChatOptions): ChatController {
       notice('Stop the running turn before switching agents.', 'error');
       return false;
     }
+    userSelectedAgent = true;
     if (agent.name === session.get().agent) {
-      if (options?.fresh) {
+      if (selectOptions?.fresh) {
         session.setAgent(agent, { handoff: false });
         notice(`Still ${name}. New agent session, no context.`);
       }
       return true;
     }
-    session.setAgent(agent, { handoff: !options?.fresh });
-    const installed = agents.find((choice) => choice.name === name)?.installed;
-    const missing = installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
-    const context = options?.fresh
+    session.setAgent(agent, { handoff: !selectOptions?.fresh });
+    const choice = agents.find((candidate) => candidate.name === name);
+    const missing = choice?.installed ? '' : ` Its CLI (${agent.command}) is not on PATH.`;
+    const context = selectOptions?.fresh
       ? ' New agent session, no context.'
       : session.get().turns.length
         ? ' It hears the conversation so far with your next prompt.'
         : '';
     notice(`Switched to ${name}.${missing}${context}`);
     return true;
+  };
+
+  const updateAgents = (inspections: readonly AgentInspection[]) => {
+    if (closed) return;
+    const byInspection = new Map(inspections.map((item) => [item.name, item]));
+    agents = options.agents.map((agent) => {
+      const info = byInspection.get(agent.name);
+      const prev = agents.find((choice) => choice.name === agent.name);
+      return {
+        name: agent.name,
+        command: agent.command,
+        installed: info ? info.installed : (prev?.installed ?? false),
+        resume: !!agent.capabilities.resume,
+        steer: !!agent.capabilities.steer,
+        canAsk: canAgentAsk(agent),
+        ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
+        ...(info ? { auth: info.auth } : prev?.auth ? { auth: prev.auth } : {}),
+        ...(info?.broken ? { broken: true } : {}),
+        ...(info?.path ? { path: info.path } : {}),
+        ...(info?.version ? { version: info.version } : {}),
+        ...(info?.plan ? { plan: info.plan } : {}),
+        ...(info?.hint ? { hint: info.hint } : {}),
+      };
+    });
+    const usable = inspections.filter(isAgentUsable);
+    const wasSetup = setup;
+    const nextSetup = !explicitAgent && options.allowNoAgent === true && usable.length === 0;
+    const state = session.get();
+    const currentInfo = byInspection.get(state.agent);
+    const currentUsable = currentInfo ? isAgentUsable(currentInfo) : false;
+    // Pick the first Ready agent (or installed unknown agent) when leaving setup, or before any turn starts if current is unusable.
+    const preferred = usable.find((item) => item.auth === 'ready') ?? usable[0];
+    setup = nextSetup;
+    const shouldSwitch = wasSetup
+      ? !userSelectedAgent || !currentUsable
+      : state.turns.length === 0 && !explicitAgent && !userSelectedAgent && !currentUsable;
+    if (preferred && state.status === 'idle' && shouldSwitch) {
+      const target = byName.get(preferred.name);
+      if (target && target.name !== state.agent) {
+        session.setAgent(target, { handoff: state.turns.length > 0 });
+        return;
+      }
+    }
+    publish();
   };
 
   const startHomeChat = (): boolean => {
@@ -581,8 +668,8 @@ export function createChatController(options: ChatOptions): ChatController {
         }
         const turns = await readSession(sources, theirs);
         const agent = byName.get(session.get().agent);
-        // Its own store and it can resume: no handoff needed.
-        const own = !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+        // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
+        const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
         if (!turns.length && !own) {
           notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
           return false;
@@ -592,10 +679,13 @@ export function createChatController(options: ChatOptions): ChatController {
           return false;
         }
         const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
+        const count = turns.length ? ` (${turns.length} turns)` : '';
         notice(
-          own
-            ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
-            : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
+          setup
+            ? `Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`
+            : own
+              ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
+              : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
         );
         return true;
       }
@@ -616,7 +706,8 @@ export function createChatController(options: ChatOptions): ChatController {
       ]);
       const agent = byName.get(session.get().agent);
       const sameDir = resolved.status === 'resolved' && !!theirs.cwd && isSameDir(resolved.cwd, theirs.cwd);
-      const own = sameDir && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
+      // Never treat an uninstalled setup placeholder as own.
+      const own = !setup && sameDir && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
       if (!turns.length && !own) {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
@@ -654,7 +745,10 @@ export function createChatController(options: ChatOptions): ChatController {
       if (resolved.cwd) options.onRoot?.(resolved.cwd);
       if (theirs.cwd) options.onRoot?.(theirs.cwd);
       publish();
-      if (resolved.status === 'unresolved') {
+      const count = turns.length ? ` (${turns.length} turns)` : '';
+      if (setup) {
+        notice(`Loaded "${name}" from ${theirs.agent}${count}. Connect an agent to continue it.`);
+      } else if (resolved.status === 'unresolved') {
         notice(
           `Took over "${name}" from ${theirs.agent}. ${resolved.reason ?? 'Original directory is no longer available.'} Mention a directory (e.g. ~/src/…) to move this conversation there.`,
         );
@@ -760,11 +854,19 @@ export function createChatController(options: ChatOptions): ChatController {
         return 'ok';
       }
       if (text.trimStart().startsWith('!!')) {
+        if (setup) {
+          notice('Connect an agent to start.', 'error');
+          return 'ok';
+        }
         session.send(text.trimStart().slice(1));
         return 'ok';
       }
       const command = parseSlash(text);
       if (!command) {
+        if (setup) {
+          notice('Connect an agent to start.', 'error');
+          return 'ok';
+        }
         session.send(text.startsWith('//') ? text.slice(1) : text);
         return 'ok';
       }
@@ -785,10 +887,18 @@ export function createChatController(options: ChatOptions): ChatController {
           else {
             notice(
               agents
-                .map(
-                  (a) =>
-                    `${a.name === session.get().agent ? '●' : '○'} ${a.name}${!a.installed ? ' (not installed)' : a.canAsk === false ? ' (no questions)' : ''}`,
-                )
+                .map((a) => {
+                  const status = !a.installed
+                    ? ' (not installed)'
+                    : a.broken
+                      ? ' (broken)'
+                      : a.auth === 'signed-out'
+                        ? ' (not signed in)'
+                        : a.canAsk === false
+                          ? ' (no questions)'
+                          : '';
+                  return `${a.name === session.get().agent && !setup ? '●' : '○'} ${a.name}${status}`;
+                })
                 .join('\n'),
             );
           }
@@ -918,6 +1028,7 @@ export function createChatController(options: ChatOptions): ChatController {
       return inbox.decide(session, id, decision);
     },
     selectAgent,
+    updateAgents,
     continueSession,
     startTopicChat,
     startHomeChat,

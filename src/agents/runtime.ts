@@ -139,7 +139,7 @@ export class RunRecorder {
     if (outcome?.failure && outcome.failure.kind !== 'quota') return outcome.failure;
     if (this.quotaReported)
       return { kind: 'quota', ...(this.quotaResetsAt !== undefined ? { resetsAt: this.quotaResetsAt } : {}) };
-    if (error && AUTH_ERROR.test(error)) return { kind: 'auth' };
+    if ((error && isAuthError(error)) || (this.stderrTail && isAuthError(this.stderrTail))) return { kind: 'auth' };
     if (exit.reason === 'spawn-error') {
       const code = (exit.error as NodeJS.ErrnoException | undefined)?.code;
       return code === 'ENOENT' || code === 'EACCES' ? { kind: 'unavailable' } : undefined;
@@ -171,7 +171,12 @@ const QUOTA_ERROR =
 
 /** Errors that say the CLI is not signed in or its credentials were refused. */
 const AUTH_ERROR =
-  /\b(not (logged|signed) in|(log|sign)[ -]?in (is )?required|please (log|sign)[ -]?in|unauthori[sz]ed|401|invalid (api[ _-]?key|x-api-key|credentials)|authentication (failed|required|error)|credentials? (expired|invalid))\b/i;
+  /\b(not (logged|signed) in|not logged into|not authenticated|unauthenticated|(log|sign)[ -]?in (is )?required|please (log|sign)[ -]?in|please run [`'"]?\/login|run [`'"]?(?:claude|codex|copilot|cursor-agent|opencode|gemini|vibe|agy|muse)\b[^.!?\n]*\blogin|unauthori[sz]ed|401|invalid (api[ _-]?key|x-api-key|credentials?|bearer token|access token|token)|api[ _-]?key (?:not valid|is (?:missing|invalid|not set)|missing|required)|(?:no|missing) (?:api[ _-]?key|credentials?|authentication|bearer or basic authentication)|(?:ANTHROPIC|OPENAI|GEMINI|GOOGLE|MISTRAL|CURSOR|GITHUB|COPILOT)_API_KEY\b[^.!?\n]*(?:not set|missing|required|empty)|authentication[_ ](failed|required|error)|failed to authenticate|could not resolve authentication|please set an auth method|credentials? (?:expired|invalid|not configured|missing)|(?:oauth|access|refresh) token (?:has )?(?:expired|invalid|could not be refreshed))\b/i;
+
+/** Whether a driver error or stderr output indicates the agent CLI is not signed in or its credentials failed. */
+export function isAuthError(text: string): boolean {
+  return AUTH_ERROR.test(text);
+}
 
 /** `usedPercent` as a status, for vendors that report only the number. */
 export function limitStatus(usedPercent: number | undefined): RateLimit['status'] {

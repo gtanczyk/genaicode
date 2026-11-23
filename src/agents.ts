@@ -2,8 +2,18 @@ export { cliAgent } from './agents/cli-agent.js';
 export { sendSession } from './agents/sessions/send.js';
 export type { SessionSendOptions } from './agents/sessions/send.js';
 export type { AgentOutcome, AgentOutputParser, CliAgentDefinition } from './agents/cli-agent.js';
-export { detectAgents, findExecutable } from './agents/discovery.js';
+export { detectAgents, findAllExecutables, findExecutable } from './agents/discovery.js';
 export type { AgentAvailability } from './agents/discovery.js';
+export { AGENT_GUIDES, agentGuide, agentOrder } from './agents/drivers/catalog.js';
+export type { AgentGuide } from './agents/drivers/catalog.js';
+export { createAgentInspector, inspectAgent, inspectAgents, isAgentUsable } from './agents/status.js';
+export type {
+  AgentAuthState,
+  AgentInspection,
+  AgentInspector,
+  AgentInspectorOptions,
+  InspectOptions,
+} from './agents/status.js';
 export { claude, claudeArgs, claudeRateLimits, createClaudeParser } from './agents/drivers/claude.js';
 export { mergePermissionFlags, resolvePermissions, unsupportedPermissions, YOLO } from './agents/permissions.js';
 export type { PermissionFlags } from './agents/permissions.js';
@@ -40,7 +50,7 @@ export type {
   RateLimit,
   SandboxPolicy,
 } from './agents/types.js';
-export { epochMs, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
+export { epochMs, isAuthError, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
 export { ASK_USER_TOOL, askUserTool, startQuestionChannel } from './agents/ask-user.js';
 export type { QuestionChannel } from './agents/ask-user.js';

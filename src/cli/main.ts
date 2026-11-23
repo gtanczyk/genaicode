@@ -889,17 +889,17 @@ async function runUi(
       cli.stderr.write('--delegate provides an MCP server named "pack". Give the --mcp server another name.\n');
       return EXIT_USAGE;
     }
-    // Each agent that takes MCP servers keeps its name and may hand work to the installed ones.
+    // Each agent that takes MCP servers keeps its name and may hand work to any installed helper.
+    // `pack()` checks `findExecutable()` per run, so agents installed after startup join without a restart.
     const helpers = cli.agents ?? interactiveAgents(agents, { pack: true, agentMcp: options.agentMcp });
     const choices = profileChoices(helpers, cli.env);
-    const installed = helpers.filter((_, index) => choices[index].installed);
     profiles = projectTeams(choices, cli.env);
     const homeCwd = options.noProject ? await fs.realpath(launchCwd).catch(() => launchCwd) : undefined;
     const projectTeam = async (directory: string) =>
       directory === homeCwd ? undefined : readPackProfile(await packRoot(directory));
     projectLead = async (directory) => {
       const saved = await projectTeam(directory);
-      if (saved) validateTeam(saved, choices);
+      if (saved) validateTeam(saved, profileChoices(helpers, cli.env));
       return saved?.lead;
     };
     agents = agents.map((agent) =>
@@ -907,12 +907,12 @@ async function runUi(
         ? pack({
             name: agent.name,
             lead: agent,
-            members: installed,
+            members: helpers,
             brief: delegationBrief,
             operatorMerge: true,
             projectMembers: async (directory) => {
               const saved = await projectTeam(directory);
-              if (saved) validateTeam({ lead: agent.name, members: saved.members }, choices);
+              if (saved) validateTeam({ lead: agent.name, members: saved.members }, profileChoices(helpers, cli.env));
               return saved?.members;
             },
             readLimits: knownLimits,

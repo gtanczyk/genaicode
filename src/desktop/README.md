@@ -27,12 +27,16 @@ The app carries its own Node.js and its own copy of genaicode, so it needs neith
 | `Contents/MacOS/node`         | The official Node.js binary, version and checksums in `node-runtime.json` |
 | `Contents/Resources/runtime/` | This repository as `npm pack` makes it, with its runtime dependencies     |
 
-Without any agent CLI on the machine the window shows how to get one and goes on to the chat once
-one is installed. The app has no project folder: each conversation resolves its own working
+Without any installed or signed-in agent CLI on the machine, the window opens on an onboarding
+screen showing each supported agent's state (**Not installed**, **Installed, not signed in**, or
+**Ready**) with copyable install/sign-in commands and **Check again** — no error dialog, and no
+restart needed. The app has no project folder: each conversation resolves its own working
 directory from context (a continued session's directory or repo root, a topic's most recent active
 directory, or `~/.genaicode/home` for cross-project questions), and its chat is about their sessions
 in every project. On start the shell reads the environment of your login shell (so the agent CLIs
-and the API keys your profile exports are found), removes any legacy saved folder file, runs
+and the API keys your profile exports are found), and on **Check again** it re-reads that login
+environment (within the same 5 s timeout) and passes it to the running server over stdin so an agent
+installed in Terminal is picked up immediately. The shell removes any legacy saved folder file, runs
 `node cli.js ui --sessions --delegate --home --no-open --exit-with-stdin --restore` and shows the
 address that prints. `--restore` brings back the conversation the app had last, so a restart or an
 update does not lose it. `--sessions` gives the agent the session index as tools, so a question
