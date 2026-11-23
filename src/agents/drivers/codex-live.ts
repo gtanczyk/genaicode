@@ -173,9 +173,19 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
       if (ids.turn && stringField(turn, 'id') && stringField(turn, 'id') !== ids.turn) return;
       const status = stringField(turn, 'status');
       const error = stringField(turn?.error, 'message');
+      const codexErrorInfo = isObject(turn?.error) ? stringField(turn.error, 'codexErrorInfo') : undefined;
+      const failure = codexErrorInfo && /unauthorized/i.test(codexErrorInfo) ? ({ kind: 'auth' } as const) : undefined;
       if (error) session.emit({ type: 'error', message: error });
       approvals.close();
-      finish(status === 'completed' ? { ok: true } : { ok: false, error: error ?? `Codex turn ${status ?? 'ended'}.` });
+      finish(
+        status === 'completed'
+          ? { ok: true }
+          : {
+              ok: false,
+              error: error ?? `Codex turn ${status ?? 'ended'}.`,
+              ...(failure ? { failure } : {}),
+            },
+      );
       return;
     }
     for (const event of codexNotification(method, params)) session.emit(event);

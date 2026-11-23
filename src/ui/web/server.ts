@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
+import type { AgentInspection } from '../../agents/status.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
 import { parseQuestionAnswers } from '../../agents/question-answers.js';
@@ -95,6 +96,14 @@ export interface WebUiOptions {
    * as text in the page. Without it paths stay plain.
    */
   files?: ProjectFiles;
+  /**
+   * Local status of each supported agent (installed, version, sign-in, hints), at GET /api/agents.
+   * Never calls a model. `?refresh=1` bypasses the short cache; `?env=1` also refreshes the host shell env.
+   */
+  agents?: (query?: {
+    refresh?: boolean;
+    refreshEnv?: boolean;
+  }) => Promise<{ agents: AgentInspection[]; setup: boolean }>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
   /** Resolves the current chat session's raw file path on disk (for transcript metadata / Copy path). */
@@ -157,6 +166,8 @@ export interface HostApp {
   saveTranscript?(request: HostSaveRequest): void;
   /** Calls `listener` when the host app sends a transient status toast (e.g. from a menu action). */
   onToast?(listener: (text: string) => void): () => void;
+  /** Ask the desktop shell to re-read the user's login shell environment (PATH, API keys). */
+  refreshEnv?(): Promise<void>;
   /** Reveal an existing file on disk in Finder / the OS file manager. */
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
@@ -388,6 +399,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       project: options.title.project !== false,
       ...(options.title.home ? { home: true } : {}),
       sessions: !!options.sessions,
+      agents: !!options.agents,
       uploads: !!options.uploads,
       ...(options.projectTeams ? { projectTeams: true } : {}),
       files: !!options.files,
@@ -661,6 +673,16 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         streams.delete(res);
       });
       return;
+    }
+    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/agents') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.agents) return send(res, 404, 'application/json', '{"error":"no agent status here"}');
+      const refresh = req.method === 'POST' || url.searchParams.get('refresh') === '1';
+      const refreshEnv = req.method === 'POST' || url.searchParams.get('env') === '1';
+      const status = await options.agents({ refresh, refreshEnv });
+      return send(res, 200, 'application/json', JSON.stringify(status));
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/pack-profile') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))

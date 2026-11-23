@@ -31,6 +31,7 @@ export type ViewerTarget =
   | { kind: 'artifact'; id: string; version?: number };
 
 const PROBLEMS: Record<string, string> = {
+  directory: 'This link points to a folder.',
   outside: 'This file is outside the project, so it is not shown here.',
   secret: 'This file looks like a credential or internal file, so it is not shown here.',
   missing: 'This file is not there (it may have been moved or deleted).',
