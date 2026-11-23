@@ -465,7 +465,8 @@ export function Sessions({
                 {folded.length ? (
                   <button
                     title="Left on an offer, a report that could not be sent, or an old question"
-                    onClick={() => setOpen(new Set([...open, `stalled:${project.key}`]))}
+                    // Every row, so the five-row fold does not hide what was asked for.
+                    onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
                   >
                     Show {folded.length} stalled
                   </button>
