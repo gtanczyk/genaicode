@@ -22,6 +22,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- Codex in chat and the desktop app honors Ask first and Auto-approve for MCP tool calls, including Sessions and Pack, and shows the tool result or error message (#320)
 - `ask_user` runs without a permission prompt on `museLive()` (auto-approving only `trusted` MCP server tools once via a shared trusted-tool matcher) and Copilot (`trusted` servers pre-allowed even with `allowMcpTools: false`, and `toolTimeoutSec` mapped to Copilot's `timeout` ms) (#314)
 
 ### Internal
