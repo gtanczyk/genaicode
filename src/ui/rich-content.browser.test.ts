@@ -666,6 +666,14 @@ describe('rich content in genaicode ui (browser)', () => {
         expect(stderrChunks.join('')).toContain('Settings {"artifactCdn":["https://cdn.jsdelivr.net"]}');
       });
 
+      // Reopening Settings preserves a partial preset host in the custom list so Save does not wipe it.
+      await page.getByRole('button', { name: 'Settings · CDN (1)' }).click();
+      await dialog.waitFor();
+      expect(await dialog.locator('textarea').inputValue()).toBe('cdn.jsdelivr.net');
+      await dialog.getByRole('button', { name: 'Save' }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.getByRole('button', { name: 'Settings · CDN (1)' }).waitFor();
+
       // Artifact response now carries the live updated CSP header!
       const artifactHref = await page.locator('.gc-artifact a', { hasText: 'New tab' }).getAttribute('href');
       const origin = new URL(opened!).origin;

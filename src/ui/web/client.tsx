@@ -488,8 +488,12 @@ function collectSessionArtifacts(turns: ChatView['session']['turns'] | undefined
 const PRESET_CDN_ORIGINS = DEFAULT_ARTIFACT_CDN_HOSTS.map((host) => `https://${host}`);
 
 function CdnSettingsPopover({ hosts, onClose }: { hosts: readonly string[]; onClose(): void }) {
-  const initialCustom = hosts.filter((h) => !PRESET_CDN_ORIGINS.includes(h)).map((h) => h.replace(/^https:\/\//, ''));
-  const [presetOn, setPresetOn] = useState(() => PRESET_CDN_ORIGINS.every((origin) => hosts.includes(origin)));
+  const fullPreset = PRESET_CDN_ORIGINS.every((origin) => hosts.includes(origin));
+  // Keep individually enabled preset hosts in the custom box unless the full preset is on.
+  const initialCustom = (fullPreset ? hosts.filter((h) => !PRESET_CDN_ORIGINS.includes(h)) : hosts).map((h) =>
+    h.replace(/^https:\/\//, ''),
+  );
+  const [presetOn, setPresetOn] = useState(fullPreset);
   const [customText, setCustomText] = useState(() => initialCustom.join('\n'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
