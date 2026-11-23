@@ -274,38 +274,74 @@ export interface AgentInspector {
 export function createAgentInspector(options: AgentInspectorOptions): AgentInspector {
   const ttlMs = options.ttlMs ?? 5_000;
   let cached: { at: number; agents: AgentInspection[] } | undefined;
-  let inFlight: Promise<{ agents: AgentInspection[]; setup: boolean }> | undefined;
-  let generation = 0;
+  let inFlight:
+    | { epoch: number; refreshEnv: boolean; promise: Promise<{ agents: AgentInspection[]; setup: boolean }> }
+    | undefined;
+  let queued: { refreshEnv: boolean; promise: Promise<{ agents: AgentInspection[]; setup: boolean }> } | undefined;
+  let epoch = 0;
 
   const run = async (refreshEnv: boolean): Promise<{ agents: AgentInspection[]; setup: boolean }> => {
-    const mine = ++generation;
+    const startEpoch = epoch;
     if (refreshEnv && options.refreshEnv) {
       await options.refreshEnv().catch(() => undefined);
     }
     const agents = await inspectAgents(options.agents, options.getEnv(), {
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     });
-    if (mine === generation) {
-      cached = { at: Date.now(), agents };
-      options.onUpdate?.(agents);
-    }
+    if (startEpoch === epoch) cached = { at: Date.now(), agents };
+    options.onUpdate?.(agents);
     return { agents, setup: !agents.some(isAgentUsable) };
+  };
+
+  const start = (refreshEnv: boolean): Promise<{ agents: AgentInspection[]; setup: boolean }> => {
+    const entry: {
+      epoch: number;
+      refreshEnv: boolean;
+      promise: Promise<{ agents: AgentInspection[]; setup: boolean }>;
+    } = {
+      epoch,
+      refreshEnv,
+      promise: undefined!,
+    };
+    entry.promise = run(refreshEnv).finally(() => {
+      if (inFlight === entry) inFlight = undefined;
+    });
+    inFlight = entry;
+    return entry.promise;
   };
 
   return {
     check(req = {}) {
       const force = req.refresh === true || req.refreshEnv === true;
+      const needEnv = req.refreshEnv === true && !!options.refreshEnv;
       if (!force && cached && Date.now() - cached.at < ttlMs) {
         return Promise.resolve({ agents: cached.agents, setup: !cached.agents.some(isAgentUsable) });
       }
-      if (!force && inFlight) return inFlight;
-      const promise = run(req.refreshEnv === true).finally(() => {
-        if (inFlight === promise) inFlight = undefined;
-      });
-      inFlight = promise;
-      return promise;
+      if (inFlight) {
+        // Reuse any current inspection in flight; serialize one follow-up if invalidated or needing env refresh.
+        if (inFlight.epoch === epoch && (!needEnv || inFlight.refreshEnv)) return inFlight.promise;
+        if (!queued) {
+          const next: { refreshEnv: boolean; promise: Promise<{ agents: AgentInspection[]; setup: boolean }> } = {
+            refreshEnv: needEnv,
+            promise: undefined!,
+          };
+          next.promise = inFlight.promise
+            .catch(() => undefined)
+            .then(() => {
+              const withEnv = next.refreshEnv;
+              if (queued === next) queued = undefined;
+              return start(withEnv);
+            });
+          queued = next;
+        } else if (needEnv) {
+          queued.refreshEnv = true;
+        }
+        return queued.promise;
+      }
+      return start(needEnv);
     },
     invalidate() {
+      epoch += 1;
       cached = undefined;
     },
   };

@@ -201,34 +201,36 @@ function useAgents(
   enabled: boolean,
   viewAgents: ChatView['agents'] | undefined,
   pollActive: boolean,
+  viewSetup: boolean,
 ): {
   agents: AgentInspection[];
   loading: boolean;
   checking: boolean;
-  setup?: boolean;
   inspectedAt: number;
   checkAgain(options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined>;
 } {
   const [inspected, setInspected] = useState<AgentInspection[]>();
-  const [setup, setSetup] = useState<boolean>();
   const [loading, setLoading] = useState(enabled);
   const [checking, setChecking] = useState(false);
   const [inspectedAt, setInspectedAt] = useState(0);
+  const inFlightRef = useRef(false);
   const checkingRef = useRef(false);
 
   const fetchAgents = async (query: string): Promise<AgentInspection[] | undefined> => {
     if (!token) return undefined;
+    inFlightRef.current = true;
     try {
       const res = await fetch(`/api/agents${query}`, { headers: { 'x-genaicode-token': token } });
       if (!res.ok) return undefined;
-      const body = (await res.json()) as { agents?: AgentInspection[]; setup?: boolean };
+      const body = (await res.json()) as { agents?: AgentInspection[] };
       if (!Array.isArray(body.agents)) return undefined;
       setInspected(body.agents);
-      if (typeof body.setup === 'boolean') setSetup(body.setup);
       setInspectedAt(Date.now());
       return body.agents;
     } catch {
       return undefined;
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
@@ -247,10 +249,18 @@ function useAgents(
     };
   }, [enabled]);
 
+  // When another tab updates the shared controller out of/into setup, refresh the cached inspection list.
+  const prevSetup = useRef(viewSetup);
+  useEffect(() => {
+    if (prevSetup.current === viewSetup) return;
+    prevSetup.current = viewSetup;
+    if (enabled && token && !inFlightRef.current) void fetchAgents('');
+  }, [enabled, viewSetup]);
+
   useEffect(() => {
     if (!enabled || !pollActive || !token) return;
     const timer = window.setInterval(() => {
-      if (!checkingRef.current) void fetchAgents('?refresh=1');
+      if (!checkingRef.current && !inFlightRef.current) void fetchAgents('?refresh=1');
     }, AGENTS_POLL_MS);
     return () => window.clearInterval(timer);
   }, [enabled, pollActive]);
@@ -258,7 +268,7 @@ function useAgents(
   const checkAgain = async (options?: { env?: boolean; quiet?: boolean }): Promise<AgentInspection[] | undefined> => {
     if (!enabled || !token) return undefined;
     if (options?.quiet) {
-      if (checkingRef.current) return undefined;
+      if (checkingRef.current || inFlightRef.current) return undefined;
       return fetchAgents(options.env ? '?refresh=1&env=1' : '?refresh=1');
     }
     checkingRef.current = true;
@@ -275,7 +285,6 @@ function useAgents(
     agents: inspected ?? fallbackAgents(viewAgents),
     loading: enabled && loading,
     checking,
-    setup,
     inspectedAt,
     checkAgain,
   };
@@ -444,16 +453,14 @@ function App() {
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
   const running = session?.status === 'running';
-  const rawSetup = view?.setup === true;
+  const inSetup = view?.setup === true;
   const {
     agents: agentList,
     loading: loadingAgents,
     checking: checkingAgents,
-    setup: apiSetup,
     inspectedAt,
     checkAgain: checkAgents,
-  } = useAgents(hasAgentsApi, view?.agents, rawSetup || showAgents);
-  const inSetup = rawSetup || apiSetup === true;
+  } = useAgents(hasAgentsApi, view?.agents, inSetup || showAgents, inSetup);
   const allLimits = useAllLimits(inSetup || showAgents);
   // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
   const seenAuthFail = useRef(new Set<number>());

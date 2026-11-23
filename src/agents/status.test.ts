@@ -204,6 +204,35 @@ fi`,
     expect(updates).toEqual([0, 1]);
   });
 
+  it('coalesces overlapping forced refreshes so slow probes do not starve onUpdate', async () => {
+    const bin = mkdtempSync(join(root, 'slow-'));
+    const countFile = join(bin, 'runs');
+    makeBin(bin, 'gemini', `echo x >> "${countFile}"; sleep 0.25; echo "1.0.0"`);
+    const updates: number[] = [];
+    const refreshEnv = vi.fn(async () => {});
+    const inspector = createAgentInspector({
+      agents: [{ name: 'gemini', command: 'gemini' }],
+      getEnv: () => ({ PATH: `${bin}${delimiter}/usr/bin${delimiter}/bin` }),
+      refreshEnv,
+      onUpdate: (agents) => updates.push(agents.filter((a) => a.installed).length),
+    });
+
+    // Overlapping plain refreshes share the single in-flight probe and deliver onUpdate.
+    const [first, second] = await Promise.all([inspector.check({ refresh: true }), inspector.check({ refresh: true })]);
+    expect(first).toBe(second);
+    expect(first.setup).toBe(false);
+    expect(updates).toEqual([1]);
+
+    // An explicit env refresh arriving while a plain probe runs serializes cleanly after it.
+    const plain = inspector.check({ refresh: true });
+    const withEnv = inspector.check({ refresh: true, refreshEnv: true });
+    const [r1, r2] = await Promise.all([plain, withEnv]);
+    expect(r1.setup).toBe(false);
+    expect(r2.setup).toBe(false);
+    expect(refreshEnv).toHaveBeenCalledTimes(1);
+    expect(updates).toEqual([1, 1, 1]);
+  });
+
   it('ships guides for all 9 built-in drivers and falls back cleanly for custom agents', () => {
     expect(AGENT_GUIDES.map((g) => g.name)).toEqual([
       'claude',

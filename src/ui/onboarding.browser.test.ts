@@ -86,10 +86,13 @@ it('shows onboarding with no agents, moves through signed-out to Ready on Check 
     });
     await vi.waitFor(() => expect(opened).toBeTruthy());
     const page = await browser.newPage();
+    const secondTab = await browser.newPage();
     await page.goto(opened!);
+    await secondTab.goto(opened!);
 
-    // Onboarding screen is shown and prompt box is disabled with the setup hint.
+    // Onboarding screen is shown and prompt box is disabled with the setup hint in both tabs.
     await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
+    await secondTab.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
     const claudeCard = page.locator('li[data-agent="claude"]');
     await claudeCard.waitFor();
     expect(await claudeCard.getAttribute('data-state')).toBe('missing');
@@ -131,6 +134,9 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo '{"loggedIn":true,"authMe
     expect(await messageBox.isDisabled()).toBe(false);
     await messageBox.fill('hello');
     expect(await page.getByRole('button', { name: 'Send' }).isDisabled()).toBe(false);
+    // The second tab also exits setup via SSE without needing its own Check again click.
+    await secondTab.getByRole('heading', { name: 'What should claude work on?' }).waitFor();
+    expect(await secondTab.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(false);
   } finally {
     stop.abort();
     await browser.close();
