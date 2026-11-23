@@ -32,6 +32,20 @@ const OFFER = new RegExp(
   String.raw`${B}(if you want|if you'd like|let me know|tell me|just say|i can also|want me to|jeśli chcesz|jeżeli chcesz|daj znać|napisz|mogę też|mogę)${E}`,
   'iu',
 );
+// "If you need to…", "jeśli musisz…", "nie musisz…": a condition or a release, not something asked of the user.
+const NOT_IF = String.raw`(?<!${B}(if|when|in case|jeśli|jeżeli|gdy|kiedy|skoro|nie),?\s+)`;
+// A request put as a statement, or a yes/no gate dressed as an offer: an answer is waited for.
+const REQUEST = new RegExp(
+  [
+    String.raw`${B}(daj znać|napisz|powiedz|let me know|tell me),?\s+(czy|whether)${E}`,
+    String.raw`${B}(czy mam|should i|shall i|do you want me to)${E}`,
+    String.raw`${B}(potwierdź|potwierdzisz|zdecyduj|czekam na (twoj|ciebie|decyzj|odpowied)|potrzebuję od ciebie)`,
+    String.raw`${NOT_IF}${B}musisz`,
+    String.raw`${B}(twoja decyzja|decyzja należy do ciebie|your call|up to you|please confirm|waiting (for|on) (you|your))${E}`,
+    String.raw`${NOT_IF}${B}you(('ll| will)?( still)? need to| have to| must)${E}`,
+  ].join('|'),
+  'iu',
+);
 /** What may follow the last word: quotes, brackets, emphasis, an emoji. */
 const TRAILING_CHAR = /^[\s"'”’)\]*_`~\p{Extended_Pictographic}\uFE0F]$/u;
 
@@ -56,8 +70,9 @@ function stripTrailing(input: string): string {
 
 /**
  * What the end of an agent's message asks of the user, by its shape alone: it says it could not
- * report back, it ends with a question, with a command in a code block, or with an offer to go on.
- * A guess from the last 200 characters: a request put as a statement is not seen.
+ * report back, it ends with a question, with a command in a code block, with a request put as a
+ * statement ("Confirm…", "Your call whether…", "Daj znać, czy mam…"), or with an offer to go on.
+ * A guess from the last 200 characters: a request in words this does not know is not seen.
  */
 export function replyEnding(lastReply: string | undefined): ReplyEnding | undefined {
   if (!lastReply) return undefined;
@@ -70,6 +85,7 @@ export function replyEnding(lastReply: string | undefined): ReplyEnding | undefi
   }
   const body = text.endsWith('.') || text.endsWith('!') ? text.slice(0, -1) : text;
   const last = body.slice(Math.max(body.lastIndexOf('.'), body.lastIndexOf('?'), body.lastIndexOf('!')) + 1);
+  if (REQUEST.test(last)) return 'request';
   if (OFFER.test(last)) return 'offer';
   return undefined;
 }
@@ -90,8 +106,8 @@ export const ASKING_MS = 3 * 24 * 3600_000;
 
 /**
  * How a waiting session calls for the user:
- * - `now`: it asks for approval, or its last message asked a question or gave a command to run in
- *   the last `ASKING_MS`. Someone waits on the answer.
+ * - `now`: it asks for approval, or its last message asked a question, made a request or gave a
+ *   command to run in the last `ASKING_MS`. Someone waits on the answer.
  * - `stalled`: its last message offered to go on ("I can also…, if you want"), said it could not
  *   report back, or asked something longer ago. Nobody is blocked; the thread was left.
  */
@@ -102,7 +118,7 @@ export function attentionOf(session: SessionInfo, now = Date.now()): Attention |
   if (session.archived || session.state !== 'waiting') return undefined;
   if (session.waitingFor === 'approval') return 'now';
   if (!session.ending) return undefined;
-  const asks = session.ending === 'question' || session.ending === 'command';
+  const asks = session.ending === 'question' || session.ending === 'request' || session.ending === 'command';
   return asks && now - session.updatedAt < ASKING_MS ? 'now' : 'stalled';
 }
 

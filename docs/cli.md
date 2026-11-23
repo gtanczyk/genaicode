@@ -106,7 +106,8 @@ must finish first. The check uses the latest store and hook information availabl
 (`--done`: also when one finishes its turn; see [notify](agents.md#being-told-notify)).
 
 `sessions --waiting` puts the sessions that need you now right after the approvals (`●`: the last
-message asked a question or gave a command to run, in the last 3 days), then the stalled ones
+message asked a question, asked you to confirm or decide, or gave a command to run, in the last 3
+days), then the stalled ones
 (`◇`: an offer to go on, a report that could not be sent back, or a question older than that),
 then the ones that just ended. Topics, the browser's start screen and the desktop menu bar count
 only what needs you now; stalled sessions are folded under their topic. Scheduled tasks and headless runs nobody typed into

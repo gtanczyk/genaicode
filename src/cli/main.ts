@@ -979,6 +979,7 @@ const WAITING_SINCE_MS = 7 * 24 * 60 * 60 * 1000;
 /** How a waiting session's last words are introduced, by what they ask (`SessionInfo.ending`). */
 const ENDING_SAYS = {
   question: 'asks',
+  request: 'asks you',
   command: 'wants you to run',
   offer: 'offers',
   unreported: 'could not report back',
