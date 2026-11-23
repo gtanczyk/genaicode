@@ -29,6 +29,7 @@ import {
 } from '../agents/sessions/index.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
+import { formatTruncationReason } from './transcript.js';
 import {
   startWebUi,
   type HostApp,
@@ -449,14 +450,7 @@ function webLink(options: WebRunOptions, controller: () => ChatController): WebH
           reasons.add('max-turns');
           turns = turns.slice(-maxTurns).map((turn, index) => ({ ...turn, id: index + 1 }));
         }
-        const truncatedReason =
-          reasons.has('tail-bytes') && reasons.has('max-turns')
-            ? `Only the last 8 MB of the session file and at most the latest ${maxTurns} turns were exported; earlier turns were omitted.`
-            : reasons.has('tail-bytes')
-              ? 'Only the last 8 MB of the session file was read; earlier turns were omitted.'
-              : reasons.has('max-turns')
-                ? `Only the latest ${maxTurns} turns were exported; earlier turns were omitted.`
-                : undefined;
+        const truncatedReason = formatTruncationReason(reasons, maxTurns, 'exported');
         return {
           session: found.session,
           turns,

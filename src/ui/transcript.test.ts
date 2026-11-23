@@ -312,10 +312,12 @@ describe('transcript export', () => {
   });
 
   it('discloses when active or stored transcripts omit earlier turns', () => {
+    const activeReason = 'Only the latest 100 turns were loaded; earlier turns were omitted.';
     const view = baseView({
+      truncatedReason: activeReason,
       turns: [
         {
-          id: 5,
+          id: 1,
           agent: 'claude',
           prompt: 'Latest prompt',
           entries: [{ kind: 'text', text: 'Latest answer', streaming: false }],
@@ -324,12 +326,19 @@ describe('transcript export', () => {
       ],
     });
     const activeMd = formatChatTranscriptMarkdown({ view, exportedAt: '2026-11-23T21:05:00.000Z' });
-    expect(activeMd).toContain('- **Incomplete:** Only turns starting from turn 5 are kept in memory');
-    expect(activeMd).toContain('> **Note:** Only turns starting from turn 5 are kept in memory');
+    expect(activeMd).toContain(`- **Incomplete:** ${activeReason}`);
+    expect(activeMd).toContain(`> **Note:** ${activeReason}`);
     expect(chatTranscriptJson({ view, exportedAt: '2026-11-23T21:05:00.000Z' })).toMatchObject({
       truncated: true,
-      truncatedReason: expect.stringContaining('turn 5'),
+      truncatedReason: activeReason,
     });
+
+    // A fresh chat after /clear has turn ids > 1 without truncation and must not be marked incomplete.
+    const clearedView = baseView({
+      turns: [{ id: 5, agent: 'claude', prompt: 'Fresh prompt', entries: [], startedAt: 1 }],
+    });
+    expect(formatChatTranscriptMarkdown({ view: clearedView })).not.toContain('**Incomplete:**');
+    expect(chatTranscriptJson({ view: clearedView }).truncated).toBeUndefined();
 
     const session: SessionInfo = {
       source: 'codex',

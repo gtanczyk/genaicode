@@ -1750,6 +1750,34 @@ describe('web UI server', () => {
     expect(brokenRes.status).toBe(500);
     expect(await brokenRes.json()).toEqual({ error: 'Could not read the session transcript.' });
 
+    // Continuing a truncated session preserves truncation metadata on active-chat exports, and /clear resets it.
+    const contRes = await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'continue', id: longStored.id }),
+    });
+    expect(contRes.status).toBe(200);
+    const adoptedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(adoptedMeta).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('latest 100 turns were loaded'),
+    });
+    const adoptedJson = await (await fetch(new URL('/api/transcript?format=json', url), { headers })).json();
+    expect(adoptedJson).toMatchObject({
+      truncated: true,
+      truncatedReason: expect.stringContaining('8 MB'),
+    });
+    const adoptedMd = await (await fetch(new URL('/api/transcript?format=md', url), { headers })).text();
+    expect(adoptedMd).toContain('- **Incomplete:** Only the last 8 MB');
+
+    await fetch(new URL('/api/command', url), {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'submit', text: '/clear' }),
+    });
+    const clearedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    expect(clearedMeta.truncated).toBeUndefined();
+
     // HostApp nativeSave config, POST /api/save-transcript -> stderr, and stdin toast -> SSE event: toast.
     const events = await fetch(new URL('/api/events', url), { headers });
     const reader = events.body!.getReader();

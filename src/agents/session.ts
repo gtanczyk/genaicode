@@ -109,6 +109,8 @@ export interface SessionState {
   canSteer: boolean;
   /** Whether the current agent can ask the person to choose (own tool, or `ask_user` over MCP). */
   canAsk?: boolean;
+  /** Set when earlier turns of this conversation were omitted (e.g. `maxTurns` cap or resuming a truncated session). */
+  truncatedReason?: string;
 }
 
 export interface AgentSessionOptions {
@@ -241,7 +243,7 @@ export interface AgentSession {
    * session: the next turn resumes it instead (`capabilities.resume`), with nothing to hand over.
    * Returns false while a turn is running.
    */
-  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string }): boolean;
+  adopt(turns: readonly SessionTurn[], options?: { sessionId?: string; truncatedReason?: string }): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
   /** Stop everything and drop subscribers. */
@@ -343,14 +345,18 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     set({ turns: state.turns.map((turn) => (turn.id === id ? change(turn) : turn)) });
   };
 
-  const keepTurns = (turns: SessionTurn[]) => {
+  const keepTurns = (turns: SessionTurn[], inheritedReason = state.truncatedReason) => {
+    const dropped = turns.length > maxTurns;
     const kept = turns.slice(-maxTurns);
     for (const [id, packRun] of packRuns)
       if (!kept.some((turn) => turn.id === id)) {
         packRun.unsubscribe?.();
         packRuns.delete(id);
       }
-    return kept;
+    const truncatedReason = dropped
+      ? `Only the latest ${maxTurns} turns are kept in memory; earlier turns were omitted.`
+      : inheritedReason;
+    return { turns: kept, truncatedReason };
   };
 
   const syncPackTask = (turnId: number, id: string) => {
@@ -722,9 +728,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     explicitResume = undefined;
     const turnController = new AbortController();
     controller = turnController;
+    const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn]);
     set({
       status: 'running',
-      turns: keepTurns([...state.turns, turn]),
+      turns: nextTurns,
+      truncatedReason,
       canSteer: false,
     });
     let current: AgentRun;
@@ -1023,7 +1031,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       known.clear();
       missedAfter = undefined;
       resetAt = nextTurnId - 1;
-      set({ sessionId: undefined, turns: [], queued: [], notes: [] });
+      set({ sessionId: undefined, turns: [], queued: [], notes: [], truncatedReason: undefined });
       return true;
     },
     adopt(turns, adoptOptions) {
@@ -1047,7 +1055,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         // Turns the current agent already missed stay missed.
         missedAfter ??= Math.max(before, resetAt);
       }
-      set({ turns: keepTurns([...state.turns, ...adopted]), ...(own ? { sessionId: own } : {}) });
+      const { turns: nextTurns, truncatedReason } = keepTurns(
+        [...state.turns, ...adopted],
+        adoptOptions?.truncatedReason ?? state.truncatedReason,
+      );
+      set({ turns: nextTurns, truncatedReason, ...(own ? { sessionId: own } : {}) });
       return true;
     },
     idle() {

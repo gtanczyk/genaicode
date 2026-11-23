@@ -23,6 +23,7 @@ import type {
   QuestionAnswers,
 } from '../agents/types.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
+import { formatTruncationReason } from './transcript.js';
 
 export interface AgentChoice {
   name: string;
@@ -386,7 +387,17 @@ export function createChatController(options: ChatOptions): ChatController {
         notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
         return false;
       }
-      const turns = await readSession(sources, theirs);
+      const maxTurns = 100;
+      const reasons = new Set<'max-turns' | 'tail-bytes'>();
+      let turns = await readSession(sources, theirs, {
+        maxTurns: maxTurns + 1,
+        onTruncated: (reason) => reasons.add(reason),
+      });
+      if (turns.length > maxTurns) {
+        reasons.add('max-turns');
+        turns = turns.slice(-maxTurns);
+      }
+      const truncatedReason = formatTruncationReason(reasons, maxTurns, 'loaded');
       const agent = byName.get(session.get().agent);
       // Its own store and it can resume: no handoff needed.
       const own = !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
@@ -394,7 +405,12 @@ export function createChatController(options: ChatOptions): ChatController {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
         return false;
       }
-      if (!session.adopt(turns, own ? { sessionId: theirs.id } : {})) {
+      if (
+        !session.adopt(turns, {
+          ...(own ? { sessionId: theirs.id } : {}),
+          ...(truncatedReason ? { truncatedReason } : {}),
+        })
+      ) {
         notice('Stop the running turn before taking over another session.', 'error');
         return false;
       }

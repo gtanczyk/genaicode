@@ -91,11 +91,27 @@ export function transcriptFilename(options: {
   return `genaicode-${agent}-${suffix}.${options.format}`;
 }
 
-/** Reason when an active chat's in-memory turn window dropped earlier turns. */
+/** Human-readable explanation when a transcript reader omitted earlier bytes or turns. */
+export function formatTruncationReason(
+  reasons: ReadonlySet<'max-turns' | 'tail-bytes'>,
+  maxTurns: number,
+  verb: 'exported' | 'loaded' = 'exported',
+): string | undefined {
+  if (reasons.has('tail-bytes') && reasons.has('max-turns')) {
+    return `Only the last 8 MB of the session file and at most the latest ${maxTurns} turns were ${verb}; earlier turns were omitted.`;
+  }
+  if (reasons.has('tail-bytes')) {
+    return 'Only the last 8 MB of the session file was read; earlier turns were omitted.';
+  }
+  if (reasons.has('max-turns')) {
+    return `Only the latest ${maxTurns} turns were ${verb}; earlier turns were omitted.`;
+  }
+  return undefined;
+}
+
+/** Reason when an active chat omitted earlier turns (in-memory cap or adopting a truncated session). */
 export function activeChatTruncation(session: SessionState): string | undefined {
-  const first = session.turns[0];
-  if (!first || first.id <= 1) return undefined;
-  return `Only turns starting from turn ${first.id} are kept in memory; earlier turns were omitted.`;
+  return session.truncatedReason;
 }
 
 /** Structured JSON snapshot of the active chat (full SessionState, notices and metadata). */
