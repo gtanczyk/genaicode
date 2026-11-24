@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { startScopedLocalMcpServer } from './mcp-server.js';
 import type { McpTool } from './mcp-tools.js';
+import { PROGRESS_CHANNEL } from './session-channels.js';
 import type { McpServer } from './types.js';
 
 export interface ProgressStep {
@@ -27,8 +28,6 @@ export interface ProgressChannel {
 }
 
 export const PROGRESS_SERVER_NAME = 'genaicode_progress';
-// The CLI and bundled UI can load separate copies of this module in the same process.
-const PROGRESS_CHANNEL = Symbol.for('genaicode.turnProgress');
 const MAX_MESSAGE = 1000;
 const MAX_STEPS = 12;
 const MAX_STEP = 200;

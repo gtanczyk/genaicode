@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { startLocalMcpServer } from './mcp-server.js';
 import type { McpTool } from './mcp-tools.js';
+import { QUESTION_CHANNEL } from './session-channels.js';
 import type { AgentQuestion, ApprovalRequest, McpServer, QuestionAnswers, QuestionHandler } from './types.js';
 
 /** The tool an agent calls to ask the person to choose. */
@@ -10,7 +11,6 @@ export const ASK_USER_TOOL = 'ask_user';
 export const QUESTION_SERVER_NAME = 'genaicode_ask';
 
 // Shared across bundles in the same process (CLI and bundled UI).
-const QUESTION_CHANNEL = Symbol.for('genaicode.questionChannel');
 const QUESTION_CHANNEL_HANDLER = Symbol.for('genaicode.questionChannel.handler');
 
 /** Mark an MCP server as a session-injected `ask_user` fallback, independent of its name. */

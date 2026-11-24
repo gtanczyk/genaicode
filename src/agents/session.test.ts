@@ -143,12 +143,14 @@ describe('createAgentSession', () => {
       [
         async (_task, emit) => {
           emit({ type: 'text-delta', text: 'Hel' });
+          await vi.waitFor(() => expect(session.get().turns[0]!.entries).toHaveLength(1));
           report!({ message: 'Step one' });
           emit({ type: 'text-delta', text: 'lo' });
           emit({ type: 'message', text: 'Hello' });
         },
         async (_task, emit) => {
           emit({ type: 'text-delta', text: 'A' });
+          await vi.waitFor(() => expect(session.get().turns[1]!.entries).toHaveLength(1));
           report!({ message: 'Step two' });
           emit({ type: 'text-delta', text: 'B' });
         },
@@ -163,12 +165,12 @@ describe('createAgentSession', () => {
     expect(isTurnProgressServer(tasks[0].mcpServers![0]!)).toBe(true);
     expect(session.get().turns.map((turn) => turn.entries)).toEqual([
       [
-        { kind: 'progress', message: 'Step one' },
         { kind: 'text', text: 'Hello', streaming: false },
+        { kind: 'progress', message: 'Step one' },
       ],
       [
-        { kind: 'progress', message: 'Step two' },
         { kind: 'text', text: 'AB', streaming: false },
+        { kind: 'progress', message: 'Step two' },
       ],
     ]);
     session.close();

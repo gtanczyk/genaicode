@@ -470,14 +470,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const addEntry = (id: number, entry: SessionEntry) =>
     updateTurn(id, (turn) => ({ ...turn, entries: [...closeStreaming(turn.entries), entry] }));
 
-  // A report during a streamed reply goes before it, so the reply stays one entry and keeps streaming.
+  // A report goes last, as the newest status, without ending a reply still streaming before it:
+  // the reply's next deltas and its final text still land in that one entry.
   const addProgress = (id: number, entry: SessionEntry) =>
-    updateTurn(id, (turn) => {
-      const last = turn.entries.at(-1);
-      if (last?.kind === 'text' && last.streaming)
-        return { ...turn, entries: [...turn.entries.slice(0, -1), entry, last] };
-      return { ...turn, entries: [...turn.entries, entry] };
-    });
+    updateTurn(id, (turn) => ({ ...turn, entries: [...turn.entries, entry] }));
 
   const clip = (text: string | undefined) =>
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
@@ -523,19 +519,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
-          const last = turn.entries.at(-1);
-          if (last?.kind === 'text' && last.streaming) {
-            return { ...turn, entries: [...turn.entries.slice(0, -1), { ...last, text: last.text + event.text }] };
+          const at = openText(turn.entries);
+          const open = turn.entries[at];
+          if (open?.kind === 'text') {
+            const entries = [...turn.entries];
+            entries[at] = { ...open, text: open.text + event.text };
+            return { ...turn, entries };
           }
           return { ...turn, entries: [...turn.entries, { kind: 'text', text: event.text, streaming: true }] };
         });
         return;
       case 'message':
         updateTurn(turnId, (turn) => {
-          const last = turn.entries.at(-1);
+          const at = openText(turn.entries);
           const entry: SessionEntry = { kind: 'text', text: event.text, streaming: false };
-          if (last?.kind === 'text' && last.streaming)
-            return { ...turn, entries: [...turn.entries.slice(0, -1), entry] };
+          if (at >= 0) {
+            const entries = [...turn.entries];
+            entries[at] = entry;
+            return { ...turn, entries };
+          }
           return { ...turn, entries: [...turn.entries, entry] };
         });
         return;
@@ -1412,10 +1414,20 @@ function failedRun(message: string): AgentRun {
   };
 }
 
+/** The reply still streaming: the last entry, or the last one before progress reports. -1 for none. */
+function openText(entries: SessionEntry[]): number {
+  let at = entries.length - 1;
+  while (at >= 0 && entries[at]!.kind === 'progress') at -= 1;
+  const entry = entries[at];
+  return entry?.kind === 'text' && entry.streaming ? at : -1;
+}
+
 function closeStreaming(entries: SessionEntry[]): SessionEntry[] {
-  const last = entries.at(-1);
-  if (last?.kind !== 'text' || !last.streaming) return entries;
-  return [...entries.slice(0, -1), { ...last, streaming: false }];
+  const at = openText(entries);
+  if (at < 0) return entries;
+  const copy = [...entries];
+  copy[at] = { ...(copy[at] as Extract<SessionEntry, { kind: 'text' }>), streaming: false };
+  return copy;
 }
 
 function findOpenTool(entries: SessionEntry[], id: string | undefined, name: string | undefined): number {

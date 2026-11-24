@@ -155,22 +155,30 @@ describe('withFallback', () => {
     expect(codex.tasks[0]).toMatchObject({ prompt: 'fix it', resume: undefined });
   });
 
-  it('keeps the session loopback channels from a remote backup', async () => {
-    const local = fake('local', [out('quota')]);
-    const remote = fake('remote');
-    Object.assign(remote.agent, { capabilities: { ...remote.agent.capabilities, remote: true } });
+  it('keeps the session channels from a remote backup or one without MCP, and the rest as given', async () => {
     const own = { name: 'docs', url: 'https://docs.example/mcp' };
-    const progress = markTurnProgressServer({ name: 'genaicode_progress', url: 'http://127.0.0.1:1/mcp?turn=a' });
+    const progress = markTurnProgressServer({ name: 'genaicode_progress', url: 'https://progress.example/mcp' });
     const questions = markQuestionChannelServer({ name: 'genaicode_questions', url: 'http://127.0.0.1:2/mcp' });
-    const run = withFallback([local.agent, remote.agent]).run({
-      prompt: 'x',
-      cwd: dir,
-      mcpServers: [own, progress, questions],
-    });
-    for await (const event of run) void event;
-    await run.result;
-    expect(local.tasks[0]!.mcpServers).toHaveLength(3);
-    expect(remote.tasks[0]!.mcpServers).toEqual([own]);
+    const backup = (name: string, capabilities: object) => {
+      const made = fake(name);
+      Object.assign(made.agent, { capabilities: { ...made.agent.capabilities, ...capabilities } });
+      return made;
+    };
+    const cases = [
+      { agent: backup('remote', { mcp: true, remote: true }), servers: [own, progress, questions], gets: [own] },
+      { agent: backup('plain', {}), servers: [progress, questions], gets: undefined },
+      { agent: backup('local', { mcp: true }), servers: [own, progress], gets: [own, progress] },
+      { agent: backup('remote', { mcp: true, remote: true }), servers: [], gets: [] },
+    ];
+    for (const { agent, servers, gets } of cases) {
+      const primary = fake('primary', [out('quota')]);
+      const run = withFallback([primary.agent, agent.agent]).run({ prompt: 'x', cwd: dir, mcpServers: servers });
+      for await (const event of run) void event;
+      await run.result;
+      expect(primary.tasks[0]!.mcpServers).toEqual(servers);
+      expect(agent.tasks[0]!.mcpServers).toEqual(gets);
+      expect('mcpServers' in agent.tasks[0]!).toBe(gets !== undefined);
+    }
   });
 
   it('drops vendor ids, keeps what is left of the budget, and adds up usage', async () => {
