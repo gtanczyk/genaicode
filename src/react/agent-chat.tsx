@@ -736,7 +736,12 @@ function useLatest<A extends unknown[], R>(fn: ((...args: A) => R) | undefined):
     latest.current = fn;
   });
   const given = fn !== undefined;
-  return useMemo(() => (given ? (...args: A) => latest.current?.(...args) as R : undefined), [given]);
+  return useMemo(() => (given ? callLatest(latest) : undefined), [given]);
+}
+
+/** Built outside the hook, so the wrapper holds the ref and nothing else of the render that made it. */
+function callLatest<A extends unknown[], R>(latest: { current: ((...args: A) => R) | undefined }) {
+  return (...args: A) => latest.current?.(...args) as R;
 }
 
 const NO_APPROVALS: SessionState['approvals'] = [];
@@ -791,29 +796,34 @@ function Turn({
   const customFailure = bad ? renderFailure?.(turn) : undefined;
   const hasCustomFailure = customFailure !== undefined && customFailure !== null && customFailure !== false;
   const shown = prompt ? prompt(turn.prompt, turn) : turn.prompt;
-  const entry = (item: SessionEntry, i: number) => (
-    <Entry
-      key={i}
-      entry={item}
-      agent={
-        item.kind === 'approval' && turn.pack
-          ? (turn.pack.tasks.find((task) => task.id === item.request.subtaskId)?.agent ?? turn.pack.lead)
-          : (turn.pack?.lead ?? turn.agent)
-      }
-      cwd={cwd}
-      // Each kind gets only what it uses: a closed step keeps its element, and a host callback it held
-      // would keep that render's whole view alive.
-      pending={item.kind === 'approval' ? pending : NO_APPROVALS}
-      onApprove={item.kind === 'approval' ? onApprove : undefined}
-      onAutoApprove={item.kind === 'approval' ? onAutoApprove : undefined}
-      prompt={item.kind === 'input' ? prompt : undefined}
-      toolName={toolName}
-      artifactUrl={item.kind === 'artifact' ? artifactUrl : undefined}
-      onOpenArtifact={item.kind === 'artifact' ? onOpenArtifact : undefined}
-      renderArtifact={item.kind === 'artifact' ? renderArtifact : undefined}
-      submitArtifact={item.kind === 'artifact' ? submitArtifact : undefined}
-    />
-  );
+  const entry = (item: SessionEntry, i: number) => {
+    // Only an approval still waiting can be answered: one decided or left behind holds no callbacks.
+    const live =
+      item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id);
+    return (
+      <Entry
+        key={i}
+        entry={item}
+        agent={
+          item.kind === 'approval' && turn.pack
+            ? (turn.pack.tasks.find((task) => task.id === item.request.subtaskId)?.agent ?? turn.pack.lead)
+            : (turn.pack?.lead ?? turn.agent)
+        }
+        cwd={cwd}
+        // Each kind gets only what it uses: a closed step keeps its element, and a host callback it held
+        // would keep that render's whole view alive.
+        pending={live ? pending : NO_APPROVALS}
+        onApprove={live ? onApprove : undefined}
+        onAutoApprove={live ? onAutoApprove : undefined}
+        prompt={item.kind === 'input' ? prompt : undefined}
+        toolLabel={item.kind === 'tool' ? toolName(item.name) : undefined}
+        artifactUrl={item.kind === 'artifact' ? artifactUrl : undefined}
+        onOpenArtifact={item.kind === 'artifact' ? onOpenArtifact : undefined}
+        renderArtifact={item.kind === 'artifact' ? renderArtifact : undefined}
+        submitArtifact={item.kind === 'artifact' ? submitArtifact : undefined}
+      />
+    );
+  };
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
   const filteredEntries = turn.entries.filter((item) => {
@@ -937,7 +947,7 @@ function Entry({
   onApprove,
   onAutoApprove,
   prompt,
-  toolName,
+  toolLabel,
   artifactUrl,
   onOpenArtifact,
   renderArtifact,
@@ -954,7 +964,8 @@ function Entry({
   onApprove?: AgentChatProps['onApprove'];
   onAutoApprove?: AgentChatProps['onAutoApprove'];
   prompt?: AgentChatProps['renderPrompt'];
-  toolName: (name: string) => string;
+  /** A tool's display name, worked out by the turn: a kept step must not hold the formatter. */
+  toolLabel?: string;
 }) {
   const openFile = useContext(OpenFile);
   const onAnswer = useContext(AnswerQuestion);
@@ -980,7 +991,7 @@ function Entry({
             <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
               {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
             </span>
-            <span className="gc-tool-name">{toolName(entry.name)}</span>
+            <span className="gc-tool-name">{toolLabel}</span>
             <span className="gc-tool-arg">{argument}</span>
             {diff ? <DiffStat diff={diff} /> : null}
           </summary>

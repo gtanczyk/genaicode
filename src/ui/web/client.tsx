@@ -462,6 +462,11 @@ interface CachedImage {
 }
 
 /** Resolve local image paths referenced in agent and relay replies to short-lived capability URLs. */
+/** Built outside the component, so the resolver holds the images and nothing else of that render's view. */
+function imageResolver(images: Record<string, string>) {
+  return (path: string) => images[path];
+}
+
 function useLocalImages(
   turns: ChatView['session']['turns'] | undefined,
   notices: ChatView['notices'] | undefined,
@@ -931,7 +936,7 @@ function App() {
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
   // Stable while the images are, so memoized Markdown does not re-render on every update.
   const imageUrl = useMemo(
-    () => (config?.files ? (path: string) => localImages[path] : undefined),
+    () => (config?.files ? imageResolver(localImages) : undefined),
     [config?.files, localImages],
   );
 
