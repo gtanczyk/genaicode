@@ -4,6 +4,7 @@ import { render } from 'ink';
 import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
 import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
+import { startProgressChannel } from '../agents/progress.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
 import { createAgentInspector, type AgentInspector } from '../agents/status.js';
@@ -161,7 +162,7 @@ async function openArtifacts(
 }
 
 /**
- * The session's MCP servers: artifacts, `ask_user` for agents that cannot ask on their own, and
+ * The session's MCP servers: artifacts, progress, `ask_user` for agents that cannot ask on their own, and
  * `open_project` in `--home` mode. A port that will not open only means the agent goes without that one.
  */
 async function openChannels(
@@ -170,9 +171,10 @@ async function openChannels(
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
 ) {
-  const [artifactChannel, questionChannel, openProjectChannel] = await Promise.all([
+  const [artifactChannel, questionChannel, progressChannel, openProjectChannel] = await Promise.all([
     openArtifacts(options, cwd, allowScriptHosts),
     startQuestionChannel().catch(() => undefined),
+    startProgressChannel().catch(() => undefined),
     options.home
       ? startProjectChannel({
           env: options.env,
@@ -193,9 +195,15 @@ async function openChannels(
   return {
     artifactChannel,
     questionChannel,
+    progressChannel,
     openProjectChannel,
     closeChannels: async () => {
-      await Promise.all([artifactChannel?.close(), questionChannel?.close(), openProjectChannel?.close()]);
+      await Promise.all([
+        artifactChannel?.close(),
+        questionChannel?.close(),
+        progressChannel?.close(),
+        openProjectChannel?.close(),
+      ]);
     },
   };
 }
@@ -217,7 +225,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   const roots = makeRoots(chatOptions, () => controller, localRoots);
   const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
   const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, undefined, inspector);
-  const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
+  const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
     chatOptions,
     () => controller,
     roots,
@@ -230,6 +238,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
       web,
       artifactChannel,
       questionChannel,
+      progressChannel,
       openProjectChannel,
       onAuthFailure: () => {
         inspector.invalidate();
@@ -483,7 +492,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         }
       : undefined;
   const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector);
-  const { artifactChannel, questionChannel, openProjectChannel, closeChannels } = await openChannels(
+  const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
     webOptions,
     () => controller,
     roots,
@@ -496,6 +505,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       web,
       artifactChannel,
       questionChannel,
+      progressChannel,
       openProjectChannel,
       allowNoAgent: true,
       onAuthFailure: () => {
@@ -807,10 +817,14 @@ export interface EmbeddedWeb {
  * prompts itself through `controller`. Throws `NoAgentError` when no agent is installed.
  */
 export async function startEmbeddedWeb(options: EmbeddedWebOptions): Promise<EmbeddedWeb> {
-  const { artifactChannel, questionChannel, closeChannels } = await openChannels(options, undefined, options.cwd);
+  const { artifactChannel, questionChannel, progressChannel, closeChannels } = await openChannels(
+    options,
+    undefined,
+    options.cwd,
+  );
   let controller: ChatController;
   try {
-    controller = createChatController({ ...options, artifactChannel, questionChannel });
+    controller = createChatController({ ...options, artifactChannel, questionChannel, progressChannel });
   } catch (error) {
     await closeChannels();
     throw error;

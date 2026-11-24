@@ -10,6 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- The desktop and browser chat keep the latest update and plan in view below the collapsed steps. Local agents can report progress with `report_progress` in desktop, browser and terminal chats (#333)
 - The desktop Help menu, browser UI and terminal help link to support and bug reports (#331)
 
 ### Fixed

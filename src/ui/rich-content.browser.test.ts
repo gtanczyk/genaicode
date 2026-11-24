@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import { main, type UiLaunch } from '../cli/main.js';
-import { runWeb } from './index.js';
+import { runWeb, startEmbeddedWeb } from './index.js';
 
 // Minimal valid 1x1 transparent PNG.
 const TINY_PNG = Buffer.from(
@@ -114,6 +114,79 @@ describe('rich content in genaicode ui (browser)', () => {
   afterAll(() => {
     for (const dir of cleanupDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
+
+  it('keeps the plan and latest status visible across 102 tools and a browser reconnect', async () => {
+    const parent = join(process.cwd(), 'node_modules', '.genaicode-test');
+    mkdirSync(parent, { recursive: true });
+    const cwd = mkdtempSync(join(parent, 'progress-'));
+    cleanupDirs.push(cwd);
+    let report!: () => void;
+    let finish!: () => void;
+    const reportGate = new Promise<void>((resolve) => {
+      report = resolve;
+    });
+    const finishGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const agent = makeAgent('local', async (task, emit) => {
+      emit({ type: 'message', text: 'Inspecting links' });
+      for (let i = 0; i < 102; i++) {
+        emit({ type: 'tool-start', id: String(i), name: 'read' });
+        emit({ type: 'tool-end', id: String(i), name: 'read' });
+      }
+      await reportGate;
+      await callMcp(task, 'genaicode_progress', 'report_progress', {
+        message: 'Links checked',
+        plan: [{ step: 'Run browser tests', status: 'in_progress' }],
+      });
+      await callMcp(task, 'genaicode_progress', 'report_progress', { message: 'Browser tests running' });
+      await finishGate;
+      emit({ type: 'message', text: 'Browser tests passed.' });
+    });
+    const ui = await startEmbeddedWeb({
+      agents: [agent],
+      cwd,
+      env: { HOME: cwd, GENAICODE_HOME: cwd },
+      version: '1',
+      clientScript,
+      frameAncestors: () => [],
+      assets: new Map(),
+    });
+    try {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        page.setDefaultTimeout(5000);
+        await page.goto(ui.url);
+        const prompt = page.locator('.gc-composer textarea');
+        await prompt.fill('Check the links');
+        await prompt.press('Enter');
+        const steps = page.locator('.gc-fold');
+        await steps.locator(':scope > summary', { hasText: '102 steps' }).waitFor();
+        expect(await steps.getAttribute('open')).toBeNull();
+        await page.getByText('Inspecting links', { exact: true }).waitFor();
+        report();
+        const current = page.getByText('Browser tests running', { exact: true });
+        await current.waitFor();
+        await page.reload();
+        await current.waitFor();
+        await page.getByRole('list', { name: 'Plan' }).locator('[aria-current="step"]').waitFor();
+        expect(await steps.getAttribute('open')).toBeNull();
+        finish();
+        await page.locator('.gc-turn-footer').waitFor();
+        await page.getByText('Browser tests passed.', { exact: true }).waitFor();
+        expect(await current.isVisible()).toBe(false);
+        await steps.locator(':scope > summary').click();
+        await current.waitFor();
+      } finally {
+        await browser.close();
+      }
+    } finally {
+      report();
+      finish();
+      await ui.close();
+    }
+  }, 20_000);
 
   it('renders every viewer kind, line marks, multi-root session files, reveal, local thumbnails and click-to-load remote images', async () => {
     mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { delegationBrief, pack } from './pack.js';
+import { startProgressChannel } from './progress.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'genaicode-delegate-test-')));
@@ -177,12 +178,18 @@ describe('pack delegation for a chat agent', () => {
       brief: delegationBrief,
       shareableMcpServers: async () => [gamedev],
     });
-    const result = await team.run({
-      prompt: 'go',
-      cwd,
-      mcpServers: [{ name: 'given', command: 'node' }],
-    }).result;
-    expect(result.ok).toBe(true);
+    const progress = await startProgressChannel();
+    try {
+      const scope = progress.openTurn(() => {}, new AbortController().signal);
+      const result = await team.run({
+        prompt: 'go',
+        cwd,
+        mcpServers: [{ name: 'given', command: 'node' }, scope.mcpServer],
+      }).result;
+      expect(result.ok).toBe(true);
+    } finally {
+      await progress.close();
+    }
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ model: 'gemini-4-neon', effort: 'high', mcpServers: [gamedev] });
     expect(prompt).toContain('Yours: gamedevpl, given.');

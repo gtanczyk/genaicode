@@ -380,6 +380,11 @@ function renderEntry(
   context: { cwd?: string; latestArtifacts: Map<string, number>; readArtifact?: ReadArtifact },
 ) {
   switch (entry.kind) {
+    case 'progress':
+      out.push(`### ${speaker} (progress)`, '', entry.message, '');
+      for (const item of entry.plan ?? []) out.push(`- ${item.step} (${item.status.replace('_', ' ')})`);
+      if (entry.plan?.length) out.push('');
+      return;
     case 'text':
       if (entry.text.trim()) out.push(`### ${speaker}`, '', entry.text.trim(), '');
       return;

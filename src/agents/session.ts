@@ -5,6 +5,8 @@ import { packApproval, PackActionError, type PackAction, type PackControls, type
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import { markQuestionChannelServer } from './ask-user.js';
+import { markTurnProgressServer, PROGRESS_SERVER_NAME, type ProgressChannel, type ProgressReport } from './progress.js';
+import { withSessionChannels } from './session-channels.js';
 import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
@@ -28,6 +30,7 @@ import type {
 /** One item of a turn's transcript, built from the run's `AgentEvent`s. */
 export type SessionEntry =
   | { kind: 'text'; text: string; streaming: boolean }
+  | ({ kind: 'progress' } & ProgressReport)
   | {
       kind: 'tool';
       id?: string;
@@ -183,6 +186,8 @@ export interface AgentSessionOptions {
    * `approvals` like the agent's own, for `answer()`, in the turn that is running.
    */
   questions?: { mcpServer: McpServer; bind(handler: QuestionHandler | undefined): void };
+  /** Let local MCP agents publish status and plan updates into the turn that owns the call. */
+  progress?: Pick<ProgressChannel, 'openTurn'>;
   /**
    * Give local MCP agents `open_project` while `enabled()` is true (neutral home or unresolved
    * directory), so the agent can offer to move the conversation into a project via a question card.
@@ -466,6 +471,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const addEntry = (id: number, entry: SessionEntry) =>
     updateTurn(id, (turn) => ({ ...turn, entries: [...closeStreaming(turn.entries), entry] }));
 
+  // A report goes last, as the newest status, without ending a reply still streaming before it:
+  // the reply's next deltas and its final text still land in that one entry.
+  const addProgress = (id: number, entry: SessionEntry) =>
+    updateTurn(id, (turn) => ({ ...turn, entries: [...turn.entries, entry] }));
+
   const clip = (text: string | undefined) =>
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
@@ -510,19 +520,25 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       case 'text-delta':
         updateTurn(turnId, (turn) => {
-          const last = turn.entries.at(-1);
-          if (last?.kind === 'text' && last.streaming) {
-            return { ...turn, entries: [...turn.entries.slice(0, -1), { ...last, text: last.text + event.text }] };
+          const at = openText(turn.entries);
+          const open = turn.entries[at];
+          if (open?.kind === 'text') {
+            const entries = [...turn.entries];
+            entries[at] = { ...open, text: open.text + event.text };
+            return { ...turn, entries };
           }
           return { ...turn, entries: [...turn.entries, { kind: 'text', text: event.text, streaming: true }] };
         });
         return;
       case 'message':
         updateTurn(turnId, (turn) => {
-          const last = turn.entries.at(-1);
+          const at = openText(turn.entries);
           const entry: SessionEntry = { kind: 'text', text: event.text, streaming: false };
-          if (last?.kind === 'text' && last.streaming)
-            return { ...turn, entries: [...turn.entries.slice(0, -1), entry] };
+          if (at >= 0) {
+            const entries = [...turn.entries];
+            entries[at] = entry;
+            return { ...turn, entries };
+          }
           return { ...turn, entries: [...turn.entries, entry] };
         });
         return;
@@ -872,6 +888,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? 'default'
           : undefined;
     let current: AgentRun;
+    let progressScope: ReturnType<ProgressChannel['openTurn']> | undefined;
+    let progressOpen = true;
     let contextBatch: ContextBatch | undefined;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
@@ -886,11 +904,27 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (options.openProject && !turnAgent.capabilities.remote && options.openProject.enabled())
           extraServers.push(options.openProject.mcpServer);
         if (options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote) {
-          const taken = new Set([...baseServers, ...extraServers].map((server) => server.name));
-          const baseName = options.questions.mcpServer.name;
-          let name = baseName;
-          for (let n = 2; taken.has(name); n++) name = `${baseName}_${n}`;
+          const name = availableServerName(options.questions.mcpServer.name, [...baseServers, ...extraServers]);
           extraServers.push(markQuestionChannelServer({ ...options.questions.mcpServer, name }));
+        }
+        if (options.progress && !turnAgent.capabilities.remote) {
+          const name = availableServerName(PROGRESS_SERVER_NAME, [...baseServers, ...extraServers]);
+          progressScope = options.progress.openTurn(
+            (report) => {
+              // A host may deliver late: nothing lands once the turn ended or stopped.
+              if (!progressOpen || turnController.signal.aborted) return;
+              // Built field by field: a host's own `kind` or a plan it reuses must not change the entry.
+              addProgress(turnId, {
+                kind: 'progress',
+                message: String(report.message),
+                ...(report.plan ? { plan: report.plan.map(({ step, status }) => ({ step, status })) } : {}),
+              });
+            },
+            turnController.signal,
+            name,
+          );
+          // Marked here too: a host's own channel may not mark its servers.
+          extraServers.push(markTurnProgressServer(progressScope.mcpServer));
         }
       }
       const basePrompt = rewritten ?? toAgent(prompt);
@@ -898,7 +932,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
       current = turnAgent.run({
         ...options.task,
-        ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
+        ...(extraServers.length ? { mcpServers: withSessionChannels(options.task?.mcpServers, extraServers) } : {}),
         ...(budget ? { budget } : {}),
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
@@ -946,7 +980,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       } catch (error) {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
-      const result = await current.result;
+      const result = await current.result.finally(() => {
+        progressOpen = false;
+        // A host channel that fails to close must not keep the turn running.
+        try {
+          void Promise.resolve(progressScope?.close()).catch(() => {});
+        } catch {
+          // Same.
+        }
+      });
       const noteTurnWas = noteTurn?.id === turnId;
       if (noteTurnWas) noteTurn = undefined;
       denyPending();
@@ -1346,6 +1388,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   };
 }
 
+function availableServerName(base: string, servers: readonly McpServer[]): string {
+  const taken = new Set(servers.map((server) => server.name));
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}_${n}`;
+  return name;
+}
+
 /** Claude's permission prompt for one of the session's own MCP tools (`publish_artifact`, `open_project`). */
 function isServerToolRequest(request: ApprovalRequest, server: McpServer | undefined, tool: string): boolean {
   const detail = request.detail;
@@ -1384,10 +1433,20 @@ function failedRun(message: string): AgentRun {
   };
 }
 
+/** The reply still streaming: the last entry, or the last one before progress reports. -1 for none. */
+function openText(entries: SessionEntry[]): number {
+  let at = entries.length - 1;
+  while (at >= 0 && entries[at]!.kind === 'progress') at -= 1;
+  const entry = entries[at];
+  return entry?.kind === 'text' && entry.streaming ? at : -1;
+}
+
 function closeStreaming(entries: SessionEntry[]): SessionEntry[] {
-  const last = entries.at(-1);
-  if (last?.kind !== 'text' || !last.streaming) return entries;
-  return [...entries.slice(0, -1), { ...last, streaming: false }];
+  const at = openText(entries);
+  if (at < 0) return entries;
+  const copy = [...entries];
+  copy[at] = { ...(copy[at] as Extract<SessionEntry, { kind: 'text' }>), streaming: false };
+  return copy;
 }
 
 function findOpenTool(entries: SessionEntry[], id: string | undefined, name: string | undefined): number {

@@ -6,6 +6,9 @@ import { parseCli } from '../cli/args.js';
 import { parseSlash } from '../ui/format.js';
 import { cliAgent } from './cli-agent.js';
 import { describeFailover, shouldFailOver, withFallback } from './failover.js';
+import { markQuestionChannelServer } from './ask-user.js';
+import { markTurnProgressServer } from './progress.js';
+import { withSessionChannels } from './session-channels.js';
 import { createAppAgent } from '../app-agent/app-agent.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -151,6 +154,33 @@ describe('withFallback', () => {
     expect(events).toContainEqual({ type: 'failover', from: 'claude', to: 'codex', failure: { kind: 'quota' } });
     expect(events.filter((event) => event.type === 'done')).toHaveLength(1);
     expect(codex.tasks[0]).toMatchObject({ prompt: 'fix it', resume: undefined });
+  });
+
+  it('keeps the session channels from a remote backup or one without MCP, and the rest as given', async () => {
+    const own = { name: 'docs', url: 'https://docs.example/mcp' };
+    const progress = markTurnProgressServer({ name: 'genaicode_progress', url: 'https://progress.example/mcp' });
+    const questions = markQuestionChannelServer({ name: 'genaicode_questions', url: 'http://127.0.0.1:2/mcp' });
+    const backup = (name: string, capabilities: object) => {
+      const made = fake(name);
+      Object.assign(made.agent, { capabilities: { ...made.agent.capabilities, ...capabilities } });
+      return made;
+    };
+    const cases = [
+      { agent: backup('remote', { mcp: true, remote: true }), servers: [own, progress, questions], gets: [own] },
+      { agent: backup('plain', {}), servers: withSessionChannels(undefined, [progress, questions]), gets: undefined },
+      { agent: backup('plain', {}), servers: withSessionChannels([], [progress]), gets: [] },
+      { agent: backup('local', { mcp: true }), servers: [own, progress], gets: [own, progress] },
+      { agent: backup('remote', { mcp: true, remote: true }), servers: [], gets: [] },
+    ];
+    for (const { agent, servers, gets } of cases) {
+      const primary = fake('primary', [out('quota')]);
+      const run = withFallback([primary.agent, agent.agent]).run({ prompt: 'x', cwd: dir, mcpServers: servers });
+      for await (const event of run) void event;
+      await run.result;
+      expect(primary.tasks[0]!.mcpServers).toEqual(servers);
+      expect(agent.tasks[0]!.mcpServers).toEqual(gets);
+      expect('mcpServers' in agent.tasks[0]!).toBe(gets !== undefined);
+    }
   });
 
   it('drops vendor ids, keeps what is left of the budget, and adds up usage', async () => {

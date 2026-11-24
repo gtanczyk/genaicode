@@ -24,8 +24,16 @@ export interface LocalMcpServer {
  * Serve `tools` over MCP (streamable HTTP, JSON responses) on a random loopback port, behind a
  * random bearer token.
  */
-export async function startLocalMcpServer(options: LocalMcpServerOptions): Promise<LocalMcpServer> {
-  const { name, tools, instructions } = options;
+export function startLocalMcpServer({ tools, ...options }: LocalMcpServerOptions): Promise<LocalMcpServer> {
+  return startScopedLocalMcpServer(options, () => tools);
+}
+
+/** Resolve tools for each authenticated request. A revoked turn returns undefined. */
+export async function startScopedLocalMcpServer(
+  options: Omit<LocalMcpServerOptions, 'tools'>,
+  toolsForRequest: (target: string) => readonly McpTool[] | undefined,
+) {
+  const { name, instructions } = options;
   const expected = Buffer.from(`Bearer ${randomBytes(32).toString('hex')}`);
   const maxBody = options.maxBody ?? 1024 * 1024;
   let port = 0;
@@ -41,7 +49,8 @@ export async function startLocalMcpServer(options: LocalMcpServerOptions): Promi
     if (request.headers.origin !== undefined) return reply(403);
     const given = Buffer.from(request.headers.authorization ?? '');
     if (given.length !== expected.length || !timingSafeEqual(given, expected)) return reply(401);
-    if (request.method !== 'POST' || request.url?.split('?')[0] !== '/mcp') return reply(405);
+    const target = request.url ?? '';
+    if (request.method !== 'POST' || target.split('?')[0] !== '/mcp') return reply(405);
     const chunks: Buffer[] = [];
     let size = 0;
     request.on('data', (chunk: Buffer) => {
@@ -61,7 +70,9 @@ export async function startLocalMcpServer(options: LocalMcpServerOptions): Promi
       } catch {
         return reply(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
       }
-      handleMcpMessage(message, tools, {
+      const available = toolsForRequest(target);
+      if (!available) return reply(404);
+      handleMcpMessage(message, available, {
         name: `genaicode-${name}`,
         version: '1',
         ...(instructions ? { instructions } : {}),
@@ -86,7 +97,7 @@ export async function startLocalMcpServer(options: LocalMcpServerOptions): Promi
   return {
     mcpServer: { name, url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: expected.toString() } },
     close: () =>
-      new Promise((resolve) => {
+      new Promise<void>((resolve) => {
         server.close(() => resolve());
         server.closeAllConnections();
       }),
