@@ -73,6 +73,203 @@ const deferred = () => {
 };
 
 describe('createAgentSession', () => {
+  it('keeps the model the agent reports while the person sets none, until the agent changes', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+      },
+    ]);
+    const { agent: other } = fakeAgent([], { resume: true }, 'other');
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get()).toMatchObject({ reportedModel: 'model-a' });
+    expect(session.get().model).toBeUndefined();
+
+    session.setAgent(other);
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
+  it('drops the reported model when the model, session or agent changes, until a turn reports again', async () => {
+    const failover = { type: 'failover', from: 'fake', to: 'backup', failure: { kind: 'quota', message: 'out' } };
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'default-model' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'picked-model' });
+        },
+        async (_task, emit) => {
+          // A new session that does not say its model.
+          emit({ type: 'session', sessionId: 's-2' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-3', model: 'model-a' });
+          emit(failover as AgentEvent);
+        },
+        async (_task, emit) => {
+          emit(failover as AgentEvent);
+          emit({ type: 'session', sessionId: 's-4', model: 'backup-default' });
+        },
+      ],
+      { resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('default-model');
+
+    session.setModel('picked-model');
+    expect(session.get().reportedModel).toBeUndefined();
+    session.send('second');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('picked-model');
+    // Cleared: the next turn runs the default, which no turn has reported since.
+    session.setModel(undefined);
+    expect(session.get().reportedModel).toBeUndefined();
+
+    session.reset();
+    session.send('third');
+    await session.idle();
+    expect(session.get()).toMatchObject({ sessionId: 's-2', reportedModel: undefined });
+
+    session.send('fourth');
+    await session.idle();
+    // The backup took over and has not said its model.
+    expect(session.get().reportedModel).toBeUndefined();
+
+    session.send('fifth');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('backup-default');
+  });
+
+  it('shows no routing setting as the model', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gpt-x' });
+        emit({ type: 'session', sessionId: 's-1', model: 'auto' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'Auto' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'auto-gemini-3' });
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+      },
+      async (_task, emit) => {
+        // A model id that only starts with auto is a model.
+        emit({ type: 'session', sessionId: 's-1', model: 'auto-complete-v1' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'auto-gemini-ocr' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+        // Several models answered: no single name.
+        emit({ type: 'session', sessionId: 's-1', model: undefined });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+        // Says nothing about the model: keeps it.
+        emit({ type: 'session', sessionId: 's-1' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    for (const [prompt, shown] of [
+      ['one', undefined],
+      ['two', undefined],
+      ['three', 'gemini-3-pro'],
+      ['three-b', 'auto-complete-v1'],
+      ['three-c', 'auto-gemini-ocr'],
+      ['four', undefined],
+      ['five', 'gemini-3-pro'],
+    ] as const) {
+      session.send(prompt);
+      await session.idle();
+      expect(session.get().reportedModel).toBe(shown);
+    }
+  });
+
+  it('ignores a model reported after the model setting changed during the turn', async () => {
+    const started = deferred();
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        await started.promise;
+        emit({ type: 'session', sessionId: 's-1', model: 'picked' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w', model: 'picked' });
+    session.send('first');
+    session.setModel(undefined);
+    started.resolve();
+    await session.idle();
+    expect(session.get()).toMatchObject({ sessionId: 's-1', reportedModel: undefined });
+  });
+
+  it('starts a turn in one update, and forgets the model when turns of the same session are adopted', async () => {
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+      ],
+      { resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    const seen: string[] = [];
+    const stop = session.subscribe((state) => seen.push(state.status));
+    session.send('second');
+    stop();
+    expect(seen[0]).toBe('running');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('model-a');
+    session.adopt([{ id: 9, agent: 'fake', prompt: 'elsewhere', startedAt: 1, entries: [] }], { sessionId: 's-1' });
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
+  it('treats an empty model setting as the default, so clearing it keeps the report', async () => {
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w', model: '' });
+    expect(session.get().model).toBeUndefined();
+    session.send('first');
+    await session.idle();
+    expect(tasks[0]!.model).toBeUndefined();
+    session.setModel(undefined);
+    session.setModel('');
+    expect(session.get().reportedModel).toBe('model-a');
+  });
+
+  it('forgets the model of a non-resuming agent when its next turn starts a new session', async () => {
+    const report = deferred();
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+        () => report.promise,
+      ],
+      {},
+    );
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('model-a');
+    session.send('second');
+    expect(session.get().reportedModel).toBeUndefined();
+    report.resolve();
+    await session.idle();
+  });
+
   it('records valid progress only on its issuing turn, through queueing, completion and stop', async () => {
     const channel = await startProgressChannel();
     const first = deferred();

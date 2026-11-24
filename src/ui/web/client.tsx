@@ -1061,9 +1061,13 @@ function App() {
         )}
         <input
           aria-label="Model"
-          title="The model id, or empty for the agent's default"
-          placeholder="model"
-          size={Math.max(5, (model ?? session.model ?? '').length)}
+          title={
+            !session.model && session.reportedModel
+              ? `The model id, or empty for the agent's default. It last ran ${session.reportedModel}.`
+              : "The model id, or empty for the agent's default"
+          }
+          placeholder={(!session.model && session.reportedModel) || 'model'}
+          size={Math.max(5, (model ?? session.model ?? session.reportedModel ?? '').length)}
           value={model ?? session.model ?? ''}
           onChange={(event) => setModel(event.target.value)}
           onBlur={() => {
@@ -1081,7 +1085,7 @@ function App() {
             value={session.effort ?? 'default'}
             onChange={(event) => control(`/effort ${event.target.value}`)}
           >
-            <option value="default">effort</option>
+            <option value="default">default effort</option>
             {efforts.map((level) => (
               <option key={level} value={level}>
                 {level}

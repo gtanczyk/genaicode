@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
+
 ## 3.3.0 — 2026-11-24
 
 ### Added
