@@ -976,7 +976,12 @@ describe('AgentChat', () => {
   it('builds a step the user opened before hydration', async () => {
     const { renderToString } = await import('react-dom/server');
     const { hydrateRoot } = await import('react-dom/client');
-    const props: AgentChatProps = { state: fixture(), foldSteps: true, onSend: () => {} };
+    // Finished turns only: a running turn's elapsed-time label differs between server and client.
+    const props: AgentChatProps = {
+      state: fixture({ status: 'idle', turns: fixture().turns.slice(0, 1) }),
+      foldSteps: true,
+      onSend: () => {},
+    };
     const host = document.createElement('div');
     host.innerHTML = renderToString(<AgentChat {...props} />);
     document.body.append(host);
