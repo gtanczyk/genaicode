@@ -66,7 +66,7 @@ not signed in, not installed or crashed (see [failover](agents.md#failover)).
 npx genaicode sessions                       # what every agent has going on, by project
 npx genaicode sessions --since 7d -C ../api  # last week, one project
 npx genaicode sessions -a codex --json       # one JSON object per session
-npx genaicode sessions --cloud               # also Cursor Cloud Agents (CURSOR_API_KEY)
+npx genaicode sessions --cloud               # also cloud sessions (gh, codex, CURSOR_API_KEY)
 npx genaicode sessions --waiting             # only what waits for you, approvals first
 ```
 
@@ -74,6 +74,17 @@ It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot
 CLI, Antigravity, Muse and Vibe) and changes nothing. SQLite-backed stores (Codex, Muse,
 Antigravity, Cursor's model lookup and Copilot's `session-store.db` fallback) are read with
 `node:sqlite`.
+`--cloud` adds sessions that run elsewhere. The vendors do not list them, but a session that
+pushed work signs it: your own pull requests of the last two weeks (asked of GitHub through `gh`,
+with your sign-in) are grouped by the claude.ai project thread, Claude Code cloud session or
+Codex Cloud task their description links, under the repository, with the pull requests as the
+latest word (`Open: owner/repo#12 ...`). A session with an open pull request shows as waiting.
+One that pushed nothing is not seen. Codex Cloud tasks also come from `codex cloud list --json`
+(the latest twenty), and Cursor Cloud Agents from Cursor's API when `CURSOR_API_KEY` is set.
+Without `gh` or `codex` that part is skipped. `-a github` or `-a codex-cloud` shows one of them;
+`sessions mcp --cloud` gives them to an agent. In code: `githubCloudSessions()` and
+`codexCloudSessions()`, both a `SessionSource`.
+
 `●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
 half way. After `npx genaicode hooks install`, Claude Code, Codex, Gemini, Copilot and Cursor report what their sessions
 do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
