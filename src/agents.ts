@@ -193,6 +193,7 @@ export {
   readCodexThread,
   agentMemoryFiles,
   cloudSessionOf,
+  joinedCloudSessions,
   codexCloudSessions,
   githubCloudSessions,
   memoryTools,

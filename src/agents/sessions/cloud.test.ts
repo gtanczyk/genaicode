@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudSessionOf, codexCloudSessions, githubCloudSessions } from './cloud.js';
+import { cloudSessionOf, codexCloudSessions, githubCloudSessions, joinedCloudSessions } from './cloud.js';
 
 const thread = 'https://claude.ai/code/project/chan_01Abc?thread=cmsg_01Def';
 const pull = (number: number, body: string, extra: Record<string, unknown> = {}) => ({
@@ -129,5 +129,41 @@ describe('codexCloudSessions', () => {
 
   it('lists nothing without the Codex CLI', async () => {
     expect(await codexCloudSessions({ run: missing }).list()).toEqual([]);
+  });
+});
+
+describe('joinedCloudSessions', () => {
+  const task = 'https://chatgpt.com/codex/tasks/task_e_1';
+  const now = () => Date.parse('2026-11-24T12:00:00Z');
+  const gh = async () => JSON.stringify({ items: [pull(3, task, { state: 'open' }), pull(2, thread)] });
+  const codex = async () =>
+    JSON.stringify([
+      { id: 'task_e_1', url: task, title: 'Task', status: 'in_progress', updated_at: '2026-11-23T11:00:00Z' },
+    ]);
+
+  it('names a Codex Cloud task with a pull request once, with its pull request', async () => {
+    const [pulls, tasks] = joinedCloudSessions(
+      githubCloudSessions({ run: gh, now }),
+      codexCloudSessions({ run: codex }),
+    );
+    expect((await pulls.list()).map((session) => session.id)).toEqual(['cmsg_01Def']);
+    const [listed] = await tasks.list();
+    expect(listed).toMatchObject({ source: 'codex-cloud', id: 'task_e_1', state: 'active', repository: 'acme/app' });
+    expect(listed!.lastReply).toBe('Codex Cloud: in_progress; Open: acme/app#3 Change 3');
+  });
+
+  it('lists the one that can be read when the other cannot', async () => {
+    const broken = async () => Promise.reject(new Error('not signed in'));
+    const [pulls, tasks] = joinedCloudSessions(
+      githubCloudSessions({ run: gh, now }),
+      codexCloudSessions({ run: broken }),
+    );
+    expect((await pulls.list()).map((session) => session.id)).toEqual(['task_e_1', 'cmsg_01Def']);
+    await expect(tasks.list()).rejects.toThrow('not signed in');
+    const [, alone] = joinedCloudSessions(
+      githubCloudSessions({ run: broken, now }),
+      codexCloudSessions({ run: codex }),
+    );
+    expect((await alone.list({ limit: 1 })).map((session) => session.lastReply)).toEqual(['Codex Cloud: in_progress']);
   });
 });

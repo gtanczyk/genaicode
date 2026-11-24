@@ -52,7 +52,7 @@ import {
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
-import { codexCloudSessions, githubCloudSessions } from '../agents/sessions/cloud.js';
+import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
 import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import {
@@ -1081,9 +1081,17 @@ function sessionSourcesFor(
   const cloud: CodingAgent[] = [];
   if (command.cloud && cli.env.CURSOR_API_KEY) cloud.push(cursorCloud({ apiKey: cli.env.CURSOR_API_KEY }));
   const picked = (name: string) => command.agent === undefined || name === command.agent;
+  const elsewhere = command.cloud
+    ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name))
+    : [];
+  // A Codex Cloud task that opened a pull request is in both listings: named once.
+  const pulls = elsewhere.find((source) => source.name === 'github');
+  const tasks = elsewhere.find((source) => source.name === 'codex-cloud');
+  const joined = pulls && tasks ? joinedCloudSessions(pulls, tasks) : [];
   return [
     ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
-    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
+    ...elsewhere.filter((source) => !joined.length || (source !== pulls && source !== tasks)),
+    ...joined,
   ];
 }
 

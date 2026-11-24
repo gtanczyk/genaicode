@@ -83,7 +83,8 @@ One that pushed nothing is not seen. Codex Cloud tasks also come from `codex clo
 (the latest twenty), and Cursor Cloud Agents from Cursor's API when `CURSOR_API_KEY` is set.
 Without `gh` or `codex` that part is skipped. `-a github` or `-a codex-cloud` shows one of them;
 `sessions mcp --cloud` gives them to an agent. In code: `githubCloudSessions()` and
-`codexCloudSessions()`, both a `SessionSource`.
+`codexCloudSessions()`, both a `SessionSource`; `joinedCloudSessions(pulls, tasks)` names a Codex
+Cloud task that opened a pull request once, as the CLI does.
 
 `●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
 half way. After `npx genaicode hooks install`, Claude Code, Codex, Gemini, Copilot and Cursor report what their sessions

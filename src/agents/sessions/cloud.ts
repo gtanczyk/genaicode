@@ -223,3 +223,60 @@ export function codexCloudSessions(options: CodexCloudOptions = {}): SessionSour
     },
   };
 }
+
+/** How long one look at both sources serves the two of them. */
+const SHARED_LOOK_MS = 5_000;
+
+/**
+ * `pulls` (`githubCloudSessions()`) and `tasks` (`codexCloudSessions()`) as sources that name a
+ * session once: a Codex Cloud task that also opened a pull request is listed by `tasks`, with its
+ * pull requests, and left out of `pulls`. When one of the two cannot be read, the other still lists.
+ */
+export function joinedCloudSessions(pulls: SessionSource, tasks: SessionSource): [SessionSource, SessionSource] {
+  type Look = { key: string; at: number; pulls: Promise<SessionInfo[]>; tasks: Promise<SessionInfo[]> };
+  const key = (session: SessionInfo) => `${session.agent}:${session.id}`;
+  let last: Look | undefined;
+  const look = (query: SessionQuery): Look => {
+    const asked = `${query.since ?? ''}|${query.cwd ?? ''}`;
+    if (!last || last.key !== asked || Date.now() - last.at > SHARED_LOOK_MS) {
+      // The limit comes after the two are told apart.
+      const rest: SessionQuery = { ...query };
+      delete rest.limit;
+      last = { key: asked, at: Date.now(), pulls: pulls.list(rest), tasks: tasks.list(rest) };
+      // Each is awaited by whoever lists; the other only does without it.
+      last.pulls.catch(() => undefined);
+      last.tasks.catch(() => undefined);
+    }
+    return last;
+  };
+  return [
+    {
+      ...pulls,
+      async list(query: SessionQuery = {}) {
+        const both = look(query);
+        const listed = new Set((await both.tasks.catch(() => [])).map(key));
+        return (await both.pulls).filter((session) => !listed.has(key(session))).slice(0, query.limit);
+      },
+    },
+    {
+      ...tasks,
+      async list(query: SessionQuery = {}) {
+        const both = look(query);
+        const opened = new Map((await both.pulls.catch(() => [])).map((session) => [key(session), session]));
+        return (await both.tasks)
+          .map((task): SessionInfo => {
+            const pull = opened.get(key(task));
+            if (!pull) return task;
+            const says = [task.lastReply, pull.lastReply].filter(Boolean).join('; ');
+            return {
+              ...task,
+              ...(pull.repository ? { repository: pull.repository } : {}),
+              ...(pull.startedAt !== undefined ? { startedAt: pull.startedAt } : {}),
+              ...(says ? { lastReply: says } : {}),
+            };
+          })
+          .slice(0, query.limit);
+      },
+    },
+  ];
+}
