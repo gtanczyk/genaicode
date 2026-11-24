@@ -367,16 +367,17 @@ export function createGeminiParser(): AgentOutputParser {
           const stats = value.stats;
           // The CLI can answer with another model than it started on: its stats name the one(s) used.
           // A failed attempt is listed with no tokens: only models that produced something count.
-          const used =
-            isObject(stats) && isObject(stats.models)
-              ? Object.entries(stats.models)
-                  .filter(([, entry]) => !isObject(entry) || tokensOf(entry) !== 0)
-                  .map(([name]) => name)
-              : [];
+          const models = isObject(stats) && isObject(stats.models) ? stats.models : undefined;
+          const perModel = models !== undefined;
+          const used = models
+            ? Object.entries(models)
+                .filter(([, entry]) => !isObject(entry) || tokensOf(entry) !== 0)
+                .map(([name]) => name)
+            : [];
           // One model produced the turn: that one. Several (a fallback, a routing classifier, a helper
           // model for a tool), or a turn that failed before answering: no single name is right.
           const answeredBy = outcome.ok || answered ? (used.length === 1 ? used[0] : undefined) : undefined;
-          if (sessionId && answeredBy !== initModel && (answeredBy !== undefined || used.length || !outcome.ok)) {
+          if (sessionId && answeredBy !== initModel && (answeredBy !== undefined || perModel || !outcome.ok)) {
             initModel = answeredBy;
             events.push({ type: 'session', sessionId, model: answeredBy });
           }

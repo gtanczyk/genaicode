@@ -124,6 +124,24 @@ describe('gemini driver', () => {
         ]),
       ),
     ).toBeUndefined();
+    // A hook stopped the turn before any model ran: per-model stats, none used.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-7', model: 'gemini-x' },
+          { type: 'result', status: 'success', stats: { models: {} } },
+        ]),
+      ),
+    ).toBeUndefined();
+    // No per-model stats at all (older CLI): the init model stays.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-8', model: 'gemini-x' },
+          { type: 'result', status: 'success', stats: { input_tokens: 1 } },
+        ]),
+      ),
+    ).toBe('gemini-x');
     // Auto's classifier answered, the chat request failed before replying.
     expect(
       lastModel(
