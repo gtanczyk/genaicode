@@ -11,6 +11,8 @@ export interface SseEvent {
  */
 export function takeEvents(buffer: string): { events: SseEvent[]; rest: string } {
   const events: SseEvent[] = [];
+  // Counted, not found with findLastIndex: older desktop webviews lack it.
+  let newestView = -1;
   let rest = buffer;
   for (let sep = rest.indexOf('\n\n'); sep !== -1; sep = rest.indexOf('\n\n')) {
     const block = rest.slice(0, sep);
@@ -21,8 +23,10 @@ export function takeEvents(buffer: string): { events: SseEvent[]; rest: string }
       if (line.startsWith('event:')) event = line.slice(6).trim();
       else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
     }
-    if (data.length) events.push({ event, data: data.join('\n') });
+    if (data.length) {
+      if (event === 'view') newestView = events.length;
+      events.push({ event, data: data.join('\n') });
+    }
   }
-  const newestView = events.findLastIndex((one) => one.event === 'view');
   return { events: events.filter((one, i) => one.event !== 'view' || i === newestView), rest };
 }

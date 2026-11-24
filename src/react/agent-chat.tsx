@@ -739,6 +739,8 @@ function useLatest<A extends unknown[], R>(fn: ((...args: A) => R) | undefined):
   return useMemo(() => (given ? (...args: A) => latest.current?.(...args) as R : undefined), [given]);
 }
 
+const NO_APPROVALS: SessionState['approvals'] = [];
+
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -799,15 +801,17 @@ function Turn({
           : (turn.pack?.lead ?? turn.agent)
       }
       cwd={cwd}
-      pending={pending}
-      onApprove={onApprove}
-      onAutoApprove={onAutoApprove}
-      prompt={prompt}
+      // Each kind gets only what it uses: a closed step keeps its element, and a host callback it held
+      // would keep that render's whole view alive.
+      pending={item.kind === 'approval' ? pending : NO_APPROVALS}
+      onApprove={item.kind === 'approval' ? onApprove : undefined}
+      onAutoApprove={item.kind === 'approval' ? onAutoApprove : undefined}
+      prompt={item.kind === 'input' ? prompt : undefined}
       toolName={toolName}
-      artifactUrl={artifactUrl}
-      onOpenArtifact={onOpenArtifact}
-      renderArtifact={renderArtifact}
-      submitArtifact={submitArtifact}
+      artifactUrl={item.kind === 'artifact' ? artifactUrl : undefined}
+      onOpenArtifact={item.kind === 'artifact' ? onOpenArtifact : undefined}
+      renderArtifact={item.kind === 'artifact' ? renderArtifact : undefined}
+      submitArtifact={item.kind === 'artifact' ? submitArtifact : undefined}
     />
   );
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
