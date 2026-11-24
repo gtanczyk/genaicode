@@ -725,11 +725,14 @@ const NO_SESSION: SessionState = {
   canSteer: false,
 };
 
+/** A layout effect in the browser; a plain one (which the server skips quietly) when rendering on a server. */
+const useClientLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
 /** A function that stays the same while `fn` is given, and always calls the latest `fn`. */
 function useLatest<A extends unknown[], R>(fn: ((...args: A) => R) | undefined): ((...args: A) => R) | undefined {
   const latest = useRef(fn);
   // After commit: a render React may still throw away must not swap the handler a click reaches.
-  useLayoutEffect(() => {
+  useClientLayoutEffect(() => {
     latest.current = fn;
   });
   const given = fn !== undefined;
@@ -1150,13 +1153,13 @@ function LazyDetails({
   const [open, setOpen] = useState(false);
   const details = useRef<HTMLDetailsElement>(null);
   // Opened before React took over the page (server rendering): build the body now.
-  useLayoutEffect(() => {
+  useClientLayoutEffect(() => {
     if (details.current?.open) setOpen(true);
   }, []);
   // While closed, the body last committed, the same element: React skips the subtree until it opens.
   const kept = useRef<ReactNode>(null);
   const body = open ? build() : kept.current;
-  useLayoutEffect(() => {
+  useClientLayoutEffect(() => {
     kept.current = body;
   });
   return (
