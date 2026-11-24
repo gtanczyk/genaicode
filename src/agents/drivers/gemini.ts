@@ -314,7 +314,8 @@ export function createGeminiParser(): AgentOutputParser {
         case 'init': {
           sessionId = stringField(value, 'session_id');
           initModel = stringField(value, 'model');
-          if (sessionId) events.push({ type: 'session', sessionId, ...(initModel ? { model: initModel } : {}) });
+          // The configured model, sent before any request: which one answers is known at the result.
+          if (sessionId) events.push({ type: 'session', sessionId });
           break;
         }
         case 'message': {
@@ -375,12 +376,16 @@ export function createGeminiParser(): AgentOutputParser {
                 .map(([name]) => name)
             : [];
           // One model produced the turn: that one. Several (a fallback, a routing classifier, a helper
-          // model for a tool), or a turn that failed before answering: no single name is right.
-          const answeredBy = outcome.ok || answered ? (used.length === 1 ? used[0] : undefined) : undefined;
-          if (sessionId && answeredBy !== initModel && (answeredBy !== undefined || perModel || !outcome.ok)) {
-            initModel = answeredBy;
-            events.push({ type: 'session', sessionId, model: answeredBy });
-          }
+          // model for a tool), none, or a turn that failed before answering: no single name is right.
+          // Without per-model stats (older CLIs), a successful turn ran the configured model.
+          const answeredBy = perModel
+            ? (outcome.ok || answered) && used.length === 1
+              ? used[0]
+              : undefined
+            : outcome.ok
+              ? initModel
+              : undefined;
+          if (sessionId) events.push({ type: 'session', sessionId, model: answeredBy });
           const inputTokens = numberField(stats, 'input_tokens');
           const outputTokens = numberField(stats, 'output_tokens');
           const totalTokens = numberField(stats, 'total_tokens');

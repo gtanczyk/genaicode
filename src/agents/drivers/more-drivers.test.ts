@@ -72,14 +72,18 @@ describe('gemini driver', () => {
       { type: 'result', status: 'success', stats: { models: { 'gemini-3.1-pro-preview': { total_tokens: 9 } } } },
     ]);
     expect(answered.filter((event) => event.type === 'session')).toEqual([
-      { type: 'session', sessionId: 'g-1', model: 'gemini-3-pro-preview' },
+      { type: 'session', sessionId: 'g-1' },
       { type: 'session', sessionId: 'g-1', model: 'gemini-3.1-pro-preview' },
     ]);
     const same = feed(createGeminiParser(), [
       { type: 'init', session_id: 'g-2', model: 'gemini-x' },
       { type: 'result', status: 'success', stats: { models: { 'gemini-x': {} } } },
     ]);
-    expect(same.filter((event) => event.type === 'session')).toHaveLength(1);
+    expect(same.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-2',
+      model: 'gemini-x',
+    });
     const several = feed(createGeminiParser(), [
       { type: 'init', session_id: 'g-3', model: 'gemini-3-pro-preview' },
       {
@@ -175,13 +179,15 @@ describe('gemini driver', () => {
       { type: 'result', status: 'success', stats: { total_tokens: 9, input_tokens: 6, output_tokens: 3, cached: 2 } },
     ]);
     expect(events).toEqual([
-      { type: 'session', sessionId: 'g-1', model: 'gemini-x' },
+      // The model waits for the result: the configured one may not be the one that answers.
+      { type: 'session', sessionId: 'g-1' },
       { type: 'text-delta', text: 'Fixing ' },
       { type: 'tool-start', id: 't1', name: 'replace', input: { file_path: 'a.ts' } },
       { type: 'file-change', paths: ['a.ts'] },
       { type: 'tool-end', id: 't1', name: 'replace', isError: false, output: 'ok' },
       { type: 'text-delta', text: 'done.' },
       { type: 'message', text: 'Fixing done.' },
+      { type: 'session', sessionId: 'g-1', model: 'gemini-x' },
       { type: 'usage', usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9, cachedInputTokens: 2 } },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: true });
