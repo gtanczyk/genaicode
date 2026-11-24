@@ -889,6 +889,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           : undefined;
     let current: AgentRun;
     let progressScope: ReturnType<ProgressChannel['openTurn']> | undefined;
+    let progressOpen = true;
     let contextBatch: ContextBatch | undefined;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
@@ -909,7 +910,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (options.progress && !turnAgent.capabilities.remote) {
           const name = availableServerName(PROGRESS_SERVER_NAME, [...baseServers, ...extraServers]);
           progressScope = options.progress.openTurn(
-            (report) => addProgress(turnId, { kind: 'progress', ...report }),
+            (report) => {
+              // A host may deliver late: nothing lands once the turn ended or stopped.
+              if (!progressOpen || turnController.signal.aborted) return;
+              // Built field by field: a host's own `kind` or a plan it reuses must not change the entry.
+              addProgress(turnId, {
+                kind: 'progress',
+                message: String(report.message),
+                ...(report.plan ? { plan: report.plan.map(({ step, status }) => ({ step, status })) } : {}),
+              });
+            },
             turnController.signal,
             name,
           );
@@ -971,6 +981,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
       const result = await current.result.finally(() => {
+        progressOpen = false;
         // A host channel that fails to close must not keep the turn running.
         try {
           void Promise.resolve(progressScope?.close()).catch(() => {});

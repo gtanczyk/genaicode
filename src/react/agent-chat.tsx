@@ -867,16 +867,17 @@ function Folded({
   entry: (item: SessionEntry, i: number) => ReactNode;
 }) {
   const { entries } = turn;
-  const answer = turn.result ? entries.findLastIndex((item) => item.kind === 'text') : -1;
+  const lastText = entries.findLastIndex((item) => item.kind === 'text');
+  const answer = turn.result ? lastText : -1;
   const update = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'progress' || item.kind === 'text');
   const plan = turn.result
     ? undefined
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
-    // A reply still streaming stays out of the steps when a progress report lands after it: it keeps
-    // its place in this list, and its state, until it ends as the answer.
-    (!turn.result && item.kind === 'text' && item.streaming) ||
+    // The latest reply stays out of the steps while the turn runs, also when a progress report lands
+    // after it: it keeps its place in this list, and its state, until it ends as the answer.
+    i === lastText ||
     item.kind === 'error' ||
     item.kind === 'failover' ||
     item.kind === 'artifact' ||

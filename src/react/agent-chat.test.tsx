@@ -933,7 +933,11 @@ describe('AgentChat', () => {
     expect(active().querySelector(':scope > ol')).not.toBeNull();
     turn.entries.push({ kind: 'progress', message: 'Finishing', plan: [] });
     render({ state, foldSteps: true });
-    expect(active().firstElementChild?.textContent).toBe('Finishing');
+    // The latest reply stays in view above the newer status, both above the steps.
+    expect(Array.from(active().children, (child) => child.textContent).slice(0, 2)).toEqual([
+      'The page opened.',
+      'Finishing',
+    ]);
     expect(active().querySelector(':scope > ol')).toBeNull();
     turn.entries.push({ kind: 'text', text: 'Fixed.', streaming: false });
     turn.result = state.turns[0]!.result;
@@ -981,11 +985,14 @@ describe('AgentChat', () => {
     expect(live).toBeDefined();
     expect(active().querySelector('.gc-fold-body')?.textContent ?? '').not.toContain('Writing the fix');
 
+    // The full message ends the stream before the turn ends, then the turn ends.
     turn.entries = [
       turn.entries[0]!,
       { kind: 'text', text: 'Writing the fix', streaming: false },
       { kind: 'progress', message: 'Running tests' },
     ];
+    render({ state, foldSteps: true });
+    expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);
     turn.result = state.turns[0]!.result;
     render({ state, foldSteps: true });
     expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);

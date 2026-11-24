@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isQuestionChannelServer } from './ask-user.js';
 import { handoffTranscript } from './handoff.js';
-import { isTurnProgressServer, startProgressChannel } from './progress.js';
+import { isTurnProgressServer, startProgressChannel, type ProgressReport } from './progress.js';
 import { createAgentSession } from './session.js';
 import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -172,6 +172,35 @@ describe('createAgentSession', () => {
         { kind: 'text', text: 'AB', streaming: false },
         { kind: 'progress', message: 'Step two' },
       ],
+    ]);
+    session.close();
+  });
+
+  it('takes only message and a copy of the plan from a host report, and nothing after the turn', async () => {
+    let report: ((progress: object) => void) | undefined;
+    const channel = {
+      openTurn(onReport: (progress: ProgressReport) => void, _signal: AbortSignal, name = 'genaicode_progress') {
+        // A host may hand over more than a ProgressReport.
+        report = onReport as (progress: object) => void;
+        return { mcpServer: { name, url: 'http://127.0.0.1:1/mcp' }, close() {} };
+      },
+    };
+    const plan = [{ step: 'Check', status: 'in_progress' as const }];
+    const { agent } = fakeAgent(
+      [
+        async () => {
+          report!({ kind: 'text', message: 'Checking', plan, extra: true });
+        },
+      ],
+      { mcp: true, resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    await session.idle();
+    plan[0]!.status = 'completed' as 'in_progress';
+    report!({ message: 'Late' });
+    expect(session.get().turns[0]!.entries).toEqual([
+      { kind: 'progress', message: 'Checking', plan: [{ step: 'Check', status: 'in_progress' }] },
     ]);
     session.close();
   });
