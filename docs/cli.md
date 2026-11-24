@@ -223,6 +223,12 @@ knights that...") and it sends it with `sessions_send`; you allow the first mess
 session in the chat. A session that is working gets it as its next turn, once the current one
 ends. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
 
+During a turn, the desktop and browser chat keep the latest update above the collapsed steps.
+Local agents with MCP support can call `genaicode_progress.report_progress` with a short
+`message` and an optional `plan`. Each step has a `step` label and a `status` of `pending`,
+`in_progress` or `completed`. Sending only a message keeps the plan. An empty plan clears it.
+The terminal chat and exported transcripts also include these reports.
+
 ### Open the session tower
 
 Run `npx genaicode tower` to open a terminal chat with up to five sessions waiting for you.

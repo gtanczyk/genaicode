@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isQuestionChannelServer } from './ask-user.js';
 import { handoffTranscript } from './handoff.js';
+import { startProgressChannel } from './progress.js';
 import { createAgentSession } from './session.js';
 import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -72,6 +73,79 @@ const deferred = () => {
 };
 
 describe('createAgentSession', () => {
+  it('records valid progress only on its issuing turn, through queueing, completion and stop', async () => {
+    const channel = await startProgressChannel();
+    const first = deferred();
+    const second = deferred();
+    const { agent, tasks } = fakeAgent([() => first.promise, () => second.promise], { mcp: true, resume: true });
+    const custom = { name: 'genaicode_progress', command: 'custom' };
+    const session = createAgentSession({ agent, cwd: '.', progress: channel, task: { mcpServers: [custom] } });
+    const call = (task: AgentTask, method: string, params?: object) => {
+      const server = task.mcpServers?.find((item) => item.name === 'genaicode_progress_2');
+      if (!server || !('url' in server)) throw new Error('missing progress channel');
+      return fetch(server.url, {
+        method: 'POST',
+        headers: { ...server.headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+    };
+    const report = (task: AgentTask, args: object) =>
+      call(task, 'tools/call', { name: 'report_progress', arguments: args });
+    try {
+      session.send('first');
+      session.send('queued');
+      expect(tasks[0].mcpServers?.[0]).toEqual(custom);
+      expect(tasks[0].mcpServers?.[1].trusted).toBe(true);
+      expect(await (await call(tasks[0], 'initialize')).json()).toMatchObject({
+        result: { instructions: expect.stringContaining('report_progress') },
+      });
+      expect(await (await call(tasks[0], 'tools/list')).json()).toMatchObject({
+        result: { tools: [{ name: 'report_progress' }] },
+      });
+      for (const args of [
+        { message: ' ' },
+        { message: 'x', plan: [{ step: 'A', status: 'unknown' }] },
+        { message: 'x'.repeat(1001) },
+      ]) {
+        expect(await (await report(tasks[0], args)).json()).toMatchObject({ result: { isError: true } });
+      }
+      expect(session.get().turns[0].entries).toEqual([]);
+      const update = { message: 'Testing', plan: [{ step: 'Open link', status: 'in_progress' }] };
+      expect((await report(tasks[0], update)).ok).toBe(true);
+      expect(session.get().turns[0].entries).toEqual([{ kind: 'progress', ...update }]);
+      first.resolve();
+      await vi.waitFor(() => expect(tasks).toHaveLength(2));
+      expect((await report(tasks[0], { message: 'Late' })).status).toBe(404);
+      expect(session.get().turns[1].entries).toEqual([]);
+      expect((await report(tasks[1], { message: 'New phase' })).ok).toBe(true);
+      session.stop();
+      expect((await report(tasks[1], { message: 'Too late' })).status).toBe(404);
+      await session.idle();
+      expect(session.get().turns[1].entries).toEqual([{ kind: 'progress', message: 'New phase' }]);
+    } finally {
+      session.close();
+      first.resolve();
+      second.resolve();
+      await channel.close();
+    }
+  });
+
+  it('only attaches the loopback progress tool to local agents with MCP support', async () => {
+    const channel = await startProgressChannel();
+    try {
+      for (const capabilities of [{ mcp: true, remote: true }, {}]) {
+        const { agent, tasks } = fakeAgent([], capabilities);
+        const session = createAgentSession({ agent, cwd: '.', progress: channel });
+        session.send('go');
+        await session.idle();
+        expect(tasks[0].mcpServers).toBeUndefined();
+        session.close();
+      }
+    } finally {
+      await channel.close();
+    }
+  });
+
   it('builds a structured transcript and resumes the session on the next turn', async () => {
     const { agent, tasks } = fakeAgent([
       async (_task, emit) => {

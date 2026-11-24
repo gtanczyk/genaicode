@@ -1813,6 +1813,7 @@ describe('web UI server', () => {
       expect(agent.tasks[0].mcpServers).toEqual([
         expect.objectContaining({ name: 'artifacts' }),
         expect.objectContaining({ name: 'genaicode_ask' }),
+        expect.objectContaining({ name: 'genaicode_progress', trusted: true }),
       ]);
       const artifact = await store.publish({ title: 'Page', content: '<script>top.x=1</script>', format: 'html' });
       expect(ui.controller.get().session.turns[0].entries.at(-1)).toEqual({ kind: 'artifact', artifact });

@@ -908,10 +908,38 @@ describe('AgentChat', () => {
     ];
     render({ foldSteps: true, state, formatToolName: (name) => name.replace('mcp__ops__', '') });
     const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
-    // Interim text and an edit fold too; the line names the tool still running.
+    // The tool and edit fold. The last update stays visible as the tool runs.
     expect(summary.textContent).toBe('1 step · costs');
-    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
-    expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
+    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(2);
+    expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')?.textContent).toBe('Looking');
+  });
+
+  it('keeps the current plan through status-only reports and native commentary until cleared or finished', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'progress', message: 'Check the link', plan: [{ step: 'Open the page', status: 'in_progress' }] },
+      { kind: 'progress', message: 'Running the browser check' },
+      { kind: 'tool', name: 'browser', done: false },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    render({ state, foldSteps: true });
+    expect(active().firstElementChild?.textContent).toBe('Running the browser check');
+    expect(active().querySelector(':scope > ol [aria-current="step"]')?.textContent).toContain('Open the page');
+    expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
+    turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
+    render({ state, foldSteps: true });
+    expect(active().firstElementChild?.textContent).toBe('The page opened.');
+    expect(active().querySelector(':scope > ol')).not.toBeNull();
+    turn.entries.push({ kind: 'progress', message: 'Finishing', plan: [] });
+    render({ state, foldSteps: true });
+    expect(active().firstElementChild?.textContent).toBe('Finishing');
+    expect(active().querySelector(':scope > ol')).toBeNull();
+    turn.entries.push({ kind: 'text', text: 'Fixed.', streaming: false });
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    expect(active().lastElementChild?.textContent).toBe('Fixed.');
+    expect(active().querySelector(':scope > .gc-progress')).toBeNull();
   });
 
   it('labels the send button by what a prompt will do while running', () => {

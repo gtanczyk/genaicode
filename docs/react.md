@@ -86,7 +86,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `onOpenArtifact(artifact)`                                                     | opens an artifact in a host side panel instead of expanding it inline in the transcript; `<ArtifactPanel>` is also exported |
 | `onArtifactSubmit(artifact, data)`                                             | a page the agent published sent data and the user confirmed it; default sends it as a message; `null` turns it off          |
 | `imageUrl(path)`, `remoteImages`                                               | resolve `![alt](path)` thumbnails in replies; `remoteImages` defaults to `'click'` (placeholder chip) or `'load'`           |
-| `foldSteps`                                                                    | fold each turn's tools and edits into one "N steps" line. An edit step shows its diff (added and removed lines) when opened |
+| `foldSteps`                                                                    | keep the current update and plan above collapsed tools and edits. The finished answer appears below the steps               |
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                                 |
 | `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
 | `composerExtras`                                                               | host controls in a row under the message field, beside the attach button (agent, model, mode)                               |

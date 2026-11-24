@@ -14,6 +14,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
+import type { ProgressStep } from '../agents/progress.js';
 import type { ApprovalDecision, Artifact, QuestionAnswers } from '../agents/types.js';
 import { answerSummary, QuestionCard } from './question-card.js';
 import { describeFailover } from '../agents/failover.js';
@@ -168,8 +169,8 @@ export interface AgentChatProps {
   /** Host lines between turns. */
   notices?: readonly ChatNotice[];
   /**
-   * Fold a turn's work (tools, edits, interim text) into one "N steps" line that opens on
-   * click, leaving the answer, errors, steering input and open approvals in view. Default false.
+   * Collapse tools, edits and earlier updates. Keep the latest status and plan visible during work,
+   * along with the answer, errors, steering input and open approvals. Default false.
    */
   foldSteps?: boolean;
   /** Replaces the default header (agent, model, session, usage). Pass null for no header. */
@@ -853,7 +854,7 @@ function Turn({
   );
 }
 
-/** `foldSteps`: the work in one closed line, then what the user has to see. */
+/** Keep the current update above the closed steps and the finished answer below them. */
 function Folded({
   turn,
   pending,
@@ -866,9 +867,11 @@ function Folded({
   entry: (item: SessionEntry, i: number) => ReactNode;
 }) {
   const { entries } = turn;
-  // The last text is the answer once the turn ends, or while it is still the newest entry.
-  const lastText = entries.map((item) => item.kind).lastIndexOf('text');
-  const answer = lastText >= 0 && (turn.result || lastText === entries.length - 1) ? lastText : -1;
+  const answer = turn.result ? entries.findLastIndex((item) => item.kind === 'text') : -1;
+  const update = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'progress' || item.kind === 'text');
+  const plan = turn.result
+    ? undefined
+    : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
     item.kind === 'error' ||
@@ -876,7 +879,7 @@ function Folded({
     item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
-  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
+  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => i !== update && !inView(item, i));
   const tools = steps.filter(([item]) => item.kind === 'tool').length;
   const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
@@ -885,6 +888,8 @@ function Folded({
   const count = tools || steps.length;
   return (
     <>
+      {update >= 0 ? entry(entries[update], update) : null}
+      {plan?.kind === 'progress' && plan !== entries[update] ? <ProgressPlan steps={plan.plan} /> : null}
       {steps.length ? (
         <details className="gc-fold">
           <summary>
@@ -898,6 +903,19 @@ function Folded({
       ) : null}
       {entries.map((item, i) => (inView(item, i) ? entry(item, i) : null))}
     </>
+  );
+}
+
+function ProgressPlan({ steps }: { steps?: ProgressStep[] }) {
+  if (!steps?.length) return null;
+  return (
+    <ol className="gc-progress-plan" aria-label="Plan">
+      {steps.map(({ step, status }, i) => (
+        <li key={i} aria-current={status === 'in_progress' ? 'step' : undefined}>
+          {step} <span className="gc-progress-state">{status.replace('_', ' ')}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -932,6 +950,13 @@ function Entry({
   const onAnswer = useContext(AnswerQuestion);
   const mdConfig = useContext(MarkdownConfig);
   switch (entry.kind) {
+    case 'progress':
+      return (
+        <div className="gc-progress">
+          <div>{entry.message}</div>
+          <ProgressPlan steps={entry.plan} />
+        </div>
+      );
     case 'text':
       return (
         <Markdown

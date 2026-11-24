@@ -5,6 +5,7 @@ import { packApproval, PackActionError, type PackAction, type PackControls, type
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import { markQuestionChannelServer } from './ask-user.js';
+import { PROGRESS_SERVER_NAME, type ProgressChannel, type ProgressReport } from './progress.js';
 import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
@@ -28,6 +29,7 @@ import type {
 /** One item of a turn's transcript, built from the run's `AgentEvent`s. */
 export type SessionEntry =
   | { kind: 'text'; text: string; streaming: boolean }
+  | ({ kind: 'progress' } & ProgressReport)
   | {
       kind: 'tool';
       id?: string;
@@ -183,6 +185,8 @@ export interface AgentSessionOptions {
    * `approvals` like the agent's own, for `answer()`, in the turn that is running.
    */
   questions?: { mcpServer: McpServer; bind(handler: QuestionHandler | undefined): void };
+  /** Let local MCP agents publish status and plan updates into the turn that owns the call. */
+  progress?: Pick<ProgressChannel, 'openTurn'>;
   /**
    * Give local MCP agents `open_project` while `enabled()` is true (neutral home or unresolved
    * directory), so the agent can offer to move the conversation into a project via a question card.
@@ -872,6 +876,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? 'default'
           : undefined;
     let current: AgentRun;
+    let progressScope: ReturnType<ProgressChannel['openTurn']> | undefined;
     let contextBatch: ContextBatch | undefined;
     const left = remainingBudget(state.budget, state.usage, state.costUsd);
     try {
@@ -886,11 +891,17 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (options.openProject && !turnAgent.capabilities.remote && options.openProject.enabled())
           extraServers.push(options.openProject.mcpServer);
         if (options.questions && !turnAgent.capabilities.questions && !turnAgent.capabilities.remote) {
-          const taken = new Set([...baseServers, ...extraServers].map((server) => server.name));
-          const baseName = options.questions.mcpServer.name;
-          let name = baseName;
-          for (let n = 2; taken.has(name); n++) name = `${baseName}_${n}`;
+          const name = availableServerName(options.questions.mcpServer.name, [...baseServers, ...extraServers]);
           extraServers.push(markQuestionChannelServer({ ...options.questions.mcpServer, name }));
+        }
+        if (options.progress && !turnAgent.capabilities.remote) {
+          const name = availableServerName(PROGRESS_SERVER_NAME, [...baseServers, ...extraServers]);
+          progressScope = options.progress.openTurn(
+            (report) => addEntry(turnId, { kind: 'progress', ...report }),
+            turnController.signal,
+            name,
+          );
+          extraServers.push(progressScope.mcpServer);
         }
       }
       const basePrompt = rewritten ?? toAgent(prompt);
@@ -946,7 +957,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       } catch (error) {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
-      const result = await current.result;
+      const result = await current.result.finally(() => progressScope?.close());
       const noteTurnWas = noteTurn?.id === turnId;
       if (noteTurnWas) noteTurn = undefined;
       denyPending();
@@ -1344,6 +1355,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       if (packRuns.size) void this.idle().then(() => packRuns.clear());
     },
   };
+}
+
+function availableServerName(base: string, servers: readonly McpServer[]): string {
+  const taken = new Set(servers.map((server) => server.name));
+  let name = base;
+  for (let n = 2; taken.has(name); n++) name = `${base}_${n}`;
+  return name;
 }
 
 /** Claude's permission prompt for one of the session's own MCP tools (`publish_artifact`, `open_project`). */

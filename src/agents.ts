@@ -61,6 +61,8 @@ export {
   startQuestionChannel,
 } from './agents/ask-user.js';
 export type { QuestionChannel } from './agents/ask-user.js';
+export { startProgressChannel } from './agents/progress.js';
+export type { ProgressChannel, ProgressReport, ProgressStep } from './agents/progress.js';
 export type {
   ApprovalOutcome,
   LiveAgentDefinition,
