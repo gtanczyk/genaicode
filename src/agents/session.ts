@@ -89,6 +89,8 @@ export interface SessionState {
   agent: string;
   cwd: string;
   model?: string;
+  /** The model the agent last reported running (`session` events), whatever `model` asked for. Cleared by `setAgent()`. */
+  reportedModel?: string;
   effort?: string;
   /** Planning mode for the next turn (`setMode()`). Absent: default. */
   mode?: AgentMode;
@@ -500,6 +502,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'session':
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
+          if (event.model) patch.reportedModel = event.model;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -723,7 +726,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             : undefined;
     const mode = state.mode !== undefined && next.capabilities.plan ? state.mode : undefined;
     modeCleared = false;
-    set({ agent: next.name, sessionId, rateLimits: [], effort, mode, canAsk: agentCanAsk(next) });
+    set({
+      agent: next.name,
+      sessionId,
+      reportedModel: undefined,
+      rateLimits: [],
+      effort,
+      mode,
+      canAsk: agentCanAsk(next),
+    });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */

@@ -72,6 +72,23 @@ const deferred = () => {
 };
 
 describe('createAgentSession', () => {
+  it('keeps the model the agent reports while the person sets none, until the agent changes', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+      },
+    ]);
+    const { agent: other } = fakeAgent([], { resume: true }, 'other');
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get()).toMatchObject({ reportedModel: 'model-a' });
+    expect(session.get().model).toBeUndefined();
+
+    session.setAgent(other);
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
   it('builds a structured transcript and resumes the session on the next turn', async () => {
     const { agent, tasks } = fakeAgent([
       async (_task, emit) => {
