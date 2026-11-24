@@ -191,6 +191,8 @@ export {
   codexTurns,
   openCodexServer,
   readCodexThread,
+  agentMemoryFiles,
+  memoryTools,
   serveMcpStdio,
   SESSION_TOOLS_INSTRUCTIONS,
   sessionTools,

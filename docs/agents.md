@@ -588,6 +588,16 @@ CLI is not found is skipped unless you name it with `-a`. In code: `installMcp()
 `uninstallMcp()` and `mcpInstallStatus()`. To register it by hand, the command is
 `npx genaicode sessions mcp`.
 
+`sessions mcp` and `chat --sessions` also serve two tools over what the agents remember.
+`memory_list` names the instruction and note files every agent keeps for a project: `AGENTS.md`,
+`CLAUDE.md` (also `.claude/CLAUDE.md`, `.claude/rules/*.md`, `~/.claude/CLAUDE.md`), Claude Code's
+own notes (`~/.claude/projects/<project>/memory/*.md`), `~/.codex/AGENTS.md` and
+`~/.codex/memories/*.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules` and
+`.cursor/rules/*.mdc`, in the project directory and in its repository root. `memory_read` returns
+one of them, up to 64 KiB. So Codex can see what Claude Code was told and noted about a project
+before it takes the work over. They only read, links are not followed, and a path `memory_list`
+would not name is refused. In code: `memoryTools()` and `agentMemoryFiles(cwd)`.
+
 The server speaks MCP 2025-06-18 and 2026-07-28. To a client of the newer revision that loads
 skills from MCP servers (`io.modelcontextprotocol/skills`; Claude Code where the feature is on)
 it also serves one skill, [`genaicode-sessions`](skills/genaicode-sessions/SKILL.md): which tool
