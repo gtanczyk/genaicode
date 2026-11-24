@@ -954,6 +954,25 @@ describe('AgentChat', () => {
     expect(again.querySelector('pre')).not.toBeNull();
   });
 
+  it('does not re-render steps once their fold closes again, even with new host callbacks', () => {
+    const formatToolName = vi.fn((name: string) => name);
+    const state = fixture();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    openDetails();
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>('details')).reverse())
+      act(() => {
+        details.open = false;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    formatToolName.mockClear();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    type('x');
+    expect(formatToolName).not.toHaveBeenCalled();
+    // Reopened, it shows the latest props again.
+    openDetails('.gc-fold');
+    expect(formatToolName).toHaveBeenCalledWith('Bash');
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();

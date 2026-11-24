@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
@@ -236,6 +237,14 @@ export function AgentChat(props: AgentChatProps) {
   }, [draft]);
 
   const { onSend, onArtifactSubmit, disabled } = props;
+  // Context values stay the same object across renders, so entries kept closed are not re-rendered
+  // by a host that passes new callbacks each time.
+  const markdownConfig = useMemo(
+    () => ({ imageUrl: props.imageUrl, remoteImages: props.remoteImages }),
+    [props.imageUrl, props.remoteImages],
+  );
+  const answerQuestion = useLatest(props.onAnswer);
+  const openFile = useLatest(props.onOpenFile);
   // Nothing is sent while the host keeps the user from sending.
   const submitArtifact: SubmitArtifact | undefined =
     onArtifactSubmit === null || disabled
@@ -509,9 +518,9 @@ export function AgentChat(props: AgentChatProps) {
     : undefined;
 
   return (
-    <MarkdownConfig.Provider value={{ imageUrl: props.imageUrl, remoteImages: props.remoteImages }}>
-      <AnswerQuestion.Provider value={props.onAnswer}>
-        <OpenFile.Provider value={props.onOpenFile}>
+    <MarkdownConfig.Provider value={markdownConfig}>
+      <AnswerQuestion.Provider value={answerQuestion}>
+        <OpenFile.Provider value={openFile}>
           <div
             className={rootClass}
             data-theme={theme}
@@ -715,6 +724,14 @@ const NO_SESSION: SessionState = {
   usage: {},
   canSteer: false,
 };
+
+/** A function that stays the same while `fn` is given, and always calls the latest `fn`. */
+function useLatest<A extends unknown[], R>(fn: ((...args: A) => R) | undefined): ((...args: A) => R) | undefined {
+  const latest = useRef(fn);
+  latest.current = fn;
+  const given = fn !== undefined;
+  return useMemo(() => (given ? (...args: A) => latest.current!(...args) : undefined), [given]);
+}
 
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
@@ -1127,11 +1144,14 @@ function LazyDetails({
   children: [summary, body],
   ...rest
 }: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
-  const [opened, setOpened] = useState(false);
+  const [open, setOpen] = useState(false);
+  // While closed, the same element as last time: React skips the subtree until it opens again.
+  const kept = useRef<ReactNode>(null);
+  if (open) kept.current = body();
   return (
-    <details {...rest} onToggle={(event) => event.currentTarget.open && setOpened(true)}>
+    <details {...rest} onToggle={(event) => setOpen(event.currentTarget.open)}>
       {summary}
-      {opened ? body() : null}
+      {kept.current}
     </details>
   );
 }
