@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
-import { pack, PackActionError } from './pack.js';
+import { pack, PackActionError, type PackTask as PackReport } from './pack.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -566,6 +566,61 @@ describe('pack', () => {
     expect(asked).toEqual(['t1:a1 [b t1] rm -rf x']);
   });
 
+  it('reports a running tool call with its argument, and when a task started and ended', async () => {
+    const cwd = repo();
+    const busy = fake('busy', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', name: 'shell', input: { command: 'npm   test\n -- --run' } });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'busy', prompt: 'x', mode: 'shared' });
+        await vi.waitFor(async () => {
+          const [report] = JSON.parse(await tool(task, 'wait', { timeoutSeconds: 0.05 })) as [PackReport];
+          expect(report).toMatchObject({ status: 'running', text: 'tool shell: npm test -- --run' });
+          expect(report.startedAt).toBeTypeOf('number');
+          expect(report.endedAt).toBeUndefined();
+        });
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [busy] });
+    await team.run({ prompt: 'go', cwd }).result;
+    await vi.waitFor(() => expect(team.tasks()[0]!.endedAt).toBeTypeOf('number'));
+    const [task] = team.tasks();
+    expect(task!.endedAt!).toBeGreaterThanOrEqual(task!.startedAt!);
+  });
+
+  it('reads the verdict from the whole reply, outside quotations and code, before clipping it', async () => {
+    const cwd = repo();
+    const reply = [
+      '> VERDICT: LGTM',
+      '```',
+      'VERDICT: sample',
+      '```',
+      '    VERDICT: indented',
+      'x'.repeat(5_000),
+      '**VERDICT:** CHANGES - fix the tests',
+      '> VERDICT: LGTM (quoted after)',
+    ].join('\n');
+    const reviewer = fake('reviewer', async () => ({ text: reply }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'reviewer', prompt: 'review', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [reviewer] });
+    await team.run({ prompt: 'go', cwd }).result;
+    const [task] = team.tasks();
+    expect(task!.text!.length).toBeLessThan(reply.length);
+    expect(task!.text).not.toContain('CHANGES');
+    expect(task!.verdict).toBe('**VERDICT:** CHANGES - fix the tests');
+  });
+
   it('stops running tasks when the lead finishes, and limits how many run at once', async () => {
     const cwd = repo();
     const slow = fake(
@@ -597,6 +652,7 @@ describe('pack', () => {
     const result = await team.run({ prompt: 'go', cwd }).result;
     expect(result.ok).toBe(true);
     expect(team.tasks()[0]!.status).toBe('aborted');
+    expect(team.tasks()[0]!.stoppedBy).toBe('lead-finished');
   });
 
   it('drops a delegation whose worktree was still being set up when the lead finished', async () => {
@@ -726,11 +782,49 @@ describe('pack chat turns', () => {
       expect(messages).toEqual(['two check empty input']);
       await session.actOnPackTask!(1, 't1', { type: 'stop' });
       expect(session.get().turns[0].pack?.tasks.map((item) => item.status)).toEqual(['aborted', 'running']);
+      expect(session.get().turns[0].pack?.tasks[0].stoppedBy).toBe('user');
     } finally {
       session.close();
       await session.idle();
     }
     expect(session.get().turns[0].pack?.tasks[1].status).toBe('aborted');
+  });
+  it('shows the running tool call until it ends, reads string-array commands and never fails on odd input', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'message', text: 'Reading the code' });
+      // A null-prototype object has no toString: joining it throws.
+      emit({ type: 'tool-start', id: 'c1', name: 'search', input: { query: [Object.create(null)] } });
+      await step();
+      emit({ type: 'tool-end', id: 'c1', name: 'search' });
+      await step();
+      emit({ type: 'tool-start', id: 'c2', name: 'shell', input: { commands: ['npm test'] } });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()).toMatchObject({ status: 'running', text: 'tool search' }));
+      next();
+      await vi.waitFor(() => expect(task()?.text).toBe('Reading the code'));
+      next();
+      await vi.waitFor(() => expect(task()?.text).toBe('tool shell: npm test'));
+      await session.actOnPackTask!(1, 't1', { type: 'stop' });
+      expect(task()).toMatchObject({ status: 'aborted', stoppedBy: 'user' });
+    } finally {
+      session.close();
+      await session.idle();
+    }
   });
   it('routes concurrent approvals and keeps worktree actions on the owning turn after it ends', async () => {
     const cwd = repo();

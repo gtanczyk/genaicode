@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { packTaskTitle, toolDiff } from './format.js';
+import type { PackTask } from '../agents/pack.js';
+import type { SessionTurn } from '../agents/session.js';
+import {
+  packActivity,
+  packMetrics,
+  packTaskElapsed,
+  packTaskError,
+  packTaskList,
+  packTaskOutcome,
+  packTaskStopped,
+  packTaskTitle,
+  toolDiff,
+} from './format.js';
 
 const shown = (input: unknown) => toolDiff(input)?.lines.map((line) => `${line.sign}${line.text}`);
 
@@ -135,5 +147,165 @@ describe('packTaskTitle', () => {
       'Give the game a visual upgrade.',
     );
     expect(packTaskTitle({ prompt: 'a'.repeat(100) })).toHaveLength(80);
+  });
+});
+
+const packTask = (patch: Partial<PackTask> = {}): PackTask => ({
+  id: 't1',
+  agent: 'codex',
+  prompt: 'Review it',
+  mode: 'shared',
+  status: 'completed',
+  cwd: '/w',
+  ...patch,
+});
+
+describe('packMetrics', () => {
+  it('says how many tasks were delegated and how many run, without slots, the lead or a dollar figure', () => {
+    const turn = {
+      id: 1,
+      agent: 'claude',
+      prompt: 'x',
+      startedAt: 0,
+      entries: [],
+      usage: { inputTokens: 3_000_000, outputTokens: 300_000 },
+      costUsd: 36.26,
+      pack: {
+        lead: 'claude',
+        maxParallel: 4,
+        interactive: true,
+        tasks: [packTask({ status: 'running' }), packTask(), packTask(), packTask()],
+      },
+    } satisfies SessionTurn;
+    expect(packMetrics(turn)).toBe('4 tasks delegated · 1 running');
+    expect(packMetrics(turn)).not.toContain('$');
+    expect(packMetrics(turn)).not.toMatch(/slots|leads/);
+    turn.pack.tasks = [packTask()];
+    expect(packMetrics(turn)).toBe('1 task delegated');
+    const budgeted = { ...turn, pack: { ...turn.pack, budget: { maxTokens: 5_000_000, maxCostUsd: 50 } } };
+    expect(packMetrics(budgeted)).toBe('1 task delegated · budget 3.3M/5.0M tokens');
+  });
+});
+
+describe('packActivity', () => {
+  it('splits a tool call into its friendly name and argument', () => {
+    expect(packActivity('tool shell: npm test')).toEqual({
+      tool: 'Shell',
+      argument: 'npm test',
+      text: 'Shell: npm test',
+    });
+    expect(packActivity('tool Bash')).toEqual({ tool: 'Shell', text: 'Running Shell' });
+    expect(packActivity('## Looking at **pack.ts**\nmore')).toEqual({ text: 'Looking at pack.ts' });
+    expect(packActivity('edited src/a.ts')).toEqual({ text: 'Edited src/a.ts' });
+  });
+});
+
+describe('packTaskOutcome', () => {
+  it('prefers a verdict line, then the error, then the first line, after the changed-file count', () => {
+    expect(
+      packTaskOutcome(packTask({ text: 'Looked at 3 files.\n\n**VERDICT: LGTM**', verdict: '**VERDICT: LGTM**' })),
+    ).toBe('VERDICT: LGTM');
+    expect(packTaskOutcome(packTask({ text: '# Summary\nAll good' }))).toBe('Summary');
+    expect(packTaskOutcome(packTask({ status: 'failed', error: 'exit 1\nstack', text: 'partial' }))).toBe('exit 1');
+    expect(packTaskOutcome(packTask({ mode: 'worktree', changes: ['M\ta.ts', 'A\tb.ts'], text: 'Added b.' }))).toBe(
+      '2 files changed · Added b.',
+    );
+    expect(packTaskOutcome(packTask({ mode: 'worktree', changes: [] }))).toBe('No file changes');
+    expect(packTaskOutcome(packTask({ status: 'running', text: 'tool shell: npm test' }))).toBe('Shell: npm test');
+    expect(packTaskOutcome(packTask())).toBe('');
+  });
+
+  it('says why a stopped task stopped instead of the bare "was stopped" error', () => {
+    const stopped = packTask({
+      status: 'aborted',
+      agent: 'claude',
+      error: 'claude was stopped.',
+      text: 'claude was stopped.',
+    });
+    expect(packTaskOutcome(stopped)).toBe('');
+    expect(packTaskStopped(stopped)).toBe('Stopped');
+    expect(packTaskError(stopped)).toBeUndefined();
+    expect(packTaskOutcome({ ...stopped, stoppedBy: 'user' })).toBe('Stopped by you');
+    expect(packTaskOutcome({ ...stopped, stoppedBy: 'lead-finished' })).toBe('Stopped when the lead agent finished');
+    expect(packTaskStopped({ ...stopped, stoppedBy: 'budget' })).toBe('Stopped: over budget');
+    expect(packTaskStopped(packTask())).toBeUndefined();
+    expect(packTaskError(packTask({ status: 'failed', error: 'exit 1' }))).toBe('exit 1');
+  });
+
+  it('takes the verdict pack read from the whole reply, not a quoted one in the clipped text', () => {
+    const quoted = packTask({ text: 'The brief said:\n> VERDICT: LGTM\nI disagree.' });
+    expect(packTaskOutcome(quoted)).toBe('The brief said:');
+    expect(packTaskOutcome({ ...quoted, verdict: 'VERDICT: CHANGES' })).toBe('VERDICT: CHANGES');
+  });
+
+  it('keeps diagnostics verbatim and drops only the runtime stop message of a stopped task', () => {
+    const failed = packTask({ status: 'failed', error: 'PostgreSQL was stopped.' });
+    expect(packTaskOutcome(failed)).toBe('PostgreSQL was stopped.');
+    expect(packTaskError(failed)).toBe('PostgreSQL was stopped.');
+    const aborted = packTask({ status: 'aborted', agent: 'codex', error: 'PostgreSQL was stopped.' });
+    expect(packTaskOutcome(aborted)).toBe('PostgreSQL was stopped.');
+    expect(packTaskError(aborted)).toBe('PostgreSQL was stopped.');
+    expect(packTaskOutcome(packTask({ status: 'failed', error: 'Error in __main__: `x` **failed**' }))).toBe(
+      'Error in __main__: `x` **failed**',
+    );
+    expect(packTaskOutcome(packTask({ status: 'failed', error: 'claude was stopped.' }))).toBe('claude was stopped.');
+  });
+});
+
+describe('packTaskList', () => {
+  const ids = (list: { shown: PackTask[]; hidden: number }) => [list.shown.map((task) => task.id), list.hidden];
+  const tasks = [
+    packTask({ id: 't1' }),
+    packTask({ id: 't2', status: 'running' }),
+    packTask({ id: 't3' }),
+    packTask({ id: 't4', mode: 'worktree', state: 'unmerged' }),
+    packTask({ id: 't5', status: 'failed' }),
+    packTask({ id: 't6' }),
+    packTask({ id: 't7' }),
+    packTask({ id: 't8', status: 'running' }),
+  ];
+
+  it('puts asking and running tasks first, then ready to merge, then finished newest first, folding older ones', () => {
+    expect(ids(packTaskList(tasks))).toEqual([['t8', 't2', 't4', 't7', 't6', 't5'], 2]);
+    expect(ids(packTaskList(tasks, { asking: (task) => task.id === 't1' }))).toEqual([
+      ['t8', 't2', 't1', 't4', 't7', 't6', 't5', 't3'],
+      0,
+    ]);
+  });
+
+  it('orders ended tasks by when they ended, latest first, and keeps delegation order without end times', () => {
+    const ended = [
+      packTask({ id: 't1', endedAt: 500 }),
+      packTask({ id: 't2', endedAt: 100 }),
+      packTask({ id: 't3', endedAt: 200 }),
+      packTask({ id: 't4', endedAt: 300 }),
+      packTask({ id: 't5', endedAt: 400 }),
+    ];
+    // t1 was delegated first but finished last: it is shown, not folded away.
+    expect(ids(packTaskList(ended))).toEqual([['t1', 't5', 't4'], 2]);
+    expect(ids(packTaskList(ended, { expanded: true }))).toEqual([['t1', 't5', 't4', 't3', 't2'], 0]);
+    expect(
+      ids(
+        packTaskList(
+          ended.map((task) => ({ ...task, endedAt: undefined })),
+          { expanded: true },
+        ),
+      ),
+    ).toEqual([['t5', 't4', 't3', 't2', 't1'], 0]);
+  });
+
+  it('keeps the selected task, unfolds when expanded, and never folds a single task', () => {
+    expect(ids(packTaskList(tasks, { keep: 't1' }))).toEqual([['t8', 't2', 't4', 't7', 't6', 't5', 't1'], 1]);
+    expect(ids(packTaskList(tasks, { expanded: true }))[1]).toBe(0);
+    expect(ids(packTaskList(tasks.slice(2, 7)))).toEqual([['t4', 't7', 't6', 't5', 't3'], 0]);
+  });
+});
+
+describe('packTaskElapsed', () => {
+  it('measures to the end, or to now while running, and is empty without times', () => {
+    expect(packTaskElapsed(packTask({ startedAt: 0, endedAt: 75_000 }))).toBe('1m 15s');
+    expect(packTaskElapsed(packTask({ status: 'running', startedAt: 0 }), 4_000)).toBe('4s');
+    expect(packTaskElapsed(packTask({ startedAt: 0 }))).toBe('');
+    expect(packTaskElapsed(packTask())).toBe('');
   });
 });

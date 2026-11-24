@@ -4,12 +4,13 @@ import { PassThrough } from 'node:stream';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { supportHelp } from '../support.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
-import type { SessionState } from '../agents/session.js';
+import type { SessionState, SessionTurn } from '../agents/session.js';
 import {
   readConversations,
   SessionSendGate,
@@ -31,7 +32,7 @@ import {
   turnFooter,
 } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
-import { NoticeView } from './tui/transcript.js';
+import { NoticeView, TurnView } from './tui/transcript.js';
 import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { uiRelease } from './web/release.js';
 import { parseCommand, startWebUi } from './web/server.js';
@@ -863,9 +864,11 @@ describe('terminal UI', () => {
       await frame('Ask the agent');
       chat.submit('write');
       await chat.session.idle();
-      await frame('Tab for pack tasks');
-      await press('\t', 't1 · worker · Ready to merge');
-      await press('\x1b[B', 't2 · worker · Ready to merge');
+      await frame('Tab for delegated tasks');
+      // The transcript lists the newer task first, and Tab and the arrows follow it.
+      await press('\t', 't2 · worker · Ready to merge');
+      await press('\x1b[B', 't1 · worker · Ready to merge');
+      await press('\x1b[A', 't2 · worker · Ready to merge');
       await press('d', '+test change');
       await press('\x1b', 'd diff · m merge locally');
       await press('r', 'Reviewed');
@@ -882,6 +885,102 @@ describe('terminal UI', () => {
     } finally {
       app.unmount();
       chat.close();
+    }
+  });
+  it('browses delegated tasks in the order they are shown, folded ones included', async () => {
+    // t1 was delegated first but ended last, so it is listed first; t2 and t3 are folded away.
+    const ends: Record<string, number> = { t1: 500, t2: 100, t3: 200, t4: 300, t5: 400 };
+    const tasks: PackTask[] = Object.entries(ends).map(([id, endedAt]) => ({
+      id,
+      prompt: `Write ${id}`,
+      agent: 'worker',
+      mode: 'shared',
+      cwd: '/w',
+      status: 'completed',
+      startedAt: 0,
+      endedAt,
+    }));
+    const agent: CodingAgent = {
+      ...echoAgent(),
+      run() {
+        const result: AgentResult = { status: 'completed', ok: true, exitCode: 0, signal: null };
+        return {
+          result: Promise.resolve(result),
+          abort() {},
+          pack: {
+            lead: 'lead',
+            maxParallel: 2,
+            task: (id) => tasks.find((item) => item.id === id),
+            act: async () => '',
+          },
+          async *[Symbol.asyncIterator]() {
+            for (const task of tasks) yield { type: 'subtask-start' as const, ...task };
+            yield { type: 'done' as const, result };
+          },
+        };
+      },
+    };
+    const chat = createChatController({ agents: [agent], cwd: '/w', env });
+    const app = render(<ChatApp controller={chat} cwd="/w" version="test" />);
+    const frame = (text: string) => vi.waitFor(() => expect(app.lastFrame()).toContain(text));
+    const press = async (key: string, text: string) => {
+      app.stdin.write(key);
+      await frame(text);
+    };
+    try {
+      await frame('Ask the agent');
+      chat.submit('write');
+      await chat.session.idle();
+      await frame('2 earlier finished tasks');
+      await press('\t', 't1 · worker · Completed');
+      await press('\x1b[B', 't5 · worker · Completed');
+      await press('\x1b[A', 't1 · worker · Completed');
+      await press('\x1b[A', 't2 · worker · Completed');
+      await press('\x1b[A', 't3 · worker · Completed');
+    } finally {
+      app.unmount();
+      chat.close();
+    }
+  });
+  it('keeps a delegated task row’s status and outcome visible at 80 columns under a long title', () => {
+    const title = 'Finish the delegated tasks view redesign so every row reads well in a narrow terminal';
+    const turn: SessionTurn = {
+      id: 1,
+      prompt: 'go',
+      agent: 'lead',
+      startedAt: 0,
+      entries: [],
+      pack: {
+        lead: 'lead',
+        maxParallel: 2,
+        interactive: false,
+        tasks: [
+          {
+            id: 't1',
+            prompt: title,
+            agent: 'codex',
+            mode: 'shared',
+            cwd: '/w',
+            status: 'failed',
+            error: 'PostgreSQL was stopped.',
+            startedAt: 0,
+            endedAt: 65_000,
+          },
+        ],
+      },
+    };
+    const app = render(
+      <Box width={80}>
+        <TurnView turn={turn} width={80} />
+      </Box>,
+    );
+    try {
+      const frame = app.lastFrame()!;
+      expect(frame).toContain('codex · Failed · 1m 05s · PostgreSQL was stopped.');
+      expect(frame).toContain('Finish the delegated tasks view');
+      expect(frame.split('\n').every((line) => line.length <= 80)).toBe(true);
+    } finally {
+      app.unmount();
     }
   });
   it('renders the transcript, the input and the status line, and sends on Enter', async () => {
