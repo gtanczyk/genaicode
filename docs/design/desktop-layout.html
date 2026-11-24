@@ -1,0 +1,3342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>genaicode · desktop window layout (design mockup)</title>
+    <!--
+  Design mockup for docs/design/desktop-layout.md. Not production code: static data, no network.
+  One file, inline CSS and JS, so it opens from disk and inside the artifact sandbox.
+-->
+    <style>
+      :root {
+        --bg: #fbfaf7;
+        --side: #f3f1ec;
+        --surface: #ffffff;
+        --sunken: #f0eee8;
+        --line: #e4e0d7;
+        --line-strong: #d3cec2;
+        --text: #1e1c19;
+        --muted: #6b665d;
+        --faint: #9a9488;
+        --accent: #b4571c;
+        --accent-soft: #f7e6d8;
+        --on-accent: #fff;
+        --ok: #2f7d4f;
+        --ok-soft: #e2f1e7;
+        --warn: #a56a00;
+        --warn-soft: #fbefd2;
+        --err: #b3362b;
+        --err-soft: #fae3e0;
+        --run: #2c62c9;
+        --run-soft: #e2ebfb;
+        --shadow: 0 1px 2px rgba(30, 28, 25, 0.06), 0 8px 28px rgba(30, 28, 25, 0.1);
+        --r: 8px;
+        --r-lg: 12px;
+        --side-w: 268px;
+        --rail-w: 56px;
+        --work-w: 404px;
+        --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color-scheme: light;
+      }
+      :root[data-theme='dark'] {
+        --bg: #1a1917;
+        --side: #141312;
+        --surface: #222120;
+        --sunken: #121110;
+        --line: #2f2d2a;
+        --line-strong: #403d39;
+        --text: #ece9e3;
+        --muted: #a39d92;
+        --faint: #6f6a61;
+        --accent: #e8935a;
+        --accent-soft: #3a2a1f;
+        --on-accent: #1a1917;
+        --ok: #6fc28c;
+        --ok-soft: #1d3125;
+        --warn: #e0b05a;
+        --warn-soft: #372c15;
+        --err: #ee8a7f;
+        --err-soft: #3b1f1c;
+        --run: #86aaf2;
+        --run-soft: #1c2740;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.5);
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        font: 14px/1.5 var(--font);
+        color: var(--text);
+        background: var(--sunken);
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      svg.i {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .faint {
+        color: var(--faint);
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+        border-radius: 6px;
+      }
+
+      /* ---- one control style -------------------------------------------------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        background: var(--sunken);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
+      }
+      .btn.primary:hover {
+        filter: brightness(1.06);
+      }
+      .btn.danger {
+        color: var(--err);
+      }
+      .btn.ghost {
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+      }
+      .btn.ghost:hover {
+        background: var(--sunken);
+        color: var(--text);
+      }
+      .btn.sm {
+        height: 26px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+      .btn.icon {
+        width: 30px;
+        padding: 0;
+        justify-content: center;
+      }
+      .btn.sm.icon {
+        width: 26px;
+      }
+      .btn[aria-pressed='true'] {
+        background: var(--accent-soft);
+        border-color: transparent;
+        color: var(--accent);
+      }
+      .field {
+        height: 30px;
+        padding: 0 10px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        min-width: 0;
+      }
+      textarea.field {
+        height: auto;
+        padding: 8px 10px;
+        resize: vertical;
+      }
+      .seg {
+        display: inline-flex;
+        padding: 2px;
+        border-radius: var(--r);
+        background: var(--sunken);
+        border: 1px solid var(--line);
+      }
+      .seg button {
+        border: 0;
+        background: transparent;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .seg button[aria-pressed='true'] {
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        background: var(--sunken);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .pill.run {
+        background: var(--run-soft);
+        color: var(--run);
+      }
+      .pill.ok {
+        background: var(--ok-soft);
+        color: var(--ok);
+      }
+      .pill.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .pill.err {
+        background: var(--err-soft);
+        color: var(--err);
+      }
+      .count {
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-grid;
+        place-items: center;
+        background: var(--sunken);
+        color: var(--muted);
+      }
+      .count.hot {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: none;
+        background: var(--faint);
+      }
+      .dot.run {
+        background: var(--run);
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      .dot.ask {
+        background: var(--warn);
+      }
+      .dot.ok {
+        background: var(--ok);
+      }
+      .dot.err {
+        background: var(--err);
+      }
+      .dot.ready {
+        background: var(--accent);
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.35;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .dot.run {
+          animation: none;
+        }
+      }
+
+      /* ---- window ------------------------------------------------------------- */
+      #app {
+        position: relative;
+        height: calc(100% - 44px);
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: var(--side-w) minmax(0, 1fr) auto;
+        background: var(--bg);
+        overflow: hidden;
+        transition: max-width 0.2s;
+      }
+      #app.side-collapsed {
+        grid-template-columns: var(--rail-w) minmax(0, 1fr) auto;
+      }
+      #app.framed {
+        border-left: 1px solid var(--line-strong);
+        border-right: 1px solid var(--line-strong);
+      }
+
+      /* ---- left sidebar ------------------------------------------------------- */
+      .side {
+        background: var(--side);
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      .side-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 10px 0 14px;
+        flex: none;
+      }
+      .lights {
+        display: flex;
+        gap: 7px;
+        margin-right: 6px;
+      }
+      .lights i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--line-strong);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .wolf {
+        width: 20px;
+        height: 20px;
+        color: var(--accent);
+      }
+      .side-actions {
+        padding: 4px 10px 8px;
+        display: grid;
+        gap: 2px;
+        flex: none;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        height: 32px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: var(--r);
+        text-align: left;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .nav:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+      }
+      .nav[aria-current='page'] {
+        background: color-mix(in srgb, var(--text) 9%, transparent);
+        font-weight: 600;
+      }
+      .nav .grow {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .nav kbd {
+        font: 11px var(--font);
+        color: var(--faint);
+      }
+      .nav.new {
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .side-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 10px 10px;
+        min-height: 0;
+      }
+      .group-h {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 14px 9px 4px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .group-h .grow {
+        flex: 1;
+      }
+      .proj {
+        margin-bottom: 2px;
+      }
+      .proj > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: var(--r);
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .proj > summary::-webkit-details-marker {
+        display: none;
+      }
+      .proj > summary:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+        color: var(--text);
+      }
+      .proj > summary .chev {
+        transition: transform 0.15s;
+      }
+      .proj[open] > summary .chev {
+        transform: rotate(90deg);
+      }
+      .proj > summary .add {
+        margin-left: auto;
+        opacity: 0;
+      }
+      .proj > summary:hover .add {
+        opacity: 1;
+      }
+      .chat {
+        padding-left: 14px;
+        height: 30px;
+      }
+      .chat small {
+        color: var(--faint);
+        font-size: 11px;
+      }
+      .chat .tag {
+        font-size: 10.5px;
+        color: var(--faint);
+        border: 1px solid var(--line-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+        line-height: 15px;
+      }
+      .side-foot {
+        border-top: 1px solid var(--line);
+        padding: 8px 10px;
+        display: grid;
+        gap: 2px;
+        flex: none;
+        position: relative;
+      }
+      .quota {
+        display: grid;
+        gap: 5px;
+        padding: 6px 9px 8px;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        border-radius: var(--r);
+      }
+      .quota:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+      }
+      .quota-row {
+        display: grid;
+        grid-template-columns: 62px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+      .meter {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line);
+        overflow: hidden;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        background: var(--ok);
+        border-radius: 2px;
+      }
+      .meter i.mid {
+        background: var(--warn);
+      }
+      .meter i.hi {
+        background: var(--err);
+      }
+      .update {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 9px;
+        border-radius: var(--r);
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+        border: 0;
+        width: 100%;
+        text-align: left;
+      }
+      .foot-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .foot-row .nav {
+        width: auto;
+        flex: 1;
+      }
+      .badge-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+      }
+      .conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--faint);
+        padding: 2px 9px 0;
+      }
+      /* collapsed rail */
+      .side-collapsed .side .label,
+      .side-collapsed .side .group-h,
+      .side-collapsed .side .proj,
+      .side-collapsed .side kbd,
+      .side-collapsed .side .brand span,
+      .side-collapsed .side .quota-row > :not(.ring),
+      .side-collapsed .side .conn span,
+      .side-collapsed .side .lights,
+      .side-collapsed .side .other {
+        display: none;
+      }
+      .side-collapsed .side-top {
+        padding: 0;
+        justify-content: center;
+      }
+      .side-collapsed .side-top .brand {
+        display: none;
+      }
+      .side-collapsed .nav {
+        justify-content: center;
+        padding: 0;
+        position: relative;
+      }
+      .side-collapsed .nav .count {
+        position: absolute;
+        top: 1px;
+        right: 4px;
+        min-width: 15px;
+        height: 15px;
+        font-size: 10px;
+      }
+      .side-collapsed .foot-row {
+        flex-direction: column;
+      }
+      .side-collapsed .foot-row .nav {
+        width: 100%;
+      }
+      .side-collapsed .update {
+        justify-content: center;
+        padding: 7px 0;
+      }
+      .side-collapsed .update span {
+        display: none;
+      }
+      .side-collapsed .quota {
+        padding: 6px 0;
+        justify-items: center;
+      }
+      .side-collapsed .quota-row {
+        display: none;
+      }
+      .side-collapsed .quota .ring {
+        display: grid;
+      }
+      .ring {
+        display: none;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        place-items: center;
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--muted);
+        background: conic-gradient(var(--ok) 43%, var(--line) 0);
+        position: relative;
+      }
+      .ring::after {
+        content: '';
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: var(--side);
+      }
+      .ring b {
+        position: relative;
+        z-index: 1;
+      }
+      .side-collapsed .conn {
+        justify-content: center;
+        padding: 4px 0 0;
+      }
+
+      /* ---- center ------------------------------------------------------------- */
+      .center {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 12px 0 16px;
+        border-bottom: 1px solid var(--line);
+        flex: none;
+      }
+      .topbar h1 {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 60px;
+      }
+      .crumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12.5px;
+        color: var(--muted);
+        white-space: nowrap;
+        border: 0;
+        background: transparent;
+        padding: 3px 6px;
+        border-radius: 6px;
+      }
+      .crumb:hover {
+        background: var(--sunken);
+        color: var(--text);
+      }
+      .topbar .sep {
+        color: var(--line-strong);
+      }
+      .topbar .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .tokens {
+        font-size: 12px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .menu-anchor {
+        position: relative;
+      }
+      .menu {
+        position: absolute;
+        z-index: 40;
+        min-width: 220px;
+        padding: 5px;
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        display: none;
+      }
+      .menu.open {
+        display: block;
+      }
+      .menu.right {
+        right: 0;
+        top: 36px;
+      }
+      .menu.up {
+        bottom: calc(100% + 6px);
+        left: 0;
+      }
+      .menu button,
+      .menu a {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        height: 30px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        text-align: left;
+        text-decoration: none;
+        color: var(--text);
+      }
+      .menu button:hover,
+      .menu a:hover {
+        background: var(--sunken);
+      }
+      .menu hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 5px 0;
+      }
+      .menu .mh {
+        font-size: 11px;
+        color: var(--faint);
+        padding: 6px 9px 2px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .menu .grow {
+        flex: 1;
+      }
+      .page {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: none;
+      }
+      .page.on {
+        display: block;
+      }
+      #p-chat.on {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .thread {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 24px 8px;
+        min-height: 0;
+      }
+      .col {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      .msg {
+        margin-bottom: 22px;
+      }
+      .me {
+        margin-left: auto;
+        max-width: 78%;
+        width: fit-content;
+        padding: 9px 13px;
+        border-radius: 14px 14px 4px 14px;
+        background: var(--sunken);
+        border: 1px solid var(--line);
+      }
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .av {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .msg p + p,
+      .msg p + ul,
+      .msg ul + p {
+        margin-top: 8px;
+      }
+      .msg ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .fold {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 8px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .fold:hover {
+        color: var(--text);
+      }
+      .workline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        margin: 10px 0;
+        padding: 9px 12px;
+        border-radius: var(--r-lg);
+        border: 1px solid var(--line);
+        background: var(--surface);
+        text-align: left;
+        font-size: 13px;
+      }
+      .workline:hover {
+        border-color: var(--line-strong);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      }
+      .workline .stats {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        flex: 1;
+        min-width: 0;
+        align-items: center;
+      }
+      .workline b {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .workline .open {
+        color: var(--muted);
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      .composer-wrap {
+        padding: 8px 24px 14px;
+        flex: none;
+      }
+      .composer {
+        max-width: 760px;
+        margin: 0 auto;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: var(--surface);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+      .composer:focus-within {
+        border-color: var(--accent);
+      }
+      .composer textarea {
+        display: block;
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        resize: none;
+        padding: 12px 14px 4px;
+        min-height: 52px;
+      }
+      .composer-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 8px 8px;
+      }
+      .composer-row .grow {
+        flex: 1;
+      }
+      .composer-hint {
+        max-width: 760px;
+        margin: 6px auto 0;
+        display: flex;
+        gap: 12px;
+        font-size: 11.5px;
+        color: var(--faint);
+        padding: 0 6px;
+      }
+      .composer-hint .grow {
+        flex: 1;
+      }
+      .send {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 0;
+        background: var(--accent);
+        color: var(--on-accent);
+        display: grid;
+        place-items: center;
+      }
+      .send.stop {
+        background: var(--text);
+        color: var(--bg);
+      }
+      .pop {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 0;
+        z-index: 40;
+        width: 300px;
+        padding: 12px;
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        display: none;
+      }
+      .pop.open {
+        display: grid;
+        gap: 10px;
+      }
+      .pop label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .agent-opt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        font-size: 13px;
+      }
+      .agent-opt:hover {
+        background: var(--sunken);
+      }
+      .agent-opt[aria-checked='true'] {
+        background: var(--accent-soft);
+      }
+      .agent-opt small {
+        margin-left: auto;
+        color: var(--faint);
+        font-size: 11.5px;
+      }
+
+      /* home / empty */
+      .home {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 8vh 24px 24px;
+      }
+      .home h2 {
+        font-size: 24px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .home > p {
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      .ideas {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 18px 0 26px;
+      }
+      .list-h {
+        font-size: 12px;
+        font-weight: 650;
+        color: var(--muted);
+        margin: 18px 0 6px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        margin-bottom: 6px;
+      }
+      .row .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .row b {
+        font-weight: 600;
+      }
+      .row small {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ---- pages: settings, sessions, inbox ----------------------------------- */
+      .pg {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 22px 28px 40px;
+      }
+      .pg-h {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .pg-h h2 {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        flex: 1;
+      }
+      .settings {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr);
+        gap: 28px;
+      }
+      .settings nav {
+        display: grid;
+        gap: 2px;
+        align-content: start;
+        position: sticky;
+        top: 0;
+      }
+      .sec {
+        display: none;
+      }
+      .sec.on {
+        display: block;
+      }
+      .sec h3 {
+        font-size: 16px;
+        font-weight: 650;
+      }
+      .sec > p {
+        color: var(--muted);
+        margin: 4px 0 16px;
+        font-size: 13px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        margin-bottom: 14px;
+      }
+      .set {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 13px 16px;
+        border-top: 1px solid var(--line);
+      }
+      .set:first-child {
+        border-top: 0;
+      }
+      .set .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .set b {
+        font-weight: 600;
+        display: block;
+      }
+      .set small {
+        color: var(--muted);
+        font-size: 12.5px;
+        display: block;
+      }
+      .set.col {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .switch {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        border-radius: 10px;
+        border: 0;
+        background: var(--line-strong);
+        flex: none;
+        transition: background 0.15s;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      }
+      .switch[aria-checked='true'] {
+        background: var(--accent);
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(14px);
+      }
+      .cmd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 6px 6px 10px;
+        border-radius: 6px;
+        background: var(--sunken);
+        font-family: var(--mono);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .cmd span {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .check:has(input:checked) {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .check input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+      .bar {
+        display: grid;
+        grid-template-columns: 110px 1fr 40px;
+        gap: 10px;
+        align-items: center;
+        font-size: 12.5px;
+        margin-top: 6px;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+        align-items: center;
+      }
+      .filters .field.search {
+        flex: 1;
+        min-width: 180px;
+      }
+      .srow {
+        display: grid;
+        grid-template-columns: 14px 54px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 9px 14px;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+      .srow:first-child {
+        border-top: 0;
+      }
+      .srow .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .srow .acts {
+        display: flex;
+        gap: 4px;
+        margin: 0;
+        flex-wrap: nowrap;
+      }
+      .card-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .card-h .grow {
+        flex: 1;
+      }
+      pre.box {
+        margin: 8px 0 0;
+        padding: 9px 11px;
+        border-radius: 6px;
+        background: var(--sunken);
+        font: 12px/1.5 var(--mono);
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+
+      /* ---- right work panel --------------------------------------------------- */
+      .work {
+        width: var(--work-w);
+        border-left: 1px solid var(--line);
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      #app.work-closed .work {
+        display: none;
+      }
+      #app.narrow .work {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 30;
+        box-shadow: var(--shadow);
+        width: min(var(--work-w), calc(100% - 40px));
+      }
+      #app.narrow:not(.work-closed) .scrim {
+        display: block;
+      }
+      .scrim {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 29;
+        background: rgba(0, 0, 0, 0.28);
+        border: 0;
+      }
+      .work-top {
+        display: flex;
+        align-items: center;
+        height: 46px;
+        padding: 0 8px 0 6px;
+        border-bottom: 1px solid var(--line);
+        flex: none;
+        gap: 2px;
+      }
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: var(--r);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .tab:hover {
+        color: var(--text);
+      }
+      .tab[aria-selected='true'] {
+        color: var(--text);
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        font-weight: 600;
+      }
+      .work-top .grow {
+        flex: 1;
+      }
+      .pane {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+        display: none;
+        padding: 14px;
+      }
+      .pane.on {
+        display: block;
+      }
+      .ph {
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+        margin: 16px 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ph:first-child {
+        margin-top: 0;
+      }
+      .ph .grow {
+        flex: 1;
+      }
+      .steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .steps li {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 9px;
+        padding: 5px 0;
+        font-size: 13px;
+        align-items: start;
+      }
+      .steps .mk {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 1.5px solid var(--line-strong);
+        margin-top: 2px;
+        display: grid;
+        place-items: center;
+        color: var(--on-accent);
+      }
+      .steps .done .mk {
+        background: var(--ok);
+        border-color: var(--ok);
+      }
+      .steps .done {
+        color: var(--muted);
+      }
+      .steps .cur .mk {
+        border-color: var(--run);
+        border-top-color: transparent;
+        animation: spin 1s linear infinite;
+      }
+      .steps .cur {
+        font-weight: 600;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .steps .cur .mk {
+          animation: none;
+        }
+      }
+      .now {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        padding: 8px 10px;
+        border-radius: var(--r);
+        background: var(--run-soft);
+        color: var(--run);
+        font-size: 12.5px;
+      }
+      .now code {
+        color: inherit;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .askcard {
+        border: 1px solid var(--warn);
+        background: var(--warn-soft);
+        border-radius: var(--r-lg);
+        padding: 11px 12px;
+        margin-bottom: 10px;
+      }
+      .askcard b {
+        font-weight: 600;
+      }
+      .askcard .btns {
+        display: flex;
+        gap: 6px;
+        margin-top: 9px;
+        flex-wrap: wrap;
+      }
+      .tfilters {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .chipf {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 9px;
+        border-radius: 13px;
+        border: 1px solid var(--line-strong);
+        background: transparent;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .chipf[aria-pressed='true'] {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+      }
+      .chipf i {
+        font-style: normal;
+        opacity: 0.7;
+      }
+      .ttools {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+      .ttools .field {
+        flex: 1;
+        height: 28px;
+        font-size: 12.5px;
+      }
+      .tg {
+        margin-top: 12px;
+      }
+      .tg > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+        padding: 4px 2px;
+        cursor: pointer;
+      }
+      .tg > summary::-webkit-details-marker {
+        display: none;
+      }
+      .tg > summary .chev {
+        transition: transform 0.15s;
+      }
+      .tg[open] > summary .chev {
+        transform: rotate(90deg);
+      }
+      .task {
+        display: grid;
+        grid-template-columns: 10px minmax(0, 1fr) auto;
+        gap: 3px 9px;
+        align-items: center;
+        width: 100%;
+        padding: 8px 9px;
+        border: 1px solid transparent;
+        border-radius: var(--r);
+        background: transparent;
+        text-align: left;
+      }
+      .task:hover {
+        background: var(--surface);
+        border-color: var(--line);
+      }
+      .task .tt {
+        font-size: 13px;
+        font-weight: 550;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task .ta {
+        font-size: 11.5px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .task .tl {
+        grid-column: 2 / 4;
+        font-size: 12px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task .tl.live {
+        font-family: var(--mono);
+        font-size: 11.5px;
+      }
+      .task .tl.bad {
+        color: var(--err);
+      }
+      .task .tl.need {
+        color: var(--warn);
+      }
+      .back {
+        margin: -4px 0 10px -6px;
+      }
+      .dt {
+        display: flex;
+        align-items: start;
+        gap: 8px;
+      }
+      .dt h3 {
+        font-size: 15px;
+        font-weight: 650;
+        flex: 1;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 4px 0 12px;
+      }
+      .result {
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      details.more {
+        margin-top: 10px;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+      }
+      details.more summary {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .files {
+        list-style: none;
+        margin: 6px 0 0;
+        padding: 0;
+      }
+      .files li,
+      .frow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 2px;
+        font-size: 12px;
+      }
+      .files code,
+      .frow code {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        direction: rtl;
+        text-align: left;
+      }
+      .st {
+        font: 600 11px var(--mono);
+        width: 14px;
+        text-align: center;
+      }
+      .st.M {
+        color: var(--warn);
+      }
+      .st.A {
+        color: var(--ok);
+      }
+      .st.D {
+        color: var(--err);
+      }
+      .add {
+        color: var(--ok);
+      }
+      .del {
+        color: var(--err);
+      }
+      .delta {
+        font: 11px var(--mono);
+        white-space: nowrap;
+      }
+      .chk {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 0;
+        font-size: 12.5px;
+        border-top: 1px solid var(--line);
+      }
+      .chk:first-child {
+        border-top: 0;
+      }
+      .chk .grow {
+        flex: 1;
+      }
+      .acts {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .frow {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        border-radius: 6px;
+        padding: 6px;
+      }
+      .frow:hover {
+        background: var(--surface);
+      }
+      .frow .src {
+        font-size: 10.5px;
+        color: var(--faint);
+        border: 1px solid var(--line-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      pre.diff {
+        margin: 6px 0 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        font: 11.5px/1.55 var(--mono);
+        overflow-x: auto;
+        padding: 6px 0;
+      }
+      pre.diff span {
+        display: block;
+        padding: 0 10px;
+      }
+      pre.diff .a {
+        background: var(--ok-soft);
+      }
+      pre.diff .d {
+        background: var(--err-soft);
+      }
+      pre.diff .h {
+        color: var(--faint);
+      }
+      .art {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        text-align: left;
+        margin-bottom: 8px;
+      }
+      .art .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .art b {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .art small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .viewer {
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        height: 260px;
+        background: repeating-linear-gradient(
+          45deg,
+          var(--surface),
+          var(--surface) 10px,
+          var(--sunken) 10px,
+          var(--sunken) 20px
+        );
+        display: grid;
+        place-items: center;
+        color: var(--faint);
+        font-size: 12px;
+      }
+
+      /* sheet (what's new) + toast + mockup controls */
+      .sheet-bg {
+        position: absolute;
+        inset: 0;
+        z-index: 50;
+        background: rgba(0, 0, 0, 0.32);
+        display: none;
+        place-items: center;
+        padding: 24px;
+      }
+      .sheet-bg.open {
+        display: grid;
+      }
+      .sheet {
+        width: min(560px, 100%);
+        max-height: 80%;
+        overflow: auto;
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        padding: 20px 22px;
+      }
+      .sheet h2 {
+        font-size: 18px;
+        font-weight: 650;
+      }
+      .sheet ul {
+        padding-left: 20px;
+        margin: 10px 0;
+      }
+      .sheet .btns {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+      .toast {
+        position: absolute;
+        left: 50%;
+        bottom: 64px;
+        transform: translateX(-50%);
+        z-index: 60;
+        padding: 7px 13px;
+        border-radius: var(--r);
+        background: var(--text);
+        color: var(--bg);
+        font-size: 12.5px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+      }
+      .toast.on {
+        opacity: 1;
+      }
+      .mock {
+        position: fixed;
+        left: 50%;
+        bottom: 7px;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 6px 5px 11px;
+        border-radius: 18px;
+        background: #16130f;
+        color: #f3efe8;
+        font-size: 11.5px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+        white-space: nowrap;
+        max-width: calc(100vw - 16px);
+        overflow-x: auto;
+      }
+      .mock b {
+        font-weight: 650;
+        opacity: 0.7;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 10px;
+      }
+      .mock button {
+        border: 0;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        font-size: 11.5px;
+      }
+      .mock button:hover {
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .mock button[aria-pressed='true'] {
+        background: #f3efe8;
+        color: #16130f;
+      }
+      .mock .gap {
+        width: 1px;
+        height: 14px;
+        background: rgba(255, 255, 255, 0.2);
+        margin: 0 3px;
+      }
+
+      /* narrow window */
+      #app.narrow .tokens,
+      #app.narrow .crumb.proj-c span.path {
+        display: none;
+      }
+      #app.narrow .settings {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      #app.narrow .settings nav {
+        display: flex;
+        flex-wrap: wrap;
+        position: static;
+      }
+      #app.narrow .settings nav .nav {
+        width: auto;
+      }
+      #app.narrow .thread,
+      #app.narrow .composer-wrap {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></symbol>
+        <symbol id="i-search" viewBox="0 0 16 16">
+          <circle cx="7" cy="7" r="4" />
+          <path d="m10 10 3.5 3.5" />
+        </symbol>
+        <symbol id="i-inbox" viewBox="0 0 16 16">
+          <path d="M2 9.5 4 3h8l2 6.5V13H2z" />
+          <path d="M2 9.5h3.5l1 1.5h3l1-1.5H14" />
+        </symbol>
+        <symbol id="i-layers" viewBox="0 0 16 16">
+          <path d="m8 2 6 3-6 3-6-3z" />
+          <path d="m2 8 6 3 6-3M2 11l6 3 6-3" />
+        </symbol>
+        <symbol id="i-gear" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="2.2" />
+          <path
+            d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"
+          />
+        </symbol>
+        <symbol id="i-help" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="6" />
+          <path d="M6.3 6.3a1.8 1.8 0 1 1 2.5 1.7c-.5.3-.8.6-.8 1.2M8 11.3v.2" />
+        </symbol>
+        <symbol id="i-side" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="2" />
+          <path d="M6 3v10" />
+        </symbol>
+        <symbol id="i-work" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="2" />
+          <path d="M10 3v10" />
+        </symbol>
+        <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4" /></symbol>
+        <symbol id="i-back" viewBox="0 0 16 16"><path d="M10 4 6 8l4 4" /></symbol>
+        <symbol id="i-dots" viewBox="0 0 16 16">
+          <circle cx="3.5" cy="8" r=".6" />
+          <circle cx="8" cy="8" r=".6" />
+          <circle cx="12.5" cy="8" r=".6" />
+        </symbol>
+        <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" /></symbol>
+        <symbol id="i-clip" viewBox="0 0 16 16">
+          <path d="M13 7.5 8 12.5a3 3 0 0 1-4.2-4.2l5-5a2 2 0 0 1 2.8 2.8l-5 5a1 1 0 0 1-1.4-1.4L9.8 5" />
+        </symbol>
+        <symbol id="i-mic" viewBox="0 0 16 16">
+          <rect x="6" y="2" width="4" height="7" rx="2" />
+          <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2" />
+        </symbol>
+        <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4" /></symbol>
+        <symbol id="i-stop" viewBox="0 0 16 16">
+          <rect x="4.5" y="4.5" width="7" height="7" rx="1.2" fill="currentColor" />
+        </symbol>
+        <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.5H14V12.5H2z" /></symbol>
+        <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" /></symbol>
+        <symbol id="i-copy" viewBox="0 0 16 16">
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+          <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+        </symbol>
+        <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 3v8M4.5 8 8 11.5 11.5 8M3 13.5h10" /></symbol>
+        <symbol id="i-spark" viewBox="0 0 16 16">
+          <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2 12 12M12 4l-1.8 1.8M5.8 10.2 4 12" />
+        </symbol>
+        <symbol id="i-doc" viewBox="0 0 16 16">
+          <path d="M4 2h5.5L12 4.5V14H4z" />
+          <path d="M9.5 2v2.5H12M6 8h4M6 10.5h4" />
+        </symbol>
+        <symbol id="i-users" viewBox="0 0 16 16">
+          <circle cx="6" cy="6" r="2.3" />
+          <path
+            d="M1.8 13c.4-2.2 2-3.4 4.2-3.4s3.8 1.2 4.2 3.4M10.6 3.9a2.3 2.3 0 0 1 0 4.3M12.2 10c1.1.5 1.8 1.5 2 3"
+          />
+        </symbol>
+        <symbol id="i-wolf" viewBox="0 0 20 20">
+          <path d="M3 3l4 3h6l4-3-1 7-6 7-6-7z" fill="currentColor" stroke="none" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <div id="app" class="work-closed">
+      <!-- =================== LEFT SIDEBAR =================== -->
+      <aside class="side" aria-label="Sidebar">
+        <div class="side-top" title="Window drag region (the Mac title bar is drawn here)">
+          <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="brand"
+            ><svg class="wolf" viewBox="0 0 20 20"><use href="#i-wolf" /></svg><span>genaicode</span></span
+          >
+          <span style="flex: 1"></span>
+          <button class="btn ghost icon sm" data-act="side" title="Collapse sidebar (⌘B)" aria-label="Toggle sidebar">
+            <svg class="i"><use href="#i-side" /></svg>
+          </button>
+        </div>
+        <div class="side-actions">
+          <button class="nav new" data-go="home" title="New chat (⌘N)">
+            <svg class="i"><use href="#i-plus" /></svg><span class="label grow">New chat</span><kbd>⌘N</kbd>
+          </button>
+          <button
+            class="nav"
+            data-act="toast"
+            data-msg="Search opens a command palette over chats and sessions (⌘K)"
+            title="Search (⌘K)"
+          >
+            <svg class="i"><use href="#i-search" /></svg><span class="label grow">Search</span><kbd>⌘K</kbd>
+          </button>
+          <button class="nav" data-go="inbox" title="Needs you: approvals and questions from every agent">
+            <svg class="i"><use href="#i-inbox" /></svg><span class="label grow">Needs you</span
+            ><span class="count hot">3</span>
+          </button>
+          <button class="nav" data-go="sessions" title="Sessions of every agent on this machine">
+            <svg class="i"><use href="#i-layers" /></svg><span class="label grow">All sessions</span>
+          </button>
+        </div>
+        <div class="side-scroll">
+          <div class="group-h"><span class="grow">Chats</span></div>
+          <details class="proj" open>
+            <summary>
+              <svg class="i chev"><use href="#i-chev" /></svg>genaicode<button
+                class="btn ghost icon sm add"
+                data-go="home"
+                title="New chat in genaicode"
+                aria-label="New chat in genaicode"
+              >
+                <svg class="i"><use href="#i-plus" /></svg>
+              </button>
+            </summary>
+            <button class="nav chat" data-go="chat" data-scn="tasks" id="c-tasks">
+              <span class="dot run"></span><span class="grow">Ship the sidebars layout</span><small>now</small>
+            </button>
+            <button class="nav chat" data-go="chat" data-scn="chat" id="c-chat">
+              <span class="dot ok"></span><span class="grow">Why does sessions mcp --send time out?</span
+              ><small>2h</small>
+            </button>
+            <button class="nav chat" data-go="chat" data-scn="chat">
+              <span class="dot"></span><span class="grow">Release notes for 3.3.0</span><small>1d</small>
+            </button>
+          </details>
+          <details class="proj" open>
+            <summary>
+              <svg class="i chev"><use href="#i-chev" /></svg>www.gamedev.pl<button
+                class="btn ghost icon sm add"
+                data-go="home"
+                title="New chat in www.gamedev.pl"
+                aria-label="New chat in www.gamedev.pl"
+              >
+                <svg class="i"><use href="#i-plus" /></svg>
+              </button>
+            </summary>
+            <button class="nav chat" data-go="chat" data-scn="chat">
+              <span class="dot ask"></span><span class="grow">Gate verdict retries</span><small>40m</small>
+            </button>
+            <button class="nav chat" data-go="chat" data-scn="chat">
+              <span class="dot"></span><span class="grow">Studio inbox polling</span><small>3d</small>
+            </button>
+          </details>
+          <details class="proj">
+            <summary>
+              <svg class="i chev"><use href="#i-chev" /></svg>No project<button
+                class="btn ghost icon sm add"
+                data-go="home"
+                title="New chat without a project"
+                aria-label="New chat without a project"
+              >
+                <svg class="i"><use href="#i-plus" /></svg>
+              </button>
+            </summary>
+            <button class="nav chat" data-go="chat" data-scn="chat">
+              <span class="dot"></span><span class="grow">What is waiting for me?</span><small>5d</small>
+            </button>
+          </details>
+          <div class="group-h other"><span class="grow">Other agents' sessions</span></div>
+          <div class="other">
+            <button class="nav chat" data-go="sessions" title="codex · genaicode · asks to run a command">
+              <span class="dot ask"></span><span class="grow">Fix flaky tower test</span><span class="tag">codex</span>
+            </button>
+            <button class="nav chat" data-go="sessions" title="claude · www.gamedev.pl · working">
+              <span class="dot run"></span><span class="grow">Kit API typings</span><span class="tag">claude</span>
+            </button>
+            <button class="nav chat" data-go="sessions" title="agy · genaicode · stalled on an offer">
+              <span class="dot"></span><span class="grow">Vite overlay a11y pass</span><span class="tag">agy</span>
+            </button>
+            <button class="nav chat" data-go="sessions" style="color: var(--muted)">
+              <span style="width: 8px"></span><span class="grow">Show all 41 sessions</span
+              ><svg class="i"><use href="#i-chev" /></svg>
+            </button>
+          </div>
+        </div>
+        <div class="side-foot">
+          <button
+            class="update"
+            data-act="toast"
+            data-msg="Install 3.4.0 and relaunch: stops the agents this app runs"
+            title="Version 3.4.0 is downloaded. Relaunching installs it."
+          >
+            <svg class="i"><use href="#i-down" /></svg><span>Update ready · relaunch</span>
+          </button>
+          <button
+            class="quota"
+            data-go="settings"
+            data-sec="usage"
+            title="Plan limits of every agent. Opens Settings › Usage"
+          >
+            <span class="ring"><b>43</b></span>
+            <span class="quota-row"
+              ><span>claude 7d</span><span class="meter"><i style="width: 43%"></i></span><span>43% · 4d 3h</span></span
+            >
+            <span class="quota-row"
+              ><span>claude 5h</span><span class="meter"><i class="mid" style="width: 62%"></i></span
+              ><span>62% · 1h 12m</span></span
+            >
+          </button>
+          <div class="foot-row">
+            <button class="nav" data-go="settings" title="Settings (⌘,)">
+              <svg class="i"><use href="#i-gear" /></svg><span class="label grow">Settings</span>
+            </button>
+            <span class="menu-anchor" style="flex: 1; display: flex">
+              <button class="nav" data-menu="m-help" title="Help and what's new">
+                <svg class="i"><use href="#i-help" /></svg><span class="label grow">Help</span
+                ><span class="badge-dot" title="New in 3.3.0"></span>
+              </button>
+              <div class="menu up" id="m-help" role="menu">
+                <button data-act="whatsnew">
+                  <svg class="i"><use href="#i-spark" /></svg><span class="grow">What's new</span
+                  ><span class="pill">3.3.0</span>
+                </button>
+                <hr />
+                <a href="#" data-act="toast" data-msg="Opens SUPPORT_URL in the browser"
+                  ><svg class="i"><use href="#i-help" /></svg>Get help</a
+                >
+                <a href="#" data-act="toast" data-msg="Opens BUG_REPORT_URL in the browser"
+                  ><svg class="i"><use href="#i-doc" /></svg>Report a bug</a
+                >
+                <a href="#" data-act="toast" data-msg="Opens the terms page"
+                  ><svg class="i"><use href="#i-doc" /></svg>Terms</a
+                >
+                <button data-act="toast" data-msg="Lists the slash commands and keys (/help)">
+                  <svg class="i"><use href="#i-doc" /></svg>Commands and keys
+                </button>
+              </div>
+            </span>
+          </div>
+          <div class="conn" title="Connected to the genaicode server">
+            <span class="dot ok"></span><span>Connected · 3.3.0</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- =================== CENTER =================== -->
+      <main class="center">
+        <header class="topbar" id="topbar">
+          <h1 id="title">Ship the sidebars layout</h1>
+          <span class="sep">/</span>
+          <button
+            class="crumb proj-c"
+            title="~/src/genaicode — click to copy, /where prints it"
+            data-act="toast"
+            data-msg="Working directory copied: ~/src/genaicode"
+          >
+            <svg class="i"><use href="#i-folder" /></svg>genaicode <span class="path faint">· master</span>
+          </button>
+          <span class="grow"></span>
+          <span class="tokens" title="Usage of this conversation">9.8M tokens</span>
+          <span class="menu-anchor">
+            <button
+              class="btn ghost icon sm"
+              data-menu="m-session"
+              title="Session and transcript"
+              aria-label="Session menu"
+            >
+              <svg class="i"><use href="#i-dots" /></svg>
+            </button>
+            <div class="menu right" id="m-session" role="menu">
+              <div class="mh">Session …4ae4d086</div>
+              <button data-act="toast" data-msg="Session ID copied">
+                <svg class="i"><use href="#i-copy" /></svg>Copy session ID
+              </button>
+              <button data-act="toast" data-msg="File path copied">
+                <svg class="i"><use href="#i-copy" /></svg>Copy file path
+              </button>
+              <hr />
+              <div class="mh">Transcript</div>
+              <button data-act="toast" data-msg="Transcript copied as Markdown">
+                <svg class="i"><use href="#i-copy" /></svg>Copy as Markdown
+              </button>
+              <button data-act="toast" data-msg="Transcript copied as JSON">
+                <svg class="i"><use href="#i-copy" /></svg>Copy as JSON
+              </button>
+              <button data-act="toast" data-msg="Native Save dialog: Markdown">
+                <svg class="i"><use href="#i-down" /></svg>Save as Markdown…
+              </button>
+              <button data-act="toast" data-msg="Native Save dialog: JSON">
+                <svg class="i"><use href="#i-down" /></svg>Save as JSON…
+              </button>
+              <hr />
+              <button data-go="settings" data-sec="team">
+                <svg class="i"><use href="#i-users" /></svg>Project team…
+              </button>
+            </div>
+          </span>
+          <button class="btn ghost sm" id="work-toggle" data-act="work" title="Work panel (⌘⌥B)" aria-pressed="false">
+            <svg class="i"><use href="#i-work" /></svg><span class="count hot" id="work-badge">1</span>
+          </button>
+        </header>
+
+        <!-- chat -->
+        <section class="page on" id="p-chat">
+          <div class="thread"><div class="col" id="thread"></div></div>
+          <div class="composer-wrap">
+            <div class="composer">
+              <textarea
+                rows="2"
+                placeholder="Reply to claude…   / for commands, drop files to attach"
+                aria-label="Message"
+              ></textarea>
+              <div class="composer-row">
+                <button
+                  class="btn ghost icon sm"
+                  title="Attach files (or paste, or drop them)"
+                  aria-label="Attach files"
+                >
+                  <svg class="i"><use href="#i-clip" /></svg>
+                </button>
+                <button class="btn ghost icon sm" title="Record a voice message" aria-label="Record a voice message">
+                  <svg class="i"><use href="#i-mic" /></svg>
+                </button>
+                <span class="menu-anchor">
+                  <button class="btn ghost sm" data-menu="m-agent" title="Agent, model and effort for the next prompt">
+                    <span class="av" style="width: 16px; height: 16px; font-size: 9px">C</span>claude · fable-5.2 · high
+                  </button>
+                  <div class="pop" id="m-agent">
+                    <div role="radiogroup" aria-label="Agent">
+                      <button class="agent-opt" role="radio" aria-checked="true">
+                        <span class="dot ok"></span>claude<small>Ready · leads the team</small>
+                      </button>
+                      <button class="agent-opt" role="radio" aria-checked="false">
+                        <span class="dot ok"></span>codex<small>Ready</small>
+                      </button>
+                      <button class="agent-opt" role="radio" aria-checked="false">
+                        <span class="dot ok"></span>agy<small>Ready · no questions</small>
+                      </button>
+                      <button class="agent-opt" role="radio" aria-checked="false" data-go="settings" data-sec="agents">
+                        <span class="dot ask"></span>gemini<small>Sign in ›</small>
+                      </button>
+                    </div>
+                    <label
+                      >Model<input class="field" value="claude-fable-5-2" placeholder="empty for the agent's default"
+                    /></label>
+                    <label
+                      >Effort<span class="seg" style="width: fit-content"
+                        ><button>default</button><button>low</button><button>medium</button
+                        ><button aria-pressed="true">high</button><button>max</button></span
+                      ></label
+                    >
+                    <label>Fallback when it runs out<input class="field" value="codex, gemini" /></label>
+                  </div>
+                </span>
+                <span class="grow"></span>
+                <button
+                  class="btn ghost sm"
+                  aria-pressed="false"
+                  data-act="press"
+                  title="Plan mode: the agent plans and asks without editing"
+                >
+                  Plan
+                </button>
+                <span class="seg" title="Permission requests"
+                  ><button data-act="segp">Ask first</button
+                  ><button data-act="segp" aria-pressed="true">Auto-approve</button></span
+                >
+                <button
+                  class="send stop"
+                  id="send"
+                  title="Stop (Esc). Type to steer the running turn."
+                  aria-label="Stop"
+                >
+                  <svg class="i"><use href="#i-stop" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="composer-hint">
+              <span>Enter sends · Shift+Enter new line · Esc stops</span><span class="grow"></span
+              ><span id="hint-r">Typing while it works steers the turn</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- home / new chat -->
+        <section class="page" id="p-home">
+          <div class="home">
+            <h2>What should claude work on?</h2>
+            <p>Pick a project in the sidebar, or just ask: it sees the sessions of your agents in every project.</p>
+            <div class="ideas">
+              <button class="btn">What is waiting for me?</button
+              ><button class="btn">What are my agents working on?</button
+              ><button class="btn">Sum up what got done today</button>
+            </div>
+            <div class="list-h">Needs you now</div>
+            <div class="row">
+              <span class="dot ask"></span
+              ><span class="grow"><b>www.gamedev.pl</b><small>1 needs you · claude, codex · 40m ago</small></span
+              ><button class="btn sm" data-go="sessions">Open</button
+              ><button class="btn sm ghost" data-go="chat" data-scn="chat">New chat</button>
+            </div>
+            <div class="list-h">Agents at work</div>
+            <div class="row">
+              <span class="dot run"></span
+              ><span class="grow"><b>genaicode</b><small>5 working · claude, codex, agy · now</small></span
+              ><button class="btn sm" data-go="sessions">Open</button
+              ><button class="btn sm ghost" data-go="chat" data-scn="tasks">New chat</button>
+            </div>
+            <div class="list-h">Topics</div>
+            <div class="row">
+              <span class="dot"></span
+              ><span class="grow"><b>recordings workbench</b><small>claude · 2d ago</small></span
+              ><button class="btn sm" data-go="sessions">Open</button><button class="btn sm ghost">New chat</button>
+            </div>
+            <details style="margin-top: 12px">
+              <summary class="muted" style="font-size: 12.5px; cursor: pointer">
+                Stalled in 2 topics — offers, unsent reports and questions left for days
+              </summary>
+              <div class="row" style="margin-top: 8px">
+                <span class="dot"></span
+                ><span class="grow"><b>vite overlay</b><small>1 stalled · agy · 6d ago</small></span
+                ><button class="btn sm" data-go="sessions">Open</button>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        <!-- all sessions -->
+        <section class="page" id="p-sessions">
+          <div class="pg">
+            <div class="pg-h">
+              <h2>All sessions</h2>
+              <button class="btn sm" title="Put away every session waiting or left half way for 2 days or more">
+                Put away stale</button
+              ><button class="btn sm">Refresh</button>
+            </div>
+            <div class="filters">
+              <input class="field search" placeholder="Search titles, prompts, directories, branches…" />
+              <select class="field">
+                <option>All agents</option>
+                <option>claude</option>
+                <option>codex</option>
+                <option>agy</option>
+              </select>
+              <select class="field">
+                <option>Any state</option>
+                <option>Working</option>
+                <option>Needs you</option>
+                <option>Stalled</option>
+                <option>Archived</option>
+              </select>
+              <span class="seg"><button aria-pressed="true">By topic</button><button>By directory</button></span>
+              <select class="field">
+                <option>7 days</option>
+                <option>30 days</option>
+                <option>All</option>
+              </select>
+            </div>
+            <div class="filters">
+              <button class="chipf" aria-pressed="true">Needs you <i>2</i></button
+              ><button class="chipf">Stalled <i>3</i></button><button class="chipf">Only this app's chats</button>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <span class="grow">genaicode <span class="faint" style="font-weight: 400">· ~/src/genaicode</span></span
+                ><button class="btn sm ghost" data-go="home">New chat</button>
+              </div>
+              <div class="srow">
+                <span class="dot ask"></span><span class="faint">12m</span
+                ><span class="t"
+                  ><b>Fix flaky tower test</b>
+                  <span class="muted">· codex · asks: run <code>npm test -- tower</code></span></span
+                ><span class="acts"
+                  ><button class="btn sm primary">Approve</button><button class="btn sm">Deny</button
+                  ><button class="btn sm ghost">Reply</button></span
+                >
+              </div>
+              <div class="srow">
+                <span class="dot run"></span><span class="faint">now</span
+                ><span class="t"><b>Ship the sidebars layout</b> <span class="muted">· claude · this app</span></span
+                ><span class="acts"><button class="btn sm" data-go="chat" data-scn="tasks">Open</button></span>
+              </div>
+              <div class="srow">
+                <span class="dot"></span><span class="faint">6d</span
+                ><span class="t"><b>Vite overlay a11y pass</b> <span class="muted">· agy · left on an offer</span></span
+                ><span class="acts"
+                  ><button class="btn sm" title="Bring this conversation into the chat">Continue</button
+                  ><button class="btn sm ghost icon" title="Copy resume command">
+                    <svg class="i"><use href="#i-copy" /></svg></button
+                  ><button class="btn sm ghost icon" title="Copy session ID, file path or transcript">
+                    <svg class="i"><use href="#i-dots" /></svg></button
+                ></span>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <span class="grow"
+                  >www.gamedev.pl <span class="faint" style="font-weight: 400">· ~/src/www.gamedev.pl</span></span
+                ><button class="btn sm ghost" data-go="home">New chat</button>
+              </div>
+              <div class="srow">
+                <span class="dot run"></span><span class="faint">3m</span
+                ><span class="t"><b>Kit API typings</b> <span class="muted">· claude · working</span></span
+                ><span class="acts"
+                  ><button class="btn sm ghost">Reply</button><button class="btn sm">Continue</button></span
+                >
+              </div>
+              <div class="srow">
+                <span class="dot ask"></span><span class="faint">40m</span
+                ><span class="t"
+                  ><b>Gate verdict retries</b> <span class="muted">· claude · question: “retry on 502 too?”</span></span
+                ><span class="acts"
+                  ><button class="btn sm ghost">Reply</button
+                  ><button class="btn sm" data-go="chat" data-scn="chat">Open</button></span
+                >
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- needs you (tower inbox + waiting sessions) -->
+        <section class="page" id="p-inbox">
+          <div class="pg">
+            <div class="pg-h">
+              <h2>Needs you</h2>
+              <span class="pill warn">3 open</span>
+            </div>
+            <p class="muted" style="margin: -10px 0 16px; font-size: 13px">
+              One queue for everything that waits on your answer: this chat's approvals, the tower inbox, and questions
+              held by other agents' sessions.
+            </p>
+            <div class="card">
+              <div class="set col">
+                <div>
+                  <span class="pill run">This chat</span> <b style="display: inline">codex wants to run a command</b>
+                  <span class="muted">· task t5 · genaicode</span>
+                </div>
+                <pre class="box">npm install @radix-ui/react-tabs</pre>
+                <div class="acts" style="margin-top: 0">
+                  <button class="btn sm primary">Approve</button><button class="btn sm">Deny</button
+                  ><button class="btn sm ghost" data-go="chat" data-scn="tasks" data-task="t5">Open task</button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="set col">
+                <div>
+                  <span class="pill">Tower</span> <b style="display: inline">Approve command</b>
+                  <span class="muted">· codex · ~/src/genaicode</span>
+                </div>
+                <pre class="box">npm test -- tower</pre>
+                <div class="acts" style="margin-top: 0">
+                  <button class="btn sm primary">Approve</button><button class="btn sm">Deny</button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="set col">
+                <div>
+                  <span class="pill">Session</span> <b style="display: inline">claude asks a question</b>
+                  <span class="muted">· www.gamedev.pl · 40m ago</span>
+                </div>
+                <div>“Retry the gate verdict on 502 too, or only on timeouts?”</div>
+                <div class="acts" style="margin-top: 0">
+                  <button class="btn sm primary">Reply</button
+                  ><button class="btn sm ghost" data-go="chat" data-scn="chat">Open chat</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- settings -->
+        <section class="page" id="p-settings">
+          <div class="pg">
+            <div class="pg-h">
+              <button class="btn ghost icon sm" data-go="chat" title="Back to chat (Esc)" aria-label="Back to chat">
+                <svg class="i"><use href="#i-back" /></svg>
+              </button>
+              <h2>Settings</h2>
+            </div>
+            <div class="settings">
+              <nav aria-label="Settings sections">
+                <button class="nav" data-sec="general">
+                  <svg class="i"><use href="#i-gear" /></svg><span class="grow">General</span>
+                </button>
+                <button class="nav" data-sec="agents">
+                  <svg class="i"><use href="#i-spark" /></svg><span class="grow">Agents</span
+                  ><span class="count hot">1</span>
+                </button>
+                <button class="nav" data-sec="team">
+                  <svg class="i"><use href="#i-users" /></svg><span class="grow">Project team</span>
+                </button>
+                <button class="nav" data-sec="artifacts">
+                  <svg class="i"><use href="#i-doc" /></svg><span class="grow">Artifacts</span>
+                </button>
+                <button class="nav" data-sec="usage">
+                  <svg class="i"><use href="#i-layers" /></svg><span class="grow">Usage</span>
+                </button>
+                <button class="nav" data-sec="about">
+                  <svg class="i"><use href="#i-help" /></svg><span class="grow">About and updates</span>
+                </button>
+              </nav>
+              <div>
+                <div class="sec" id="s-general">
+                  <h3>General</h3>
+                  <p>How the window looks and behaves.</p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"><b>Theme</b><small>Follows the system unless you choose.</small></span
+                      ><span class="seg" id="theme-seg"
+                        ><button data-theme-set="system">System</button><button data-theme-set="light">Light</button
+                        ><button data-theme-set="dark">Dark</button></span
+                      >
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Bark when an agent needs you</b
+                        ><small
+                          >A sound and a count in the title while the window is in the background
+                          (<code>/bark</code>).</small
+                        ></span
+                      ><button class="switch" role="switch" aria-checked="true" data-act="switch"></button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Approve permission requests by default</b
+                        ><small>New chats start in Auto-approve instead of Ask first (<code>/auto</code>).</small></span
+                      ><button class="switch" role="switch" aria-checked="false" data-act="switch"></button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Open the work panel when work starts</b
+                        ><small
+                          >The right panel opens on the first plan, delegated task or approval of a turn.</small
+                        ></span
+                      ><button class="switch" role="switch" aria-checked="true" data-act="switch"></button>
+                    </div>
+                  </div>
+                </div>
+                <div class="sec" id="s-agents">
+                  <h3>Agents</h3>
+                  <p>The coding agent CLIs on this machine. Install or sign in from Terminal, then check again.</p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="dot ok"></span
+                      ><span class="grow"
+                        ><b>Claude Code</b><small>Ready · 2.4.1 · Max plan · /opt/homebrew/bin/claude</small></span
+                      ><span class="pill ok">Default</span>
+                    </div>
+                    <div class="set">
+                      <span class="dot ok"></span
+                      ><span class="grow"><b>Codex</b><small>Ready · 0.61 · Pro plan</small></span
+                      ><button class="btn sm">Use</button>
+                    </div>
+                    <div class="set">
+                      <span class="dot ok"></span
+                      ><span class="grow"
+                        ><b>Antigravity</b><small>Ready · cannot ask questions while it runs</small></span
+                      ><button class="btn sm">Use</button>
+                    </div>
+                    <div class="set col">
+                      <div style="display: flex; gap: 16px; align-items: center">
+                        <span class="dot ask"></span
+                        ><span class="grow"><b>Gemini CLI</b><small>Installed, not signed in</small></span
+                        ><span class="pill warn">Sign in</span>
+                      </div>
+                      <div class="cmd">
+                        <span>gemini auth login</span
+                        ><button
+                          class="btn sm ghost icon"
+                          title="Copy command"
+                          data-act="toast"
+                          data-msg="Command copied"
+                        >
+                          <svg class="i"><use href="#i-copy" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <div style="display: flex; gap: 16px; align-items: center">
+                        <span class="dot"></span><span class="grow"><b>Muse Code</b><small>Not installed</small></span>
+                      </div>
+                      <div class="cmd">
+                        <span>npm install -g @muse/code</span
+                        ><button
+                          class="btn sm ghost icon"
+                          title="Copy command"
+                          data-act="toast"
+                          data-msg="Command copied"
+                        >
+                          <svg class="i"><use href="#i-copy" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn"
+                    data-act="toast"
+                    data-msg="Re-reads the login shell environment and each agent's state"
+                  >
+                    Check again
+                  </button>
+                </div>
+                <div class="sec" id="s-team">
+                  <h3>Project team</h3>
+                  <p>
+                    Who leads and who takes delegated tasks in a project. Saved in <code>.genaicode/pack.json</code>.
+                  </p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"><b>Project</b><small>Any folder an agent has worked in.</small></span
+                      ><select class="field" style="width: 260px">
+                        <option>~/src/genaicode</option>
+                        <option>~/src/www.gamedev.pl</option>
+                        <option>Other folder…</option>
+                      </select>
+                    </div>
+                    <div class="set">
+                      <span class="grow"><b>Lead</b><small>Plans the work, delegates and merges.</small></span
+                      ><select class="field" style="width: 160px">
+                        <option>claude</option>
+                        <option>codex</option>
+                      </select>
+                    </div>
+                    <div class="set col">
+                      <span><b>Workers</b><small>Installed agents the lead may delegate to.</small></span>
+                      <div class="checks">
+                        <label class="check"><input type="checkbox" checked />claude</label
+                        ><label class="check"><input type="checkbox" checked />codex</label
+                        ><label class="check"><input type="checkbox" checked />agy</label
+                        ><label class="check"><input type="checkbox" />gemini</label>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn primary"
+                    data-act="toast"
+                    data-msg="Team saved in .genaicode/pack.json for the next project pack"
+                  >
+                    Remember this team for the project
+                  </button>
+                </div>
+                <div class="sec" id="s-artifacts">
+                  <h3>Artifacts</h3>
+                  <p>
+                    HTML artifacts run in a sandbox with no network. You can let them load libraries from CDNs you
+                    trust.
+                  </p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Allow common library CDNs</b
+                        ><small>cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, esm.sh</small></span
+                      ><button class="switch" role="switch" aria-checked="false" data-act="switch"></button>
+                    </div>
+                    <div class="set col">
+                      <span><b>Extra allowed hosts</b><small>One per line or comma-separated.</small></span
+                      ><textarea class="field" rows="3" placeholder="e.g. cdn.skypack.dev"></textarea>
+                    </div>
+                  </div>
+                  <p class="muted" style="font-size: 12.5px; margin: -4px 0 12px">
+                    Off by default. Allowed hosts can serve scripts, styles and fonts inside HTML artifacts; fetch,
+                    images and forms stay blocked. Loaded scripts run with the artifact's data.
+                  </p>
+                  <button class="btn primary" data-act="toast" data-msg="Settings saved">Save</button>
+                </div>
+                <div class="sec" id="s-usage">
+                  <h3>Usage</h3>
+                  <p>Plan limits last seen for each agent, and where its work went in the last 7 days.</p>
+                  <div class="card">
+                    <div class="set col">
+                      <b
+                        >claude <span class="pill ok" style="margin-left: 6px">7d 43% · resets in 4d 3h</span>
+                        <span class="pill warn">5h 62% · resets in 1h 12m</span></b
+                      >
+                      <div>
+                        <div class="bar">
+                          <span>genaicode</span><span class="meter"><i style="width: 58%"></i></span><span>58%</span>
+                        </div>
+                        <div class="bar">
+                          <span>www.gamedev.pl</span><span class="meter"><i style="width: 31%"></i></span
+                          ><span>31%</span>
+                        </div>
+                        <div class="bar">
+                          <span>recordings</span><span class="meter"><i style="width: 11%"></i></span><span>11%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <b>codex <span class="pill ok" style="margin-left: 6px">7d 18% · resets in 2d 9h</span></b>
+                      <div>
+                        <div class="bar">
+                          <span>genaicode</span><span class="meter"><i style="width: 84%"></i></span><span>84%</span>
+                        </div>
+                        <div class="bar">
+                          <span>www.gamedev.pl</span><span class="meter"><i style="width: 16%"></i></span
+                          ><span>16%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <b
+                        >gemini
+                        <span class="pill err" style="margin-left: 6px">daily quota used · resets in 6h</span></b
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div class="sec" id="s-about">
+                  <h3>About and updates</h3>
+                  <p>Genaicode desktop 3.3.0.</p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Version 3.4.0 is downloaded</b
+                        ><small>Relaunching installs it and stops the agents this app runs.</small></span
+                      ><button class="btn primary sm">Install and relaunch</button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>What's new in 3.3.0</b><small>Release notes bundled with this version.</small></span
+                      ><button class="btn sm" data-act="whatsnew">Read</button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"><b>Help</b><small>Get help, report a bug, terms.</small></span
+                      ><button class="btn sm ghost">Get help</button><button class="btn sm ghost">Report a bug</button
+                      ><button class="btn sm ghost">Terms</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- =================== RIGHT WORK PANEL =================== -->
+      <button class="scrim" data-act="work" aria-label="Close work panel"></button>
+      <aside class="work" aria-label="Work panel">
+        <div class="work-top" role="tablist">
+          <button class="tab" role="tab" data-tab="progress">Progress</button>
+          <button class="tab" role="tab" data-tab="tasks">Tasks <span class="count" id="n-tasks">12</span></button>
+          <button class="tab" role="tab" data-tab="changes">Changes <span class="count">7</span></button>
+          <button class="tab" role="tab" data-tab="artifacts">Artifacts <span class="count">2</span></button>
+          <span class="grow"></span>
+          <button class="btn ghost icon sm" data-act="work" title="Close panel" aria-label="Close work panel">
+            <svg class="i"><use href="#i-x" /></svg>
+          </button>
+        </div>
+        <div class="pane" id="w-progress"></div>
+        <div class="pane" id="w-tasks"></div>
+        <div class="pane" id="w-changes"></div>
+        <div class="pane" id="w-artifacts"></div>
+      </aside>
+
+      <div class="sheet-bg" id="whatsnew">
+        <div class="sheet" role="dialog" aria-labelledby="wn-h">
+          <h2 id="wn-h">What's new in Genaicode 3.3.0</h2>
+          <p class="muted" style="margin-top: 4px">Updated from 3.2.1 to <b>3.3.0</b>.</p>
+          <ul>
+            <li><code>sessions mcp --send</code>: send to a session over MCP, confirmed by elicitation.</li>
+            <li><code>sessions --cloud</code>: cloud sessions from pull requests, and Codex Cloud tasks.</li>
+            <li>
+              <code>memory_list</code> and <code>memory_read</code>: what the other agents remember about a project.
+            </li>
+          </ul>
+          <div class="btns">
+            <button class="btn ghost">View release on GitHub</button
+            ><button class="btn primary" data-act="closesheet">Close</button>
+          </div>
+        </div>
+      </div>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+
+    <div class="mock" aria-label="Mockup controls (not part of the design)">
+      <b>Mockup</b>
+      <button data-m="scn" data-v="home">New chat</button><button data-m="scn" data-v="chat">Plain chat</button
+      ><button data-m="scn" data-v="tasks">12 delegated tasks</button
+      ><button data-m="scn" data-v="settings">Settings</button>
+      <span class="gap"></span>
+      <button data-m="side">Sidebar</button><button data-m="work">Work panel</button>
+      <span class="gap"></span>
+      <button data-m="width" data-v="0">Full</button><button data-m="width" data-v="900">900 px</button>
+      <span class="gap"></span>
+      <button data-m="theme">Dark / light</button>
+    </div>
+
+    <script>
+      (() => {
+        const $ = (s, r = document) => r.querySelector(s),
+          $$ = (s, r = document) => [...r.querySelectorAll(s)];
+        const app = $('#app'),
+          ic = (n, c = '') => `<svg class="i ${c}"><use href="#i-${n}"/></svg>`;
+        const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+        /* ---------- data: one lead turn with 12 delegated tasks ---------- */
+        const T = [
+          {
+            id: 't5',
+            title: 'Settings page with sections',
+            agent: 'codex',
+            model: 'gpt-6.2-astra',
+            effort: 'high',
+            g: 'ask',
+            age: '2m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t5',
+            live: ['Waiting for approval: npm install @radix-ui/react-tabs'],
+            ask: 'npm install @radix-ui/react-tabs',
+            prompt:
+              'Replace the Settings popover with a page: General, Agents, Project team, Artifacts, Usage, About. Keep /api/settings as is.',
+          },
+          {
+            id: 't12',
+            title: 'Docs: work panel props in react.md',
+            agent: 'claude',
+            model: 'sonnet-5.5',
+            g: 'run',
+            age: '40s',
+            mode: 'shared',
+            dir: '.',
+            canSteer: true,
+            live: ['Read docs/react.md', 'Grep "onPackAction" src/react', 'Edit docs/react.md'],
+            prompt: 'Document the new <WorkPanel> props next to <AgentChat> in docs/react.md.',
+          },
+          {
+            id: 't9',
+            title: 'Browser test: collapse and restore sidebar',
+            agent: 'agy',
+            model: 'neon',
+            effort: 'high',
+            g: 'run',
+            age: '3m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t9',
+            live: [
+              'Bash npx playwright test home.browser',
+              'Edit src/ui/home.browser.test.ts',
+              'Bash npm run test:browser -- sidebar',
+            ],
+            prompt: 'Add a Playwright test: ⌘B collapses the sidebar to the rail and the state survives a reload.',
+          },
+          {
+            id: 't4',
+            title: 'Work panel: Changes tab',
+            agent: 'agy',
+            model: 'neon',
+            effort: 'high',
+            g: 'run',
+            age: '6m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t4',
+            live: ['Bash npm test -- work-panel', 'Edit src/react/work-panel.tsx', 'Read src/react/pack-tasks.tsx'],
+            prompt: 'List the files the lead and each merged task changed, with +/− counts and an inline diff.',
+          },
+          {
+            id: 't3',
+            title: 'Work panel: Tasks tab with groups and filters',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'run',
+            age: '9m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t3',
+            canSteer: true,
+            live: [
+              'Edit src/react/work-panel.tsx',
+              'Bash npm run type-check',
+              'Edit src/react/agent-chat.css',
+              'Read src/react/format.ts',
+            ],
+            prompt:
+              'Move the task list out of the chat card into the right panel: group by status, filter chips, search, recent first.',
+          },
+          {
+            id: 't6',
+            title: 'Project team as a settings section',
+            agent: 'gemini',
+            model: 'gemini-3-pro',
+            g: 'fail',
+            age: '11m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t6',
+            error: 'gemini ran out of its daily quota. It resets in 6h.',
+            quota: 'The lead can hand this task to another worker: ask it to retry with codex.',
+            prompt:
+              'Turn ProjectTeamDialog into a section of the Settings page; keep the folder picker for chats without a project.',
+          },
+          {
+            id: 't11',
+            title: "Move What's new into the Help menu",
+            agent: 'codex',
+            model: 'gpt-6.2-astra',
+            effort: 'high',
+            g: 'ready',
+            age: '14m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t11',
+            text: "What's new is now an item of the sidebar Help menu with a quiet dot while unread; the dialog still opens once after an update.",
+            changes: ['M src/ui/web/client.tsx', 'A src/ui/web/help-menu.tsx', 'M src/react/agent-chat.css'],
+            review: 'Outdated',
+            tests: 'Passed',
+            prompt: "Remove the What's new pill from the header; add it to the Help menu with an unread dot.",
+          },
+          {
+            id: 't2',
+            title: 'Sidebar: chats grouped by project',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'ready',
+            age: '18m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t2',
+            text: 'The sidebar lists this app\'s chats under their project, newest first, with a state dot. "New chat" per project calls topic-chat.',
+            changes: [
+              'A src/ui/web/sidebar.tsx',
+              'M src/ui/web/client.tsx',
+              'M src/ui/sessions.ts',
+              'A src/ui/web/sidebar.browser.test.ts',
+            ],
+            review: 'Passed',
+            tests: 'Passed',
+            prompt: 'Build the left sidebar chat list from /api/sessions (own chats), grouped by topic/project.',
+          },
+          {
+            id: 't8',
+            title: 'Review t2: sidebar chat list',
+            agent: 'codex',
+            model: 'gpt-6.2-astra',
+            effort: 'high',
+            g: 'done',
+            age: '15m',
+            mode: 'shared',
+            dir: '.',
+            text: '1 BLOCKER: focus is lost when the list re-renders on SSE. 2 FOLLOW-UPs: virtualize past 200 chats; keyboard nav between projects.',
+            prompt: 'Review the diff of t2. Tag findings BLOCKER or FOLLOW-UP.',
+          },
+          {
+            id: 't7',
+            title: 'Review t1: app shell grid',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'done',
+            age: '21m',
+            mode: 'shared',
+            dir: '.',
+            text: 'LGTM. 2 FOLLOW-UPs: persist panel width per window; name the grid areas.',
+            prompt: 'Review the diff of t1. Tag findings BLOCKER or FOLLOW-UP.',
+          },
+          {
+            id: 't10',
+            title: 'Design tokens for dark and light',
+            agent: 'claude',
+            model: 'sonnet-5.5',
+            g: 'done',
+            age: '24m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t10',
+            merged: true,
+            text: 'One token set (surface, line, text, accent, state colors) for both themes; the old per-component colors map onto it.',
+            changes: ['M src/react/agent-chat.css'],
+            review: 'Passed',
+            tests: 'Passed',
+            prompt: 'Introduce shared CSS custom properties for both themes.',
+          },
+          {
+            id: 't1',
+            title: 'App shell: three-column grid and rail',
+            agent: 'codex',
+            model: 'gpt-6.2-astra',
+            effort: 'high',
+            g: 'done',
+            age: '31m',
+            mode: 'worktree',
+            dir: '.genaicode/worktrees/t1',
+            merged: true,
+            text: 'The window is a grid of sidebar, chat and work panel. The header became the 46 px top bar; the Tauri drag region moved with it.',
+            changes: ['M src/ui/web/client.tsx', 'M src/ui/web/page.ts', 'M src/react/agent-chat.css'],
+            review: 'Passed',
+            tests: 'Passed',
+            prompt: 'Replace the header + single column with the three-column shell. No feature moves yet.',
+          },
+        ];
+        const G = {
+          ask: ['Needs you', 'ask', 'warn'],
+          run: ['Running', 'run', 'run'],
+          fail: ['Failed', 'err', 'err'],
+          ready: ['Ready to merge', 'ready', ''],
+          done: ['Done', 'ok', 'ok'],
+        };
+        const statusText = (t) =>
+          t.g === 'ask'
+            ? 'Needs approval'
+            : t.g === 'run'
+              ? 'Running'
+              : t.g === 'fail'
+                ? 'Failed'
+                : t.g === 'ready'
+                  ? 'Ready to merge'
+                  : t.merged
+                    ? 'Merged'
+                    : 'Done';
+        const st = {
+          page: 'chat',
+          scn: 'tasks',
+          tab: 'tasks',
+          filter: 'all',
+          by: 'status',
+          q: '',
+          task: null,
+          tick: 0,
+        };
+
+        /* ---------- chat thread ---------- */
+        const counts = () => Object.fromEntries(Object.keys(G).map((k) => [k, T.filter((t) => t.g === k).length]));
+        function thread() {
+          const c = counts();
+          $('#thread').innerHTML =
+            st.scn === 'tasks'
+              ? `
+      <div class="msg"><div class="me">Implement the sidebars layout from docs/design/desktop-layout.md. Split it across the team and review each part before merging.</div></div>
+      <div class="msg"><div class="who"><span class="av">C</span>claude <span class="faint" style="font-weight:400">· lead · opus-5.5</span></div>
+        <button class="fold" data-act="opentab" data-tab="progress">${ic('chev')} 23 steps · now: wait for t3, t4, t9, t12</button>
+        <p>I split the layout into the six steps of the design doc and delegated them. Two parts are merged, two wait for your merge, one needs an approval and gemini ran out of quota on the team section.</p>
+        <button class="workline" data-act="opentab" data-tab="tasks" title="Open the work panel">
+          <span class="stats"><b>${T.length} delegated tasks</b>
+            <span class="pill warn">${c.ask} needs you</span><span class="pill run">${c.run} running</span><span class="pill err">${c.fail} failed</span><span class="pill">${c.ready} ready to merge</span><span class="pill ok">${c.done} done</span></span>
+          <span class="open">Open ${ic('chev')}</span>
+        </button>
+        <button class="workline" data-act="opentab" data-tab="artifacts"><span class="stats"><b>Artifact</b> <span class="muted">Sidebar states · HTML · v2</span></span><span class="open">Open ${ic('chev')}</span></button>
+      </div>`
+              : `
+      <div class="msg"><div class="me">Why does <code>sessions mcp --send</code> time out when the target session is mid-turn?</div></div>
+      <div class="msg"><div class="who"><span class="av">C</span>claude <span class="faint" style="font-weight:400">· fable-5.2</span></div>
+        <button class="fold" data-act="opentab" data-tab="progress">${ic('chev')} 9 steps · 4 files read</button>
+        <p>The send is answered as an MCP task, but the relay waits for the target's current turn to finish before it delivers. With a long turn the client's own 60 s request timeout fires first.</p>
+        <ul><li>The relay queues the message (<code>status: 'queued'</code>) and only then reports back.</li><li>Clients that poll the task instead of holding the request open do not time out.</li></ul>
+        <p>The fix is on the client: poll the task. I can also make the relay acknowledge the queueing at once if you want that.</p>
+      </div>`;
+        }
+
+        /* ---------- work panel ---------- */
+        function progress() {
+          const lead = st.scn === 'tasks';
+          $('#w-progress').innerHTML =
+            (lead
+              ? `
+      <div class="ph">Needs you</div>
+      <div class="askcard"><b>codex wants to run a command</b> <span class="muted">· t5</span><pre class="box">npm install @radix-ui/react-tabs</pre>
+        <div class="btns"><button class="btn sm primary" data-act="approve">Approve</button><button class="btn sm" data-act="approve">Deny</button><button class="btn sm ghost" data-act="task" data-id="t5">Open task</button></div></div>`
+              : '') +
+            `
+      <div class="ph">Plan <span class="grow"></span><span class="faint" style="text-transform:none;letter-spacing:0;font-weight:500">from report_progress</span></div>
+      <ol class="steps">${(lead
+        ? [
+            ['done', 'Read the design doc and the current client.tsx'],
+            ['done', 'App shell and tokens (t1, t10) merged'],
+            ['cur', 'Sidebar, work panel and settings in parallel (t2–t6, t11)'],
+            ['', 'Review every part, fix blockers'],
+            ['', 'Merge in order, run npm run check'],
+            ['', 'Changelog line and PR'],
+          ]
+        : [
+            ['done', 'Reproduce the timeout'],
+            ['done', 'Trace the relay queue'],
+            ['done', 'Explain and propose a fix'],
+          ]
+      )
+        .map(
+          ([s, t]) =>
+            `<li class="${s}"><span class="mk">${s === 'done' ? '<svg class="i" style="width:10px;height:10px;stroke-width:2.4"><use href="#i-check"/></svg>' : ''}</span><span>${t}</span></li>`,
+        )
+        .join('')}</ol>
+      ${lead ? `<div class="ph">Now</div><div class="now"><b>claude</b><code id="lead-now">wait t3 t4 t9 t12</code></div>` : ''}
+      <div class="ph">Steps this turn</div>
+      <ol class="steps">${(lead ? ['Read docs/design/desktop-layout.md', 'Read src/ui/web/client.tsx', 'delegate ×12', 'merge t1', 'merge t10', 'report_progress'] : ['Grep "sessions_send" src', 'Read src/agents/sessions/relay.ts', 'Bash npm test -- relay']).map((t) => `<li class="done"><span class="mk"></span><code>${t}</code></li>`).join('')}</ol>`;
+        }
+        function taskRow(t) {
+          const live = t.g === 'run' ? t.live[(st.tick + t.id.length) % t.live.length] : null;
+          const line =
+            t.g === 'ask'
+              ? `<span class="tl need">${esc(t.live[0])}</span>`
+              : live
+                ? `<span class="tl live">${esc(live)}</span>`
+                : t.error
+                  ? `<span class="tl bad">${esc(t.error)}</span>`
+                  : `<span class="tl">${esc(t.text || '')}</span>`;
+          return `<button class="task" data-act="task" data-id="${t.id}"><span class="dot ${G[t.g][1]}"></span><span class="tt">${esc(t.title)}</span><span class="ta">${t.agent} · ${t.age}</span>${line}</button>`;
+        }
+        function tasks() {
+          const el = $('#w-tasks');
+          if (st.scn !== 'tasks') {
+            el.innerHTML = `<p class="muted" style="font-size:13px">No delegated tasks in this conversation. When a lead delegates work, each task shows here with what it is doing now.</p>`;
+            return;
+          }
+          if (st.task)
+            return taskDetail(
+              el,
+              T.find((t) => t.id === st.task),
+            );
+          const c = counts(),
+            q = st.q.toLowerCase();
+          const shown = T.filter(
+            (t) =>
+              (st.filter === 'all' || t.g === st.filter) &&
+              (!q || (t.title + t.agent + t.id).toLowerCase().includes(q)),
+          );
+          const keys = st.by === 'status' ? Object.keys(G) : [...new Set(T.map((t) => t.agent))];
+          const groups = keys
+            .map((k) => [k, shown.filter((t) => (st.by === 'status' ? t.g : t.agent) === k)])
+            .filter(([, l]) => l.length);
+          el.innerHTML = `
+      <div class="tfilters">${[
+        ['all', 'All', T.length],
+        ['ask', 'Needs you', c.ask],
+        ['run', 'Running', c.run],
+        ['fail', 'Failed', c.fail],
+        ['ready', 'To merge', c.ready],
+        ['done', 'Done', c.done],
+      ]
+        .map(
+          ([k, l, n]) =>
+            `<button class="chipf" data-act="filter" data-v="${k}" aria-pressed="${st.filter === k}">${l} <i>${n}</i></button>`,
+        )
+        .join('')}</div>
+      <div class="ttools"><input class="field" id="tq" placeholder="Filter by title, agent or id" value="${esc(st.q)}"><span class="seg"><button data-act="by" data-v="status" aria-pressed="${st.by === 'status'}">Status</button><button data-act="by" data-v="agent" aria-pressed="${st.by === 'agent'}">Agent</button></span></div>
+      ${groups.map(([k, l]) => `<details class="tg" ${k === 'done' && st.filter === 'all' && st.by === 'status' && !q ? '' : 'open'}><summary>${ic('chev', 'chev')}${st.by === 'status' ? G[k][0] : k} <span class="count">${l.length}</span></summary>${l.map(taskRow).join('')}</details>`).join('') || '<p class="muted" style="font-size:13px;margin-top:14px">No task matches.</p>'}
+      <p class="faint" style="font-size:11.5px;margin-top:14px">claude leads · 12 tasks · 4 agents · 31m · newest first in each group</p>`;
+        }
+        function taskDetail(el, t) {
+          const [, , pill] = G[t.g];
+          el.innerHTML = `
+      <button class="btn ghost sm back" data-act="task" data-id="">${ic('back')} Tasks</button>
+      <div class="dt"><h3>${esc(t.title)}</h3><span class="pill ${pill}">${statusText(t)}</span></div>
+      <p class="meta">${[t.id, t.agent, t.model, t.effort && 'effort ' + t.effort, t.mode === 'shared' ? 'shared directory' : 'worktree'].filter(Boolean).join(' · ')} · <code>${t.dir}</code></p>
+      ${t.ask ? `<div class="askcard"><b>${t.agent} wants to run a command</b><pre class="box">${esc(t.ask)}</pre><div class="btns"><button class="btn sm primary" data-act="approve">Approve</button><button class="btn sm" data-act="approve">Deny</button><button class="btn sm ghost" data-act="approve" title="Approve this and every future request in this session">Always approve</button></div></div>` : ''}
+      ${t.g === 'run' ? `<div class="now"><b>Now</b><code id="t-now">${esc(t.live[st.tick % t.live.length])}</code></div><div class="ph">Recent activity</div><ol class="steps">${t.live.map((l) => `<li class="done"><span class="mk"></span><code>${esc(l)}</code></li>`).join('')}</ol>` : ''}
+      ${t.error ? `<div class="askcard" style="border-color:var(--err);background:var(--err-soft)"><b>${esc(t.error)}</b><div class="muted" style="font-size:12.5px;margin-top:4px">${esc(t.quota)}</div></div>` : ''}
+      ${t.text ? `<div class="ph">Result</div><div class="result">${esc(t.text)}</div>` : ''}
+      ${t.changes ? `<div class="ph">Changed files <span class="count">${t.changes.length}</span></div><ul class="files">${t.changes.map((l) => `<li><span class="st ${l[0]}">${l[0]}</span><code>${l.slice(2)}</code></li>`).join('')}</ul>` : ''}
+      ${
+        t.review
+          ? `<div class="ph">Pre-merge checks</div><div>
+        <div class="chk"><b>Code review</b><code>codex</code><span class="grow"></span><span class="pill ${t.review === 'Passed' ? 'ok' : 'warn'}">${t.review}</span>${t.g === 'ready' ? '<button class="btn sm">Request review</button>' : ''}</div>
+        <div class="chk"><b>Tests</b><code>npm test</code><span class="grow"></span><span class="pill ok">${t.tests}</span>${t.g === 'ready' ? '<button class="btn sm">Run tests</button>' : ''}</div></div>`
+          : ''
+      }
+      <details class="more"><summary>Prompt</summary><p style="font-size:13px;margin-top:6px">${esc(t.prompt)}</p></details>
+      <div class="acts">${t.g === 'run' || t.g === 'ask' ? `${t.canSteer ? '<button class="btn sm" data-act="toast" data-msg="Opens a message box: Send instruction">Steer</button>' : ''}<button class="btn sm danger" data-act="toast" data-msg="Asks to confirm: Stop this task?">Stop task</button>` : ''}
+        ${t.g === 'ready' ? `<button class="btn sm" data-act="opentab" data-tab="changes">Show diff</button><button class="btn sm primary" data-act="toast" data-msg="Merged ${t.id} locally">Merge locally</button><button class="btn sm danger" data-act="toast" data-msg="Asks to confirm: Discard this worktree and its changes?">Discard</button>` : ''}</div>`;
+        }
+        function changes() {
+          const F = [
+            ['M', 'src/ui/web/client.tsx', 212, 341, 'lead'],
+            ['M', 'src/react/agent-chat.css', 188, 96, 't10'],
+            ['M', 'src/ui/web/page.ts', 14, 6, 't1'],
+            ['A', 'src/ui/web/sidebar.tsx', 236, 0, 't2 · unmerged'],
+            ['M', 'src/ui/sessions.ts', 22, 3, 't2 · unmerged'],
+            ['A', 'src/ui/web/help-menu.tsx', 71, 0, 't11 · unmerged'],
+            ['A', 'src/ui/web/sidebar.browser.test.ts', 58, 0, 't2 · unmerged'],
+          ];
+          $('#w-changes').innerHTML =
+            `<div class="tfilters"><button class="chipf" aria-pressed="true">All <i>7</i></button><button class="chipf">Merged <i>3</i></button><button class="chipf">Unmerged <i>4</i></button></div>
+      ${F.map(([s, p, a, d, src], i) => `<button class="frow" title="Open in the file viewer"><span class="st ${s}">${s}</span><code>${p}</code><span class="src">${src}</span><span class="delta"><span class="add">+${a}</span> <span class="del">−${d}</span></span></button>${i === 2 ? `<pre class="diff"><span class="h">@@ -41,7 +41,9 @@ export function page(…)</span><span>   &lt;div id="root" data-cwd="…"&gt;</span><span class="d">-    &lt;header class="bar"&gt;&lt;/header&gt;</span><span class="a">+    &lt;aside class="side"&gt;&lt;/aside&gt;</span><span class="a">+    &lt;main class="center"&gt;&lt;/main&gt;</span><span class="a">+    &lt;aside class="work"&gt;&lt;/aside&gt;</span><span>   &lt;/div&gt;</span></pre>` : ''}`).join('')}
+      <p class="faint" style="font-size:11.5px;margin-top:10px">A file opens in the viewer in this panel: rendered Markdown, images, source at a line, Reveal in Finder, full size.</p>`;
+        }
+        function artifacts() {
+          $('#w-artifacts').innerHTML = `
+      <button class="art"><span class="av">◆</span><span class="grow"><b>Sidebar states</b><small>HTML · 48 KB · v2</small></span><select class="field" style="height:26px;font-size:12px" aria-label="Version"><option>v2</option><option>v1</option></select></button>
+      <div class="viewer">artifact preview (sandboxed iframe)</div>
+      <div class="acts" style="margin:8px 0 16px"><button class="btn sm">Full size</button><button class="btn sm ghost">Reveal in Finder</button></div>
+      <button class="art"><span class="av">◆</span><span class="grow"><b>Task timeline</b><small>Image · 212 KB</small></span>${ic('chev')}</button>`;
+        }
+
+        /* ---------- state → DOM ---------- */
+        function render() {
+          for (const p of $$('.page')) p.classList.toggle('on', p.id === 'p-' + st.page);
+          const chat = st.page === 'chat';
+          const titles = { home: 'New chat', sessions: 'All sessions', inbox: 'Needs you', settings: 'Settings' };
+          $('#title').textContent = chat
+            ? st.scn === 'tasks'
+              ? 'Ship the sidebars layout'
+              : 'Why does sessions mcp --send time out?'
+            : titles[st.page];
+          for (const el of $$('#topbar .sep, #topbar .crumb, #topbar .tokens, #topbar .menu-anchor, #work-toggle'))
+            el.hidden = !chat;
+          if (!chat) app.classList.add('work-closed');
+          $('#work-badge').hidden = st.scn !== 'tasks';
+          $('#send').className = 'send' + (st.scn === 'tasks' ? ' stop' : '');
+          $('#send').innerHTML = ic(st.scn === 'tasks' ? 'stop' : 'up');
+          $('#hint-r').textContent = st.scn === 'tasks' ? 'Typing while it works steers the turn' : 'claude 7d 43%';
+          for (const n of $$('.side .nav[data-go]')) n.removeAttribute('aria-current');
+          const cur = chat
+            ? $(st.scn === 'tasks' ? '#c-tasks' : '#c-chat')
+            : $(`.side-actions [data-go="${st.page}"], .side-foot [data-go="${st.page}"]:not(.quota)`);
+          cur?.setAttribute('aria-current', 'page');
+          const open = !app.classList.contains('work-closed');
+          $('#work-toggle').setAttribute('aria-pressed', open);
+          for (const t of $$('.tab')) t.setAttribute('aria-selected', t.dataset.tab === st.tab);
+          for (const p of $$('.pane')) p.classList.toggle('on', p.id === 'w-' + st.tab);
+          thread();
+          progress();
+          tasks();
+          changes();
+          artifacts();
+          for (const b of $$('.mock [data-m="scn"]'))
+            b.setAttribute('aria-pressed', b.dataset.v === (chat ? st.scn : st.page));
+        }
+        function go(page, o = {}) {
+          st.page = page;
+          if (o.scn) st.scn = o.scn;
+          if (page === 'chat') {
+            st.task = o.task || null;
+            app.classList.toggle('work-closed', st.scn !== 'tasks');
+            if (st.scn === 'tasks') st.tab = 'tasks';
+          }
+          if (page === 'settings') section(o.sec || 'general');
+          closeMenus();
+          render();
+        }
+        function section(id) {
+          for (const s of $$('.sec')) s.classList.toggle('on', s.id === 's-' + id);
+          for (const n of $$('.settings nav .nav'))
+            n.toggleAttribute('aria-current', n.dataset.sec === id),
+              n.dataset.sec === id && n.setAttribute('aria-current', 'page');
+        }
+        const closeMenus = () => $$('.menu.open, .pop.open').forEach((m) => m.classList.remove('open'));
+        let toastT;
+        const toast = (m) => {
+          const t = $('#toast');
+          t.textContent = m;
+          t.classList.add('on');
+          clearTimeout(toastT);
+          toastT = setTimeout(() => t.classList.remove('on'), 2200);
+        };
+        const theme = (v) => {
+          const sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = v === 'system' ? sys : v;
+          for (const b of $$('#theme-seg button')) b.setAttribute('aria-pressed', b.dataset.themeSet === v);
+        };
+
+        document.addEventListener('click', (e) => {
+          const m = e.target.closest('[data-m]');
+          if (m) {
+            const v = m.dataset.v;
+            if (m.dataset.m === 'scn') v === 'settings' || v === 'home' ? go(v) : go('chat', { scn: v });
+            if (m.dataset.m === 'side') app.classList.toggle('side-collapsed');
+            if (m.dataset.m === 'work') {
+              if (st.page !== 'chat') go('chat', { scn: st.scn });
+              else app.classList.toggle('work-closed');
+            }
+            if (m.dataset.m === 'width') {
+              app.style.maxWidth = +v ? v + 'px' : '';
+              app.classList.toggle('framed', !!+v);
+            }
+            if (m.dataset.m === 'theme') theme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+            return render();
+          }
+          const menu = e.target.closest('[data-menu]');
+          if (menu) {
+            const el = $('#' + menu.dataset.menu),
+              was = el.classList.contains('open');
+            closeMenus();
+            el.classList.toggle('open', !was);
+            return;
+          }
+          if (!e.target.closest('.menu, .pop')) closeMenus();
+          const a = e.target.closest('[data-act], [data-go], [data-sec], [data-tab], [data-theme-set]');
+          if (!a) return;
+          if (a.tagName === 'A') e.preventDefault();
+          const d = a.dataset;
+          if (d.themeSet) return theme(d.themeSet);
+          if (d.go) return go(d.go, { scn: d.scn, sec: d.sec, task: d.task });
+          if (d.sec && !d.act) return section(d.sec);
+          if (d.tab && !d.act) {
+            st.tab = d.tab;
+            return render();
+          }
+          switch (d.act) {
+            case 'side':
+              app.classList.toggle('side-collapsed');
+              break;
+            case 'work':
+              app.classList.toggle('work-closed');
+              break;
+            case 'opentab':
+              app.classList.remove('work-closed');
+              st.tab = d.tab;
+              st.task = null;
+              break;
+            case 'task':
+              st.task = d.id || null;
+              st.tab = 'tasks';
+              app.classList.remove('work-closed');
+              break;
+            case 'filter':
+              st.filter = d.v;
+              break;
+            case 'by':
+              st.by = d.v;
+              break;
+            case 'approve':
+              toast('Decision sent to the agent');
+              break;
+            case 'toast':
+              toast(d.msg);
+              closeMenus();
+              return;
+            case 'whatsnew':
+              closeMenus();
+              $('#whatsnew').classList.add('open');
+              return;
+            case 'closesheet':
+              $('#whatsnew').classList.remove('open');
+              return;
+            case 'switch':
+              a.setAttribute('aria-checked', a.getAttribute('aria-checked') !== 'true');
+              return;
+            case 'press':
+              a.setAttribute('aria-pressed', a.getAttribute('aria-pressed') !== 'true');
+              return;
+            case 'segp':
+              for (const b of a.parentElement.children) b.setAttribute('aria-pressed', b === a);
+              return;
+          }
+          render();
+        });
+        document.addEventListener('input', (e) => {
+          if (e.target.id === 'tq') {
+            st.q = e.target.value;
+            tasks();
+            const f = $('#tq');
+            f.focus();
+            f.setSelectionRange(f.value.length, f.value.length);
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            closeMenus();
+            $('#whatsnew').classList.remove('open');
+            if (st.page !== 'chat' && st.page !== 'home') go('chat', { scn: st.scn });
+          }
+          if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+            e.preventDefault();
+            app.classList.toggle(e.altKey ? 'work-closed' : 'side-collapsed');
+            render();
+          }
+        });
+        $('#whatsnew').addEventListener(
+          'click',
+          (e) => e.target.id === 'whatsnew' && e.target.classList.remove('open'),
+        );
+
+        /* width: the right panel overlays below 1100 px, the sidebar becomes a rail below 980 px */
+        let wasTight;
+        new ResizeObserver(([r]) => {
+          const w = r.contentRect.width,
+            tight = w < 980;
+          app.classList.toggle('narrow', w < 1100);
+          if (tight !== wasTight) {
+            app.classList.toggle('side-collapsed', tight);
+            wasTight = tight;
+          }
+        }).observe(app);
+
+        /* live activity: running tasks change their "now" line */
+        setInterval(() => {
+          st.tick++;
+          if (st.page !== 'chat' || st.scn !== 'tasks' || app.classList.contains('work-closed') || st.tab !== 'tasks')
+            return;
+          if (st.task) {
+            const t = T.find((x) => x.id === st.task),
+              n = $('#t-now');
+            if (n && t.live) n.textContent = t.live[st.tick % t.live.length];
+            return;
+          }
+          if (document.activeElement?.id === 'tq') return;
+          const open = $$('.tg').map((d) => d.open),
+            y = $('#w-tasks').scrollTop;
+          tasks();
+          $$('.tg').forEach((d, i) => {
+            if (open[i] !== undefined) d.open = open[i];
+          });
+          $('#w-tasks').scrollTop = y;
+        }, 2400);
+
+        theme('system');
+        section('general');
+        go('chat', { scn: 'tasks' });
+      })();
+    </script>
+  </body>
+</html>
