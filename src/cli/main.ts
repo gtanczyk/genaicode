@@ -1050,9 +1050,10 @@ async function serveSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions-mcp' }>,
 ): Promise<number> {
+  const picked = (name: string) => command.agent === undefined || name === command.agent;
   const sources = [
-    ...agentSessionSources(agents.filter((agent) => command.agent === undefined || agent.name === command.agent)),
-    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)) : []),
+    ...agentSessionSources(agents.filter((agent) => picked(agent.name))),
+    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
   ];
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
