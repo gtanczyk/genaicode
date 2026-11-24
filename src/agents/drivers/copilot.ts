@@ -179,20 +179,10 @@ export function createCopilotParser(): AgentOutputParser {
   let sessionSent = false;
   let lastError: string | undefined;
 
-  let sessionId: string | undefined;
-  let sentModel: string | undefined;
-  const session = (id: string | undefined, model?: string): AgentEvent[] => {
-    if (!id || sessionSent) return [];
+  const session = (sessionId: string | undefined, model?: string): AgentEvent[] => {
+    if (!sessionId || sessionSent) return [];
     sessionSent = true;
-    sessionId = id;
-    sentModel = model;
-    return [{ type: 'session', sessionId: id, ...(model ? { model } : {}) }];
-  };
-  // Auto picks a model per turn, and the reply names the one that answered.
-  const answered = (model: string | undefined): AgentEvent[] => {
-    if (!sessionId || !model || model === sentModel) return [];
-    sentModel = model;
-    return [{ type: 'session', sessionId, model }];
+    return [{ type: 'session', sessionId, ...(model ? { model } : {}) }];
   };
 
   return {
@@ -207,18 +197,8 @@ export function createCopilotParser(): AgentOutputParser {
 
       switch (value.type) {
         case 'session.start':
-        case 'session.resume': {
-          // `auto` is a setting, not a model: the one it picks is reported when it does.
-          const selected = stringField(data, 'selectedModel');
-          events.push(...session(stringField(data, 'sessionId'), selected === 'auto' ? undefined : selected));
-          break;
-        }
-        case 'session.auto_mode_resolved':
-          events.push(...answered(stringField(data, 'chosenModel')));
-          break;
-        case 'session.model_change':
-          // A switch mid-turn, such as a fallback after a refusal.
-          if (!nested) events.push(...answered(stringField(data, 'newModel')));
+        case 'session.resume':
+          events.push(...session(stringField(data, 'sessionId'), stringField(data, 'selectedModel')));
           break;
         case 'assistant.message_delta': {
           const text = stringField(data, 'deltaContent');
@@ -227,7 +207,6 @@ export function createCopilotParser(): AgentOutputParser {
         }
         case 'assistant.message': {
           const text = stringField(data, 'content');
-          if (!nested) events.push(...answered(stringField(data, 'model')));
           if (!nested && text?.trim()) events.push({ type: 'message', text });
           // JSON output drops `assistant.usage`; each message still carries its output tokens.
           const outputTokens = numberField(data, 'outputTokens');
