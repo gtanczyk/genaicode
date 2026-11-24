@@ -128,21 +128,47 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBeUndefined();
   });
 
-  it('forgets the reported model when a backup agent takes over', async () => {
+  it('forgets the reported model when a backup agent takes over, and takes the backup default', async () => {
+    const failover = { type: 'failover', from: 'fake', to: 'backup', failure: { kind: 'quota', message: 'out' } };
     const { agent } = fakeAgent([
       async (_task, emit) => {
         emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
-        emit({
-          type: 'failover',
-          from: 'fake',
-          to: 'backup',
-          failure: { kind: 'quota', message: 'out' },
-        } as AgentEvent);
+        emit(failover as AgentEvent);
+      },
+      async (_task, emit) => {
+        // The person's model went to the first agent only; the backup reports its own default.
+        emit(failover as AgentEvent);
+        emit({ type: 'session', sessionId: 's-2', model: 'backup-default' });
       },
     ]);
     const session = createAgentSession({ agent, cwd: '/w' });
     session.send('first');
     await session.idle();
+    expect(session.get().reportedModel).toBeUndefined();
+
+    session.setModel('picked');
+    session.send('second');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('backup-default');
+  });
+
+  it('decides on the model the turn actually got, even when it changes as the turn starts', async () => {
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'picked' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    let changed = false;
+    session.subscribe((state) => {
+      if (state.status === 'running' && !changed) {
+        changed = true;
+        session.setModel('picked');
+      }
+    });
+    session.send('first');
+    await session.idle();
+    expect(tasks[0]!.model).toBe('picked');
     expect(session.get().reportedModel).toBeUndefined();
   });
 

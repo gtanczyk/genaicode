@@ -89,7 +89,10 @@ export interface SessionState {
   agent: string;
   cwd: string;
   model?: string;
-  /** The model the agent last reported running (`session` events), whatever `model` asked for. Cleared by `setAgent()`. */
+  /**
+   * The agent's default model, as this agent session last reported it (`session` events) from an attempt
+   * that ran without `model`. Cleared when the agent or its session changes, and when a backup agent takes over.
+   */
   reportedModel?: string;
   effort?: string;
   /** Planning mode for the next turn (`setMode()`). Absent: default. */
@@ -345,7 +348,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningAgent: CodingAgent | undefined;
   /** The effort the running turn started with. */
   let runningEffort: string | undefined;
-  /** Whether the running turn started with a model the person set (`setModel()`), not the agent's default. */
+  /** Whether the running attempt got a model the person set (`setModel()`), not the agent's default. */
   let runningModelSet = false;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
@@ -604,6 +607,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       case 'failover':
         // The backup agent may not say which model it runs; the one before it no longer does.
+        // `withFallback()` gives a backup no `model`, so what it reports is its default.
+        if (own()) runningModelSet = false;
         if (!forgetAfterTurn && own()) set({ reportedModel: undefined });
         return;
       case 'budget-warning':
@@ -832,7 +837,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       : state.mode;
     if (!pinnedMode) modeCleared = false;
     runningEffort = turnEffort;
-    runningModelSet = state.model !== undefined;
     runningAgent = turnAgent;
     runningMode = turnMode;
     modeChangedDuringTurn = false;
@@ -917,6 +921,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const basePrompt = rewritten ?? toAgent(prompt);
       contextBatch = takeContext();
       const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
+      // Read once: what the agent gets is what decides whether its report is its default.
+      const turnModel = state.model;
+      runningModelSet = turnModel !== undefined;
       current = turnAgent.run({
         ...options.task,
         ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
@@ -924,7 +931,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
-        model: state.model,
+        model: turnModel,
         effort: turnEffort,
         resume,
         signal: turnController.signal,
