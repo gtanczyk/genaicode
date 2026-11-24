@@ -14,7 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- Desktop chat links open in the default application on a regular click and show an error if opening fails. Session and transcript commands are under **File → Session**.
+- Desktop chat links open in the default application on a regular click and show an error if opening fails. Session and transcript commands are under **File → Session** (#334)
 
 ## 3.2.0 — 2026-11-23
 
