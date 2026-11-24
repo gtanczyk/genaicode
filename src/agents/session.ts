@@ -513,8 +513,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
           // Not when the model setting changed after this turn started: the next turn runs another.
           // A routing setting (`auto`, `Auto`, `auto-gemini-3`) is not a model: the one before it no longer runs.
-          if (event.model && state.model === runningModel)
-            patch.reportedModel = ROUTING_ALIAS.test(event.model) ? undefined : event.model;
+          // `model: undefined` given on purpose: the agent cannot name one model for this turn.
+          if ('model' in event && state.model === runningModel)
+            patch.reportedModel = event.model && !ROUTING_ALIAS.test(event.model) ? event.model : undefined;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;

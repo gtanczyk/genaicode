@@ -79,6 +79,19 @@ describe('gemini driver', () => {
       { type: 'result', status: 'success', stats: { models: { 'gemini-x': {} } } },
     ]);
     expect(same.filter((event) => event.type === 'session')).toHaveLength(1);
+    const several = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-3', model: 'gemini-3-pro-preview' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: { models: { 'gemini-3.1-pro-preview': {}, 'gemini-3-flash-preview': {} } },
+      },
+    ]);
+    expect(several.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-3',
+      model: undefined,
+    });
   });
 
   it('decodes stream-json', () => {

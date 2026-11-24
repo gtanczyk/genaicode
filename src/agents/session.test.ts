@@ -156,12 +156,24 @@ describe('createAgentSession', () => {
         emit({ type: 'session', sessionId: 's-1', model: 'auto-gemini-3' });
         emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
       },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+        // Several models answered: no single name.
+        emit({ type: 'session', sessionId: 's-1', model: undefined });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+        // Says nothing about the model: keeps it.
+        emit({ type: 'session', sessionId: 's-1' });
+      },
     ]);
     const session = createAgentSession({ agent, cwd: '/w' });
     for (const [prompt, shown] of [
       ['one', undefined],
       ['two', undefined],
       ['three', 'gemini-3-pro'],
+      ['four', undefined],
+      ['five', 'gemini-3-pro'],
     ] as const) {
       session.send(prompt);
       await session.idle();

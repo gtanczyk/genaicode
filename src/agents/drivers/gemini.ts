@@ -366,6 +366,10 @@ export function createGeminiParser(): AgentOutputParser {
           if (sessionId && used.length === 1 && used[0] !== initModel) {
             initModel = used[0];
             events.push({ type: 'session', sessionId, model: used[0]! });
+          } else if (sessionId && used.length > 1 && (!initModel || !used.includes(initModel))) {
+            // Several models, none the one reported: no single name is right, so report none.
+            initModel = undefined;
+            events.push({ type: 'session', sessionId, model: undefined });
           }
           const inputTokens = numberField(stats, 'input_tokens');
           const outputTokens = numberField(stats, 'output_tokens');

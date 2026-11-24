@@ -255,6 +255,7 @@ export type ApprovalDecision = 'approve' | 'deny';
  * are dropped; non-JSON stdout lines arrive as `raw`.
  */
 export type AgentEvent =
+  /** `model` present but undefined: the agent cannot name the one model it ran (several answered). */
   | { type: 'session'; sessionId: string; model?: string; mode?: AgentMode }
   | { type: 'text-delta'; text: string }
   | { type: 'message'; text: string }
