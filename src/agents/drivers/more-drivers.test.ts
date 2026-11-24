@@ -87,6 +87,24 @@ describe('gemini driver', () => {
         stats: { models: { 'gemini-3.1-pro-preview': {}, 'gemini-3-flash-preview': {} } },
       },
     ]);
+    const failedFirst = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-4', model: 'gemini-3-pro-preview' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: {
+          models: {
+            'gemini-3-pro-preview': { total_tokens: 0, input_tokens: 0, output_tokens: 0 },
+            'gemini-3-flash-preview': { total_tokens: 12, output_tokens: 5 },
+          },
+        },
+      },
+    ]);
+    expect(failedFirst.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-4',
+      model: 'gemini-3-flash-preview',
+    });
     expect(several.filter((event) => event.type === 'session').at(-1)).toEqual({
       type: 'session',
       sessionId: 'g-3',

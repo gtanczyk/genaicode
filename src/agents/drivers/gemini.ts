@@ -362,7 +362,13 @@ export function createGeminiParser(): AgentOutputParser {
           if (outcome.ok && text.trim()) events.push({ type: 'message', text: text.trim() });
           const stats = value.stats;
           // The CLI can answer with another model than it started on: its stats name the one(s) used.
-          const used = isObject(stats) && isObject(stats.models) ? Object.keys(stats.models) : [];
+          // A failed attempt is listed with no tokens: only models that produced something count.
+          const used =
+            isObject(stats) && isObject(stats.models)
+              ? Object.entries(stats.models)
+                  .filter(([, entry]) => !isObject(entry) || tokensOf(entry) !== 0)
+                  .map(([name]) => name)
+              : [];
           if (sessionId && used.length === 1 && used[0] !== initModel) {
             initModel = used[0];
             events.push({ type: 'session', sessionId, model: used[0]! });
@@ -392,4 +398,11 @@ export function createGeminiParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+/** Tokens a `stats.models` entry reports, or undefined when it reports none. */
+function tokensOf(entry: Record<string, unknown>): number | undefined {
+  const counts = ['total_tokens', 'output_tokens', 'input_tokens'].map((field) => numberField(entry, field));
+  if (counts.every((count) => count === undefined)) return undefined;
+  return counts.reduce<number>((sum, count) => sum + (count ?? 0), 0);
 }
