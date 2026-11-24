@@ -796,34 +796,31 @@ function Turn({
   const customFailure = bad ? renderFailure?.(turn) : undefined;
   const hasCustomFailure = customFailure !== undefined && customFailure !== null && customFailure !== false;
   const shown = prompt ? prompt(turn.prompt, turn) : turn.prompt;
-  const entry = (item: SessionEntry, i: number) => {
+  const entryProps = (item: SessionEntry): EntryProps => {
     // Only an approval still waiting can be answered: one decided or left behind holds no callbacks.
     const live =
       item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id);
-    return (
-      <Entry
-        key={i}
-        entry={item}
-        agent={
-          item.kind === 'approval' && turn.pack
-            ? (turn.pack.tasks.find((task) => task.id === item.request.subtaskId)?.agent ?? turn.pack.lead)
-            : (turn.pack?.lead ?? turn.agent)
-        }
-        cwd={cwd}
-        // Each kind gets only what it uses: a closed step keeps its element, and a host callback it held
-        // would keep that render's whole view alive.
-        pending={live ? pending : NO_APPROVALS}
-        onApprove={live ? onApprove : undefined}
-        onAutoApprove={live ? onAutoApprove : undefined}
-        prompt={item.kind === 'input' ? prompt : undefined}
-        toolLabel={item.kind === 'tool' ? toolName(item.name) : undefined}
-        artifactUrl={item.kind === 'artifact' ? artifactUrl : undefined}
-        onOpenArtifact={item.kind === 'artifact' ? onOpenArtifact : undefined}
-        renderArtifact={item.kind === 'artifact' ? renderArtifact : undefined}
-        submitArtifact={item.kind === 'artifact' ? submitArtifact : undefined}
-      />
-    );
+    return {
+      entry: item,
+      agent:
+        item.kind === 'approval' && turn.pack
+          ? (turn.pack.tasks.find((task) => task.id === item.request.subtaskId)?.agent ?? turn.pack.lead)
+          : (turn.pack?.lead ?? turn.agent),
+      cwd,
+      // Each kind gets only what it uses: a closed step keeps its element, and a host callback it held
+      // would keep that render's whole view alive.
+      pending: live ? pending : NO_APPROVALS,
+      onApprove: live ? onApprove : undefined,
+      onAutoApprove: live ? onAutoApprove : undefined,
+      prompt: item.kind === 'input' ? prompt : undefined,
+      toolLabel: item.kind === 'tool' ? toolName(item.name) : undefined,
+      artifactUrl: item.kind === 'artifact' ? artifactUrl : undefined,
+      onOpenArtifact: item.kind === 'artifact' ? onOpenArtifact : undefined,
+      renderArtifact: item.kind === 'artifact' ? renderArtifact : undefined,
+      submitArtifact: item.kind === 'artifact' ? submitArtifact : undefined,
+    };
   };
+  const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
   const filteredEntries = turn.entries.filter((item) => {
@@ -853,7 +850,7 @@ function Turn({
           <div className="gc-steps">
             {transcript.entries.length ? (
               fold ? (
-                <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} />
+                <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} entryProps={entryProps} />
               ) : (
                 transcript.entries.map(entry)
               )
@@ -897,11 +894,13 @@ function Folded({
   pending,
   toolName,
   entry,
+  entryProps,
 }: {
   turn: SessionTurn;
   pending: SessionState['approvals'];
   toolName: (name: string) => string;
   entry: (item: SessionEntry, i: number) => ReactNode;
+  entryProps: (item: SessionEntry) => EntryProps;
 }) {
   const { entries } = turn;
   // The last text is the answer once the turn ends, or while it is still the newest entry.
@@ -924,15 +923,19 @@ function Folded({
   return (
     <>
       {steps.length ? (
-        <LazyDetails className="gc-fold">
-          <summary>
-            {turn.result ? null : <span className="gc-spin" />}
-            {count} {count === 1 ? 'step' : 'steps'}
-            {now ? <span className="gc-fold-now"> · {now}</span> : null}
-            {failed ? <span className="gc-err"> · errors</span> : null}
-          </summary>
-          {() => <div className="gc-fold-body">{steps.map(([item, i]) => entry(item, i))}</div>}
-        </LazyDetails>
+        <LazyDetails
+          className="gc-fold"
+          summary={
+            <summary>
+              {turn.result ? null : <span className="gc-spin" />}
+              {count} {count === 1 ? 'step' : 'steps'}
+              {now ? <span className="gc-fold-now"> · {now}</span> : null}
+              {failed ? <span className="gc-err"> · errors</span> : null}
+            </summary>
+          }
+          data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
+          Body={FoldBody}
+        />
       ) : null}
       {entries.map((item, i) => (inView(item, i) ? entry(item, i) : null))}
     </>
@@ -986,38 +989,21 @@ function Entry({
       const file = openFile ? toolPath(entry.input) : undefined;
       const output = entry.output?.trim();
       return (
-        <LazyDetails className="gc-tool">
-          <summary title={argument || undefined}>
-            <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
-              {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
-            </span>
-            <span className="gc-tool-name">{toolLabel}</span>
-            <span className="gc-tool-arg">{argument}</span>
-            {diff ? <DiffStat diff={diff} /> : null}
-          </summary>
-          {() => (
-            <>
-              {file ? (
-                <button
-                  type="button"
-                  className="gc-open-file"
-                  data-gc-file={file}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openFile?.(file);
-                  }}
-                >
-                  Open {relativePath(file, cwd)}
-                </button>
-              ) : null}
-              {diff ? <DiffLines diff={diff} /> : null}
-              {/* An edit that went through says nothing worth a box of its own. */}
-              {diff && entry.done && !entry.isError && !output ? null : (
-                <pre>{output || (entry.done ? 'No output.' : 'Running…')}</pre>
-              )}
-            </>
-          )}
-        </LazyDetails>
+        <LazyDetails
+          className="gc-tool"
+          summary={
+            <summary title={argument || undefined}>
+              <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
+                {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
+              </span>
+              <span className="gc-tool-name">{toolLabel}</span>
+              <span className="gc-tool-arg">{argument}</span>
+              {diff ? <DiffStat diff={diff} /> : null}
+            </summary>
+          }
+          data={() => ({ file, cwd, diff, output, done: entry.done, isError: entry.isError })}
+          Body={ToolBody}
+        />
       );
     }
     case 'files': {
@@ -1161,10 +1147,18 @@ function Entry({
  * such as tools opened within a fold) when closed again. A long conversation folds hundreds of
  * steps; rendering their output while closed made every update and keystroke slow.
  */
-function LazyDetails({
-  children: [summary, build],
+function LazyDetails<T>({
+  summary,
+  data,
+  Body,
   ...rest
-}: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
+}: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & {
+  summary: ReactNode;
+  /** Plain data for `Body`, read when the step opens. */
+  data: () => T;
+  /** A module-level component: elements made here, not in a render's closures, hold nothing of that render. */
+  Body: (props: { data: T }) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const details = useRef<HTMLDetailsElement>(null);
   // Opened before React took over the page (server rendering): build the body now.
@@ -1173,7 +1167,7 @@ function LazyDetails({
   }, []);
   // While closed, the body last committed, the same element: React skips the subtree until it opens.
   const kept = useRef<ReactNode>(null);
-  const body = open ? build() : kept.current;
+  const body = open ? <Body data={data()} /> : kept.current;
   useClientLayoutEffect(() => {
     kept.current = body;
   });
@@ -1182,6 +1176,46 @@ function LazyDetails({
       {summary}
       {body}
     </details>
+  );
+}
+
+type EntryProps = Parameters<typeof Entry>[0];
+
+function FoldBody({ data }: { data: (readonly [number, EntryProps])[] }) {
+  return (
+    <div className="gc-fold-body">
+      {data.map(([i, props]) => (
+        <Entry key={i} {...props} />
+      ))}
+    </div>
+  );
+}
+
+function ToolBody({
+  data: { file, cwd, diff, output, done, isError },
+}: {
+  data: { file?: string; cwd: string; diff?: ToolDiff; output?: string; done: boolean; isError?: boolean };
+}) {
+  const openFile = useContext(OpenFile);
+  return (
+    <>
+      {file ? (
+        <button
+          type="button"
+          className="gc-open-file"
+          data-gc-file={file}
+          onClick={(event) => {
+            event.stopPropagation();
+            openFile?.(file);
+          }}
+        >
+          Open {relativePath(file, cwd)}
+        </button>
+      ) : null}
+      {diff ? <DiffLines diff={diff} /> : null}
+      {/* An edit that went through says nothing worth a box of its own. */}
+      {diff && done && !isError && !output ? null : <pre>{output || (done ? 'No output.' : 'Running…')}</pre>}
+    </>
   );
 }
 
