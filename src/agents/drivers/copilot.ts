@@ -207,11 +207,18 @@ export function createCopilotParser(): AgentOutputParser {
 
       switch (value.type) {
         case 'session.start':
-        case 'session.resume':
-          events.push(...session(stringField(data, 'sessionId'), stringField(data, 'selectedModel')));
+        case 'session.resume': {
+          // `auto` is a setting, not a model: the one it picks is reported when it does.
+          const selected = stringField(data, 'selectedModel');
+          events.push(...session(stringField(data, 'sessionId'), selected === 'auto' ? undefined : selected));
           break;
+        }
         case 'session.auto_mode_resolved':
           events.push(...answered(stringField(data, 'chosenModel')));
+          break;
+        case 'session.model_change':
+          // A switch mid-turn, such as a fallback after a refusal.
+          if (!nested) events.push(...answered(stringField(data, 'newModel')));
           break;
         case 'assistant.message_delta': {
           const text = stringField(data, 'deltaContent');

@@ -111,11 +111,14 @@ describe('copilot driver', () => {
       envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
       envelope('session.auto_mode_resolved', { chosenModel: 'claude-sonnet-4.6' }),
       envelope('assistant.message', { messageId: 'm1', content: 'Hi', model: 'claude-sonnet-4.6' }),
-      envelope('assistant.message', { messageId: 'm2', content: 'Again', model: 'gpt-x' }),
+      envelope('session.model_change', { previousModel: 'claude-sonnet-4.6', newModel: 'gpt-5.4' }),
+      envelope('assistant.message', { messageId: 'm2', content: 'Again' }),
+      envelope('assistant.message', { messageId: 'm3', content: 'More', model: 'gpt-x' }),
     ]);
     expect(events.filter((event) => event.type === 'session')).toEqual([
-      { type: 'session', sessionId: 's-1', model: 'auto' },
+      { type: 'session', sessionId: 's-1' },
       { type: 'session', sessionId: 's-1', model: 'claude-sonnet-4.6' },
+      { type: 'session', sessionId: 's-1', model: 'gpt-5.4' },
       { type: 'session', sessionId: 's-1', model: 'gpt-x' },
     ]);
   });
