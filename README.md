@@ -10,7 +10,7 @@
   <b>Run your coding agents together.</b><br>
   Claude Code · Codex · Antigravity · Copilot CLI · Cursor · Gemini CLI · opencode · Muse · Mistral Vibe<br>
   A desktop app, a command line and a TypeScript API, on the logins you already have.<br>
-  <a href="https://grzegorz.tanczyk.pl/genaicode/"><b>Homepage</b></a> · <a href="https://www.npmjs.com/package/genaicode">npm</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href="docs/SUPPORT.md">Help and bug reports</a>
+  <a href="https://grzegorz.tanczyk.pl/genaicode/"><b>Homepage</b></a> · <a href="https://www.npmjs.com/package/genaicode">npm</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href="docs/SUPPORT.md">Help and bug reports</a> · <a href="docs/legal.md">Terms and privacy</a>
 </p>
 
 <p align="center">
@@ -106,6 +106,8 @@ and no UI code.
 
 ## More
 
+- [Terms and privacy](docs/legal.md): Apache-2.0, agents run on your accounts under their
+  providers' terms, Auto-approve and YOLO are at your own risk, no telemetry
 - [Changelog](docs/CHANGELOG.md), [semver policy](docs/semver.md), [releasing](docs/releasing.md)
 - Coming from 1.x? It was a built-in coding agent; it lives on the
   [`1.x` branch](https://github.com/gtanczyk/genaicode/tree/1.x) and as `npx genaicode@1`.

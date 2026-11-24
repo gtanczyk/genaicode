@@ -179,10 +179,24 @@ export function createCopilotParser(): AgentOutputParser {
   let sessionSent = false;
   let lastError: string | undefined;
 
-  const session = (sessionId: string | undefined, model?: string): AgentEvent[] => {
-    if (!sessionId || sessionSent) return [];
+  let sessionId: string | undefined;
+  let sentModel: string | undefined;
+  const session = (id: string | undefined, model?: string): AgentEvent[] => {
+    if (!id || sessionSent) return [];
     sessionSent = true;
-    return [{ type: 'session', sessionId, ...(model ? { model } : {}) }];
+    sessionId = id;
+    sentModel = model;
+    return [{ type: 'session', sessionId: id, ...(model ? { model } : {}) }];
+  };
+  // A routing decision (Auto's pick, a switch) is only a candidate until the agent replies or acts:
+  // a request that fails first answered nothing.
+  let candidate: string | undefined;
+  const confirmed = (): AgentEvent[] => answered(candidate);
+  // Auto picks a model per turn, and the reply names the one that answered.
+  const answered = (model: string | undefined): AgentEvent[] => {
+    if (!sessionId || !model || model === sentModel) return [];
+    sentModel = model;
+    return [{ type: 'session', sessionId, model }];
   };
 
   return {
@@ -197,16 +211,34 @@ export function createCopilotParser(): AgentOutputParser {
 
       switch (value.type) {
         case 'session.start':
-        case 'session.resume':
-          events.push(...session(stringField(data, 'sessionId'), stringField(data, 'selectedModel')));
+        case 'session.resume': {
+          // The selected model is a candidate like Auto's pick: named once the agent replies or acts
+          // (`auto` is a setting, never a model).
+          const selected = stringField(data, 'selectedModel');
+          if (selected && selected !== 'auto') candidate = selected;
+          events.push(...session(stringField(data, 'sessionId')));
+          break;
+        }
+        case 'session.auto_mode_resolved':
+          candidate = stringField(data, 'chosenModel') ?? candidate;
+          break;
+        case 'session.model_change':
+          // A switch mid-turn, such as a fallback after a refusal.
+          if (!nested) candidate = stringField(data, 'newModel') ?? candidate;
           break;
         case 'assistant.message_delta': {
           const text = stringField(data, 'deltaContent');
-          if (!nested && text) events.push({ type: 'text-delta', text });
+          if (!nested && text) events.push(...confirmed(), { type: 'text-delta', text });
           break;
         }
         case 'assistant.message': {
           const text = stringField(data, 'content');
+          if (!nested) {
+            // The reply's own model is the one that answered: later steps of it confirm that, not the pick.
+            const named = stringField(data, 'model');
+            if (named) candidate = named;
+            events.push(...answered(candidate));
+          }
           if (!nested && text?.trim()) events.push({ type: 'message', text });
           // JSON output drops `assistant.usage`; each message still carries its output tokens.
           const outputTokens = numberField(data, 'outputTokens');
@@ -217,6 +249,7 @@ export function createCopilotParser(): AgentOutputParser {
           break;
         }
         case 'tool.execution_start': {
+          if (!nested) events.push(...confirmed());
           const id = stringField(data, 'toolCallId');
           const server = stringField(data, 'mcpServerName');
           const tool = stringField(data, 'mcpToolName');

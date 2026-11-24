@@ -9,6 +9,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { supportHelp } from '../support.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from '../agents/types.js';
 import { PackActionError, type PackTask } from '../agents/pack.js';
+import type { SessionState } from '../agents/session.js';
 import {
   readConversations,
   SessionSendGate,
@@ -522,6 +523,23 @@ describe('chat controller', () => {
     expect(both.get().session.effort).toBe('low');
     await both.session.idle();
     both.close();
+  });
+
+  it('shows the reported model in the status line when the model setting is empty', () => {
+    const state = {
+      agent: 'claude',
+      cwd: '/w',
+      model: '',
+      reportedModel: 'claude-x',
+      status: 'idle',
+      turns: [],
+      queued: [],
+      approvals: [],
+      usage: {},
+      canSteer: false,
+    } as SessionState;
+    expect(statusParts(state)).toContain('claude-x');
+    expect(statusParts({ ...state, model: 'picked' })).not.toContain('claude-x');
   });
 
   it('toggles Plan mode with /plan, exposes it in agents and statusParts, and rejects unsupported agents', async () => {

@@ -152,6 +152,20 @@ describe('claude driver', () => {
     ).toEqual(['--permission-mode', 'plan']);
   });
 
+  it('reports the model a fallback answers with, not a subagent or synthetic one', () => {
+    const events = feed(createClaudeParser(), [
+      { type: 'system', subtype: 'init', session_id: 'abc', model: 'claude-x' },
+      { type: 'assistant', session_id: 'abc', message: { model: 'claude-x', content: [] } },
+      { type: 'assistant', session_id: 'abc', parent_tool_use_id: 't1', message: { model: 'claude-sub', content: [] } },
+      { type: 'assistant', session_id: 'abc', message: { model: '<synthetic>', content: [] } },
+      { type: 'assistant', session_id: 'abc', message: { model: 'claude-fallback', content: [] } },
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([
+      { type: 'session', sessionId: 'abc', model: 'claude-x' },
+      { type: 'session', sessionId: 'abc', model: 'claude-fallback' },
+    ]);
+  });
+
   it('decodes stream-json into agent events', () => {
     const parser = createClaudeParser();
     const events = feed(parser, [
