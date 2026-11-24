@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { handleMcpMessage, type McpTool } from '../mcp-tools.js';
+import { handleMcpMessage, type McpSkill, type McpTool } from '../mcp-tools.js';
 import { asksForSession, pendingAsks } from './answer.js';
 import { isArchived, readArchive } from './archive.js';
 import { oneLine } from './files.js';
@@ -228,6 +228,8 @@ export async function serveMcpStdio(
     name?: string;
     /** What `initialize` tells the agent about the tools. Default `SESSION_TOOLS_INSTRUCTIONS`. */
     instructions?: string;
+    /** Skills served beside the tools, to clients that speak MCP 2026-07-28. */
+    skills?: readonly McpSkill[];
     /** Stops serving, as the end of the input does. */
     signal?: AbortSignal;
   },
@@ -260,6 +262,7 @@ export async function serveMcpStdio(
       name: streams.name ?? 'genaicode-sessions',
       version: '1',
       instructions: streams.instructions ?? SESSION_TOOLS_INSTRUCTIONS,
+      ...(streams.skills ? { skills: streams.skills } : {}),
     })
       .then((reply) => {
         if (reply !== null) write(reply);

@@ -217,7 +217,8 @@ they are a guide, not a bill. A topic opens the Sessions view on its sessions.
 In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 `sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including
 the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
-the same read-only tools over stdio. The agent can read what the other sessions said and what
+the same read-only tools over stdio, and `npx genaicode mcp install` registers that server with
+every installed agent (Claude Code, Codex, Gemini CLI, Copilot, Cursor), so you can ask from any of them. The agent can read what the other sessions said and what
 their open questions ask. Ask it to pass something to another session ("tell Codex in
 knights that...") and it sends it with `sessions_send`; you allow the first message to each
 session in the chat. A session that is working gets it as its next turn, once the current one

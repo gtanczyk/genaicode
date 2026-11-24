@@ -573,9 +573,28 @@ The session index provides four read-only MCP tools (and, in a chat, `sessions_s
 
 ```bash
 npx genaicode chat --sessions                              # the chat's agent gets the tools
-claude mcp add sessions -- npx genaicode sessions mcp      # or any agent, as a stdio MCP server
-codex mcp add sessions -- npx genaicode sessions mcp
+npx genaicode mcp install                                  # every installed agent gets them
+npx genaicode mcp install -a codex                         # or one agent
+npx genaicode mcp                                          # where it is registered
+npx genaicode mcp uninstall
 ```
+
+`mcp install` registers `genaicode sessions mcp` as a user-level stdio MCP server named
+`genaicode` with Claude Code, Codex, Gemini CLI, Copilot and Cursor, so each of them can answer
+"what waits for me?" from its own chat. Claude Code and Codex are asked through their own
+`mcp add`; for the others the entry goes into their file (`~/.gemini/settings.json`,
+`~/.copilot/mcp-config.json`, `~/.cursor/mcp.json`) beside what is declared there. An agent whose
+CLI is not found is skipped unless you name it with `-a`. In code: `installMcp()`,
+`uninstallMcp()` and `mcpInstallStatus()`. To register it by hand, the command is
+`npx genaicode sessions mcp`.
+
+The server speaks MCP 2025-06-18 and 2026-07-28. To a client of the newer revision that loads
+skills from MCP servers (`io.modelcontextprotocol/skills`; Claude Code where the feature is on)
+it also serves one skill, [`genaicode-sessions`](skills/genaicode-sessions/SKILL.md): which tool
+answers which question and how to report. The agent loads it only when a question calls for it.
+Your own tools can ship skills the same way: `startLocalMcpServer({ skills })` and
+`serveMcpStdio(tools, { skills })` take `{ name, description, body }`, and `parseSkill()` reads
+one from a `SKILL.md`.
 
 `sessions_waiting` uses the same order as `genaicode sessions --waiting`. It shows approvals
 first, then sessions awaiting a reply, newest first within each group. It looks back seven days

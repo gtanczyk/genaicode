@@ -64,6 +64,15 @@ export {
 } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export {
+  installMcp,
+  MCP_INSTALL_AGENTS,
+  MCP_SERVER_NAME,
+  mcpConfigFile,
+  mcpInstallStatus,
+  uninstallMcp,
+} from './mcp-install.js';
+export type { McpInstallAgent, McpInstallOptions, McpInstallStatus } from './mcp-install.js';
+export {
   findTopic,
   inRunDirectory,
   isAsking,
