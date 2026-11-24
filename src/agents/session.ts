@@ -97,7 +97,7 @@ export interface SessionState {
    * the agent or its session changes, when a turn starts a new session, and when a backup agent takes over,
    * so it never names a model the next turn will not run while `model` is unset.
    */
-  reportedModel?: string;
+  reportedModel?: string | undefined;
   effort?: string;
   /** Planning mode for the next turn (`setMode()`). Absent: default. */
   mode?: AgentMode;
@@ -1467,8 +1467,8 @@ function failedRun(message: string): AgentRun {
   };
 }
 
-/** Model names that pick a model per request rather than name one. */
-const ROUTING_ALIAS = /^auto(?:$|[-_\s])/i;
+/** Routing settings that pick a model per request (Copilot `auto`, Cursor `Auto`, Gemini `auto-gemini-3`), not model ids. */
+const ROUTING_ALIAS = /^auto(?:-gemini-[\w.]+)?$/i;
 
 /** The reply still streaming: the last entry, or the last one before progress reports. -1 for none. */
 function openText(entries: SessionEntry[]): number {

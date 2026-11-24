@@ -256,7 +256,7 @@ export type ApprovalDecision = 'approve' | 'deny';
  */
 export type AgentEvent =
   /** `model` present but undefined: the agent cannot name the one model it ran (several answered). */
-  | { type: 'session'; sessionId: string; model?: string; mode?: AgentMode }
+  | { type: 'session'; sessionId: string; model?: string | undefined; mode?: AgentMode }
   | { type: 'text-delta'; text: string }
   | { type: 'message'; text: string }
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }
