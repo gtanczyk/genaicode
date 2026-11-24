@@ -48,7 +48,7 @@ impl Format {
     }
 }
 
-/// A request from the web UI (via stderr) or Developer menu to save a transcript via native dialog.
+/// A request from the web UI (via stderr) or the Session menu to save a transcript via native dialog.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SaveRequest {
     pub format: Format,
