@@ -255,7 +255,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
 
 /** What the host app writes to stdin about a newer version of itself: being downloaded, then ready. */
 const UPDATE_LINE = /^update-(?:(downloading|ready|installing) ([0-9A-Za-z.+-]{1,40})|(none))$/;
-/** Short status toast from the host app (e.g. after a native Developer menu action copies or saves). */
+/** Short status toast from the host app (e.g. after a native Session menu action copies or saves). */
 const TOAST_LINE = /^toast ([^\r\n\0]{1,160})$/;
 /** What the host app writes to stdin when the person clicks a waiting session in the menu bar. */
 const OPEN_SESSION_LINE = /^open-session ([A-Za-z0-9_.:-]{1,200})$/;

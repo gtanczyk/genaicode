@@ -74,7 +74,7 @@ type PendingDownloads = Arc<Mutex<HashMap<String, VecDeque<(PathBuf, String)>>>>
 #[derive(Default)]
 struct Shell {
     server: Option<Server>,
-    /// Address and token of the running `genaicode ui` server, for native Developer menu actions.
+    /// Address and token of the running `genaicode ui` server, for native Session menu actions.
     server_endpoint: Option<transcript::Endpoint>,
     /// Exact origin (`http://127.0.0.1:<port>`) of the active `genaicode ui` server.
     server_origin: Arc<Mutex<Option<nav::ServerOrigin>>>,
@@ -221,6 +221,19 @@ fn fail(app: &AppHandle, message: String) {
         .title("Genaicode")
         .kind(MessageDialogKind::Error)
         .show(|_| {});
+}
+
+fn open_link(app: &AppHandle, url: &str) {
+    if let Err(error) = app.opener().open_url(url, None::<&str>) {
+        fail(app, format!("Could not open this link:\n{url}\n\n{error}"));
+    }
+}
+
+fn native_opener() -> impl tauri::plugin::Plugin<Wry> {
+    // The chat has no opener IPC permission. Let its links reach the native navigation handlers.
+    tauri_plugin_opener::Builder::new()
+        .open_js_links_on_click(false)
+        .build()
 }
 
 /// How long `genaicode ui` gets to stop its agents and `!command`s before it is killed.
@@ -898,9 +911,7 @@ fn on_menu(app: &AppHandle, id: &str) {
             },
         );
     } else if matches!(id, SUPPORT_URL | BUG_REPORT_URL) {
-        if let Err(error) = app.opener().open_url(id, None::<&str>) {
-            fail(app, format!("Could not open {id} in your browser: {error}"));
-        }
+        open_link(app, id);
     } else if id == QUIT {
         app.exit(0);
     } else if let Some(ask) = id.strip_prefix("approve:") {
@@ -917,7 +928,7 @@ pub fn run() {
             show(app)
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(native_opener())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ShellState::default())
         .on_window_event(|window, event| {
@@ -958,7 +969,7 @@ pub fn run() {
                     match nav::main_navigation(url, server) {
                         nav::MainNav::Allow => true,
                         nav::MainNav::OpenExternal(target) => {
-                            let _ = nav_handle.opener().open_url(target, None::<&str>);
+                            open_link(&nav_handle, &target);
                             false
                         }
                         nav::MainNav::Deny => false,
@@ -966,7 +977,7 @@ pub fn run() {
                 })
                 .on_new_window(move |url, _features| {
                     if let Some(target) = nav::external_url(&url) {
-                        let _ = new_window_handle.opener().open_url(target, None::<&str>);
+                        open_link(&new_window_handle, &target);
                     }
                     NewWindowResponse::Deny
                 })
@@ -1099,9 +1110,9 @@ pub fn run() {
                 Some(own) => own.append(&updates)?,
                 None => menu.append(&updates)?,
             }
-            let developer = Submenu::with_items(
+            let session = Submenu::with_items(
                 handle,
-                "Developer",
+                "Session",
                 true,
                 &[
                     &MenuItem::with_id(handle, DEV_COPY_ID, "Copy Session ID", true, None::<&str>)?,
@@ -1144,11 +1155,16 @@ pub fn run() {
                     )?,
                 ],
             )?;
-            let menu_count = menu.items()?.len();
-            if menu_count > 1 {
-                menu.insert(&developer, menu_count - 1)?;
+            // Tauri's default File submenu has no stable ID and is absent on Linux.
+            if let Some(file) = menus
+                .iter()
+                .filter_map(|item| item.as_submenu())
+                .find(|submenu| submenu.text().is_ok_and(|title| title == "File"))
+            {
+                file.prepend_items(&[&session, &PredefinedMenuItem::separator(handle)?])?;
             } else {
-                menu.append(&developer)?;
+                let file = Submenu::with_items(handle, "File", true, &[&session])?;
+                menu.insert(&file, usize::from(cfg!(target_os = "macos")))?;
             }
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| on_menu(app, event.id().as_ref()));
@@ -1202,6 +1218,12 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn opener_leaves_plain_link_clicks_to_the_webview() {
+        use tauri::plugin::Plugin;
+        assert!(native_opener().initialization_script().is_none());
+    }
 
     #[test]
     fn formats_env_as_a_single_json_line_without_auto_update_override() {
