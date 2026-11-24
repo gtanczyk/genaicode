@@ -46,6 +46,7 @@ const DEV_COPY_JSON: &str = "dev:copy-json";
 const DEV_SAVE_MD: &str = "dev:save-md";
 const DEV_SAVE_JSON: &str = "dev:save-json";
 const SUPPORT_URL: &str = "https://github.com/gtanczyk/genaicode/blob/master/docs/SUPPORT.md";
+const LEGAL_URL: &str = "https://github.com/gtanczyk/genaicode/blob/master/docs/legal.md";
 const BUG_REPORT_URL: &str =
     "https://github.com/gtanczyk/genaicode/issues/new?template=bug_report.md";
 /// The ids of the menu bar's own items. Its other ids carry what they act on: `approve:<question>`,
@@ -934,7 +935,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                 session: None,
             },
         );
-    } else if matches!(id, SUPPORT_URL | BUG_REPORT_URL) {
+    } else if matches!(id, SUPPORT_URL | BUG_REPORT_URL | LEGAL_URL) {
         open_link(app, id);
     } else if id == QUIT {
         app.exit(0);
@@ -1116,8 +1117,11 @@ pub fn run() {
                 .as_ref()
                 .and_then(|item| item.as_submenu())
             {
-                for (label, url) in [("Get Help", SUPPORT_URL), ("Report a Bug…", BUG_REPORT_URL)]
-                {
+                for (label, url) in [
+                    ("Get Help", SUPPORT_URL),
+                    ("Report a Bug…", BUG_REPORT_URL),
+                    ("Terms and Privacy", LEGAL_URL),
+                ] {
                     help.append(&MenuItem::with_id(handle, url, label, true, None::<&str>)?)?;
                 }
             }

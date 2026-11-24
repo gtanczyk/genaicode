@@ -49,7 +49,7 @@ Quitting the app stops the server.
 
 Open **File → Session** to copy the current session ID, file path, Markdown transcript or raw JSON state, or to save the transcript as Markdown or JSON. The chat header’s session chip and the `⋯` menu on each row in **Chats** / **Sessions** also offer these actions.
 
-The **Help** menu includes **Get Help** and **Report a Bug…**. On macOS, use the **Search** field in that menu to find commands such as **Copy Session ID**.
+The **Help** menu includes **Get Help**, **Report a Bug…** and **Terms and Privacy** ([docs/legal.md](../../docs/legal.md)). On macOS, use the **Search** field in that menu to find commands such as **Copy Session ID**.
 
 It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is
