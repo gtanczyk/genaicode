@@ -90,8 +90,9 @@ export interface SessionState {
   cwd: string;
   model?: string;
   /**
-   * The agent's default model, as this agent session last reported it (`session` events) from an attempt
-   * that ran without `model`. Cleared when the agent or its session changes, and when a backup agent takes over.
+   * The model the agent reported running this agent session (`session` events). Cleared when `model`,
+   * the agent or its session changes, when a turn starts a new session, and when a backup agent takes over,
+   * so it never names a model the next turn will not run while `model` is unset.
    */
   reportedModel?: string;
   effort?: string;
@@ -348,8 +349,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningAgent: CodingAgent | undefined;
   /** The effort the running turn started with. */
   let runningEffort: string | undefined;
-  /** Whether the running attempt got a model the person set (`setModel()`), not the agent's default. */
-  let runningModelSet = false;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
   /** Whether the caller changed `mode` since the running turn started. */
@@ -510,8 +509,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'session':
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
-          // Only the agent's default is worth showing: a model the person set is in `model` already.
-          if (event.model && !runningModelSet) patch.reportedModel = event.model;
+          if (event.model) patch.reportedModel = event.model;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -607,8 +605,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         return;
       case 'failover':
         // The backup agent may not say which model it runs; the one before it no longer does.
-        // `withFallback()` gives a backup no `model`, so what it reports is its default.
-        if (own()) runningModelSet = false;
         if (!forgetAfterTurn && own()) set({ reportedModel: undefined });
         return;
       case 'budget-warning':
@@ -875,6 +871,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? state.sessionId
           : undefined;
     explicitResume = undefined;
+    // A new agent session has not said its model yet.
+    if (resume === undefined && state.reportedModel !== undefined) set({ reportedModel: undefined });
     const turnController = new AbortController();
     controller = turnController;
     const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn], state.truncatedReason);
@@ -921,9 +919,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const basePrompt = rewritten ?? toAgent(prompt);
       contextBatch = takeContext();
       const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
-      // Read once: what the agent gets is what decides whether its report is its default.
-      const turnModel = state.model;
-      runningModelSet = turnModel !== undefined;
       current = turnAgent.run({
         ...options.task,
         ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
@@ -931,7 +926,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
-        model: turnModel,
+        model: state.model,
         effort: turnEffort,
         resume,
         signal: turnController.signal,
@@ -1218,7 +1213,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       set({ fallback: fallback.length ? fallback.map((candidate) => candidate.name) : undefined });
     },
     setModel(model) {
-      set({ model });
+      // What the agent reported ran under the old setting.
+      if (model !== state.model) set({ model, reportedModel: undefined });
     },
     setEffort(effort) {
       const levels = agent.capabilities.effort ?? [];

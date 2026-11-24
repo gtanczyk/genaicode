@@ -89,87 +89,79 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBeUndefined();
   });
 
-  it('shows no reported model for a model the person set, nor after the session is replaced', async () => {
-    const { agent } = fakeAgent([
-      async (_task, emit) => {
-        emit({ type: 'session', sessionId: 's-1', model: 'default-model' });
-      },
-      async (_task, emit) => {
-        emit({ type: 'session', sessionId: 's-1', model: 'picked-model' });
-      },
-      async (_task, emit) => {
-        // A new session that does not say its model.
-        emit({ type: 'session', sessionId: 's-2' });
-      },
-      async (_task, emit) => {
-        emit({ type: 'session', sessionId: 's-3', model: 'default-model' });
-      },
-    ]);
+  it('drops the reported model when the model, session or agent changes, until a turn reports again', async () => {
+    const failover = { type: 'failover', from: 'fake', to: 'backup', failure: { kind: 'quota', message: 'out' } };
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'default-model' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'picked-model' });
+        },
+        async (_task, emit) => {
+          // A new session that does not say its model.
+          emit({ type: 'session', sessionId: 's-2' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-3', model: 'model-a' });
+          emit(failover as AgentEvent);
+        },
+        async (_task, emit) => {
+          emit(failover as AgentEvent);
+          emit({ type: 'session', sessionId: 's-4', model: 'backup-default' });
+        },
+      ],
+      { resume: true },
+    );
     const session = createAgentSession({ agent, cwd: '/w' });
     session.send('first');
     await session.idle();
     expect(session.get().reportedModel).toBe('default-model');
 
-    // The picked model shows as `model`; the agent's default stays the one it reported.
     session.setModel('picked-model');
+    expect(session.get().reportedModel).toBeUndefined();
     session.send('second');
     await session.idle();
-    expect(session.get().reportedModel).toBe('default-model');
+    expect(session.get().reportedModel).toBe('picked-model');
+    // Cleared: the next turn runs the default, which no turn has reported since.
     session.setModel(undefined);
+    expect(session.get().reportedModel).toBeUndefined();
 
+    session.reset();
     session.send('third');
     await session.idle();
     expect(session.get()).toMatchObject({ sessionId: 's-2', reportedModel: undefined });
 
     session.send('fourth');
     await session.idle();
-    expect(session.get().reportedModel).toBe('default-model');
-    session.reset();
-    expect(session.get().reportedModel).toBeUndefined();
-  });
-
-  it('forgets the reported model when a backup agent takes over, and takes the backup default', async () => {
-    const failover = { type: 'failover', from: 'fake', to: 'backup', failure: { kind: 'quota', message: 'out' } };
-    const { agent } = fakeAgent([
-      async (_task, emit) => {
-        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
-        emit(failover as AgentEvent);
-      },
-      async (_task, emit) => {
-        // The person's model went to the first agent only; the backup reports its own default.
-        emit(failover as AgentEvent);
-        emit({ type: 'session', sessionId: 's-2', model: 'backup-default' });
-      },
-    ]);
-    const session = createAgentSession({ agent, cwd: '/w' });
-    session.send('first');
-    await session.idle();
+    // The backup took over and has not said its model.
     expect(session.get().reportedModel).toBeUndefined();
 
-    session.setModel('picked');
-    session.send('second');
+    session.send('fifth');
     await session.idle();
     expect(session.get().reportedModel).toBe('backup-default');
   });
 
-  it('decides on the model the turn actually got, even when it changes as the turn starts', async () => {
-    const { agent, tasks } = fakeAgent([
-      async (_task, emit) => {
-        emit({ type: 'session', sessionId: 's-1', model: 'picked' });
-      },
-    ]);
+  it('forgets the model of a non-resuming agent when its next turn starts a new session', async () => {
+    const report = deferred();
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+        () => report.promise,
+      ],
+      {},
+    );
     const session = createAgentSession({ agent, cwd: '/w' });
-    let changed = false;
-    session.subscribe((state) => {
-      if (state.status === 'running' && !changed) {
-        changed = true;
-        session.setModel('picked');
-      }
-    });
     session.send('first');
     await session.idle();
-    expect(tasks[0]!.model).toBe('picked');
+    expect(session.get().reportedModel).toBe('model-a');
+    session.send('second');
     expect(session.get().reportedModel).toBeUndefined();
+    report.resolve();
+    await session.idle();
   });
 
   it('builds a structured transcript and resumes the session on the next turn', async () => {

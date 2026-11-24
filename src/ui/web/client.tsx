@@ -1060,7 +1060,7 @@ function App() {
           aria-label="Model"
           title={
             session.reportedModel
-              ? `The model id, or empty for the agent's default (${session.reportedModel})`
+              ? `The model id, or empty for the agent's default. It last ran ${session.reportedModel}.`
               : "The model id, or empty for the agent's default"
           }
           placeholder={session.reportedModel ?? 'model'}
