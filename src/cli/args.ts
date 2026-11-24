@@ -62,6 +62,8 @@ export type CliCommand =
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
   /** `sessions mcp`: the session index as an MCP server on stdio. */
   | { kind: 'sessions-mcp'; agent?: string }
+  /** `mcp`: the session index registered as an MCP server in the agents' own configuration. */
+  | { kind: 'mcp'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
       kind: 'hooks';
       action: 'status' | 'install' | 'uninstall';
@@ -490,6 +492,22 @@ export function parseCli(argv: readonly string[]): CliCommand {
       throw new UsageError('Usage: genaicode notify [status|on [--done]|off|test]');
     }
     return { kind: 'notify', action: action as 'status' | 'on' | 'off' | 'test', done: values.done === true };
+  }
+
+  if (command === 'mcp') {
+    const { values, positionals } = parse(() =>
+      parseArgs({
+        args: rest,
+        strict: true,
+        allowPositionals: true,
+        options: { agent: { type: 'string', short: 'a' } },
+      }),
+    );
+    const action = positionals[0] ?? 'status';
+    if (positionals.length > 1 || (action !== 'status' && action !== 'install' && action !== 'uninstall')) {
+      throw new UsageError('Usage: genaicode mcp [status|install|uninstall] [-a <agent>]');
+    }
+    return { kind: 'mcp', action, ...(values.agent !== undefined ? { agent: values.agent } : {}) };
   }
 
   if (command === 'hooks') {

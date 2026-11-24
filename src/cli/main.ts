@@ -1,6 +1,6 @@
 import { runCheckProcess, type CheckResult } from './check-process.js';
 import { worktreeCheck } from './pack-verify.js';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -40,6 +40,10 @@ import {
   hooksFile,
   hooksStatus,
   installHooks,
+  installMcp,
+  MCP_INSTALL_AGENTS,
+  mcpInstallStatus,
+  uninstallMcp,
   liveDir,
   readLive,
   uninstallHooks,
@@ -59,7 +63,7 @@ import {
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
 import { archiveKey, archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
-import type { McpTool } from '../agents/mcp-tools.js';
+import { parseSkill, type McpSkill, type McpTool } from '../agents/mcp-tools.js';
 import {
   notifyFile,
   readNotify,
@@ -231,6 +235,7 @@ Usage:
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
+  genaicode mcp [install|uninstall]    Give agents the session index as an MCP server (default: status)
   genaicode limits [--json]           How much of each agent's plan is used, as last seen
   genaicode topics [refresh]          Your sessions as pieces of work, across agents and directories
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
@@ -287,8 +292,10 @@ Sessions options:
 
   "sessions mcp" (-a) serves sessions_projects, sessions_list, sessions_read and sessions_waiting
   on stdio. Any agent can use them to find open sessions and see which ones need your attention:
-  "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
-  the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
+  "genaicode mcp install" registers it with every installed agent (Claude Code, Codex, Gemini,
+  Copilot, Cursor) under the name "genaicode"; -a picks one, "mcp uninstall" takes it out. To
+  agents that load skills from MCP servers it also serves a skill on how to answer from the
+  index. The agent you give it to reads what the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
   In that chat, /waiting [project] refreshes the queue and /read <id> previews a conversation.
 
 Topics:
@@ -493,6 +500,8 @@ function dispatch(
       return serveSessions(cli, agents, command);
     case 'hooks':
       return manageHooks(cli, command, updater);
+    case 'mcp':
+      return manageMcp(cli, command, updater);
     case 'notify':
       return manageNotify(cli, command);
     case 'limits':
@@ -1048,10 +1057,88 @@ async function serveSessions(
   await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
     input: cli.input ?? process.stdin,
     output: cli.stdout,
+    skills: sessionSkills(),
     ...(cli.signal ? { signal: cli.signal } : {}),
   });
   pipe.off?.('error', gone);
   return EXIT_OK;
+}
+
+/** The skill served beside the session tools: `docs/skills/genaicode-sessions/SKILL.md` in the package. */
+function sessionSkills(): McpSkill[] {
+  try {
+    const file = new URL('../../docs/skills/genaicode-sessions/SKILL.md', import.meta.url);
+    const skill = parseSkill(readFileSync(file, 'utf8'));
+    return skill ? [skill] : [];
+  } catch {
+    // A package without its docs still serves the tools.
+    return [];
+  }
+}
+
+/** `mcp`: the session index in the agents' own MCP configuration. */
+async function manageMcp(
+  cli: CliEnvironment,
+  command: Extract<CliCommand, { kind: 'mcp' }>,
+  updater: UpdateDeps,
+): Promise<number> {
+  const known: readonly string[] = MCP_INSTALL_AGENTS;
+  if (command.agent !== undefined && !known.includes(command.agent)) {
+    cli.stderr.write(`No MCP install for agent "${command.agent}". Agents: ${known.join(', ')}.\n`);
+    return EXIT_USAGE;
+  }
+  // The installed command's server runs `current`, which survives updates; otherwise this package.
+  const install = findInstall(updater.packageRoot);
+  const installedHere = new Map(
+    detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
+  );
+  const chosen = MCP_INSTALL_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
+  let failed = false;
+  for (const agent of chosen) {
+    const found = installedHere.get(agent);
+    const options = {
+      env: cli.env,
+      ...(install
+        ? { server: { command: process.execPath, args: [stableCliPath(updater.packageRoot), 'sessions', 'mcp'] } }
+        : {}),
+      ...(found ? { cli: found } : {}),
+    };
+    try {
+      if (command.action === 'install') {
+        if (!found && command.agent === undefined) {
+          cli.stdout.write(`${agent}: not installed, skipped\n`);
+          continue;
+        }
+        const status = await installMcp(agent, options);
+        cli.stdout.write(`${agent}: MCP server "genaicode" added to ${status.file}\n`);
+      } else if (command.action === 'uninstall') {
+        const removed = await uninstallMcp(agent, options);
+        const file = (await mcpInstallStatus(agent, options)).file;
+        cli.stdout.write(`${agent}: ${removed ? `MCP server removed from ${file}` : 'no MCP server installed'}\n`);
+      } else {
+        const status = await mcpInstallStatus(agent, options);
+        const state = !status.installed
+          ? 'not installed'
+          : status.current
+            ? 'installed'
+            : 'installed by another genaicode: run "genaicode mcp install"';
+        cli.stdout.write(`${agent}: ${state}  ${status.file}\n`);
+      }
+    } catch (error) {
+      failed = true;
+      const missing = (error as NodeJS.ErrnoException).code === 'ENOENT' && !found;
+      cli.stderr.write(
+        `${agent}: ${missing ? `its CLI is not found here, and it registers MCP servers itself` : error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+  }
+  if (command.action === 'install' && !failed) {
+    cli.stdout.write(
+      'New sessions of these agents get sessions_projects, sessions_list, sessions_read and sessions_waiting.\n' +
+        'They read what your other agents\' sessions said. "genaicode mcp uninstall" takes them out again.\n',
+    );
+  }
+  return failed ? EXIT_FAILED : EXIT_OK;
 }
 
 /** The front ends are bundled into dist/ui by scripts/build-ui.mjs; the path is kept opaque to tsc. */

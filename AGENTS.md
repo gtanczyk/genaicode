@@ -14,6 +14,8 @@ scripts in `package.json`.
   must not grow an agent loop or prompts of its own, and the library entry points never import
   it or `src/ui`. The one prompt it ships is `genaicode embed`'s, kept in
   `docs/skills/genaicode-embed/SKILL.md` so it also works as a Claude Code skill.
+  `docs/skills/genaicode-sessions/SKILL.md` is the skill `genaicode sessions mcp` serves beside
+  its tools (MCP skills extension); it says how to use the tools, nothing else.
 - `npm run test:browser` runs the `genaicode/vite` overlay in headless Chromium through
   Playwright (`*.browser.test.ts`, not part of `npm test`/`check`); it needs
   `npx playwright install chromium` once.

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { handleMcpMessage, type McpTool } from './mcp-tools.js';
+import { handleMcpMessage, type McpSkill, type McpTool } from './mcp-tools.js';
 import type { McpServer } from './types.js';
 
 export interface LocalMcpServerOptions {
@@ -10,6 +10,8 @@ export interface LocalMcpServerOptions {
   tools: readonly McpTool[];
   /** When to use the tools, in a sentence or two: sent with `initialize`, for the agent's model. */
   instructions?: string;
+  /** Skills served beside the tools, to agents that speak MCP 2026-07-28. */
+  skills?: readonly McpSkill[];
   /** Largest request body, in bytes. Default 1 MiB. */
   maxBody?: number;
 }
@@ -33,7 +35,7 @@ export async function startScopedLocalMcpServer(
   options: Omit<LocalMcpServerOptions, 'tools'>,
   toolsForRequest: (target: string) => readonly McpTool[] | undefined,
 ) {
-  const { name, instructions } = options;
+  const { name, instructions, skills } = options;
   const expected = Buffer.from(`Bearer ${randomBytes(32).toString('hex')}`);
   const maxBody = options.maxBody ?? 1024 * 1024;
   let port = 0;
@@ -76,6 +78,7 @@ export async function startScopedLocalMcpServer(
         name: `genaicode-${name}`,
         version: '1',
         ...(instructions ? { instructions } : {}),
+        ...(skills ? { skills } : {}),
       }).then(
         (answer) => (answer === null ? reply(202) : reply(200, answer)),
         () => reply(500),
