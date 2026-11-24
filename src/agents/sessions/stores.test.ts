@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import * as zlib from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 import { defaultAgents } from '../defaults.js';
+import { delegationBrief } from '../pack.js';
 import { anthropicManaged } from '../drivers/anthropic-managed.js';
 import { codexLive } from '../drivers/codex-live.js';
 import { cursorCloud } from '../drivers/cursor-cloud.js';
@@ -145,6 +146,9 @@ describe('agent session stores', () => {
           id: 'old',
           rollout_path: join(home, 'gone.jsonl'),
           cwd: '/work/app',
+          // An older pack() put its briefing in front; Codex took the first message as the title.
+          title: `${delegationBrief([{ name: 'claude', installed: true, running: 0, steer: false }])}\n\nOld ask`,
+          first_user_message: `${delegationBrief([])}\n\nOld ask`,
           updated_at: T / 1000 - 60,
           source: 'exec',
           archived: 0,
@@ -183,7 +187,12 @@ describe('agent session stores', () => {
       state: 'waiting',
     });
     // The index says it was a `codex exec` run: nobody typed into it.
-    expect(sessions[2]).toMatchObject({ updatedAt: T - 60_000, automated: true });
+    expect(sessions[2]).toMatchObject({
+      updatedAt: T - 60_000,
+      automated: true,
+      title: 'Old ask',
+      firstPrompt: 'Old ask',
+    });
     expect(sessions[0]!.automated).toBeUndefined();
     expect(sessions[2]!.state).toBeUndefined();
   });

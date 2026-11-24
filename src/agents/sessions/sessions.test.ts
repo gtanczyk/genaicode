@@ -5,6 +5,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { EXIT_OK, main as runCli } from '../../cli/main.js';
 import { recordHook } from './live.js';
 import type { SessionInfo } from './types.js';
+import { withBriefing } from '../host-text.js';
+import { delegationBrief } from '../pack.js';
 import {
   claudeSessions,
   codexSessions,
@@ -127,10 +129,7 @@ describe('session sources', () => {
 
   it('names a session after the person, not a briefing genaicode put in its first message', async () => {
     const dir = join(root, 'claude-briefed');
-    const brief = [
-      'Other coding agents on this machine (claude, codex) are available through the `pack` MCP tools.',
-      'When asked to involve another agent, use `delegate` and `wait`.',
-    ].join('\n');
+    const brief = delegationBrief([{ name: 'codex', installed: true, running: 0, steer: false }]);
     const done = assistant([{ type: 'text', text: 'Done.' }]);
     file(
       join(dir, 'projects', '-work-app', 'old.jsonl'),
@@ -144,7 +143,7 @@ describe('session sources', () => {
     );
     file(
       join(dir, 'projects', '-work-app', 'tagged.jsonl'),
-      lines(user(`Review the diff\n\n<genaicode-briefing>\n\n${brief}\n\n</genaicode-briefing>`), done),
+      lines(user(withBriefing('Review the diff', brief)), done, { type: 'ai-title', aiTitle: 'Review the diff' }),
       50,
     );
     const [old, named, tagged] = await claudeSessions({ dir }).list();
@@ -152,7 +151,8 @@ describe('session sources', () => {
     expect(old).toMatchObject({ firstPrompt: 'Make the header calm', lastPrompt: 'Make the header calm' });
     expect(old!.title).toBeUndefined();
     expect(named).toMatchObject({ title: 'Title fix', firstPrompt: 'Fix the title' });
-    expect(tagged).toMatchObject({ firstPrompt: 'Review the diff' });
+    // Claude Code titled the tagged one from the person's words: that title stays.
+    expect(tagged).toMatchObject({ title: 'Review the diff', firstPrompt: 'Review the diff' });
     const turns = await claudeSessions({ dir }).read!(old!);
     expect(turns[0]!.prompt).toBe('Make the header calm');
   });

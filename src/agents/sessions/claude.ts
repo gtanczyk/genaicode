@@ -16,7 +16,7 @@ import {
 } from './files.js';
 import type { SessionTurn } from '../session.js';
 import type { AgentMode } from '../types.js';
-import { personText } from '../host-text.js';
+import { hasLeadingBriefing } from '../host-text.js';
 import { transcriptBuilder, transcriptLines } from './transcript.js';
 import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
@@ -111,7 +111,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   };
   let conversed = false;
   // Claude Code titled the session itself, and its first message opened with a briefing genaicode
-  // put there (before briefings became system instructions): that title names the briefing.
+  // put in front (older versions): that title names the briefing.
   let aiTitle = false;
   let briefed: boolean | undefined;
   let firstWrapped: string | undefined;
@@ -174,7 +174,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     aiTitle = titleOf(line, info) ?? aiTitle;
     project(line);
     const prompt = promptOf(line);
-    if (prompt.typed && line.type === 'user') briefed ??= personText(prompt.typed) !== prompt.typed;
+    if (prompt.typed && line.type === 'user') briefed ??= hasLeadingBriefing(prompt.typed);
     if (prompt.typed && line.type === 'user') typed = true;
     if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = promptLine(prompt.typed);
     if (prompt.wrapped && line.type === 'user') {

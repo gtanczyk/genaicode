@@ -124,7 +124,6 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       return;
     }
     if (mode === 'basic') finishTurn(started.resumed ? 'resumed ' + started.resumed + ' excludeItems:' + started.excludeItems : 'started with ' + JSON.stringify(started.approvalPolicy ?? started.approvalMode));
-    if (mode === 'instructions') finishTurn(JSON.stringify({ developerInstructions: started.developerInstructions, input: turnParams.input }));
     if (mode === 'policy') finishTurn(JSON.stringify({ approvalPolicy: started.approvalPolicy, approvalMode: started.approvalMode, sandbox: started.sandbox }));
     if (mode === 'plan-echo' && codex) {
       note('item/plan/delta', { itemId: 'p1', delta: 'Step 1. ' });
@@ -564,24 +563,6 @@ describe('live agents with task.permissions', () => {
     expect(
       await policy(agent.run({ ...task, permissions: { approval: 'deny' }, onApproval: () => 'approve' })),
     ).toEqual({ approvalPolicy: 'never', sandbox: 'workspace-write' });
-  });
-
-  it('gives Codex the instructions as developer instructions, apart from the prompt', async () => {
-    const agent = codexLive({ command: codexBin });
-    expect(agent.capabilities.instructions).toBe(true);
-    for (const resume of [undefined, 'th-1']) {
-      const result = await agent.run({
-        prompt: 'fix the bug',
-        cwd: dir,
-        env: env('instructions'),
-        instructions: 'Use the pack tools.',
-        ...(resume ? { resume } : {}),
-      }).result;
-      expect(JSON.parse(result.text!)).toEqual({
-        developerInstructions: 'Use the pack tools.',
-        input: [{ type: 'text', text: 'fix the bug' }],
-      });
-    }
   });
 
   it('refuses what it cannot honor before starting', async () => {

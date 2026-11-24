@@ -681,37 +681,26 @@ describe('pack', () => {
     expect(result).toMatchObject({ status: 'failed', failure: { kind: 'budget' }, costUsd: 5 });
   });
 
-  it('needs a lead that takes MCP servers, and keeps the briefing off resumed turns', async () => {
-    const cwd = repo();
-    const refused = await pack({ lead: fake('lead', async () => {}), members: [] }).run({ prompt: 'go', cwd }).result;
+  it('needs a lead that takes MCP servers', async () => {
+    const refused = await pack({ lead: fake('lead', async () => {}), members: [] }).run({ prompt: 'go', cwd: repo() })
+      .result;
     expect(refused.error).toContain('cannot attach MCP servers');
-    let prompt = '';
-    const lead = fake('lead', async (task) => void (prompt = task.prompt), { mcp: true });
-    await pack({ lead, members: [] }).run({ prompt: 'again', cwd, resume: 's1' }).result;
-    expect(prompt).toBe('again');
   });
 
-  it("briefs a lead that takes instructions there, on every run, and keeps its prompt the person's", async () => {
+  it("puts the briefing after the person's words, tagged, on first and resumed turns", async () => {
     const cwd = repo();
-    const seen: AgentTask[] = [];
-    const lead = fake('lead', async (task) => void seen.push(task), { mcp: true, instructions: true });
+    const prompts: string[] = [];
+    const lead = fake('lead', async (task) => void prompts.push(task.prompt), { mcp: true });
     const team = pack({ lead, members: [], brief: delegationBrief });
-    expect(team.capabilities.instructions).toBe(true);
-    await team.run({ prompt: 'fix the header', cwd, instructions: 'Be brief.' }).result;
+    await team.run({ prompt: 'fix the header', cwd }).result;
     await team.run({ prompt: 'again', cwd, resume: 's1' }).result;
-    expect(seen.map((task) => task.prompt)).toEqual(['fix the header', 'again']);
-    expect(seen[0]!.instructions).toMatch(/^Be brief\.\n\nOther coding agents on this machine/);
-    expect(seen[1]!.instructions).toMatch(/^Other coding agents on this machine/);
-  });
-
-  it("puts the briefing after the person's words, tagged, for a lead without instructions", async () => {
-    const cwd = repo();
-    let prompt = '';
-    const lead = fake('lead', async (task) => void (prompt = task.prompt), { mcp: true });
-    await pack({ lead, members: [], brief: delegationBrief }).run({ prompt: 'fix the header', cwd }).result;
-    expect(prompt.startsWith('fix the header\n\n<genaicode-briefing>')).toBe(true);
-    expect(prompt).toContain('Other coding agents on this machine');
-    expect(personText(prompt)).toBe('fix the header');
+    expect(prompts[0]!.startsWith('fix the header\n\n<genaicode-briefing>')).toBe(true);
+    expect(prompts[1]!.startsWith('again\n\n<genaicode-briefing>')).toBe(true);
+    for (const prompt of prompts) {
+      expect(prompt).toContain('Other coding agents on this machine');
+      expect(prompt.endsWith('</genaicode-briefing>')).toBe(true);
+    }
+    expect(prompts.map(personText)).toEqual(['fix the header', 'again']);
   });
 });
 

@@ -80,7 +80,6 @@ export function codexLive(options: CodexLiveOptions = {}): CodingAgent {
       resume: true,
       plan: true,
       mcp: true,
-      instructions: true,
       permissions: {
         approval: ['ask', 'auto-approve', 'deny'],
         sandbox: ['workspace-write', 'read-only', 'unrestricted'],
@@ -453,7 +452,6 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
       {
         cwd: task.cwd,
         ...(task.model ? { model: task.model } : {}),
-        ...(task.instructions ? { developerInstructions: task.instructions } : {}),
         ...(task.resume ? { threadId: task.resume, excludeTurns: true } : {}),
         ...(!task.resume || explicit.sandbox || options.sandbox ? { sandbox: policy.sandbox } : {}),
         ...(!task.resume || explicit.approval ? { approvalPolicy: policy.approvalPolicy } : {}),

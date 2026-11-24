@@ -73,7 +73,6 @@ export function codex(options: CodexAgentOptions = {}): CodingAgent {
       effort: ['minimal', 'low', 'medium', 'high', 'xhigh'],
       usage: true,
       mcp: true,
-      instructions: true,
       resume: true,
       permissions: { approval: ['auto-approve', 'deny'], sandbox: ['workspace-write', 'read-only', 'unrestricted'] },
     },
@@ -94,7 +93,6 @@ export function codexArgs(task: AgentTask, options: CodexAgentOptions = {}): str
   if (task.model) args.push('--model', task.model);
   if (task.effort) args.push('-c', `model_reasoning_effort=${JSON.stringify(task.effort)}`);
   for (const [key, value] of Object.entries(options.config ?? {})) args.push('-c', `${key}=${JSON.stringify(value)}`);
-  if (task.instructions) args.push('-c', `developer_instructions=${JSON.stringify(task.instructions)}`);
   if (task.extraArgs) args.push(...task.extraArgs);
   // `exec resume <id> <prompt>` takes the prompt after the session id; exec's own flags stay before it.
   if (task.resume) args.push('resume', task.resume);

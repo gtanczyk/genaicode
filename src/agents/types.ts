@@ -11,13 +11,6 @@ import type { SessionSource } from './sessions/types.js';
  */
 export interface AgentTask {
   prompt: string;
-  /**
-   * Text the host adds to the agent's own system prompt for this run, such as a briefing on the
-   * tools it was given (`capabilities.instructions`). It is not part of the person's prompt, so it
-   * stays out of the titles and summaries an agent derives from that. Sent again on every run,
-   * including a resumed one. Drivers without the capability ignore it.
-   */
-  instructions?: string;
   /** Working directory the agent runs in (and edits). Must exist. */
   cwd: string;
   /** Model id passed to the agent CLI. Omit to keep the tool's own default. */
@@ -353,8 +346,6 @@ export interface AgentCapabilities {
   approvals?: boolean;
   /** Honors `AgentTask.mcpServers`. */
   mcp?: boolean;
-  /** Honors `AgentTask.instructions`: adds them to its system prompt, not to the person's prompt. */
-  instructions?: boolean;
   /**
    * Runs on a provider's servers (managed and hosted agents): MCP servers on this machine's
    * loopback do not reach it, so a session gives it no `ask_user`.

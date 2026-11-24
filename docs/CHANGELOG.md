@@ -30,7 +30,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- A chat started with `genaicode ui --delegate` is titled after what you asked, not the first line of genaicode's delegation briefing: the briefing now reaches Claude Code and Codex as system instructions (`AgentTask.instructions`), follows the prompt in a tagged block for other agents, and is left out of session titles, prompt previews and taken-over transcripts, also for older sessions (#344)
+- A chat started with `genaicode ui --delegate` is titled after what you asked, not the first line of genaicode's delegation briefing: the briefing now follows your words in a tagged `<genaicode-briefing>` block on every lead turn, and is left out of session titles (also Codex's indexed titles), prompt previews and taken-over transcripts, also for older sessions. Muse takes a prompt that starts with a dash (#344)
 - Desktop chat links open in the default application on a regular click and show an error if opening fails. Session and transcript commands are under **File → Session** (#334)
 - Long conversations stay responsive in the chat: folded steps and tool calls render only when opened, so a sent message shows up at once and typing does not lag (#336)
 
