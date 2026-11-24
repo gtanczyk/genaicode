@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - The desktop Help menu, browser UI and terminal help link to support and bug reports (#331)
+- The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
 
 ## 3.2.0 — 2026-11-23
 
