@@ -728,9 +728,12 @@ const NO_SESSION: SessionState = {
 /** A function that stays the same while `fn` is given, and always calls the latest `fn`. */
 function useLatest<A extends unknown[], R>(fn: ((...args: A) => R) | undefined): ((...args: A) => R) | undefined {
   const latest = useRef(fn);
-  latest.current = fn;
+  // After commit: a render React may still throw away must not swap the handler a click reaches.
+  useLayoutEffect(() => {
+    latest.current = fn;
+  });
   const given = fn !== undefined;
-  return useMemo(() => (given ? (...args: A) => latest.current!(...args) : undefined), [given]);
+  return useMemo(() => (given ? (...args: A) => latest.current?.(...args) as R : undefined), [given]);
 }
 
 function useNow(active: boolean): number {
@@ -1141,17 +1144,20 @@ function Entry({
  * steps; rendering their output while closed made every update and keystroke slow.
  */
 function LazyDetails({
-  children: [summary, body],
+  children: [summary, build],
   ...rest
 }: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
   const [open, setOpen] = useState(false);
-  // While closed, the same element as last time: React skips the subtree until it opens again.
+  // While closed, the body last committed, the same element: React skips the subtree until it opens.
   const kept = useRef<ReactNode>(null);
-  if (open) kept.current = body();
+  const body = open ? build() : kept.current;
+  useLayoutEffect(() => {
+    kept.current = body;
+  });
   return (
     <details {...rest} onToggle={(event) => setOpen(event.currentTarget.open)}>
       {summary}
-      {kept.current}
+      {body}
     </details>
   );
 }
