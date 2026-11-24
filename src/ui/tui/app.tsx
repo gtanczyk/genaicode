@@ -492,7 +492,7 @@ export function ChatApp({
                     </Text>
                   ))}
               {armedExit ? ' · press ctrl+c again to exit' : ''}
-              {tasks.length && !currentTask ? ' · Tab for pack tasks' : ''}
+              {tasks.length && !currentTask ? ' · Tab for delegated tasks' : ''}
             </Text>
           </Box>
         )}

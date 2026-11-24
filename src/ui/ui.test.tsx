@@ -863,7 +863,7 @@ describe('terminal UI', () => {
       await frame('Ask the agent');
       chat.submit('write');
       await chat.session.idle();
-      await frame('Tab for pack tasks');
+      await frame('Tab for delegated tasks');
       await press('\t', 't1 · worker · Ready to merge');
       await press('\x1b[B', 't2 · worker · Ready to merge');
       await press('d', '+test change');
