@@ -143,6 +143,32 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBe('backup-default');
   });
 
+  it('shows no routing setting as the model', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'gpt-x' });
+        emit({ type: 'session', sessionId: 's-1', model: 'auto' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'Auto' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'auto-gemini-3' });
+        emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    for (const [prompt, shown] of [
+      ['one', undefined],
+      ['two', undefined],
+      ['three', 'gemini-3-pro'],
+    ] as const) {
+      session.send(prompt);
+      await session.idle();
+      expect(session.get().reportedModel).toBe(shown);
+    }
+  });
+
   it('ignores a model reported after the model setting changed during the turn', async () => {
     const started = deferred();
     const { agent } = fakeAgent([

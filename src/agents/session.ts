@@ -512,7 +512,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
           // Not when the model setting changed after this turn started: the next turn runs another.
-          if (event.model && state.model === runningModel) patch.reportedModel = event.model;
+          // A routing setting (`auto`, `Auto`, `auto-gemini-3`) is not a model: the one before it no longer runs.
+          if (event.model && state.model === runningModel)
+            patch.reportedModel = ROUTING_ALIAS.test(event.model) ? undefined : event.model;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -1414,6 +1416,9 @@ function failedRun(message: string): AgentRun {
     },
   };
 }
+
+/** Model names that pick a model per request rather than name one. */
+const ROUTING_ALIAS = /^auto(?:$|[-_\s])/i;
 
 function closeStreaming(entries: SessionEntry[]): SessionEntry[] {
   const last = entries.at(-1);
