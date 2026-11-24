@@ -5,7 +5,7 @@ import { packApproval, PackActionError, type PackAction, type PackControls, type
 import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './handoff.js';
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import { markQuestionChannelServer } from './ask-user.js';
-import { PROGRESS_SERVER_NAME, type ProgressChannel, type ProgressReport } from './progress.js';
+import { markTurnProgressServer, PROGRESS_SERVER_NAME, type ProgressChannel, type ProgressReport } from './progress.js';
 import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
@@ -470,6 +470,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   const addEntry = (id: number, entry: SessionEntry) =>
     updateTurn(id, (turn) => ({ ...turn, entries: [...closeStreaming(turn.entries), entry] }));
 
+  // A report during a streamed reply goes before it, so the reply stays one entry and keeps streaming.
+  const addProgress = (id: number, entry: SessionEntry) =>
+    updateTurn(id, (turn) => {
+      const last = turn.entries.at(-1);
+      if (last?.kind === 'text' && last.streaming)
+        return { ...turn, entries: [...turn.entries.slice(0, -1), entry, last] };
+      return { ...turn, entries: [...turn.entries, entry] };
+    });
+
   const clip = (text: string | undefined) =>
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
@@ -897,11 +906,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (options.progress && !turnAgent.capabilities.remote) {
           const name = availableServerName(PROGRESS_SERVER_NAME, [...baseServers, ...extraServers]);
           progressScope = options.progress.openTurn(
-            (report) => addEntry(turnId, { kind: 'progress', ...report }),
+            (report) => addProgress(turnId, { kind: 'progress', ...report }),
             turnController.signal,
             name,
           );
-          extraServers.push(progressScope.mcpServer);
+          // Marked here too: a host's own channel may not mark its servers.
+          extraServers.push(markTurnProgressServer(progressScope.mcpServer));
         }
       }
       const basePrompt = rewritten ?? toAgent(prompt);

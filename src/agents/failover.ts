@@ -9,6 +9,7 @@ import type {
   AgentRun,
   AgentTask,
   CodingAgent,
+  McpServer,
 } from './types.js';
 
 /** Failures another agent can get past: the agent is out, not the task. `budget` is the user's cap. */
@@ -40,6 +41,20 @@ export interface AgentInfo {
 interface Describable {
   info?(signal?: AbortSignal): Promise<AgentInfo>;
   forget?(sessionId?: string): void;
+}
+
+/**
+ * A server on this machine's loopback, such as the session's progress and question channels: a remote
+ * agent cannot reach it, and must not get its address and token.
+ */
+function onLoopback(server: McpServer): boolean {
+  if (!('url' in server) || !server.url) return false;
+  try {
+    const host = new URL(server.url).hostname;
+    return host === 'localhost' || host === '[::1]' || /^127\./.test(host);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -92,6 +107,11 @@ export function withFallback(agents: readonly CodingAgent[]): CodingAgent & Desc
       ...(mode !== undefined ? { mode } : {}),
       ...(own ? {} : { resume: undefined }),
       ...(agent === first ? {} : { model: undefined }),
+      // The session adds its loopback channels (progress, questions) by the first agent's
+      // capabilities: a remote backup gets none of them.
+      ...(agent.capabilities.remote && task.mcpServers?.some(onLoopback)
+        ? { mcpServers: task.mcpServers.filter((server) => !onLoopback(server)) }
+        : {}),
       ...(agent !== first && task.effort !== undefined && !agent.capabilities.effort?.includes(task.effort)
         ? { effort: undefined }
         : {}),

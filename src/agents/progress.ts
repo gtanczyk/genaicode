@@ -38,6 +38,11 @@ export function isTurnProgressServer(server: McpServer): boolean {
   return (server as Record<symbol, unknown>)[PROGRESS_CHANNEL] === true;
 }
 
+/** Mark `server` as a turn's progress channel, so pack keeps it from workers and failover from remote agents. */
+export function markTurnProgressServer<T extends McpServer>(server: T): T {
+  return Object.assign({ ...server }, { [PROGRESS_CHANNEL]: true as const });
+}
+
 function boundedText(value: unknown, field: string, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max)
     throw new Error(`${field} must be nonempty text of at most ${max} characters.`);

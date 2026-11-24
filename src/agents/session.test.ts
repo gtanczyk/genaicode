@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isQuestionChannelServer } from './ask-user.js';
 import { handoffTranscript } from './handoff.js';
-import { startProgressChannel } from './progress.js';
+import { isTurnProgressServer, startProgressChannel } from './progress.js';
 import { createAgentSession } from './session.js';
 import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -128,6 +128,50 @@ describe('createAgentSession', () => {
       second.resolve();
       await channel.close();
     }
+  });
+
+  it('keeps a streamed reply whole around progress, and marks a host channel server as progress', async () => {
+    let report: ((progress: { message: string }) => void) | undefined;
+    const channel = {
+      openTurn(onReport: (progress: { message: string }) => void, _signal: AbortSignal, name = 'genaicode_progress') {
+        report = onReport;
+        // A host's own channel: not marked by startProgressChannel().
+        return { mcpServer: { name, url: 'http://127.0.0.1:1/mcp' }, close() {} };
+      },
+    };
+    const { agent, tasks } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'text-delta', text: 'Hel' });
+          report!({ message: 'Step one' });
+          emit({ type: 'text-delta', text: 'lo' });
+          emit({ type: 'message', text: 'Hello' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'text-delta', text: 'A' });
+          report!({ message: 'Step two' });
+          emit({ type: 'text-delta', text: 'B' });
+        },
+      ],
+      { mcp: true, resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    await session.idle();
+    session.send('second');
+    await session.idle();
+    expect(isTurnProgressServer(tasks[0].mcpServers![0]!)).toBe(true);
+    expect(session.get().turns.map((turn) => turn.entries)).toEqual([
+      [
+        { kind: 'progress', message: 'Step one' },
+        { kind: 'text', text: 'Hello', streaming: false },
+      ],
+      [
+        { kind: 'progress', message: 'Step two' },
+        { kind: 'text', text: 'AB', streaming: false },
+      ],
+    ]);
+    session.close();
   });
 
   it('only attaches the loopback progress tool to local agents with MCP support', async () => {

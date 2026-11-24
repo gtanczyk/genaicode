@@ -6,6 +6,8 @@ import { parseCli } from '../cli/args.js';
 import { parseSlash } from '../ui/format.js';
 import { cliAgent } from './cli-agent.js';
 import { describeFailover, shouldFailOver, withFallback } from './failover.js';
+import { markQuestionChannelServer } from './ask-user.js';
+import { markTurnProgressServer } from './progress.js';
 import { createAppAgent } from '../app-agent/app-agent.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -151,6 +153,24 @@ describe('withFallback', () => {
     expect(events).toContainEqual({ type: 'failover', from: 'claude', to: 'codex', failure: { kind: 'quota' } });
     expect(events.filter((event) => event.type === 'done')).toHaveLength(1);
     expect(codex.tasks[0]).toMatchObject({ prompt: 'fix it', resume: undefined });
+  });
+
+  it('keeps the session loopback channels from a remote backup', async () => {
+    const local = fake('local', [out('quota')]);
+    const remote = fake('remote');
+    Object.assign(remote.agent, { capabilities: { ...remote.agent.capabilities, remote: true } });
+    const own = { name: 'docs', url: 'https://docs.example/mcp' };
+    const progress = markTurnProgressServer({ name: 'genaicode_progress', url: 'http://127.0.0.1:1/mcp?turn=a' });
+    const questions = markQuestionChannelServer({ name: 'genaicode_questions', url: 'http://127.0.0.1:2/mcp' });
+    const run = withFallback([local.agent, remote.agent]).run({
+      prompt: 'x',
+      cwd: dir,
+      mcpServers: [own, progress, questions],
+    });
+    for await (const event of run) void event;
+    await run.result;
+    expect(local.tasks[0]!.mcpServers).toHaveLength(3);
+    expect(remote.tasks[0]!.mcpServers).toEqual([own]);
   });
 
   it('drops vendor ids, keeps what is left of the budget, and adds up usage', async () => {

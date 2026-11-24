@@ -381,7 +381,7 @@ function renderEntry(
 ) {
   switch (entry.kind) {
     case 'progress':
-      out.push(entry.message, '');
+      out.push(`### ${speaker} (progress)`, '', entry.message, '');
       for (const item of entry.plan ?? []) out.push(`- ${item.step} (${item.status.replace('_', ' ')})`);
       if (entry.plan?.length) out.push('');
       return;

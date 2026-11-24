@@ -942,6 +942,31 @@ describe('AgentChat', () => {
     expect(active().querySelector(':scope > .gc-progress')).toBeNull();
   });
 
+  it('keeps a steering input above the update that answers it, and the reply element when the turn ends', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'input', text: 'also check the docs' },
+      { kind: 'text', text: 'Checking the docs too.', streaming: false },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    render({ state, foldSteps: true });
+    const order = Array.from(active().children).map((child) => child.textContent ?? '');
+    const input = order.findIndex((text) => text.includes('also check the docs'));
+    const reply = order.findIndex((text) => text === 'Checking the docs too.');
+    expect(input).toBeGreaterThanOrEqual(0);
+    expect(input).toBeLessThan(reply);
+    const live = Array.from(active().children).find((child) => child.textContent === 'Checking the docs too.');
+
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    const done = Array.from(active().children).find((child) => child.textContent === 'Checking the docs too.');
+    // Moved below the steps, not rebuilt: state inside it (a loaded image) survives.
+    expect(done).toBe(live);
+    expect(active().lastElementChild).toBe(done);
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();
