@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import type { SessionEntry, SessionTurn } from '../session.js';
 import type { SessionReadOptions } from './types.js';
+import { personText } from '../host-text.js';
 
 // The end of a long transcript is what the next agent needs; the start is left out.
 const TAIL_BYTES = 8 * 1024 * 1024;
@@ -90,7 +91,10 @@ export function transcriptBuilder(agent: string, options: SessionReadOptions = {
   return {
     prompt(text: string, at?: number) {
       if (at !== undefined) clock = at;
-      current = { id: turns.length + 1, agent, prompt: text, entries: [], startedAt: clock, endedAt: clock };
+      // A briefing genaicode added to the prompt is not what the person said.
+      const said = personText(text);
+      const prompt = said && said !== text.trim() ? said : text;
+      current = { id: turns.length + 1, agent, prompt, entries: [], startedAt: clock, endedAt: clock };
       turns.push(current);
     },
     text(text: string, at?: number) {

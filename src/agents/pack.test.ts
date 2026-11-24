@@ -14,7 +14,8 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
-import { pack, PackActionError } from './pack.js';
+import { personText } from './host-text.js';
+import { delegationBrief, pack, PackActionError } from './pack.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -410,7 +411,7 @@ describe('pack', () => {
       'lead',
       async (task) => {
         expect(task.prompt).toContain('You lead a pack');
-        expect(task.prompt.endsWith('build it')).toBe(true);
+        expect(task.prompt.startsWith('build it\n\n<genaicode-briefing>')).toBe(true);
         const agents = JSON.parse(await tool(task, 'agents')) as Array<{ name: string; installed: boolean }>;
         expect(agents.map((agent) => [agent.name, agent.installed])).toEqual([
           ['b', true],
@@ -689,6 +690,29 @@ describe('pack', () => {
     await pack({ lead, members: [] }).run({ prompt: 'again', cwd, resume: 's1' }).result;
     expect(prompt).toBe('again');
   });
+
+  it("briefs a lead that takes instructions there, on every run, and keeps its prompt the person's", async () => {
+    const cwd = repo();
+    const seen: AgentTask[] = [];
+    const lead = fake('lead', async (task) => void seen.push(task), { mcp: true, instructions: true });
+    const team = pack({ lead, members: [], brief: delegationBrief });
+    expect(team.capabilities.instructions).toBe(true);
+    await team.run({ prompt: 'fix the header', cwd, instructions: 'Be brief.' }).result;
+    await team.run({ prompt: 'again', cwd, resume: 's1' }).result;
+    expect(seen.map((task) => task.prompt)).toEqual(['fix the header', 'again']);
+    expect(seen[0]!.instructions).toMatch(/^Be brief\.\n\nOther coding agents on this machine/);
+    expect(seen[1]!.instructions).toMatch(/^Other coding agents on this machine/);
+  });
+
+  it("puts the briefing after the person's words, tagged, for a lead without instructions", async () => {
+    const cwd = repo();
+    let prompt = '';
+    const lead = fake('lead', async (task) => void (prompt = task.prompt), { mcp: true });
+    await pack({ lead, members: [], brief: delegationBrief }).run({ prompt: 'fix the header', cwd }).result;
+    expect(prompt.startsWith('fix the header\n\n<genaicode-briefing>')).toBe(true);
+    expect(prompt).toContain('Other coding agents on this machine');
+    expect(personText(prompt)).toBe('fix the header');
+  });
 });
 
 describe('pack chat turns', () => {
@@ -751,7 +775,7 @@ describe('pack chat turns', () => {
     const lead = fake(
       'lead',
       async (task) => {
-        if (task.prompt.endsWith('next')) {
+        if (task.prompt.startsWith('next')) {
           await tool(task, 'discard', { id: 't2' });
           return;
         }

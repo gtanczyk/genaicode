@@ -29,7 +29,7 @@ import {
   type ConversationOrigin,
   type TopicStore,
 } from '../agents/sessions/index.js';
-import { isWithin, oneLine } from '../agents/sessions/files.js';
+import { isWithin, oneLine, promptLine } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import {
@@ -315,7 +315,7 @@ export function createChatController(options: ChatOptions): ChatController {
     if (!homeMode || !conversation) return;
     let next = conversation;
     if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
-    if (!next.title && state.turns.length) next = { ...next, title: oneLine(state.turns[0]!.prompt, 120) };
+    if (!next.title && state.turns.length) next = { ...next, title: promptLine(state.turns[0]!.prompt, 120) };
     conversation = next;
     if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
     const source = byName.get(state.agent)?.sessions?.name;

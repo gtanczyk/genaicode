@@ -125,6 +125,38 @@ describe('session sources', () => {
     expect(session).toMatchObject({ title: 'Release plan', firstPrompt: 'Plan the release' });
   });
 
+  it('names a session after the person, not a briefing genaicode put in its first message', async () => {
+    const dir = join(root, 'claude-briefed');
+    const brief = [
+      'Other coding agents on this machine (claude, codex) are available through the `pack` MCP tools.',
+      'When asked to involve another agent, use `delegate` and `wait`.',
+    ].join('\n');
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    file(
+      join(dir, 'projects', '-work-app', 'old.jsonl'),
+      lines(user(`${brief}\n\nMake the header calm`), done, { type: 'ai-title', aiTitle: 'Coding agents via pack' }),
+      30,
+    );
+    file(
+      join(dir, 'projects', '-work-app', 'named.jsonl'),
+      lines(user(`${brief}\n\nFix the title`), done, { type: 'custom-title', customTitle: 'Title fix' }),
+      40,
+    );
+    file(
+      join(dir, 'projects', '-work-app', 'tagged.jsonl'),
+      lines(user(`Review the diff\n\n<genaicode-briefing>\n\n${brief}\n\n</genaicode-briefing>`), done),
+      50,
+    );
+    const [old, named, tagged] = await claudeSessions({ dir }).list();
+    // Claude Code titled the old one after the briefing; the person's words name it instead.
+    expect(old).toMatchObject({ firstPrompt: 'Make the header calm', lastPrompt: 'Make the header calm' });
+    expect(old!.title).toBeUndefined();
+    expect(named).toMatchObject({ title: 'Title fix', firstPrompt: 'Fix the title' });
+    expect(tagged).toMatchObject({ firstPrompt: 'Review the diff' });
+    const turns = await claudeSessions({ dir }).read!(old!);
+    expect(turns[0]!.prompt).toBe('Make the header calm');
+  });
+
   it('names a Claude Code session nobody typed into by what it was sent', async () => {
     const dir = join(root, 'claude-sent');
     const done = assistant([{ type: 'text', text: 'Done.' }]);

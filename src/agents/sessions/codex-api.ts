@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { RpcPeer } from '../rpc.js';
 import type { SessionTurn } from '../session.js';
-import { activeIfRecent, isRecord, isWithin, oneLine } from './files.js';
+import { activeIfRecent, isRecord, isWithin, oneLine, promptLine } from './files.js';
 import { transcriptBuilder } from './transcript.js';
 import type { SessionInfo, SessionQuery, SessionReadOptions } from './types.js';
 
@@ -111,7 +111,7 @@ function sessionOf(thread: unknown, now: number): SessionInfo | undefined {
     ...(text(git.branch) ? { branch: text(git.branch)! } : {}),
     ...(text(git.originUrl) ? { repository: text(git.originUrl)! } : {}),
     ...(text(thread.name) ? { title: oneLine(text(thread.name)!, 120) } : {}),
-    ...(preview ? { firstPrompt: oneLine(preview), lastPrompt: oneLine(preview) } : {}),
+    ...(preview ? { firstPrompt: promptLine(preview), lastPrompt: promptLine(preview) } : {}),
     ...(typeof thread.createdAt === 'number' ? { startedAt: thread.createdAt * 1000 } : {}),
     ...(text(thread.model) ? { model: text(thread.model)! } : {}),
     ...(text(thread.path) ? { path: text(thread.path)! } : {}),

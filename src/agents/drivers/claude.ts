@@ -220,6 +220,7 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       usage: true,
       rateLimits: true,
       mcp: true,
+      instructions: true,
       resume: true,
       plan: true,
       approvals: true,
@@ -474,6 +475,7 @@ export function claudeArgs(
   if (task.maxTurns !== undefined) args.push('--max-turns', String(task.maxTurns));
   if (task.budget?.maxCostUsd !== undefined) args.push('--max-budget-usd', String(task.budget.maxCostUsd));
   if (task.resume) args.push('--resume', task.resume);
+  if (task.instructions) args.push('--append-system-prompt', task.instructions);
   if (task.extraArgs)
     args.push(...(task.mode !== undefined ? stripClaudeModeFlags(task.extraArgs, task.mode) : task.extraArgs));
   return stdinPrompt ? args : [...args, ...positionalPrompt(task.prompt)];

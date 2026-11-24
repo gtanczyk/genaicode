@@ -10,11 +10,13 @@ import {
   isWithin,
   mapLimited,
   oneLine,
+  promptLine,
   timeOf,
   type SessionFile,
 } from './files.js';
 import type { SessionTurn } from '../session.js';
 import type { AgentMode } from '../types.js';
+import { personText } from '../host-text.js';
 import { transcriptBuilder, transcriptLines } from './transcript.js';
 import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
 
@@ -83,11 +85,17 @@ function promptOf(line: Record<string, unknown>): { typed?: string; wrapped?: st
   return { typed: text };
 }
 
-/** A title record sets the session's name; a later one replaces an earlier one. */
-function titleOf(line: Record<string, unknown>, info: SessionInfo): void {
+/**
+ * A title record sets the session's name; a later one replaces an earlier one. Returns whether the
+ * title is Claude Code's own (`ai-title`), which it writes from the first message.
+ */
+function titleOf(line: Record<string, unknown>, info: SessionInfo): boolean | undefined {
   if (line.type === 'summary' && typeof line.summary === 'string') info.title = oneLine(line.summary, 120);
-  if (line.type === 'ai-title' && typeof line.aiTitle === 'string') info.title = oneLine(line.aiTitle, 120);
-  if (line.type === 'custom-title' && typeof line.customTitle === 'string') info.title = oneLine(line.customTitle, 120);
+  else if (line.type === 'ai-title' && typeof line.aiTitle === 'string') info.title = oneLine(line.aiTitle, 120);
+  else if (line.type === 'custom-title' && typeof line.customTitle === 'string')
+    info.title = oneLine(line.customTitle, 120);
+  else return undefined;
+  return line.type === 'ai-title';
 }
 
 /** Read one Claude Code transcript (`<config>/projects/<project>/<session>.jsonl`). */
@@ -102,6 +110,10 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     path: file.path,
   };
   let conversed = false;
+  // Claude Code titled the session itself, and its first message opened with a briefing genaicode
+  // put there (before briefings became system instructions): that title names the briefing.
+  let aiTitle = false;
+  let briefed: boolean | undefined;
   let firstWrapped: string | undefined;
   let lastWrapped: string | undefined;
   // Who sent the prompts, where Claude Code notes it (`origin.kind`, `turnOrigin`): a person, a
@@ -159,15 +171,16 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
       if (!Number.isNaN(at)) info.startedAt = at;
     }
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
-    titleOf(line, info);
+    aiTitle = titleOf(line, info) ?? aiTitle;
     project(line);
     const prompt = promptOf(line);
+    if (prompt.typed && line.type === 'user') briefed ??= personText(prompt.typed) !== prompt.typed;
     if (prompt.typed && line.type === 'user') typed = true;
-    if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = oneLine(prompt.typed);
+    if (prompt.typed && !info.firstPrompt && line.type === 'user') info.firstPrompt = promptLine(prompt.typed);
     if (prompt.wrapped && line.type === 'user') {
       if (firstWrapped === undefined && !info.firstPrompt)
         scheduled = SCHEDULED.test(textOf(messageOf(line), 'text') ?? '');
-      firstWrapped ??= oneLine(prompt.wrapped);
+      firstWrapped ??= promptLine(prompt.wrapped);
     }
     sender(line, !!(prompt.typed ?? prompt.wrapped));
   }
@@ -177,19 +190,19 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     // The directory it started in names the project; later lines follow the agent's `cd`.
     if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
     if (typeof line.gitBranch === 'string' && line.gitBranch && line.gitBranch !== 'HEAD') info.branch = line.gitBranch;
-    titleOf(line, info);
+    aiTitle = titleOf(line, info) ?? aiTitle;
     if (typeof line.permissionMode === 'string') info.mode = line.permissionMode === 'plan' ? 'plan' : 'default';
     if (line.type === 'cost-state' && typeof line.totalCostUSD === 'number') info.costUsd = line.totalCostUSD;
     if (line.type === 'user' || line.type === 'assistant') conversed = true;
     const prompt = promptOf(line);
     sender(line, !!(prompt.typed ?? prompt.wrapped));
-    if (prompt.wrapped) lastWrapped = oneLine(prompt.wrapped);
+    if (prompt.wrapped) lastWrapped = promptLine(prompt.wrapped);
     if (line.type === 'last-prompt') {
       // Claude Code's own note of the latest prompt; it says nothing about whose turn it is.
-      if (prompt.typed) info.lastPrompt = oneLine(prompt.typed);
+      if (prompt.typed) info.lastPrompt = promptLine(prompt.typed);
     } else if (prompt.typed) {
       typed = true;
-      info.lastPrompt = oneLine(prompt.typed);
+      info.lastPrompt = promptLine(prompt.typed);
       agentLast = false;
     } else if (prompt.wrapped) {
       agentLast = false;
@@ -208,6 +221,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     }
   }
   if (!conversed) return null;
+  if (aiTitle && briefed && info.firstPrompt) delete info.title;
   // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
   // A session relayed from a claude.ai thread is called what the thread is, unless it has a title of its own.
   if (info.project) info.title ??= thread;

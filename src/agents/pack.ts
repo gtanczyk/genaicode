@@ -30,6 +30,7 @@ import {
   type PackVerification,
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
+import { withBriefing } from './host-text.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -60,7 +61,8 @@ export interface PackOptions {
   /** Let the lead draft a message for the tower operator to review. */
   sessionProposalTool?: McpTool;
   /**
-   * Replaces the briefing put in front of the lead's first prompt. `mcpServers` names the
+   * Replaces the briefing the lead gets: as system instructions where it takes them
+   * (`capabilities.instructions`), else after its first prompt, tagged as genaicode's. `mcpServers` names the
    * servers the lead can pass on to a task (`delegate`'s `mcpServers`).
    */
   brief?(members: readonly PackMember[], mcpServers?: readonly string[]): string;
@@ -1307,14 +1309,24 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
-          const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
+          // A lead that takes system instructions gets the briefing there on every run, resumed ones
+          // too; the others get it once, after the person's words, so titles come from those.
+          const asInstructions = !!lead.capabilities.instructions;
+          const briefed = asInstructions || !task.resume;
+          const roster = briefed ? await describeMembers(await rosterAt(leadCwd), task.env) : [];
           const passable = (await shareable).map((server) => server.name);
-          const brief = task.resume
-            ? ''
-            : `${options.brief ? options.brief(roster, passable) : defaultBrief(roster, options.operatorMerge, passable)}\n\n`;
+          const brief = briefed
+            ? options.brief
+              ? options.brief(roster, passable)
+              : defaultBrief(roster, options.operatorMerge, passable)
+            : '';
+          const instructions = asInstructions
+            ? [task.instructions, brief].filter((text) => text?.trim()).join('\n\n')
+            : task.instructions;
           const run = startRun(lead, {
             ...task,
-            prompt: `${brief}${task.prompt}`,
+            prompt: asInstructions ? task.prompt : withBriefing(task.prompt, brief),
+            ...(instructions ? { instructions } : {}),
             budget: undefined,
             mcpServers: [...(task.mcpServers ?? []), server.mcpServer],
           });

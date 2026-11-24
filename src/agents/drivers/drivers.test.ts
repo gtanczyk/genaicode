@@ -41,6 +41,12 @@ describe('claude driver', () => {
     expect(claudeArgs({ prompt: '-x', cwd: '.' }).slice(-2)).toEqual(['--', '-x']);
   });
 
+  it('appends instructions to the system prompt, apart from the prompt and on resume too', () => {
+    const args = claudeArgs({ prompt: 'fix it', cwd: '.', resume: 's1', instructions: 'Use the pack tools.' });
+    expect(args.slice(-5)).toEqual(['--resume', 's1', '--append-system-prompt', 'Use the pack tools.', 'fix it']);
+    expect(claudeArgs({ prompt: 'fix it', cwd: '.' })).not.toContain('--append-system-prompt');
+  });
+
   it('passes claude settings once, merged with the sandbox ones', () => {
     const settings = { disableAllHooks: true };
     const plain = claudeArgs({ prompt: 'hi', cwd: '.' }, { settings });
@@ -219,6 +225,10 @@ describe('codex driver', () => {
       'read-only',
       'go',
     ]);
+    expect(codexArgs({ prompt: 'go', cwd: '.', instructions: 'Say "hi".\nThen stop.' })).toEqual(
+      expect.arrayContaining(['-c', 'developer_instructions="Say \\"hi\\".\\nThen stop."']),
+    );
+    expect(codexArgs({ prompt: 'go', cwd: '.', instructions: 'x' }).at(-1)).toBe('go');
     expect(codexArgs({ prompt: 'go', cwd: '.' }, { config: { 'features.shell_tool': false, x: 'y' } })).toEqual([
       'exec',
       '--json',
