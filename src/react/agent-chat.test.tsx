@@ -935,7 +935,9 @@ describe('AgentChat', () => {
     expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
     turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
     render({ state, foldSteps: true });
-    expect(shown()[0]).toBe('The page opened.');
+    // A reply after the status leaves the status and its plan in view.
+    expect(shown().slice(0, 2)).toEqual(['Running the browser check', 'Open the page in progress']);
+    expect(shown()[2]).toBe('The page opened.');
     expect(active().querySelector(':scope > ol')).not.toBeNull();
     turn.entries.push({ kind: 'progress', message: 'Finishing', plan: [] });
     render({ state, foldSteps: true });

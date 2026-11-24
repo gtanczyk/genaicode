@@ -322,6 +322,11 @@
   margin: 0;
   padding-inline-start: 1.5em;
 }
+/* A commit hash or path in a status must not widen a narrow chat. */
+.gc-progress,
+.gc-progress-plan {
+  overflow-wrap: anywhere;
+}
 .gc-progress-plan li[aria-current='step'] {
   font-weight: 600;
 }

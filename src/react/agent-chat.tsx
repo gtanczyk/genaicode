@@ -869,7 +869,8 @@ function Folded({
   const { entries } = turn;
   const lastText = entries.findLastIndex((item) => item.kind === 'text');
   const answer = turn.result ? lastText : -1;
-  const update = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'progress' || item.kind === 'text');
+  // The latest status stays in view beside the latest reply, also when the reply comes after it.
+  const update = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'progress');
   const plan = turn.result
     ? undefined
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
