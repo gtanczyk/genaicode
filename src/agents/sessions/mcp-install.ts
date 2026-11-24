@@ -161,18 +161,40 @@ export async function mcpInstallStatus(
   };
 }
 
+/**
+ * How to start `command`: as it is, or through the shell where it is a Windows `.cmd` or `.bat`
+ * shim (an agent installed with npm), which cannot be started directly. Each argument is quoted
+ * for the shell; one that quoting would not keep whole is refused.
+ */
+export function shimInvocation(
+  command: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[]; shell: boolean } {
+  if (platform !== 'win32' || !/\.(cmd|bat)$/i.test(command)) return { command, args: [...args], shell: false };
+  const unsafe = [command, ...args].find((part) => /["%\r\n]/.test(part));
+  if (unsafe !== undefined) throw new Error(`Cannot pass ${JSON.stringify(unsafe)} to ${command} safely on Windows.`);
+  return { command: `"${command}"`, args: args.map((arg) => `"${arg}"`), shell: true };
+}
+
 function runner(options: McpInstallOptions): (command: string, args: readonly string[]) => Promise<void> {
   if (options.run) return options.run;
   return (command, args) =>
     new Promise((resolve, reject) => {
-      execFile(command, [...args], { env: options.env ?? process.env, timeout: 30_000 }, (error, _stdout, stderr) => {
-        if (!error) return resolve();
-        const said = String(stderr).trim().split('\n').pop();
-        // The errno stays: a CLI that is not there reads differently from one that refused.
-        reject(
-          Object.assign(new Error(said || error.message), typeof error.code === 'string' ? { code: error.code } : {}),
-        );
-      });
+      const start = shimInvocation(command, args);
+      execFile(
+        start.command,
+        start.args,
+        { env: options.env ?? process.env, timeout: 30_000, shell: start.shell },
+        (error, _stdout, stderr) => {
+          if (!error) return resolve();
+          const said = String(stderr).trim().split('\n').pop();
+          // The errno stays: a CLI that is not there reads differently from one that refused.
+          reject(
+            Object.assign(new Error(said || error.message), typeof error.code === 'string' ? { code: error.code } : {}),
+          );
+        },
+      );
     });
 }
 

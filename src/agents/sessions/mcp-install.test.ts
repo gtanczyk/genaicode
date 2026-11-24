@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { installMcp, mcpConfigFile, mcpInstallStatus, uninstallMcp } from './mcp-install.js';
+import { installMcp, mcpConfigFile, mcpInstallStatus, shimInvocation, uninstallMcp } from './mcp-install.js';
 
 const root = mkdtempSync(join(tmpdir(), 'genaicode-mcp-install-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -12,7 +12,8 @@ const home = (name: string) => {
   return { HOME: dir };
 };
 const server = { command: '/usr/bin/node', args: ['/opt/genaicode/cli.js', 'sessions', 'mcp'] };
-const json = (file: string) => JSON.parse(readFileSync(file, 'utf8')) as { theme?: string; mcpServers: Record<string, Record<string, unknown>> };
+const json = (file: string) =>
+  JSON.parse(readFileSync(file, 'utf8')) as { theme?: string; mcpServers: Record<string, Record<string, unknown>> };
 
 describe('installMcp', () => {
   it('adds the server beside the ones declared, and takes only its own out', async () => {
@@ -103,5 +104,26 @@ describe('installMcp', () => {
     expect(calls).toEqual([['codex', 'mcp', 'add', 'genaicode', '--', server.command, ...server.args]]);
     expect(await uninstallMcp('codex', { env, server, run })).toBe(true);
     expect(await mcpInstallStatus('codex', { env, server })).toMatchObject({ installed: false });
+  });
+});
+
+describe('shimInvocation', () => {
+  it('starts a program as it is', () => {
+    expect(shimInvocation('/bin/claude', ['mcp', 'add'], 'linux')).toEqual({
+      command: '/bin/claude',
+      args: ['mcp', 'add'],
+      shell: false,
+    });
+    expect(shimInvocation('C:\\bin\\codex.exe', ['mcp'], 'win32').shell).toBe(false);
+  });
+
+  it('starts a Windows shim through the shell, each argument quoted', () => {
+    expect(shimInvocation('C:\\npm\\codex.cmd', ['mcp', 'add', 'C:\\Program Files\\node.exe'], 'win32')).toEqual({
+      command: '"C:\\npm\\codex.cmd"',
+      args: ['"mcp"', '"add"', '"C:\\Program Files\\node.exe"'],
+      shell: true,
+    });
+    expect(() => shimInvocation('C:\\npm\\codex.cmd', ['%PATH%'], 'win32')).toThrow(/safely/);
+    expect(() => shimInvocation('C:\\npm\\codex.cmd', ['a" & del'], 'win32')).toThrow(/safely/);
   });
 });
