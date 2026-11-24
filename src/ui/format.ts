@@ -17,7 +17,8 @@ export {
 /** Status line: agent, model, session, usage. */
 export function statusParts(state: SessionState): string[] {
   const parts = [state.agent];
-  const model = state.model ?? state.reportedModel;
+  // An empty setting (`--model=`) is no setting.
+  const model = state.model || state.reportedModel;
   if (model) parts.push(model);
   if (state.effort) parts.push(`effort ${state.effort}`);
   if (state.mode === 'plan') parts.push('plan');

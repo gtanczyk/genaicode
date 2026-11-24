@@ -1468,7 +1468,7 @@ function failedRun(message: string): AgentRun {
 }
 
 /** Routing settings that pick a model per request (Copilot `auto`, Cursor `Auto`, Gemini `auto-gemini-3`), not model ids. */
-const ROUTING_ALIAS = /^auto(?:-gemini-[\w.]+)?$/i;
+const ROUTING_ALIAS = /^auto(?:-gemini-\d+(?:\.\d+)*)?$/i;
 
 /** The reply still streaming: the last entry, or the last one before progress reports. -1 for none. */
 function openText(entries: SessionEntry[]): number {

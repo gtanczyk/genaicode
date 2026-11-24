@@ -162,6 +162,9 @@ describe('createAgentSession', () => {
         emit({ type: 'session', sessionId: 's-1', model: 'auto-complete-v1' });
       },
       async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'auto-gemini-ocr' });
+      },
+      async (_task, emit) => {
         emit({ type: 'session', sessionId: 's-1', model: 'gemini-3-pro' });
         // Several models answered: no single name.
         emit({ type: 'session', sessionId: 's-1', model: undefined });
@@ -178,6 +181,7 @@ describe('createAgentSession', () => {
       ['two', undefined],
       ['three', 'gemini-3-pro'],
       ['three-b', 'auto-complete-v1'],
+      ['three-c', 'auto-gemini-ocr'],
       ['four', undefined],
       ['five', 'gemini-3-pro'],
     ] as const) {
