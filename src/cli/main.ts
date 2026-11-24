@@ -149,6 +149,8 @@ export interface CliEnvironment {
   updater?: Partial<UpdateDeps>;
   /** How often `sessions --watch` looks again, in milliseconds. Default: 3 seconds. */
   watchEveryMs?: number;
+  /** What `--cloud` adds to the local stores. Default: GitHub (`gh`) and Codex Cloud (`codex`). */
+  cloudSources?: readonly SessionSource[];
   /** Shows a desktop notification (`notify test`). Default: `sendNotice()`. */
   notify?(notice: Notice): boolean;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
@@ -1050,7 +1052,7 @@ async function serveSessions(
 ): Promise<number> {
   const sources = [
     ...agentSessionSources(agents.filter((agent) => command.agent === undefined || agent.name === command.agent)),
-    ...(command.cloud ? cloudSources(cli.env) : []),
+    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)) : []),
   ];
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
@@ -1770,7 +1772,7 @@ async function showSessions(
   const picked = (name: string) => command.agent === undefined || name === command.agent;
   const sources = [
     ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
-    ...(command.cloud ? cloudSources(cli.env).filter((source) => picked(source.name)) : []),
+    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
   ];
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
