@@ -8,6 +8,7 @@ import { cliAgent } from './cli-agent.js';
 import { describeFailover, shouldFailOver, withFallback } from './failover.js';
 import { markQuestionChannelServer } from './ask-user.js';
 import { markTurnProgressServer } from './progress.js';
+import { withSessionChannels } from './session-channels.js';
 import { createAppAgent } from '../app-agent/app-agent.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -166,7 +167,8 @@ describe('withFallback', () => {
     };
     const cases = [
       { agent: backup('remote', { mcp: true, remote: true }), servers: [own, progress, questions], gets: [own] },
-      { agent: backup('plain', {}), servers: [progress, questions], gets: undefined },
+      { agent: backup('plain', {}), servers: withSessionChannels(undefined, [progress, questions]), gets: undefined },
+      { agent: backup('plain', {}), servers: withSessionChannels([], [progress]), gets: [] },
       { agent: backup('local', { mcp: true }), servers: [own, progress], gets: [own, progress] },
       { agent: backup('remote', { mcp: true, remote: true }), servers: [], gets: [] },
     ];

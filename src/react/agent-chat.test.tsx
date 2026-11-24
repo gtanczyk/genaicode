@@ -967,6 +967,30 @@ describe('AgentChat', () => {
     expect(active().lastElementChild).toBe(done);
   });
 
+  it('keeps a reply streaming when progress lands after it, and the same element as the answer', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'text', text: 'Writing the fix', streaming: true },
+      { kind: 'progress', message: 'Running tests' },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    render({ state, foldSteps: true });
+    const live = Array.from(active().children).find((child) => child.textContent === 'Writing the fix');
+    expect(live).toBeDefined();
+    expect(active().querySelector('.gc-fold-body')?.textContent ?? '').not.toContain('Writing the fix');
+
+    turn.entries = [
+      turn.entries[0]!,
+      { kind: 'text', text: 'Writing the fix', streaming: false },
+      { kind: 'progress', message: 'Running tests' },
+    ];
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();

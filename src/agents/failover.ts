@@ -1,6 +1,6 @@
 import { approximateSize, EventQueue } from './event-queue.js';
 import { addUsage, tokenCount } from './usage.js';
-import { isSessionChannel } from './session-channels.js';
+import { callerGaveServers, isSessionChannel } from './session-channels.js';
 import type {
   AgentBudget,
   AgentEvent,
@@ -46,7 +46,7 @@ interface Describable {
 /**
  * The session adds its channels (progress, `ask_user`) by the first agent's capabilities: a backup
  * that is remote or has no MCP gets none of them. Only the channels go: other servers stay, and a
- * list that held nothing else is left out, as it was before the session added to it.
+ * list that held nothing else goes back to what the caller gave: `[]`, or no list at all.
  */
 function withoutChannels(agent: CodingAgent, task: AgentTask): AgentTask {
   const servers = task.mcpServers;
@@ -54,7 +54,7 @@ function withoutChannels(agent: CodingAgent, task: AgentTask): AgentTask {
   const kept = servers.filter((server) => !isSessionChannel(server));
   const rest = { ...task };
   delete rest.mcpServers;
-  return kept.length ? { ...rest, mcpServers: kept } : rest;
+  return kept.length || callerGaveServers(servers) ? { ...rest, mcpServers: kept } : rest;
 }
 
 /**

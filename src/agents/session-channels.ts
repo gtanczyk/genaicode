@@ -13,3 +13,15 @@ export function isSessionChannel(server: McpServer): boolean {
   const marks = server as Record<symbol, unknown>;
   return Boolean(marks[PROGRESS_CHANNEL] || marks[QUESTION_CHANNEL]);
 }
+
+const CALLER_GAVE = Symbol.for('genaicode.callerGaveServers');
+
+/** The caller's `servers` and the session's `channels` in one list that remembers whether the caller gave one. */
+export function withSessionChannels(servers: readonly McpServer[] | undefined, channels: readonly McpServer[]) {
+  return Object.defineProperty([...(servers ?? []), ...channels], CALLER_GAVE, { value: servers !== undefined });
+}
+
+/** Whether a list with session channels started as the caller's own (even `[]`); unknown lists count as given. */
+export function callerGaveServers(servers: readonly McpServer[]): boolean {
+  return (servers as unknown as Record<symbol, unknown>)[CALLER_GAVE] !== false;
+}

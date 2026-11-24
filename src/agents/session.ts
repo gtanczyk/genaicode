@@ -6,6 +6,7 @@ import { artifactLines, HANDOFF_DIR, handoffPreamble, writeHandoff } from './han
 import { PUBLISH_ARTIFACT_TOOL, type ArtifactStore } from './artifacts.js';
 import { markQuestionChannelServer } from './ask-user.js';
 import { markTurnProgressServer, PROGRESS_SERVER_NAME, type ProgressChannel, type ProgressReport } from './progress.js';
+import { withSessionChannels } from './session-channels.js';
 import { OPEN_PROJECT_TOOL } from './sessions/workspace.js';
 import { shownAnswers } from './live-agent.js';
 import type {
@@ -921,7 +922,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
       current = turnAgent.run({
         ...options.task,
-        ...(extraServers.length ? { mcpServers: [...baseServers, ...extraServers] } : {}),
+        ...(extraServers.length ? { mcpServers: withSessionChannels(options.task?.mcpServers, extraServers) } : {}),
         ...(budget ? { budget } : {}),
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
@@ -969,7 +970,14 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       } catch (error) {
         addEntry(turnId, { kind: 'error', message: error instanceof Error ? error.message : String(error) });
       }
-      const result = await current.result.finally(() => progressScope?.close());
+      const result = await current.result.finally(() => {
+        // A host channel that fails to close must not keep the turn running.
+        try {
+          void Promise.resolve(progressScope?.close()).catch(() => {});
+        } catch {
+          // Same.
+        }
+      });
       const noteTurnWas = noteTurn?.id === turnId;
       if (noteTurnWas) noteTurn = undefined;
       denyPending();

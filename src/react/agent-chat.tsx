@@ -874,6 +874,9 @@ function Folded({
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
+    // A reply still streaming stays out of the steps when a progress report lands after it: it keeps
+    // its place in this list, and its state, until it ends as the answer.
+    (!turn.result && item.kind === 'text' && item.streaming) ||
     item.kind === 'error' ||
     item.kind === 'failover' ||
     item.kind === 'artifact' ||

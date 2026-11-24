@@ -176,6 +176,28 @@ describe('createAgentSession', () => {
     session.close();
   });
 
+  it('ends the turn and runs the queue when a host progress channel fails to close', async () => {
+    const channel = {
+      openTurn(_report: unknown, _signal: AbortSignal, name = 'genaicode_progress') {
+        return {
+          mcpServer: { name, url: 'http://127.0.0.1:1/mcp' },
+          close() {
+            throw new Error('close failed');
+          },
+        };
+      },
+    };
+    const { agent, tasks } = fakeAgent([async () => {}, async () => {}], { mcp: true, resume: true });
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    session.send('queued');
+    await vi.waitFor(() => expect(tasks).toHaveLength(2));
+    await session.idle();
+    expect(session.get().status).toBe('idle');
+    expect(session.get().turns.map((turn) => turn.result?.ok)).toEqual([true, true]);
+    session.close();
+  });
+
   it('only attaches the loopback progress tool to local agents with MCP support', async () => {
     const channel = await startProgressChannel();
     try {
