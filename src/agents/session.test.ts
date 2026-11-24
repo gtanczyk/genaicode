@@ -233,6 +233,22 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBeUndefined();
   });
 
+  it('treats an empty model setting as the default, so clearing it keeps the report', async () => {
+    const { agent, tasks } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w', model: '' });
+    expect(session.get().model).toBeUndefined();
+    session.send('first');
+    await session.idle();
+    expect(tasks[0]!.model).toBeUndefined();
+    session.setModel(undefined);
+    session.setModel('');
+    expect(session.get().reportedModel).toBe('model-a');
+  });
+
   it('forgets the model of a non-resuming agent when its next turn starts a new session', async () => {
     const report = deferred();
     const { agent } = fakeAgent(

@@ -310,7 +310,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let state: SessionState = {
     agent: agent.name,
     cwd: options.cwd,
-    model: options.model,
+    // An empty setting (`--model=`) is the agent's default, as no setting is.
+    model: options.model || undefined,
     effort: options.effort,
     ...(options.mode !== undefined ? { mode: options.mode } : {}),
     sessionId: options.resume,
@@ -1261,7 +1262,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       fallback = agents ?? [];
       set({ fallback: fallback.length ? fallback.map((candidate) => candidate.name) : undefined });
     },
-    setModel(model) {
+    setModel(given) {
+      const model = given || undefined;
       // What the agent reported ran under the old setting.
       if (model !== state.model) set({ model, reportedModel: undefined });
     },
