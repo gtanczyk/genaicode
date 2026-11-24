@@ -106,6 +106,54 @@ describe('copilot driver', () => {
     });
   });
 
+  it('names no selected model when the first request fails before any reply', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'gpt-x' }),
+      envelope('session.error', { message: 'quota exceeded' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([{ type: 'session', sessionId: 's-1' }]);
+  });
+
+  it('names no model Auto picked when the request fails before any reply', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
+      envelope('session.auto_mode_resolved', { chosenModel: 'claude-sonnet-4.6' }),
+      envelope('session.error', { message: 'quota exceeded' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([{ type: 'session', sessionId: 's-1' }]);
+  });
+
+  it('keeps the model a reply names when that reply then calls a tool', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
+      envelope('session.auto_mode_resolved', { chosenModel: 'model-a' }),
+      envelope('assistant.message', { messageId: 'm1', content: 'Reading.', model: 'model-b' }),
+      envelope('tool.execution_start', { toolCallId: 't1', toolName: 'view', arguments: { path: 'a.ts' } }),
+    ]);
+    expect(events.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 's-1',
+      model: 'model-b',
+    });
+  });
+
+  it('reports the model Auto picks and the one a reply names', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
+      envelope('session.auto_mode_resolved', { chosenModel: 'claude-sonnet-4.6' }),
+      envelope('assistant.message', { messageId: 'm1', content: 'Hi', model: 'claude-sonnet-4.6' }),
+      envelope('session.model_change', { previousModel: 'claude-sonnet-4.6', newModel: 'gpt-5.4' }),
+      envelope('assistant.message', { messageId: 'm2', content: 'Again' }),
+      envelope('assistant.message', { messageId: 'm3', content: 'More', model: 'gpt-x' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([
+      { type: 'session', sessionId: 's-1' },
+      { type: 'session', sessionId: 's-1', model: 'claude-sonnet-4.6' },
+      { type: 'session', sessionId: 's-1', model: 'gpt-5.4' },
+      { type: 'session', sessionId: 's-1', model: 'gpt-x' },
+    ]);
+  });
+
   it('decodes the JSONL session events', () => {
     const parser = createCopilotParser();
     const events = feed(parser, [
@@ -149,6 +197,8 @@ describe('copilot driver', () => {
       },
     ]);
     expect(events).toEqual([
+      // The selected model is named once the agent starts replying.
+      { type: 'session', sessionId: 's-1' },
       { type: 'session', sessionId: 's-1', model: 'gpt-x' },
       { type: 'text-delta', text: 'Editing ' },
       { type: 'message', text: 'Editing a.py' },

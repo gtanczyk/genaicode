@@ -147,11 +147,15 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
   const sessionId = stringField(created, 'sessionId');
   ids.session = sessionId;
   if (!sessionId) throw new Error('Antigravity did not return a session id.');
-  const model = task.model ?? stringField(isObject(created) ? created.models : undefined, 'currentModelId');
-  session.emit({ type: 'session', sessionId, ...(model ? { model } : {}) });
+  const current = stringField(isObject(created) ? created.models : undefined, 'currentModelId');
+  // A requested model is reported once Antigravity takes it, not before.
+  session.emit({ type: 'session', sessionId, ...(current && !task.model ? { model: current } : {}) });
 
   await rpc.request('session/set_mode', { sessionId, modeId: options.mode ?? 'accept-edits' }, timeout);
-  if (task.model) await rpc.request('session/set_model', { sessionId, modelId: task.model }, timeout);
+  if (task.model) {
+    await rpc.request('session/set_model', { sessionId, modelId: task.model }, timeout);
+    session.emit({ type: 'session', sessionId, model: task.model });
+  }
   if (task.effort) {
     await rpc.request(
       'session/set_config_option',
