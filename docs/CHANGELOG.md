@@ -16,6 +16,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Fixed
 
 - Desktop chat links open in the default application on a regular click and show an error if opening fails. Session and transcript commands are under **File → Session** (#334)
+- Long conversations stay responsive in the chat: folded steps and tool calls render only when opened, so a sent message shows up at once and typing does not lag (#336)
 
 ## 3.2.0 — 2026-11-23
 

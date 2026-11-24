@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 
 // A small, safe Markdown subset for agent replies: paragraphs, headings, lists, task lists,
 // quotes, tables, fenced code, inline code, bold, italic, strikethrough, links and images.
@@ -425,15 +425,23 @@ function task(text: string): { done: boolean; text: string } | undefined {
 
 const isRule = (line: string) => /^(?:-{3,}|\*{3,}|_{3,})$/.test(line.replace(/[ \t]/g, ''));
 
-/** Render `text` as Markdown. `streaming` adds a blinking caret after it. */
-export function Markdown({ text, streaming, className, imageUrl, remoteImages, fileBase, fileRoot }: MarkdownProps) {
+/** Render `text` as Markdown. `streaming` adds a blinking caret after it. Re-renders only when a prop changes. */
+export const Markdown = memo(function Markdown({
+  text,
+  streaming,
+  className,
+  imageUrl,
+  remoteImages,
+  fileBase,
+  fileRoot,
+}: MarkdownProps) {
   const options: InlineOptions = { imageUrl, remoteImages, fileBase, fileRoot };
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
       {blocks(text.trimEnd().split('\n'), options)}
     </div>
   );
-}
+});
 
 // Deeper quotes render as plain text, so a reply full of '>' cannot exhaust the stack.
 const MAX_QUOTE_DEPTH = 8;

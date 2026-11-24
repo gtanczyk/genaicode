@@ -83,6 +83,19 @@ afterEach(() => {
   container.remove();
 });
 
+/** Opens every closed `<details>` under `root` (folds and tool steps build their body only when opened). */
+function openDetails(selector = 'details') {
+  for (let pass = 0; pass < 3; pass++) {
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>(selector))) {
+      if (details.open) continue;
+      act(() => {
+        details.open = true;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    }
+  }
+}
+
 function render(props: Partial<AgentChatProps> = {}) {
   const all: AgentChatProps = { state: fixture(), onSend: vi.fn(), onStop: vi.fn(), ...props };
   act(() => root.render(<AgentChat {...all} />));
@@ -347,6 +360,7 @@ describe('AgentChat', () => {
         ],
       }),
     });
+    openDetails();
     const steps = document.querySelectorAll('.gc-tool');
     expect(steps[0].querySelector('.gc-diff-stat')?.textContent).toBe('+2−1');
     expect(
@@ -380,6 +394,7 @@ describe('AgentChat', () => {
     render({ state });
     expect(document.querySelector('.gc-open-file')).toBeNull();
     render({ state, onOpenFile });
+    openDetails();
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.gc-open-file'));
     expect(buttons.map((button) => button.textContent)).toEqual(['Open /w/a.ts', '/w/b.ts']);
     act(() => buttons[1].click());
@@ -892,6 +907,9 @@ describe('AgentChat', () => {
     const [done, live] = $$('.gc-turn');
     // Two tools and an edit fold; the answer stays out.
     expect(done!.querySelector('.gc-fold > summary')!.textContent).toBe('2 steps · errors');
+    // Closed, the fold builds nothing of what it hides.
+    expect(done!.querySelector('.gc-fold-body')).toBeNull();
+    openDetails('.gc-fold');
     expect(done!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
     expect(done!.querySelector('.gc-fold-body .gc-md')).toBeNull();
     expect(done!.querySelector('.gc-steps > .gc-md')!.textContent).toContain('Fixed two things');
@@ -910,6 +928,7 @@ describe('AgentChat', () => {
     const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
     // The tool and edit fold. The last update stays visible as the tool runs.
     expect(summary.textContent).toBe('1 step · costs');
+    openDetails('.gc-fold');
     expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(2);
     expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')?.textContent).toBe('Looking');
   });
@@ -932,6 +951,7 @@ describe('AgentChat', () => {
     expect(active().firstElementChild?.classList.contains('gc-fold')).toBe(true);
     expect(shown()[0]).toBe('Running the browser check');
     expect(active().querySelector(':scope > ol [aria-current="step"]')?.textContent).toContain('Open the page');
+    openDetails('.gc-fold');
     expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
     turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
     render({ state, foldSteps: true });
@@ -1001,6 +1021,69 @@ describe('AgentChat', () => {
     turn.result = state.turns[0]!.result;
     render({ state, foldSteps: true });
     expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);
+  });
+
+  it('keeps a tool opened inside a fold open when the fold closes and opens again', () => {
+    render({ foldSteps: true });
+    const fold = $$('.gc-turn')[0]!.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    openDetails('.gc-fold');
+    const tool = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    act(() => {
+      tool.open = true;
+      tool.dispatchEvent(new Event('toggle'));
+    });
+    expect(tool.querySelector('pre')).not.toBeNull();
+    for (const open of [false, true])
+      act(() => {
+        fold.open = open;
+        fold.dispatchEvent(new Event('toggle'));
+      });
+    const again = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    expect(again).toBe(tool);
+    expect(again.open).toBe(true);
+    expect(again.querySelector('pre')).not.toBeNull();
+  });
+
+  it('does not re-render steps once their fold closes again, even with new host callbacks', () => {
+    const formatToolName = vi.fn((name: string) => name);
+    const state = fixture();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    openDetails();
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>('details')).reverse())
+      act(() => {
+        details.open = false;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    formatToolName.mockClear();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    type('x');
+    expect(formatToolName).not.toHaveBeenCalled();
+    // Reopened, it shows the latest props again.
+    openDetails('.gc-fold');
+    expect(formatToolName).toHaveBeenCalledWith('Bash');
+  });
+
+  it('builds a step the user opened before hydration', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const { hydrateRoot } = await import('react-dom/client');
+    // Finished turns only: a running turn's elapsed-time label differs between server and client.
+    const props: AgentChatProps = {
+      state: fixture({ status: 'idle', turns: fixture().turns.slice(0, 1) }),
+      foldSteps: true,
+      onSend: () => {},
+    };
+    const host = document.createElement('div');
+    host.innerHTML = renderToString(<AgentChat {...props} />);
+    document.body.append(host);
+    const fold = host.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    fold.open = true;
+    let hydrated!: ReturnType<typeof hydrateRoot>;
+    act(() => {
+      hydrated = hydrateRoot(host, <AgentChat {...props} />);
+    });
+    expect(fold.querySelector('.gc-fold-body')).not.toBeNull();
+    act(() => hydrated.unmount());
+    host.remove();
   });
 
   it('labels the send button by what a prompt will do while running', () => {
