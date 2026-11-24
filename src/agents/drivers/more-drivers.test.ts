@@ -128,6 +128,16 @@ describe('gemini driver', () => {
         ]),
       ),
     ).toBeUndefined();
+    // Older CLI: a tool ran, then the turn limit failed the run; aggregate stats only.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-9', model: 'gemini-x' },
+          { type: 'tool_use', tool_name: 'read_file', tool_id: 't1', parameters: {} },
+          { type: 'result', status: 'error', error: { message: 'turn limit' }, stats: { input_tokens: 5 } },
+        ]),
+      ),
+    ).toBe('gemini-x');
     // A hook stopped the turn before any model ran: per-model stats, none used.
     expect(
       lastModel(

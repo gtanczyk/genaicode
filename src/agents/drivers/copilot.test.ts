@@ -106,6 +106,14 @@ describe('copilot driver', () => {
     });
   });
 
+  it('names no selected model when the first request fails before any reply', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'gpt-x' }),
+      envelope('session.error', { message: 'quota exceeded' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([{ type: 'session', sessionId: 's-1' }]);
+  });
+
   it('names no model Auto picked when the request fails before any reply', () => {
     const events = feed(createCopilotParser(), [
       envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
@@ -189,6 +197,8 @@ describe('copilot driver', () => {
       },
     ]);
     expect(events).toEqual([
+      // The selected model is named once the agent starts replying.
+      { type: 'session', sessionId: 's-1' },
       { type: 'session', sessionId: 's-1', model: 'gpt-x' },
       { type: 'text-delta', text: 'Editing ' },
       { type: 'message', text: 'Editing a.py' },

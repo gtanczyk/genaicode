@@ -212,9 +212,11 @@ export function createCopilotParser(): AgentOutputParser {
       switch (value.type) {
         case 'session.start':
         case 'session.resume': {
-          // `auto` is a setting, not a model: the one it picks is reported when it does.
+          // The selected model is a candidate like Auto's pick: named once the agent replies or acts
+          // (`auto` is a setting, never a model).
           const selected = stringField(data, 'selectedModel');
-          events.push(...session(stringField(data, 'sessionId'), selected === 'auto' ? undefined : selected));
+          if (selected && selected !== 'auto') candidate = selected;
+          events.push(...session(stringField(data, 'sessionId')));
           break;
         }
         case 'session.auto_mode_resolved':

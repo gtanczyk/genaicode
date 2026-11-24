@@ -377,12 +377,12 @@ export function createGeminiParser(): AgentOutputParser {
             : [];
           // One model produced the turn: that one. Several (a fallback, a routing classifier, a helper
           // model for a tool), none, or a turn that failed before answering: no single name is right.
-          // Without per-model stats (older CLIs), a successful turn ran the configured model.
+          // Without per-model stats (older CLIs), a turn that succeeded or answered ran the configured model.
           const answeredBy = perModel
             ? (outcome.ok || answered) && used.length === 1
               ? used[0]
               : undefined
-            : outcome.ok
+            : outcome.ok || answered
               ? initModel
               : undefined;
           if (sessionId) events.push({ type: 'session', sessionId, model: answeredBy });
