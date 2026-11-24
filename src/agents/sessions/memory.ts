@@ -32,6 +32,8 @@ type Place = Pick<AgentMemoryFile, 'agent' | 'scope' | 'kind'> & {
   /** A file, or a folder whose files with one of `extensions` count (one level; notes also one below). */
   path: string;
   extensions?: readonly string[];
+  /** The directory the agent owns here: nothing between it and a file may be a link. */
+  base: string;
 };
 
 /** The nearest directory at or above `dir` that holds `.git`: agents key a project by its repository. */
@@ -54,15 +56,29 @@ function places(cwd: string, roots: readonly string[], env: NodeJS.ProcessEnv): 
   const claudeHome = env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude');
   const codexHome = env.CODEX_HOME ?? path.join(home, '.codex');
   const project = (agent: Place['agent'], ...parts: string[]): Place[] =>
-    roots.map((root) => ({ agent, scope: 'project', kind: 'instructions', path: path.join(root, ...parts) }));
+    roots.map((root) => ({
+      agent,
+      scope: 'project',
+      kind: 'instructions',
+      path: path.join(root, ...parts),
+      base: root,
+    }));
   const md = ['.md'];
+  const geminiHome = path.join(env.GEMINI_CLI_HOME ?? home, '.gemini');
+  const copilotHome = env.COPILOT_HOME ?? path.join(home, '.copilot');
   return [
     ...project('shared', 'AGENTS.md'),
     ...project('claude', 'CLAUDE.md'),
     ...project('claude', '.claude', 'CLAUDE.md'),
     ...project('claude', 'CLAUDE.local.md'),
     ...project('claude', '.claude', 'rules').map((place) => ({ ...place, extensions: md })),
-    { agent: 'claude', scope: 'user', kind: 'instructions', path: path.join(claudeHome, 'CLAUDE.md') },
+    {
+      agent: 'claude',
+      scope: 'user',
+      kind: 'instructions',
+      path: path.join(claudeHome, 'CLAUDE.md'),
+      base: claudeHome,
+    },
     // Claude Code's own notes for a project: a folder named after the project's path.
     ...[...new Set([...roots, cwd])].map(
       (root): Place => ({
@@ -71,23 +87,39 @@ function places(cwd: string, roots: readonly string[], env: NodeJS.ProcessEnv): 
         kind: 'notes',
         path: path.join(claudeHome, 'projects', root.replace(/[^A-Za-z0-9]/g, '-'), 'memory'),
         extensions: md,
+        base: claudeHome,
       }),
     ),
-    { agent: 'codex', scope: 'user', kind: 'instructions', path: path.join(codexHome, 'AGENTS.md') },
-    { agent: 'codex', scope: 'user', kind: 'notes', path: path.join(codexHome, 'memories'), extensions: md },
+    {
+      agent: 'codex',
+      scope: 'user',
+      kind: 'instructions',
+      path: path.join(codexHome, 'AGENTS.md'),
+      base: codexHome,
+    },
+    {
+      agent: 'codex',
+      scope: 'user',
+      kind: 'notes',
+      path: path.join(codexHome, 'memories'),
+      extensions: md,
+      base: codexHome,
+    },
     ...project('gemini', 'GEMINI.md'),
     {
       agent: 'gemini',
       scope: 'user',
       kind: 'instructions',
-      path: path.join(env.GEMINI_CLI_HOME ?? home, '.gemini', 'GEMINI.md'),
+      path: path.join(geminiHome, 'GEMINI.md'),
+      base: geminiHome,
     },
     ...project('copilot', '.github', 'copilot-instructions.md'),
     {
       agent: 'copilot',
       scope: 'user',
       kind: 'instructions',
-      path: path.join(env.COPILOT_HOME ?? path.join(home, '.copilot'), 'copilot-instructions.md'),
+      path: path.join(copilotHome, 'copilot-instructions.md'),
+      base: copilotHome,
     },
     ...project('cursor', '.cursorrules'),
     ...project('cursor', '.cursor', 'rules').map((place) => ({ ...place, extensions: ['.mdc', '.md'] })),
@@ -108,9 +140,21 @@ async function filesIn(dir: string, extensions: readonly string[], depth = 1): P
 }
 
 /**
+ * Whether no directory between `base` and `file` is a link: a linked `.claude/rules` or notes
+ * folder would otherwise name files from anywhere on the machine as an agent's memory.
+ */
+async function insideBase(base: string, file: string, real: Map<string, Promise<string | undefined>>) {
+  const resolved = (target: string) => fs.realpath(target).catch(() => undefined);
+  if (!real.has(base)) real.set(base, resolved(base));
+  const [realBase, realFile] = await Promise.all([real.get(base), resolved(file)]);
+  return realBase !== undefined && realFile === path.join(realBase, path.relative(base, file));
+}
+
+/**
  * The instruction and note files the agents on this machine read for the project in `cwd`
  * (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor rules, Claude Code's own notes and so on), the
- * ones that exist. Nothing is written, and links are not followed.
+ * ones that exist. Nothing is written, and links are not followed: not a linked file, and not a file
+ * under a linked folder.
  */
 export async function agentMemoryFiles(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<AgentMemoryFile[]> {
   const dir = path.resolve(cwd);
@@ -119,12 +163,13 @@ export async function agentMemoryFiles(cwd: string, env: NodeJS.ProcessEnv = pro
   const roots = root && root !== dir ? [dir, root] : [dir];
   const files: AgentMemoryFile[] = [];
   const seen = new Set<string>();
+  const real = new Map<string, Promise<string | undefined>>();
   for (const place of places(dir, roots, env)) {
     const paths = place.extensions ? await filesIn(place.path, place.extensions) : [place.path];
     for (const file of paths) {
       if (seen.has(file)) continue;
       const stat = await fs.lstat(file).catch(() => undefined);
-      if (!stat?.isFile()) continue;
+      if (!stat?.isFile() || !(await insideBase(place.base, file, real))) continue;
       seen.add(file);
       files.push({
         agent: place.agent,

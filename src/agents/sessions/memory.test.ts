@@ -29,6 +29,12 @@ put(join(home, '.claude', 'projects', slug(repo), 'memory', 'notes.txt'), 'not m
 put(join(home, '.codex', 'AGENTS.md'), 'Codex everywhere.');
 put(join(root, 'secret.md'), 'TOP SECRET');
 symlinkSync(join(root, 'secret.md'), join(project, 'CLAUDE.local.md'));
+// A rules folder and a notes folder that are links to somewhere else.
+put(join(root, 'elsewhere', 'private.md'), 'ELSEWHERE');
+mkdirSync(join(project, '.claude'), { recursive: true });
+symlinkSync(join(root, 'elsewhere'), join(project, '.claude', 'rules'));
+mkdirSync(join(home, '.claude', 'projects', slug(project)), { recursive: true });
+symlinkSync(join(root, 'elsewhere'), join(home, '.claude', 'projects', slug(project), 'memory'));
 
 const [list, read] = memoryTools({ env, cwd: project });
 
@@ -49,6 +55,8 @@ describe('agentMemoryFiles', () => {
     ]);
     // A link is not a memory file: what it points at stays unread.
     expect(found.join()).not.toContain('CLAUDE.local.md');
+    // Nor is a file under a linked folder.
+    expect(found.join()).not.toContain('private.md');
   });
 
   it('is empty where nothing is kept', async () => {
@@ -76,6 +84,12 @@ describe('memoryTools', () => {
   it('refuses any other path', async () => {
     await expect(read!.call({ path: join(root, 'secret.md') })).rejects.toThrow(/Not an agent memory file/);
     await expect(read!.call({ path: join(project, 'CLAUDE.local.md') })).rejects.toThrow(/Not an agent memory file/);
+    for (const linked of [
+      join(project, '.claude', 'rules', 'private.md'),
+      join(home, '.claude', 'projects', slug(project), 'memory', 'private.md'),
+    ]) {
+      await expect(read!.call({ path: linked })).rejects.toThrow(/Not an agent memory file/);
+    }
     await expect(read!.call({ path: '/etc/passwd' })).rejects.toThrow(/Not an agent memory file/);
     await expect(list!.call({ project: 'relative/dir' })).rejects.toThrow(/absolute/);
   });
