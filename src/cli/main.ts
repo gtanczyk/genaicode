@@ -1050,11 +1050,7 @@ async function serveSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions-mcp' }>,
 ): Promise<number> {
-  const picked = (name: string) => command.agent === undefined || name === command.agent;
-  const sources = [
-    ...agentSessionSources(agents.filter((agent) => picked(agent.name))),
-    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
-  ];
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
@@ -1071,6 +1067,24 @@ async function serveSessions(
   });
   pipe.off?.('error', gone);
   return EXIT_OK;
+}
+
+/**
+ * The stores `sessions` and `sessions mcp` read: the agents' own, and with `--cloud` what runs
+ * elsewhere (Cursor's API with a key, GitHub and Codex Cloud through their CLIs), `-a` kept.
+ */
+function sessionSourcesFor(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: { agent?: string; cloud?: boolean },
+): SessionSource[] {
+  const cloud: CodingAgent[] = [];
+  if (command.cloud && cli.env.CURSOR_API_KEY) cloud.push(cursorCloud({ apiKey: cli.env.CURSOR_API_KEY }));
+  const picked = (name: string) => command.agent === undefined || name === command.agent;
+  return [
+    ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
+    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
+  ];
 }
 
 /** Cloud sessions the user's own CLIs can list: pull requests that name their session, and Codex Cloud tasks. */
@@ -1767,14 +1781,7 @@ async function showSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions' }>,
 ): Promise<number> {
-  // `--cloud` adds what runs elsewhere: Cursor's API with a key, GitHub and Codex Cloud through their CLIs.
-  const cloud: CodingAgent[] = [];
-  if (command.cloud && cli.env.CURSOR_API_KEY) cloud.push(cursorCloud({ apiKey: cli.env.CURSOR_API_KEY }));
-  const picked = (name: string) => command.agent === undefined || name === command.agent;
-  const sources = [
-    ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
-    ...(command.cloud ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name)) : []),
-  ];
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;

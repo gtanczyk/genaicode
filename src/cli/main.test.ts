@@ -1447,6 +1447,18 @@ describe('genaicode sessions mcp', () => {
     const text = JSON.parse(out()).result.content[0].text;
     expect(text).toContain('/github');
     expect(text).not.toContain('codex-cloud');
+
+    // Cursor Cloud, by its key, is a store here as it is for `sessions --cloud`.
+    const cursor = environment({
+      argv: ['sessions', 'mcp', '--cloud', '-a', 'cursorCloud'],
+      env: { PATH: '', CURSOR_API_KEY: 'key' },
+      agents: [],
+      cloudSources: [],
+      input: Readable.from([]),
+    });
+    expect(await main(cursor.cli)).toBe(EXIT_OK);
+    const without = environment({ argv: ['sessions', 'mcp', '--cloud', '-a', 'cursorCloud'], agents: [] });
+    expect(await main(without.cli)).toBe(EXIT_USAGE);
   });
 });
 
