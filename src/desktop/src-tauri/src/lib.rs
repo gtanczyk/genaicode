@@ -235,47 +235,21 @@ fn dialog_text(message: String) -> String {
 fn open_link(app: &AppHandle, url: &str) {
     #[cfg(target_os = "linux")]
     {
-        // The opener counts `xdg-open` still running after 250 ms as success, so a later failure would
-        // go unseen. Wait for it off the UI thread, and fall back to the opener's other launchers.
+        // The opener counts a launcher still running after 250 ms as success, so a later failure would
+        // go unseen. `open::that` waits for each launcher (xdg-open, gio, ...) to exit, off the UI thread.
         let app = app.clone();
         let url = url.to_string();
         std::thread::spawn(move || {
-            if let Err(first) = run_launcher("xdg-open", &url) {
-                if let Err(error) = app.opener().open_url(&url, None::<&str>) {
-                    let message = format!("Could not open this link:\n{url}\n\n{first}\n{error}");
-                    let handle = app.clone();
-                    let _ = app.run_on_main_thread(move || fail(&handle, message));
-                }
+            if let Err(error) = open::that(&url) {
+                let message = format!("Could not open this link:\n{url}\n\n{error}");
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || fail(&handle, message));
             }
         });
     }
     #[cfg(not(target_os = "linux"))]
     if let Err(error) = app.opener().open_url(url, None::<&str>) {
         fail(app, format!("Could not open this link:\n{url}\n\n{error}"));
-    }
-}
-
-/// Runs `program url` to its end. `Err` says why the link did not open.
-#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
-fn run_launcher(program: &str, url: &str) -> Result<(), String> {
-    match Command::new(program)
-        .arg(url)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-    {
-        Ok(out) if out.status.success() => Ok(()),
-        Ok(out) => {
-            let said = String::from_utf8_lossy(&out.stderr);
-            let said = said.trim();
-            Err(if said.is_empty() {
-                format!("{program} failed ({})", out.status)
-            } else {
-                format!("{program} failed ({}): {said}", out.status)
-            })
-        }
-        Err(error) => Err(format!("{program}: {error}")),
     }
 }
 
@@ -1268,27 +1242,6 @@ pub fn run() {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-
-    #[cfg(unix)]
-    #[test]
-    fn a_launcher_that_fails_late_still_reports_it() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = env::temp_dir().join(format!("genaicode-launcher-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let launcher = dir.join("late-fail");
-        fs::write(
-            &launcher,
-            "#!/bin/sh\nsleep 0.4\necho 'no handler' >&2\nexit 3\n",
-        )
-        .unwrap();
-        fs::set_permissions(&launcher, fs::Permissions::from_mode(0o755)).unwrap();
-        let program = launcher.to_str().unwrap();
-        let error = run_launcher(program, "https://example.com/a%20b").unwrap_err();
-        assert!(error.contains("no handler"), "{error}");
-        assert_eq!(run_launcher("true", "https://example.com"), Ok(()));
-        assert!(run_launcher("genaicode-no-such-launcher", "https://example.com").is_err());
-        fs::remove_dir_all(&dir).unwrap();
-    }
 
     #[test]
     fn dialog_text_keeps_percent_signs_literal_where_gtk_formats_them() {
