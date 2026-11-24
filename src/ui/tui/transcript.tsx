@@ -93,6 +93,10 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
   const rows = (text: string) =>
     text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / Math.max(20, width))), 0);
   switch (entry.kind) {
+    case 'progress':
+      return (
+        rows(entry.message) + (entry.plan ?? []).reduce((sum, item) => sum + rows(`${item.step} · ${item.status}`), 0)
+      );
     case 'text':
       return rows(entry.text);
     case 'tool':
@@ -110,6 +114,17 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
 
 export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; outputLines: number; cwd?: string }) {
   switch (entry.kind) {
+    case 'progress':
+      return (
+        <Box flexDirection="column">
+          <Text>{plainSessionText(entry.message)}</Text>
+          {entry.plan?.map(({ step, status }, i) => (
+            <Text key={i} bold={status === 'in_progress'}>
+              {i + 1}. {plainSessionText(step)} · {status.replace('_', ' ')}
+            </Text>
+          ))}
+        </Box>
+      );
     case 'text':
       return (
         <Box>

@@ -716,6 +716,11 @@ session.send('Now cover it with a test'); // resumes the same agent session
 - `state.turns[]` holds each prompt with its transcript: `text` (streamed, then final),
   `tool` (input, clipped output, error flag), `files`, `approval`, `input` (steered text)
   and `error` entries, plus the turn's `AgentResult`. Usage and cost add up in `state`.
+- To receive plans and status updates from local MCP agents, pass the result of
+  `await startProgressChannel()` as `createAgentSession({ agent, cwd, progress })`.
+  Each `report_progress` call adds a `progress` entry with a `message` and an optional
+  `plan` to the issuing turn. A message alone keeps the previous plan and `plan: []` clears it.
+  Close the channel with `await progress.close()` when the host shuts down.
 - `send()` while a turn runs steers the agent when it supports `steer()`, and otherwise
   queues the prompt; queued prompts run in order. `stop()` aborts the turn and clears the
   queue.

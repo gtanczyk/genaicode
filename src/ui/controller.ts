@@ -172,6 +172,7 @@ export interface ChatOptions {
   artifactChannel?: { store: ArtifactStore; mcpServer?: McpServer };
   /** The running `ask_user` channel (`AgentSessionOptions.questions`), started by the front end. */
   questionChannel?: AgentSessionOptions['questions'];
+  progressChannel?: AgentSessionOptions['progress'];
   /** The running `open_project` channel (`AgentSessionOptions.openProject`), started in `--home` mode. */
   openProjectChannel?: AgentSessionOptions['openProject'];
   /** Per-conversation working directory mode (`ui --home`): starts in neutral home, resolves cwd per conversation. */
@@ -296,6 +297,7 @@ export function createChatController(options: ChatOptions): ChatController {
     transformPrompt: options.transformPrompt,
     ...(options.artifactChannel ? { artifacts: options.artifactChannel } : {}),
     ...(options.questionChannel ? { questions: options.questionChannel } : {}),
+    ...(options.progressChannel ? { progress: options.progressChannel } : {}),
     ...(options.openProjectChannel ? { openProject: options.openProjectChannel } : {}),
     autoApprove: () => (autoApprove ? 'approve' : undefined),
   });

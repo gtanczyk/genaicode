@@ -318,6 +318,23 @@
 }
 
 /* foldSteps: a turn's work in one pill */
+.gc-progress-plan {
+  margin: 0;
+  padding-inline-start: 1.5em;
+}
+/* A commit hash or path in a status must not widen a narrow chat. */
+.gc-progress,
+.gc-progress-plan {
+  overflow-wrap: anywhere;
+}
+.gc-progress-plan li[aria-current='step'] {
+  font-weight: 600;
+}
+.gc-progress-state {
+  margin-inline-start: 0.35em;
+  color: var(--_muted);
+  font-size: 0.85em;
+}
 .gc-fold > summary {
   cursor: pointer;
   width: fit-content;

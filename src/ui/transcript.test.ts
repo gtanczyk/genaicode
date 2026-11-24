@@ -177,6 +177,25 @@ describe('transcript export', () => {
     expect(md).toContain('## Queued prompts\n\n- Now update docs');
   });
 
+  it('heads a progress report as the agent, even right after the prompt', () => {
+    const md = formatChatTranscriptMarkdown({
+      view: baseView({
+        turns: [
+          {
+            id: 1,
+            agent: 'codex',
+            prompt: 'Fix the link',
+            startedAt: Date.parse('2026-11-23T21:00:00.000Z'),
+            entries: [{ kind: 'progress', message: 'Opening the page', plan: [{ step: 'Check', status: 'pending' }] }],
+          },
+        ],
+      }),
+      version: '3.2.0',
+      exportedAt: '2026-11-23T21:05:00.000Z',
+    });
+    expect(md).toMatch(/Fix the link\n\n### codex \(progress\)\n\nOpening the page\n\n- Check \(pending\)/);
+  });
+
   it('builds structured JSON for the active chat', () => {
     const view = baseView({}, [{ id: 1, afterTurn: 0, text: 'Ready', tone: 'info' }]);
     const json = chatTranscriptJson({

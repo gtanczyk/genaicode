@@ -16,6 +16,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
+import type { ProgressStep } from '../agents/progress.js';
 import type { ApprovalDecision, Artifact, QuestionAnswers } from '../agents/types.js';
 import { answerSummary, QuestionCard } from './question-card.js';
 import { describeFailover } from '../agents/failover.js';
@@ -170,8 +171,8 @@ export interface AgentChatProps {
   /** Host lines between turns. */
   notices?: readonly ChatNotice[];
   /**
-   * Fold a turn's work (tools, edits, interim text) into one "N steps" line that opens on
-   * click, leaving the answer, errors, steering input and open approvals in view. Default false.
+   * Collapse tools, edits and earlier updates. Keep the latest status and plan visible during work,
+   * along with the answer, errors, steering input and open approvals. Default false.
    */
   foldSteps?: boolean;
   /** Replaces the default header (agent, model, session, usage). Pass null for no header. */
@@ -888,7 +889,7 @@ function Turn({
   );
 }
 
-/** `foldSteps`: the work in one closed line, then what the user has to see. */
+/** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
 function Folded({
   turn,
   pending,
@@ -903,42 +904,76 @@ function Folded({
   entryProps: (item: SessionEntry) => EntryProps;
 }) {
   const { entries } = turn;
-  // The last text is the answer once the turn ends, or while it is still the newest entry.
-  const lastText = entries.map((item) => item.kind).lastIndexOf('text');
-  const answer = lastText >= 0 && (turn.result || lastText === entries.length - 1) ? lastText : -1;
+  const lastText = entries.findLastIndex((item) => item.kind === 'text');
+  const answer = turn.result ? lastText : -1;
+  // The latest status stays in view beside the latest reply, also when the reply comes after it.
+  const update = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'progress');
+  const plan = turn.result
+    ? undefined
+    : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
+    // The latest reply stays out of the steps while the turn runs, also when a progress report lands
+    // after it: it keeps its place in this list, and its state, until it ends as the answer.
+    i === lastText ||
     item.kind === 'error' ||
     item.kind === 'failover' ||
     item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
-  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => !inView(item, i));
+  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => i !== update && !inView(item, i));
   const tools = steps.filter(([item]) => item.kind === 'tool').length;
   const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
   const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
   const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
   const count = tools || steps.length;
+  // One keyed list in a fixed order, the steps first and then what is in view, oldest first: the
+  // end of the turn moves nothing (a moved artifact frame would reload and lose what was typed in it),
+  // and the latest reply keeps its element and state when it becomes the answer.
+  const fold = steps.length ? (
+    <LazyDetails
+      key="fold"
+      className="gc-fold"
+      summary={
+        <summary>
+          {turn.result ? null : <span className="gc-spin" />}
+          {count} {count === 1 ? 'step' : 'steps'}
+          {now ? <span className="gc-fold-now"> · {now}</span> : null}
+          {failed ? <span className="gc-err"> · errors</span> : null}
+        </summary>
+      }
+      data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
+      Body={FoldBody}
+    />
+  ) : null;
+  const planShown = plan?.kind === 'progress' && plan !== entries[update];
   return (
     <>
-      {steps.length ? (
-        <LazyDetails
-          className="gc-fold"
-          summary={
-            <summary>
-              {turn.result ? null : <span className="gc-spin" />}
-              {count} {count === 1 ? 'step' : 'steps'}
-              {now ? <span className="gc-fold-now"> · {now}</span> : null}
-              {failed ? <span className="gc-err"> · errors</span> : null}
-            </summary>
-          }
-          data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
-          Body={FoldBody}
-        />
-      ) : null}
-      {entries.map((item, i) => (inView(item, i) ? entry(item, i) : null))}
+      {[
+        fold,
+        ...entries.flatMap((item, i) =>
+          i === update
+            ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
+            : inView(item, i)
+              ? [entry(item, i)]
+              : [],
+        ),
+      ]}
     </>
+  );
+}
+
+function ProgressPlan({ steps }: { steps?: ProgressStep[] }) {
+  if (!steps?.length) return null;
+  return (
+    <ol className="gc-progress-plan" aria-label="Plan">
+      {steps.map(({ step, status }, i) => (
+        <li key={i} aria-current={status === 'in_progress' ? 'step' : undefined}>
+          {step} <span className="gc-progress-state">{status.replace('_', ' ')}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -974,6 +1009,13 @@ function Entry({
   const onAnswer = useContext(AnswerQuestion);
   const mdConfig = useContext(MarkdownConfig);
   switch (entry.kind) {
+    case 'progress':
+      return (
+        <div className="gc-progress">
+          <div>{entry.message}</div>
+          <ProgressPlan steps={entry.plan} />
+        </div>
+      );
     case 'text':
       return (
         <Markdown

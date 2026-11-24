@@ -167,7 +167,7 @@ export type McpServer = (
    */
   toolTimeoutSec?: number;
   /**
-   * A server of genaicode's own whose tools only reach the person (`ask_user`): agents that ask
+   * A server of genaicode's own whose tools only reach the person (`ask_user`, `report_progress`): agents that ask
    * before an MCP tool call run its tools without asking (Codex, Antigravity, Muse live, Copilot,
    * Gemini).
    */
