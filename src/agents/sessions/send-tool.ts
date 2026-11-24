@@ -172,12 +172,17 @@ export function sessionSendTool(
   options: SessionSendToolOptions = {},
 ): McpTool & {
   /** The same call, with every update of this one message given to `watch` as well as to the gate. */
-  send(args: Record<string, unknown>, watch?: (state: SessionSendUpdate) => void): Promise<string>;
+  send(
+    args: Record<string, unknown>,
+    watch?: (state: SessionSendUpdate) => void,
+    /** Ends this one message: dropped while queued, its turn stopped while running. */
+    signal?: AbortSignal,
+  ): Promise<string>;
 } {
   const local = agents.filter((agent) => agent.sessions?.where === 'local' && agent.capabilities.resume);
   const sources = agentSessionSources(local);
   const tool: McpTool & { send: typeof send } = {
-    send: (args, watch) => send(args, watch),
+    send: (args, watch, signal) => send(args, watch, signal),
     name: 'sessions_send',
     description:
       'Send a message to another local coding-agent session, as a new turn in it, when the user asks you to tell, ask or pass something to it. Find the session with sessions_list or sessions_waiting first and use its full id. A session that is working right now gets the message queued: it goes as the next turn of that session once the current one ends, and the tool says so ("Queued"); do not hold the message back or ask the user to remind you. The user confirms the first message to each session. The tool returns once the message is sent or queued. The chat shows the session\'s live progress and full answer directly to the user when it finishes, and includes that answer in your context on the next turn; do not promise to poll, check back later, or sleep waiting for it.',
@@ -196,8 +201,11 @@ export function sessionSendTool(
   async function send(
     { id, source, text }: Record<string, unknown>,
     watch?: (state: SessionSendUpdate) => void,
+    own?: AbortSignal,
   ): Promise<string> {
     {
+      // This message ends with the chat, or on its own.
+      const signal = own && options.signal ? AbortSignal.any([own, options.signal]) : (own ?? options.signal);
       if (typeof id !== 'string' || !id.trim() || typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT)
         throw new Error(`Provide a session id and a message of 1-${MAX_TEXT} characters.`);
       // Newlines and tabs are fine. Other controls could make what the user saw differ from what is sent.
@@ -205,7 +213,7 @@ export function sessionSendTool(
       if (/[\u0000-\u0008\u000b-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/u.test(text))
         throw new Error('Use plain message text without terminal or direction controls.');
       const stores = typeof source === 'string' ? sources.filter((s) => s.name === source) : sources;
-      const query = { env: options.env, signal: options.signal };
+      const query = { env: options.env, signal };
       const found = await findSession(stores, id, query);
       if (!found || found.session.id !== id) throw new SessionSendError('missing');
       const expectedTarget = { agent: found.session.agent, cwd: found.session.cwd };
@@ -294,7 +302,7 @@ export function sessionSendTool(
         sendSession(local, target.id, text, {
           source: target.source,
           env: options.env,
-          signal: options.signal,
+          signal,
           expectedTarget,
           // Unfinished sessions take a message too, as `sessions send` lets them.
           waitingOnly: false,
@@ -311,24 +319,28 @@ export function sessionSendTool(
       const deliver = async () => {
         try {
           // The session can start a turn, or another sender take it, after the check: then it waits too.
-          const result = await whenFree(sendNow, options, {
-            // A refusal for its state retries while the session is still working or just became ready, not when archived.
-            retry: async (error) => {
-              if (error.reason !== 'state') return true;
-              const now = await findSession(stores, target.id, query);
-              if (!now || now.session.archived) return false;
-              return (await isWorking(error, now.session, options.env)) || acceptsSessionPrompt(now.session);
+          const result = await whenFree(
+            sendNow,
+            { ...options, signal },
+            {
+              // A refusal for its state retries while the session is still working or just became ready, not when archived.
+              retry: async (error) => {
+                if (error.reason !== 'state') return true;
+                const now = await findSession(stores, target.id, query);
+                if (!now || now.session.archived) return false;
+                return (await isWorking(error, now.session, options.env)) || acceptsSessionPrompt(now.session);
+              },
+              onWait: () => {
+                if (status !== 'queued') {
+                  status = 'queued';
+                  tool = undefined;
+                  activity = undefined;
+                  emit();
+                }
+                if (!queued) gate.noteQueued(target, text);
+              },
             },
-            onWait: () => {
-              if (status !== 'queued') {
-                status = 'queued';
-                tool = undefined;
-                activity = undefined;
-                emit();
-              }
-              if (!queued) gate.noteQueued(target, text);
-            },
-          });
+          );
           const endedAt = Date.now();
           if (!result.ok) {
             status = 'failed';

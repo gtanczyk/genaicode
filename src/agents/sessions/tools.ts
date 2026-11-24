@@ -234,6 +234,8 @@ export async function serveMcpStdio(
     taskWaitMs?: number;
     /** Stops serving, as the end of the input does. */
     signal?: AbortSignal;
+    /** The host closed the input: called before the answers still on their way are waited for. */
+    onInputEnd?(): void;
   },
 ): Promise<void> {
   if (streams.signal?.aborted) return;
@@ -282,6 +284,7 @@ export async function serveMcpStdio(
     pending.add(answer);
   }
   streams.signal?.removeEventListener('abort', stop);
+  streams.onInputEnd?.();
   // Stopped: answers still on their way are not waited for, nobody reads them.
   if (!stopped()) await Promise.all(pending);
 }

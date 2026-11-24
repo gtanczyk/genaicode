@@ -1079,10 +1079,11 @@ async function serveSessions(
       output: cli.stdout,
       skills: sessionSkills(),
       ...(cli.signal ? { signal: cli.signal } : {}),
+      // The host left: what it sent to other sessions ends with it, queued or running.
+      onInputEnd: stopServing,
     },
   );
   pipe.off?.('error', gone);
-  // The host left: turns it started in other sessions end with it.
   stopServing();
   cli.signal?.removeEventListener('abort', stopServing);
   return EXIT_OK;

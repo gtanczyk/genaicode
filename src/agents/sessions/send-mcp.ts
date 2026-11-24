@@ -96,9 +96,11 @@ export function sessionSendMcpTool(agents: readonly CodingAgent[], options: Sess
           else if (state.status === 'failed') fail(new Error(state.error ?? 'The message could not be delivered.'));
         };
         asking = context;
+        // Its own end: cancelling this task leaves the other messages alone.
+        const own = new AbortController();
         let said: string;
         try {
-          said = await inner.send(args, watch);
+          said = await inner.send(args, watch, own.signal);
         } finally {
           asking = undefined;
         }
@@ -106,7 +108,7 @@ export function sessionSendMcpTool(agents: readonly CodingAgent[], options: Sess
         const text = said.startsWith('Queued')
           ? 'Queued: that session is working now, so the message goes as its next turn. If no answer follows here, read it later with sessions_read.'
           : 'Sent. That session is answering now. If no answer follows here, read it later with sessions_read.';
-        return { text, task: { result, status: () => doing } };
+        return { text, task: { result, status: () => doing, cancel: () => own.abort() } };
       };
       // In order: `asking` belongs to one call until its question is settled.
       const work = line.then(run, run);

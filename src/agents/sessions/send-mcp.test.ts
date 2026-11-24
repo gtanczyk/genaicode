@@ -49,8 +49,10 @@ const tasks = { ...asks, extensions: { 'io.modelcontextprotocol/tasks': {} } };
 type Reply = { result?: Record<string, any>; error?: { code: number } };
 let nextId = 1;
 
-function server(agent: CodingAgent, taskWaitMs = 2_000) {
-  const tools = [sessionSendMcpTool([agent], { env })];
+function server(agent: CodingAgent, taskWaitMs = 2_000, pollMs?: number) {
+  // With its own poll: its own home too, clear of the turns other tests leave running.
+  const home = pollMs ? { GENAICODE_HOME: mkdtempSync(join(root, 'own-')) } : env;
+  const tools = [sessionSendMcpTool([agent], { env: home, ...(pollMs ? { pollMs } : {}) })];
   const state = createMcpState();
   const ask = async (method: string, params: Record<string, unknown>, capabilities: object = asks) =>
     (await handleMcpMessage(
@@ -167,4 +169,40 @@ it('answers with what it has when the other session takes long and the client ta
   ).result!;
   expect(sent.resultType).toBe('complete');
   expect(sent.content[0].text).toContain('read it later with sessions_read');
+});
+
+it('ends one message when its task is cancelled, and leaves the others', async () => {
+  let finish!: (result: AgentResult) => void;
+  const agent = owner(new Promise<AgentResult>((resolve) => (finish = resolve)));
+  const { ask, call } = server(agent, 2_000, 10);
+  const first = (await call(args('Run the tests.'), tasks)).result!;
+  const accept = { inputResponses: { confirm_send: { action: 'accept' } }, requestState: first.requestState };
+  const one = (await call({ ...args('Run the tests.'), ...accept }, tasks)).result!;
+  // The session works now: the second message waits for its turn.
+  const two = (await call(args('And lint.'), tasks)).result!;
+  expect(two.statusMessage).toContain('Queued');
+  await vi.waitFor(() => expect(agent.run).toHaveBeenCalledTimes(1));
+  const running = agent.run.mock.calls[0]![0].signal!;
+
+  expect((await ask('tasks/cancel', { taskId: two.taskId }, tasks)).error).toBeUndefined();
+  expect(running.aborted).toBe(false);
+  finish(ok);
+  await vi.waitFor(async () =>
+    expect((await ask('tasks/get', { taskId: one.taskId }, tasks)).result!.status).toBe('completed'),
+  );
+  // The cancelled message is dropped: the session's turn ended and nothing more went to it.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(agent.run).toHaveBeenCalledTimes(1);
+  expect((await ask('tasks/get', { taskId: two.taskId }, tasks)).result!.status).toBe('cancelled');
+});
+
+it('stops a running turn when its task is cancelled', async () => {
+  const agent = owner(new Promise<AgentResult>(() => undefined));
+  const { ask, call } = server(agent, 2_000, 10);
+  const first = (await call(args('Run the tests.'), tasks)).result!;
+  const accept = { inputResponses: { confirm_send: { action: 'accept' } }, requestState: first.requestState };
+  const one = (await call({ ...args('Run the tests.'), ...accept }, tasks)).result!;
+  await vi.waitFor(() => expect(agent.run).toHaveBeenCalledTimes(1));
+  await ask('tasks/cancel', { taskId: one.taskId }, tasks);
+  expect(agent.run.mock.calls[0]![0].signal!.aborted).toBe(true);
 });
