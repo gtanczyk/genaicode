@@ -923,21 +923,24 @@ describe('AgentChat', () => {
       { kind: 'tool', name: 'browser', done: false },
     ];
     const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    // What is in view below the closed steps, oldest first.
+    const shown = () =>
+      Array.from(active().children)
+        .filter((child) => !child.classList.contains('gc-fold'))
+        .map((child) => child.textContent);
     render({ state, foldSteps: true });
-    expect(active().firstElementChild?.textContent).toBe('Running the browser check');
+    expect(active().firstElementChild?.classList.contains('gc-fold')).toBe(true);
+    expect(shown()[0]).toBe('Running the browser check');
     expect(active().querySelector(':scope > ol [aria-current="step"]')?.textContent).toContain('Open the page');
     expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
     turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
     render({ state, foldSteps: true });
-    expect(active().firstElementChild?.textContent).toBe('The page opened.');
+    expect(shown()[0]).toBe('The page opened.');
     expect(active().querySelector(':scope > ol')).not.toBeNull();
     turn.entries.push({ kind: 'progress', message: 'Finishing', plan: [] });
     render({ state, foldSteps: true });
-    // The latest reply stays in view above the newer status, both above the steps.
-    expect(Array.from(active().children, (child) => child.textContent).slice(0, 2)).toEqual([
-      'The page opened.',
-      'Finishing',
-    ]);
+    // The latest reply stays in view above the newer status.
+    expect(shown().slice(0, 2)).toEqual(['The page opened.', 'Finishing']);
     expect(active().querySelector(':scope > ol')).toBeNull();
     turn.entries.push({ kind: 'text', text: 'Fixed.', streaming: false });
     turn.result = state.turns[0]!.result;
@@ -1003,6 +1006,44 @@ describe('AgentChat', () => {
     expect(button('Steer')).toBeTruthy();
     expect($<HTMLTextAreaElement>('textarea').placeholder).toBe('Add to the running task…');
   });
+  it('does not move an open artifact frame when the turn ends', () => {
+    const artifact = {
+      id: 'c'.repeat(32),
+      name: 'form',
+      title: 'Form',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 10,
+      version: 1,
+    };
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'artifact', artifact },
+      { kind: 'text', text: 'Fill in the form.', streaming: false },
+      { kind: 'progress', message: 'Waiting for the form' },
+    ];
+    const props = { foldSteps: true, artifactUrl: (a: typeof artifact) => `/artifacts/${a.id}?v=${a.version}` };
+    render({ state, ...props });
+    const card = $$('.gc-turn')[1]!.querySelector('.gc-artifact')!;
+    act(() => card.querySelector('button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const frame = card.querySelector('iframe')!;
+    expect(frame).not.toBeNull();
+    // A frame taken out of the document, even to be put back elsewhere, reloads and loses what was typed.
+    const parent = card.parentElement!;
+    const insert = vi.spyOn(parent, 'insertBefore');
+    const append = vi.spyOn(parent, 'appendChild');
+    turn.result = state.turns[0]!.result;
+    render({ state, ...props });
+    const moved = [...insert.mock.calls, ...append.mock.calls].map(([node]) => node);
+    insert.mockRestore();
+    append.mockRestore();
+    expect(moved).not.toContain(card);
+    expect(card.isConnected).toBe(true);
+    expect(card.querySelector('iframe')).toBe(frame);
+  });
+
   it('shows a published artifact as a card and previews it in a sandboxed frame', () => {
     const artifact = {
       id: 'a'.repeat(32),

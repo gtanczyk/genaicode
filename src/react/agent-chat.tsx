@@ -854,7 +854,7 @@ function Turn({
   );
 }
 
-/** Keep the current update above the closed steps and the finished answer below them. */
+/** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
 function Folded({
   turn,
   pending,
@@ -890,12 +890,9 @@ function Folded({
   const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
   const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
   const count = tools || steps.length;
-  // One keyed list: an entry that moves (the live update becoming the answer below the steps) keeps
-  // its state, such as a remote image the user loaded. What the user sees before the update (their
-  // steering input) stays above it; the steps go below.
-  const shown = entries.map((item, i) => [item, i] as const).filter(([item, i]) => inView(item, i));
-  const before = update >= 0 ? shown.filter(([, i]) => i < update) : [];
-  const after = update >= 0 ? shown.filter(([, i]) => i > update) : shown;
+  // One keyed list in a fixed order, the steps first and then what is in view, oldest first: the
+  // end of the turn moves nothing (a moved artifact frame would reload and lose what was typed in it),
+  // and the latest reply keeps its element and state when it becomes the answer.
   const fold = steps.length ? (
     <details key="fold" className="gc-fold">
       <summary>
@@ -907,14 +904,18 @@ function Folded({
       <div className="gc-fold-body">{steps.map(([item, i]) => entry(item, i))}</div>
     </details>
   ) : null;
+  const planShown = plan?.kind === 'progress' && plan !== entries[update];
   return (
     <>
       {[
-        ...before.map(([item, i]) => entry(item, i)),
-        update >= 0 ? entry(entries[update], update) : null,
-        plan?.kind === 'progress' && plan !== entries[update] ? <ProgressPlan key="plan" steps={plan.plan} /> : null,
         fold,
-        ...after.map(([item, i]) => entry(item, i)),
+        ...entries.flatMap((item, i) =>
+          i === update
+            ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
+            : inView(item, i)
+              ? [entry(item, i)]
+              : [],
+        ),
       ]}
     </>
   );
