@@ -141,29 +141,47 @@ describe('joinedCloudSessions', () => {
       { id: 'task_e_1', url: task, title: 'Task', status: 'in_progress', updated_at: '2026-11-23T11:00:00Z' },
     ]);
 
-  it('names a Codex Cloud task with a pull request once, with its pull request', async () => {
-    const [pulls, tasks] = joinedCloudSessions(
-      githubCloudSessions({ run: gh, now }),
-      codexCloudSessions({ run: codex }),
-    );
-    expect((await pulls.list()).map((session) => session.id)).toEqual(['cmsg_01Def']);
-    const [listed] = await tasks.list();
-    expect(listed).toMatchObject({ source: 'codex-cloud', id: 'task_e_1', state: 'active', repository: 'acme/app' });
-    expect(listed!.lastReply).toBe('Codex Cloud: in_progress; Open: acme/app#3 Change 3');
+  const join = (ghRun = gh, codexRun = codex) =>
+    joinedCloudSessions(githubCloudSessions({ run: ghRun, now }), codexCloudSessions({ run: codexRun }));
+  const broken = async () => Promise.reject(new Error('not signed in'));
+
+  it('names a Codex Cloud task with a pull request once, with its pull request and latest time', async () => {
+    const [pulls, tasks] = join();
+    const query = {};
+    const [fromPulls, fromTasks] = await Promise.all([pulls.list(query), tasks.list(query)]);
+    expect(fromPulls.map((session) => session.id)).toEqual(['cmsg_01Def']);
+    expect(fromTasks[0]).toMatchObject({
+      source: 'codex-cloud',
+      id: 'task_e_1',
+      state: 'active',
+      repository: 'acme/app',
+    });
+    expect(fromTasks[0]!.lastReply).toBe('Codex Cloud: in_progress; Open: acme/app#3 Change 3');
+    expect(fromTasks[0]!.updatedAt).toBe(Date.parse('2026-11-23T11:00:00Z'));
+    // A task quiet since before its pull request moved: the pull request's time is the session's.
+    const old = async () => JSON.stringify([{ id: 'task_e_1', status: 'ready', updated_at: '2026-11-22T11:00:00Z' }]);
+    const [morePulls, moreTasks] = join(gh, old);
+    const again = {};
+    const [, merged] = await Promise.all([morePulls.list(again), moreTasks.list(again)]);
+    expect(merged[0]!.updatedAt).toBe(Date.parse('2026-11-23T10:00:00Z'));
+  });
+
+  it('gives all each has when listed alone', async () => {
+    const [pulls, tasks] = join();
+    expect((await pulls.list({})).map((session) => session.id)).toEqual(['task_e_1', 'cmsg_01Def']);
+    expect((await tasks.list({})).map((session) => session.lastReply)).toEqual(['Codex Cloud: in_progress']);
   });
 
   it('lists the one that can be read when the other cannot', async () => {
-    const broken = async () => Promise.reject(new Error('not signed in'));
-    const [pulls, tasks] = joinedCloudSessions(
-      githubCloudSessions({ run: gh, now }),
-      codexCloudSessions({ run: broken }),
-    );
-    expect((await pulls.list()).map((session) => session.id)).toEqual(['task_e_1', 'cmsg_01Def']);
-    await expect(tasks.list()).rejects.toThrow('not signed in');
-    const [, alone] = joinedCloudSessions(
-      githubCloudSessions({ run: broken, now }),
-      codexCloudSessions({ run: codex }),
-    );
-    expect((await alone.list({ limit: 1 })).map((session) => session.lastReply)).toEqual(['Codex Cloud: in_progress']);
+    const [pulls, tasks] = join(gh, broken);
+    const query = {};
+    const failed = tasks.list(query);
+    expect((await pulls.list(query)).map((session) => session.id)).toEqual(['task_e_1', 'cmsg_01Def']);
+    await expect(failed).rejects.toThrow('not signed in');
+    const [none, alone] = join(broken, codex);
+    const other = { limit: 1 };
+    const lost = none.list(other);
+    expect((await alone.list(other)).map((session) => session.lastReply)).toEqual(['Codex Cloud: in_progress']);
+    await expect(lost).rejects.toThrow('not signed in');
   });
 });

@@ -224,57 +224,63 @@ export function codexCloudSessions(options: CodexCloudOptions = {}): SessionSour
   };
 }
 
-/** How long one look at both sources serves the two of them. */
-const SHARED_LOOK_MS = 5_000;
-
 /**
  * `pulls` (`githubCloudSessions()`) and `tasks` (`codexCloudSessions()`) as sources that name a
- * session once: a Codex Cloud task that also opened a pull request is listed by `tasks`, with its
- * pull requests, and left out of `pulls`. When one of the two cannot be read, the other still lists.
+ * session once where they are listed together, as `listSessions()` does with one query: a Codex
+ * Cloud task that also opened a pull request is listed by `tasks`, with its pull requests and the
+ * later of the two times, and left out of `pulls`. Listed alone, each gives all it has. When one
+ * of the two cannot be read, the other still lists.
  */
 export function joinedCloudSessions(pulls: SessionSource, tasks: SessionSource): [SessionSource, SessionSource] {
-  type Look = { key: string; at: number; pulls: Promise<SessionInfo[]>; tasks: Promise<SessionInfo[]> };
-  const key = (session: SessionInfo) => `${session.agent}:${session.id}`;
-  let last: Look | undefined;
-  const look = (query: SessionQuery): Look => {
-    const asked = `${query.since ?? ''}|${query.cwd ?? ''}`;
-    if (!last || last.key !== asked || Date.now() - last.at > SHARED_LOOK_MS) {
-      // The limit comes after the two are told apart.
-      const rest: SessionQuery = { ...query };
-      delete rest.limit;
-      last = { key: asked, at: Date.now(), pulls: pulls.list(rest), tasks: tasks.list(rest) };
-      // Each is awaited by whoever lists; the other only does without it.
-      last.pulls.catch(() => undefined);
-      last.tasks.catch(() => undefined);
-    }
-    return last;
+  type Look = { pulls?: Promise<SessionInfo[]>; tasks?: Promise<SessionInfo[]> };
+  // One listing asks every source with the same query, before any of them answers.
+  const looks = new WeakMap<SessionQuery, Look>();
+  const lookOf = (query: SessionQuery): Look => {
+    const known = looks.get(query);
+    if (known) return known;
+    const look: Look = {};
+    looks.set(query, look);
+    return look;
   };
+  // The limit comes after the two are told apart.
+  const whole = (query: SessionQuery): SessionQuery => {
+    const rest = { ...query };
+    delete rest.limit;
+    return rest;
+  };
+  const key = (session: SessionInfo) => `${session.agent}:${session.id}`;
   return [
     {
       ...pulls,
       async list(query: SessionQuery = {}) {
-        const both = look(query);
-        const listed = new Set((await both.tasks.catch(() => [])).map(key));
-        return (await both.pulls).filter((session) => !listed.has(key(session))).slice(0, query.limit);
+        const look = lookOf(query);
+        const own = await (look.pulls = pulls.list(whole(query)));
+        const listed = new Set(look.tasks ? (await look.tasks.catch(() => [])).map(key) : []);
+        return own.filter((session) => !listed.has(key(session))).slice(0, query.limit);
       },
     },
     {
       ...tasks,
       async list(query: SessionQuery = {}) {
-        const both = look(query);
-        const opened = new Map((await both.pulls.catch(() => [])).map((session) => [key(session), session]));
-        return (await both.tasks)
+        const look = lookOf(query);
+        const own = await (look.tasks = tasks.list(whole(query)));
+        const opened = new Map(
+          look.pulls ? (await look.pulls.catch(() => [])).map((session) => [key(session), session]) : [],
+        );
+        return own
           .map((task): SessionInfo => {
             const pull = opened.get(key(task));
             if (!pull) return task;
             const says = [task.lastReply, pull.lastReply].filter(Boolean).join('; ');
             return {
               ...task,
+              updatedAt: Math.max(task.updatedAt, pull.updatedAt),
               ...(pull.repository ? { repository: pull.repository } : {}),
               ...(pull.startedAt !== undefined ? { startedAt: pull.startedAt } : {}),
               ...(says ? { lastReply: says } : {}),
             };
           })
+          .sort((a, b) => b.updatedAt - a.updatedAt)
           .slice(0, query.limit);
       },
     },
