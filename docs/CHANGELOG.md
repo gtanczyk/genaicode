@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 3.3.0 — 2026-11-24
+
 ### Added
 
 - [Terms and privacy](legal.md): Apache-2.0 with no separate EULA, agents run on your own accounts under their providers' terms, Auto-approve and YOLO are at your own risk, and every request GenAIcode itself makes (updates only, no telemetry). Linked from the README and **Help → Terms and Privacy** in the desktop app
