@@ -196,6 +196,7 @@ describe('AgentChat', () => {
           id: `t${n}`,
           prompt: `Review part ${n}.`,
           text: `Read it.\n\n**VERDICT: ${n === 5 ? 'CHANGES' : 'LGTM'}**`,
+          verdict: `**VERDICT: ${n === 5 ? 'CHANGES' : 'LGTM'}**`,
           startedAt: n * 1000,
           endedAt: n * 1000 + 65_000,
         })),
@@ -246,6 +247,33 @@ describe('AgentChat', () => {
     click(rows[1]);
     expect($('.gc-pack-stopped').textContent).toBe('Stopped by you.');
     expect($('.gc-pack-detail .gc-err')).toBeNull();
+  });
+  it('keeps the task someone steers selected when another task starts, with the draft', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1];
+    const running = (id: string, prompt: string) => ({
+      id,
+      prompt,
+      agent: 'codex',
+      cwd: '/work/app',
+      mode: 'shared' as const,
+      status: 'running' as const,
+      canSteer: true,
+    });
+    turn.pack = { lead: 'claude', maxParallel: 4, interactive: true, tasks: [running('t1', 'First.')] };
+    const props = render({ state, onPackAction: vi.fn(async () => 'ok') });
+    click(button('Steer')!);
+    const box = $<HTMLTextAreaElement>('.gc-pack-detail textarea');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setter.call(box, 'check empty input');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // A newer task would be the default selection; the one being steered stays.
+    const next = { ...turn, pack: { ...turn.pack, tasks: [...turn.pack.tasks, running('t2', 'Second.')] } };
+    render({ ...props, state: { ...state, turns: [state.turns[0], next, ...state.turns.slice(2)] } });
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t1');
+    expect($<HTMLTextAreaElement>('.gc-pack-detail textarea').value).toBe('check empty input');
   });
   it('renders a session: turns, tools, edits, markdown, errors, queue, busy state', () => {
     render();

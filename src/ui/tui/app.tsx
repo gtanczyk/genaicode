@@ -4,6 +4,7 @@ import type { SessionTurn } from '../../agents/session.js';
 import type { QuestionAnswers } from '../../agents/types.js';
 import type { ChatController, ChatView, Notice } from '../controller.js';
 import { formatDuration, limitChips, needsAttention, SLASH_COMMANDS, statusParts } from '../format.js';
+import { packTaskList } from '../../react/format.js';
 import { NoticeView, TurnView } from './transcript.js';
 import { PackInspector, type TaskSelection } from './pack-inspector.js';
 import { TowerInboxPanel } from './tower-inbox.js';
@@ -164,7 +165,15 @@ export function ChatApp({
     if (Object.keys(answers).length) controller.answer(asked.id, answers);
     else controller.approve(asked.id, 'deny');
   };
-  const tasks = view.session.turns.flatMap((turn) => (turn.pack?.tasks ?? []).map((task) => ({ turn, task })));
+  // Tab and the arrows go through the tasks in the order the transcript shows them, folded ones included.
+  const tasks = view.session.turns.flatMap((turn) =>
+    turn.pack
+      ? packTaskList(turn.pack.tasks, {
+          asking: (task) => view.session.approvals.some((request) => request.subtaskId === task.id),
+          expanded: true,
+        }).shown.map((task) => ({ turn, task }))
+      : [],
+  );
   const currentTask =
     selection && tasks.find(({ turn, task }) => turn.id === selection.turnId && task.id === selection.id);
 

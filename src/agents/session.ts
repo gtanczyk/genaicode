@@ -501,9 +501,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (child.type === 'approval-request') addApproval(turnId, packApproval(event.id, event.agent, child.request));
         if (child.type === 'approval-resolved') onEvent(turnId, { ...child, id: `${event.id}:${child.id}` }, own);
         if (
-          ['message', 'tool-start', 'file-change', 'error', 'approval-request', 'approval-resolved', 'done'].includes(
-            child.type,
-          )
+          [
+            'message',
+            'tool-start',
+            'tool-end',
+            'file-change',
+            'error',
+            'approval-request',
+            'approval-resolved',
+            'done',
+          ].includes(child.type)
         )
           syncPackTask(turnId, event.id);
         return;

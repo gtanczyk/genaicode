@@ -287,18 +287,24 @@ export function TurnView({
                   const waiting = approvals.some((request) => request.subtaskId === task.id);
                   const elapsed = packTaskElapsed(task, now);
                   const outcome = packTaskOutcome(task);
+                  // The title gets a line of its own, so a long one cannot push the status and
+                  // outcome off a narrow terminal.
                   return (
-                    <Text key={task.id} wrap="truncate-end">
-                      <Text color={waiting ? 'yellow' : 'cyan'}>
-                        {selectedTask === task.id ? '›' : '·'} {task.agent}
+                    <Box key={task.id} flexDirection="column">
+                      <Text wrap="truncate-end">
+                        <Text color={waiting ? 'yellow' : 'cyan'}>{selectedTask === task.id ? '›' : '·'}</Text>{' '}
+                        {plainSessionText(packTaskTitle(task))}
                       </Text>
-                      {' · '}
-                      {packTaskStatus(task, waiting)}
-                      {elapsed ? ` · ${elapsed}` : ''}
-                      {' · '}
-                      {plainSessionText(packTaskTitle(task))}
-                      {outcome ? <Text color="gray"> — {plainSessionText(outcome)}</Text> : null}
-                    </Text>
+                      <Box paddingLeft={2}>
+                        <Text wrap="truncate-end">
+                          <Text color={waiting ? 'yellow' : 'cyan'}>{task.agent}</Text>
+                          {' · '}
+                          {packTaskStatus(task, waiting)}
+                          {elapsed ? ` · ${elapsed}` : ''}
+                          {outcome ? <Text color="gray"> · {plainSessionText(outcome)}</Text> : null}
+                        </Text>
+                      </Box>
+                    </Box>
                   );
                 })}
                 {earlier ? (

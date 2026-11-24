@@ -161,6 +161,11 @@ export function PackTasks({
             <TaskDetail
               key={task.id}
               task={task}
+              pin={() => {
+                // Until someone picks a task the card follows the newest; once they work with the
+                // shown one (open Steer, type, click), it stays, so a new task does not take its place.
+                if (selected === undefined) select(task.id);
+              }}
               cwd={cwd}
               now={now}
               turnId={turn.id}
@@ -180,6 +185,7 @@ export function PackTasks({
 
 function TaskDetail({
   task,
+  pin,
   cwd,
   now,
   turnId,
@@ -188,6 +194,8 @@ function TaskDetail({
   children,
 }: {
   task: PackTask;
+  /** Keeps this task selected: called when someone interacts with its detail. */
+  pin(): void;
   cwd: string;
   now: number;
   turnId: number;
@@ -233,7 +241,13 @@ function TaskDetail({
   const activity = running && task.text ? packActivity(task.text) : undefined;
   const confirm = (mode === 'stop' && running) || (mode === 'discard' && worktree && !running);
   return (
-    <section className="gc-pack-detail" aria-label={'Task ' + task.id}>
+    <section
+      className="gc-pack-detail"
+      aria-label={'Task ' + task.id}
+      onClickCapture={pin}
+      onFocusCapture={pin}
+      onKeyDownCapture={pin}
+    >
       <div className="gc-pack-title">
         <strong>{packTaskTitle(task)}</strong>
         <span className="gc-pack-status" data-status={statusKey(task, asks)}>

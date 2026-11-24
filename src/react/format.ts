@@ -100,8 +100,16 @@ const STOPPED_BY: Record<PackStopCause, string> = {
   budget: 'Stopped: over budget',
 };
 
-/** A bare "<agent> was stopped.": the runtime's error for any stopped task. */
-const BARE_STOP = /^\S+ was stopped\.?$/;
+/** The runtime's own message for a stopped task ("codex was stopped."), which says nothing the status does not. */
+function isStopNotice(task: PackTask, line: string): boolean {
+  return task.status === 'aborted' && line.trim() === `${task.agent} was stopped.`;
+}
+
+/** A diagnostic on one line, shortened but otherwise verbatim (no Markdown is stripped from it). */
+function diagnosticLine(line: string, max = 160): string {
+  const text = line.replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
 
 /**
  * Why a stopped task stopped ("Stopped by you"), or undefined for a task that was not stopped.
@@ -112,16 +120,17 @@ export function packTaskStopped(task: PackTask): string | undefined {
   return task.stoppedBy ? STOPPED_BY[task.stoppedBy] : 'Stopped';
 }
 
-/** A task's error worth showing: none for the bare "<agent> was stopped." a stopped task carries. */
+/** A task's error worth showing: none for the runtime's "<agent> was stopped." a stopped task carries. */
 export function packTaskError(task: PackTask): string | undefined {
-  return task.error && !BARE_STOP.test(task.error.trim()) ? task.error : undefined;
+  return task.error && !isStopNotice(task, task.error) ? task.error : undefined;
 }
 
 /**
  * A task's outcome on one line: its latest activity while it runs; once it ended, the changed-file
- * count of a worktree task, then why it was stopped, its error, a verdict line of its final message
- * ("VERDICT: LGTM"), or the first line of that message. A bare "<agent> was stopped." says nothing
- * the status does not, so it is left out.
+ * count of a worktree task, then why it was stopped, its error (verbatim, only shortened), the
+ * verdict pack read from its whole final message ("VERDICT: LGTM"), or the first line of that
+ * message. The runtime's "<agent> was stopped." of a stopped task says nothing the status does
+ * not, so it is left out.
  */
 export function packTaskOutcome(task: PackTask): string {
   if (task.status === 'running') return task.text ? packActivity(task.text).text : '';
@@ -130,13 +139,12 @@ export function packTaskOutcome(task: PackTask): string {
     const count = task.changes.length;
     parts.push(count ? `${count} ${count === 1 ? 'file' : 'files'} changed` : 'No file changes');
   }
-  const said = (text?: string) =>
-    (text ?? '').split('\n').filter((line) => line.trim() && !BARE_STOP.test(line.trim()));
-  const lines = said(task.text);
-  const verdict = lines.findLast((line) => /^[\W_]*verdict\b/i.test(line));
+  const said = (text?: string) => (text ?? '').split('\n').filter((line) => line.trim() && !isStopNotice(task, line));
   const stop = task.status === 'aborted' && task.stoppedBy ? STOPPED_BY[task.stoppedBy] : undefined;
-  const line = stop ?? said(task.error)[0] ?? verdict ?? lines[0];
-  if (line) parts.push(stop ?? plainLine(line));
+  const error = said(task.error)[0];
+  const line =
+    stop ?? (error ? diagnosticLine(error) : undefined) ?? plainLine(task.verdict ?? said(task.text)[0] ?? '');
+  if (line) parts.push(line);
   return parts.join(' · ');
 }
 
@@ -157,7 +165,8 @@ export const PACK_FINISHED_SHOWN = 3;
 
 /**
  * Delegated tasks in the order a compact list shows them: tasks asking for approval or running,
- * then tasks with changes to merge, then finished tasks; each group newest first. Unless
+ * then tasks with changes to merge, then finished tasks. Running tasks come newest delegated
+ * first, ended ones latest ended first (reports without `endedAt` before them, in delegation order). Unless
  * `expanded`, finished tasks past the newest `PACK_FINISHED_SHOWN` fold away (`hidden` counts
  * them), except `keep` (the selected task). Folding one task alone saves nothing, so it never does.
  */
@@ -167,9 +176,13 @@ export function packTaskList(
 ): { shown: PackTask[]; hidden: number } {
   const asking = options.asking ?? (() => false);
   const newest = tasks.slice().reverse();
+  // Ended tasks: the one that ended last first. A report without an end time goes before them, in
+  // delegation order (the sort is stable).
+  const end = (task: PackTask) => task.endedAt ?? Infinity;
+  const latestEnd = (a: PackTask, b: PackTask) => (end(a) === end(b) ? 0 : end(a) < end(b) ? 1 : -1);
   const urgent = newest.filter((task) => task.status === 'running' || asking(task));
-  const ready = newest.filter((task) => !urgent.includes(task) && packTaskActive(task));
-  const finished = newest.filter((task) => !urgent.includes(task) && !ready.includes(task));
+  const ready = newest.filter((task) => !urgent.includes(task) && packTaskActive(task)).sort(latestEnd);
+  const finished = newest.filter((task) => !urgent.includes(task) && !ready.includes(task)).sort(latestEnd);
   const fold = !options.expanded && finished.length > PACK_FINISHED_SHOWN + 1;
   const kept = fold
     ? finished.filter((task, index) => index < PACK_FINISHED_SHOWN || task.id === options.keep)

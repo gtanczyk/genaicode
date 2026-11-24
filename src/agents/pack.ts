@@ -146,6 +146,11 @@ export interface PackTask {
    * (`turn`), or the pack going over its budget.
    */
   stoppedBy?: PackStopCause;
+  /**
+   * The verdict line of the final reply ("VERDICT: LGTM"), read from the whole reply (`text` may be
+   * clipped) and outside quotations and code.
+   */
+  verdict?: string;
 }
 
 export type PackStopCause = 'user' | 'lead' | 'lead-finished' | 'turn' | 'budget';
@@ -258,6 +263,8 @@ interface Sub {
   run?: AgentRun;
   result?: AgentResult;
   last?: string;
+  /** The tool call `last` is about, and the line shown before it started. */
+  tool?: { id?: string; name: string; before?: string };
   usage?: TokenUsage;
   costUsd?: number;
   changes?: string[];
@@ -378,7 +385,18 @@ function halt(sub: Sub, cause: PackStopCause): void {
   sub.run.abort();
 }
 
-const TOOL_INPUT_KEYS = ['command', 'cmd', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url', 'description'];
+const TOOL_INPUT_KEYS = [
+  'command',
+  'commands',
+  'cmd',
+  'file_path',
+  'filePath',
+  'path',
+  'pattern',
+  'query',
+  'url',
+  'description',
+];
 
 /** The one argument worth showing for a tool call (its command, path, pattern...), on one line. */
 function toolInputSummary(input: unknown): string {
@@ -390,14 +408,14 @@ function toolInputSummary(input: unknown): string {
             (field) => typeof field === 'string' || Array.isArray(field),
           )
         : undefined;
-  const text = (Array.isArray(value) ? value.join(' ') : typeof value === 'string' ? value : '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // An array is shown only when it holds strings alone (`commands: ['npm test']`); else the tool name.
+  const words = Array.isArray(value) && value.every((item) => typeof item === 'string') ? value.join(' ') : value;
+  const text = (typeof words === 'string' ? words : '').replace(/\s+/g, ' ').trim();
   return text.length > 200 ? `${text.slice(0, 199)}…` : text;
 }
 
 /** A short line on what a running task is doing, from its latest event. */
-function activity(event: AgentEvent): string | undefined {
+function describe(event: AgentEvent): string | undefined {
   switch (event.type) {
     case 'message':
       return clip(event.text, 300);
@@ -414,6 +432,78 @@ function activity(event: AgentEvent): string | undefined {
     default:
       return undefined;
   }
+}
+
+/** `describe`, which never throws: an event it cannot read is shown by its tool name, or not at all. */
+function activity(event: AgentEvent): string | undefined {
+  try {
+    return describe(event);
+  } catch {
+    return event.type === 'tool-start' && typeof event.name === 'string' ? `tool ${event.name}` : undefined;
+  }
+}
+
+/**
+ * Follows what a running task is doing: its latest activity line and the tool call that line is
+ * about, so the call's `tool-end` takes the line back to what was shown before the call.
+ */
+function track(sub: Sub, event: AgentEvent): void {
+  if (event.type === 'approval-resolved') {
+    sub.last = undefined;
+    sub.tool = undefined;
+    return;
+  }
+  if (event.type === 'tool-end') {
+    const tool = sub.tool;
+    const same =
+      event.id !== undefined && tool?.id !== undefined
+        ? event.id === tool.id
+        : event.name === undefined || event.name === tool?.name;
+    if (tool && same) {
+      sub.last = tool.before;
+      sub.tool = undefined;
+    }
+    return;
+  }
+  const line = activity(event);
+  if (line === undefined) return;
+  sub.tool =
+    event.type === 'tool-start'
+      ? {
+          ...(event.id !== undefined ? { id: event.id } : {}),
+          name: event.name,
+          before: sub.tool ? sub.tool.before : sub.last,
+        }
+      : undefined;
+  sub.last = line;
+}
+
+/** Fenced code: an opening line of three or more backticks or tildes. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * The verdict line of a reply ("VERDICT: LGTM"): its last line that starts with "verdict", outside
+ * quotations, fenced code and indented code, so a quoted or sample verdict is not taken for the
+ * reply's own. Read from the whole reply, before it is clipped for the report.
+ */
+function replyVerdict(text: string): string | undefined {
+  let fence: string | undefined;
+  let verdict: string | undefined;
+  for (const line of text.split('\n')) {
+    const open = FENCE.exec(line);
+    if (fence) {
+      if (open && open[1]![0] === fence[0] && open[1]!.length >= fence.length && !line.slice(open[0].length).trim())
+        fence = undefined;
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      continue;
+    }
+    if (/^( {4}|\t)/.test(line) || /^\s*>/.test(line)) continue;
+    if (/^[\W_]*verdict\b/i.test(line.trim())) verdict = line.trim();
+  }
+  return verdict && verdict.length > 200 ? `${verdict.slice(0, 199)}…` : verdict;
 }
 
 /**
@@ -518,6 +608,10 @@ export function pack(options: PackOptions): Pack {
     });
   };
 
+  const verdictOf = (text: string) => {
+    const verdict = replyVerdict(text);
+    return verdict ? { verdict } : {};
+  };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
     agent: sub.agent.name,
@@ -532,7 +626,7 @@ export function pack(options: PackOptions): Pack {
     ...(sub.run?.steer ? { canSteer: true } : {}),
     cwd: sub.cwd,
     ...(sub.result?.text !== undefined
-      ? { text: clip(sub.result.text) }
+      ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
       : sub.status === 'running' && sub.last
         ? { text: sub.last }
         : {}),
@@ -867,7 +961,7 @@ export function pack(options: PackOptions): Pack {
           let result: AgentResult;
           try {
             for await (const event of run) {
-              sub.last = event.type === 'approval-resolved' ? undefined : (activity(event) ?? sub.last);
+              track(sub, event);
               const reading = observeAgent(agent.name, event, extra.model);
               if (reading?.window === 'quota' && reading.name === extra.model) priorRefusal = reading;
               if (

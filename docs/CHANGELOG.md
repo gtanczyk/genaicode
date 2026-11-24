@@ -14,7 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- The delegated-work card in the desktop, browser and terminal chat is now **Delegated tasks** ("3 tasks delegated · 1 running") instead of "Pack tasks" with slots and the lead turn's dollar figure. Running tasks come first and show the command or message they are on now in their row; finished ones show their outcome (verdict line, first line of the reply, changed files, error, or who stopped them) and how long they took; older finished tasks fold behind "Show N earlier". `PackTask` gains `startedAt`, `endedAt` and `stoppedBy` (#345)
+- The delegated-work card in the desktop, browser and terminal chat is now **Delegated tasks** ("3 tasks delegated · 1 running") instead of "Pack tasks" with slots and the lead turn's dollar figure. Running tasks come first and show the command or message they are on now in their row; finished ones show their outcome (verdict line, first line of the reply, changed files, error, or who stopped them) and how long they took; older finished tasks fold behind "Show N earlier". `PackTask` gains `startedAt`, `endedAt`, `stoppedBy` and `verdict` (the reply's verdict line, read from the whole reply outside quotes and code) (#345)
 
 ## 3.3.0 — 2026-11-24
 

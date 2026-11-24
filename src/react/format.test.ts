@@ -202,7 +202,9 @@ describe('packActivity', () => {
 
 describe('packTaskOutcome', () => {
   it('prefers a verdict line, then the error, then the first line, after the changed-file count', () => {
-    expect(packTaskOutcome(packTask({ text: 'Looked at 3 files.\n\n**VERDICT: LGTM**' }))).toBe('VERDICT: LGTM');
+    expect(
+      packTaskOutcome(packTask({ text: 'Looked at 3 files.\n\n**VERDICT: LGTM**', verdict: '**VERDICT: LGTM**' })),
+    ).toBe('VERDICT: LGTM');
     expect(packTaskOutcome(packTask({ text: '# Summary\nAll good' }))).toBe('Summary');
     expect(packTaskOutcome(packTask({ status: 'failed', error: 'exit 1\nstack', text: 'partial' }))).toBe('exit 1');
     expect(packTaskOutcome(packTask({ mode: 'worktree', changes: ['M\ta.ts', 'A\tb.ts'], text: 'Added b.' }))).toBe(
@@ -214,7 +216,12 @@ describe('packTaskOutcome', () => {
   });
 
   it('says why a stopped task stopped instead of the bare "was stopped" error', () => {
-    const stopped = packTask({ status: 'aborted', error: 'claude was stopped.', text: 'claude was stopped.' });
+    const stopped = packTask({
+      status: 'aborted',
+      agent: 'claude',
+      error: 'claude was stopped.',
+      text: 'claude was stopped.',
+    });
     expect(packTaskOutcome(stopped)).toBe('');
     expect(packTaskStopped(stopped)).toBe('Stopped');
     expect(packTaskError(stopped)).toBeUndefined();
@@ -223,6 +230,25 @@ describe('packTaskOutcome', () => {
     expect(packTaskStopped({ ...stopped, stoppedBy: 'budget' })).toBe('Stopped: over budget');
     expect(packTaskStopped(packTask())).toBeUndefined();
     expect(packTaskError(packTask({ status: 'failed', error: 'exit 1' }))).toBe('exit 1');
+  });
+
+  it('takes the verdict pack read from the whole reply, not a quoted one in the clipped text', () => {
+    const quoted = packTask({ text: 'The brief said:\n> VERDICT: LGTM\nI disagree.' });
+    expect(packTaskOutcome(quoted)).toBe('The brief said:');
+    expect(packTaskOutcome({ ...quoted, verdict: 'VERDICT: CHANGES' })).toBe('VERDICT: CHANGES');
+  });
+
+  it('keeps diagnostics verbatim and drops only the runtime stop message of a stopped task', () => {
+    const failed = packTask({ status: 'failed', error: 'PostgreSQL was stopped.' });
+    expect(packTaskOutcome(failed)).toBe('PostgreSQL was stopped.');
+    expect(packTaskError(failed)).toBe('PostgreSQL was stopped.');
+    const aborted = packTask({ status: 'aborted', agent: 'codex', error: 'PostgreSQL was stopped.' });
+    expect(packTaskOutcome(aborted)).toBe('PostgreSQL was stopped.');
+    expect(packTaskError(aborted)).toBe('PostgreSQL was stopped.');
+    expect(packTaskOutcome(packTask({ status: 'failed', error: 'Error in __main__: `x` **failed**' }))).toBe(
+      'Error in __main__: `x` **failed**',
+    );
+    expect(packTaskOutcome(packTask({ status: 'failed', error: 'claude was stopped.' }))).toBe('claude was stopped.');
   });
 });
 
@@ -245,6 +271,27 @@ describe('packTaskList', () => {
       ['t8', 't2', 't1', 't4', 't7', 't6', 't5', 't3'],
       0,
     ]);
+  });
+
+  it('orders ended tasks by when they ended, latest first, and keeps delegation order without end times', () => {
+    const ended = [
+      packTask({ id: 't1', endedAt: 500 }),
+      packTask({ id: 't2', endedAt: 100 }),
+      packTask({ id: 't3', endedAt: 200 }),
+      packTask({ id: 't4', endedAt: 300 }),
+      packTask({ id: 't5', endedAt: 400 }),
+    ];
+    // t1 was delegated first but finished last: it is shown, not folded away.
+    expect(ids(packTaskList(ended))).toEqual([['t1', 't5', 't4'], 2]);
+    expect(ids(packTaskList(ended, { expanded: true }))).toEqual([['t1', 't5', 't4', 't3', 't2'], 0]);
+    expect(
+      ids(
+        packTaskList(
+          ended.map((task) => ({ ...task, endedAt: undefined })),
+          { expanded: true },
+        ),
+      ),
+    ).toEqual([['t5', 't4', 't3', 't2', 't1'], 0]);
   });
 
   it('keeps the selected task, unfolds when expanded, and never folds a single task', () => {
