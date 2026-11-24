@@ -1059,11 +1059,11 @@ function App() {
         <input
           aria-label="Model"
           title={
-            session.reportedModel
+            !session.model && session.reportedModel
               ? `The model id, or empty for the agent's default. It last ran ${session.reportedModel}.`
               : "The model id, or empty for the agent's default"
           }
-          placeholder={session.reportedModel ?? 'model'}
+          placeholder={(!session.model && session.reportedModel) || 'model'}
           size={Math.max(5, (model ?? session.model ?? session.reportedModel ?? '').length)}
           value={model ?? session.model ?? ''}
           onChange={(event) => setModel(event.target.value)}

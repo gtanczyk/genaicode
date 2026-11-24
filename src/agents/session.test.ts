@@ -143,6 +143,22 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBe('backup-default');
   });
 
+  it('ignores a model reported after the model setting changed during the turn', async () => {
+    const started = deferred();
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        await started.promise;
+        emit({ type: 'session', sessionId: 's-1', model: 'picked' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w', model: 'picked' });
+    session.send('first');
+    session.setModel(undefined);
+    started.resolve();
+    await session.idle();
+    expect(session.get()).toMatchObject({ sessionId: 's-1', reportedModel: undefined });
+  });
+
   it('forgets the model of a non-resuming agent when its next turn starts a new session', async () => {
     const report = deferred();
     const { agent } = fakeAgent(

@@ -351,6 +351,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningEffort: string | undefined;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
+  /** The model setting the running turn was given. */
+  let runningModel: string | undefined;
   /** Whether the caller changed `mode` since the running turn started. */
   let modeChangedDuringTurn = false;
   /** Set when `setMode(undefined)` explicitly clears an active or saved Plan mode. */
@@ -509,7 +511,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'session':
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
-          if (event.model) patch.reportedModel = event.model;
+          // Not when the model setting changed after this turn started: the next turn runs another.
+          if (event.model && state.model === runningModel) patch.reportedModel = event.model;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -871,8 +874,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? state.sessionId
           : undefined;
     explicitResume = undefined;
-    // A new agent session has not said its model yet.
-    if (resume === undefined && state.reportedModel !== undefined) set({ reportedModel: undefined });
+    // Each turn says its model again: until then the last one may not be what runs (a new session,
+    // or a backup taking over without a failover event).
+    if (state.reportedModel !== undefined) set({ reportedModel: undefined });
     const turnController = new AbortController();
     controller = turnController;
     const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn], state.truncatedReason);
@@ -926,7 +930,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
-        model: state.model,
+        model: (runningModel = state.model),
         effort: turnEffort,
         resume,
         signal: turnController.signal,
