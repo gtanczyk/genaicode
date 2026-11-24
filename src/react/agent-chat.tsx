@@ -1148,6 +1148,11 @@ function LazyDetails({
   ...rest
 }: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
   const [open, setOpen] = useState(false);
+  const details = useRef<HTMLDetailsElement>(null);
+  // Opened before React took over the page (server rendering): build the body now.
+  useLayoutEffect(() => {
+    if (details.current?.open) setOpen(true);
+  }, []);
   // While closed, the body last committed, the same element: React skips the subtree until it opens.
   const kept = useRef<ReactNode>(null);
   const body = open ? build() : kept.current;
@@ -1155,7 +1160,7 @@ function LazyDetails({
     kept.current = body;
   });
   return (
-    <details {...rest} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details {...rest} ref={details} onToggle={(event) => setOpen(event.currentTarget.open)}>
       {summary}
       {body}
     </details>

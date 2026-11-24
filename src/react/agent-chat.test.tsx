@@ -973,6 +973,24 @@ describe('AgentChat', () => {
     expect(formatToolName).toHaveBeenCalledWith('Bash');
   });
 
+  it('builds a step the user opened before hydration', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const { hydrateRoot } = await import('react-dom/client');
+    const props: AgentChatProps = { state: fixture(), foldSteps: true, onSend: () => {} };
+    const host = document.createElement('div');
+    host.innerHTML = renderToString(<AgentChat {...props} />);
+    document.body.append(host);
+    const fold = host.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    fold.open = true;
+    let hydrated!: ReturnType<typeof hydrateRoot>;
+    act(() => {
+      hydrated = hydrateRoot(host, <AgentChat {...props} />);
+    });
+    expect(fold.querySelector('.gc-fold-body')).not.toBeNull();
+    act(() => hydrated.unmount());
+    host.remove();
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();
