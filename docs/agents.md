@@ -573,9 +573,52 @@ The session index provides four read-only MCP tools (and, in a chat, `sessions_s
 
 ```bash
 npx genaicode chat --sessions                              # the chat's agent gets the tools
-claude mcp add sessions -- npx genaicode sessions mcp      # or any agent, as a stdio MCP server
-codex mcp add sessions -- npx genaicode sessions mcp
+npx genaicode mcp install                                  # every installed agent gets them
+npx genaicode mcp install -a codex                         # or one agent
+npx genaicode mcp                                          # where it is registered
+npx genaicode mcp uninstall
 ```
+
+`mcp install` registers `genaicode sessions mcp` as a user-level stdio MCP server named
+`genaicode` with Claude Code, Codex, Gemini CLI, Copilot and Cursor, so each of them can answer
+"what waits for me?" from its own chat. Claude Code and Codex are asked through their own
+`mcp add`; for the others the entry goes into their file (`~/.gemini/settings.json`,
+`~/.copilot/mcp-config.json`, `~/.cursor/mcp.json`) beside what is declared there. An agent whose
+CLI is not found is skipped unless you name it with `-a`. In code: `installMcp()`,
+`uninstallMcp()` and `mcpInstallStatus()`. To register it by hand, the command is
+`npx genaicode sessions mcp`.
+
+`sessions mcp` and `chat --sessions` also serve two tools over what the agents remember.
+`memory_list` names the instruction and note files every agent keeps for a project: `AGENTS.md`,
+`CLAUDE.md` (also `.claude/CLAUDE.md`, `.claude/rules/*.md`, `~/.claude/CLAUDE.md`), Claude Code's
+own notes (`~/.claude/projects/<project>/memory/*.md`), `~/.codex/AGENTS.md` and
+`~/.codex/memories/*.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules` and
+`.cursor/rules/*.mdc`, in the project directory and in its repository root. `memory_read` returns
+one of them, up to 64 KiB. So Codex can see what Claude Code was told and noted about a project
+before it takes the work over. They only read, links are not followed, and a path `memory_list`
+would not name is refused. In code: `memoryTools()` and `agentMemoryFiles(cwd)`.
+
+With `--send` (`genaicode mcp install --send`, or `sessions mcp --send` by hand) the agent also
+gets `sessions_send` outside genaicode's own chat. No chat of genaicode's stands between the
+agent and you there, so the question goes through the agent's own client: the first message to
+each session comes back to it as an MCP elicitation (a form with the recipient and the exact
+text, to accept or decline), and the message goes only on an accept for exactly that text and
+session. A client that cannot ask (no `elicitation` capability, or an older protocol) gets
+nothing sent. The other session's answer is the tool's result. To a client that takes MCP tasks
+(`io.modelcontextprotocol/tasks`) it comes as a task, so the agent goes on working and picks the
+answer up when it is there; any other client waits up to 45 seconds and is told to read it with
+`sessions_read` after that. It is off unless you ask for it. In code: `sessionSendMcpTool(agents)`.
+For your own tools: a `ToolOutput` may carry `task: { result, status?, cancel? }`, a tool may
+throw `McpInputRequired` to ask the user first (answers arrive in the `McpCallContext` of the
+next call), and `handleMcpMessage(..., createMcpState())` keeps the tasks.
+
+The server speaks MCP 2025-06-18 and 2026-07-28. To a client of the newer revision that loads
+skills from MCP servers (`io.modelcontextprotocol/skills`; Claude Code where the feature is on)
+it also serves one skill, [`genaicode-sessions`](skills/genaicode-sessions/SKILL.md): which tool
+answers which question and how to report. The agent loads it only when a question calls for it.
+Your own tools can ship skills the same way: `startLocalMcpServer({ skills })` and
+`serveMcpStdio(tools, { skills })` take `{ name, description, body }`, and `parseSkill()` reads
+one from a `SKILL.md`.
 
 `sessions_waiting` uses the same order as `genaicode sessions --waiting`. It shows approvals
 first, then sessions awaiting a reply, newest first within each group. It looks back seven days
@@ -716,6 +759,11 @@ session.send('Now cover it with a test'); // resumes the same agent session
 - `state.turns[]` holds each prompt with its transcript: `text` (streamed, then final),
   `tool` (input, clipped output, error flag), `files`, `approval`, `input` (steered text)
   and `error` entries, plus the turn's `AgentResult`. Usage and cost add up in `state`.
+- To receive plans and status updates from local MCP agents, pass the result of
+  `await startProgressChannel()` as `createAgentSession({ agent, cwd, progress })`.
+  Each `report_progress` call adds a `progress` entry with a `message` and an optional
+  `plan` to the issuing turn. A message alone keeps the previous plan and `plan: []` clears it.
+  Close the channel with `await progress.close()` when the host shuts down.
 - `send()` while a turn runs steers the agent when it supports `steer()`, and otherwise
   queues the prompt; queued prompts run in order. `stop()` aborts the turn and clears the
   queue.

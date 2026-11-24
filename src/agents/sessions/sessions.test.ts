@@ -508,11 +508,36 @@ describe('genaicode sessions', () => {
     expect((await run('--since', 'soon')).err).toContain('--since expects');
   });
 
-  it('says so when --cloud has no key to list a cloud with', async () => {
-    const { code, out, err } = await run('--cloud', '--json');
+  it('adds what --cloud finds to the local sessions', async () => {
+    let out = '';
+    const code = await runCli({
+      argv: ['sessions', '--cloud', '--json'],
+      env: { HOME: join(root, 'home'), CLAUDE_CONFIG_DIR: claudeDir, CODEX_HOME: codexDir },
+      cwd: root,
+      stdout: { write: (text: string) => void (out += text) },
+      stderr: { write: () => undefined },
+      readStdin: async () => undefined,
+      cloudSources: [
+        {
+          name: 'github',
+          where: 'cloud',
+          list: async () => [
+            {
+              source: 'github',
+              agent: 'claude',
+              id: 'cmsg_1',
+              where: 'cloud',
+              updatedAt: Date.now(),
+              repository: 'acme/app',
+            },
+          ],
+        },
+      ],
+    });
     expect(code).toBe(EXIT_OK);
-    expect(err).toContain('no CURSOR_API_KEY');
-    expect(out.trim().split('\n').length).toBeGreaterThan(1);
+    const lines = out.trim().split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.some((line) => line.includes('"cmsg_1"') && line.includes('"cloud"'))).toBe(true);
   });
 
   it('groups cloud sessions without a repository under their platform', () => {

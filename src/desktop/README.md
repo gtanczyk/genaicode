@@ -47,7 +47,9 @@ on, recent topics, and each agent's plan limits; a topic opens its sessions or s
 that topic's directory. The page gets no Tauri commands; it is the page a browser would load.
 Quitting the app stops the server.
 
-The **Developer** menu (and the session chip in the chat header, plus the `⋯` menu on every row in **Chats** / **Sessions**) lets you copy the full session ID, the session's file path on disk, the formatted Markdown transcript, or the raw JSON state, or save the transcript to a `.md` / `.json` file via the native Save dialog.
+Open **File → Session** to copy the current session ID, file path, Markdown transcript or raw JSON state, or to save the transcript as Markdown or JSON. The chat header’s session chip and the `⋯` menu on each row in **Chats** / **Sessions** also offer these actions.
+
+The **Help** menu includes **Get Help** and **Report a Bug…**. On macOS, use the **Search** field in that menu to find commands such as **Copy Session ID**.
 
 It also keeps an icon in the menu bar with the sessions of every agent that ask you something now, read from
 `node cli.js sessions --waiting --json --watch --exit-with-stdin`: the number beside the icon is

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isQuestionChannelServer } from './ask-user.js';
 import { handoffTranscript } from './handoff.js';
+import { isTurnProgressServer, startProgressChannel, type ProgressReport } from './progress.js';
 import { createAgentSession } from './session.js';
 import { startProjectChannel } from './sessions/workspace.js';
 import type { AgentCapabilities, AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent } from './types.js';
@@ -242,6 +243,176 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBeUndefined();
     report.resolve();
     await session.idle();
+  });
+
+  it('records valid progress only on its issuing turn, through queueing, completion and stop', async () => {
+    const channel = await startProgressChannel();
+    const first = deferred();
+    const second = deferred();
+    const { agent, tasks } = fakeAgent([() => first.promise, () => second.promise], { mcp: true, resume: true });
+    const custom = { name: 'genaicode_progress', command: 'custom' };
+    const session = createAgentSession({ agent, cwd: '.', progress: channel, task: { mcpServers: [custom] } });
+    const call = (task: AgentTask, method: string, params?: object) => {
+      const server = task.mcpServers?.find((item) => item.name === 'genaicode_progress_2');
+      if (!server || !('url' in server)) throw new Error('missing progress channel');
+      return fetch(server.url, {
+        method: 'POST',
+        headers: { ...server.headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+    };
+    const report = (task: AgentTask, args: object) =>
+      call(task, 'tools/call', { name: 'report_progress', arguments: args });
+    try {
+      session.send('first');
+      session.send('queued');
+      expect(tasks[0].mcpServers?.[0]).toEqual(custom);
+      expect(tasks[0].mcpServers?.[1].trusted).toBe(true);
+      expect(await (await call(tasks[0], 'initialize')).json()).toMatchObject({
+        result: { instructions: expect.stringContaining('report_progress') },
+      });
+      expect(await (await call(tasks[0], 'tools/list')).json()).toMatchObject({
+        result: { tools: [{ name: 'report_progress' }] },
+      });
+      for (const args of [
+        { message: ' ' },
+        { message: 'x', plan: [{ step: 'A', status: 'unknown' }] },
+        { message: 'x'.repeat(1001) },
+      ]) {
+        expect(await (await report(tasks[0], args)).json()).toMatchObject({ result: { isError: true } });
+      }
+      expect(session.get().turns[0].entries).toEqual([]);
+      const update = { message: 'Testing', plan: [{ step: 'Open link', status: 'in_progress' }] };
+      expect((await report(tasks[0], update)).ok).toBe(true);
+      expect(session.get().turns[0].entries).toEqual([{ kind: 'progress', ...update }]);
+      first.resolve();
+      await vi.waitFor(() => expect(tasks).toHaveLength(2));
+      expect((await report(tasks[0], { message: 'Late' })).status).toBe(404);
+      expect(session.get().turns[1].entries).toEqual([]);
+      expect((await report(tasks[1], { message: 'New phase' })).ok).toBe(true);
+      session.stop();
+      expect((await report(tasks[1], { message: 'Too late' })).status).toBe(404);
+      await session.idle();
+      expect(session.get().turns[1].entries).toEqual([{ kind: 'progress', message: 'New phase' }]);
+    } finally {
+      session.close();
+      first.resolve();
+      second.resolve();
+      await channel.close();
+    }
+  });
+
+  it('keeps a streamed reply whole around progress, and marks a host channel server as progress', async () => {
+    let report: ((progress: { message: string }) => void) | undefined;
+    const channel = {
+      openTurn(onReport: (progress: { message: string }) => void, _signal: AbortSignal, name = 'genaicode_progress') {
+        report = onReport;
+        // A host's own channel: not marked by startProgressChannel().
+        return { mcpServer: { name, url: 'http://127.0.0.1:1/mcp' }, close() {} };
+      },
+    };
+    const { agent, tasks } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'text-delta', text: 'Hel' });
+          await vi.waitFor(() => expect(session.get().turns[0]!.entries).toHaveLength(1));
+          report!({ message: 'Step one' });
+          emit({ type: 'text-delta', text: 'lo' });
+          emit({ type: 'message', text: 'Hello' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'text-delta', text: 'A' });
+          await vi.waitFor(() => expect(session.get().turns[1]!.entries).toHaveLength(1));
+          report!({ message: 'Step two' });
+          emit({ type: 'text-delta', text: 'B' });
+        },
+      ],
+      { mcp: true, resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    await session.idle();
+    session.send('second');
+    await session.idle();
+    expect(isTurnProgressServer(tasks[0].mcpServers![0]!)).toBe(true);
+    expect(session.get().turns.map((turn) => turn.entries)).toEqual([
+      [
+        { kind: 'text', text: 'Hello', streaming: false },
+        { kind: 'progress', message: 'Step one' },
+      ],
+      [
+        { kind: 'text', text: 'AB', streaming: false },
+        { kind: 'progress', message: 'Step two' },
+      ],
+    ]);
+    session.close();
+  });
+
+  it('takes only message and a copy of the plan from a host report, and nothing after the turn', async () => {
+    let report: ((progress: object) => void) | undefined;
+    const channel = {
+      openTurn(onReport: (progress: ProgressReport) => void, _signal: AbortSignal, name = 'genaicode_progress') {
+        // A host may hand over more than a ProgressReport.
+        report = onReport as (progress: object) => void;
+        return { mcpServer: { name, url: 'http://127.0.0.1:1/mcp' }, close() {} };
+      },
+    };
+    const plan = [{ step: 'Check', status: 'in_progress' as const }];
+    const { agent } = fakeAgent(
+      [
+        async () => {
+          report!({ kind: 'text', message: 'Checking', plan, extra: true });
+        },
+      ],
+      { mcp: true, resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    await session.idle();
+    plan[0]!.status = 'completed' as 'in_progress';
+    report!({ message: 'Late' });
+    expect(session.get().turns[0]!.entries).toEqual([
+      { kind: 'progress', message: 'Checking', plan: [{ step: 'Check', status: 'in_progress' }] },
+    ]);
+    session.close();
+  });
+
+  it('ends the turn and runs the queue when a host progress channel fails to close', async () => {
+    const channel = {
+      openTurn(_report: unknown, _signal: AbortSignal, name = 'genaicode_progress') {
+        return {
+          mcpServer: { name, url: 'http://127.0.0.1:1/mcp' },
+          close() {
+            throw new Error('close failed');
+          },
+        };
+      },
+    };
+    const { agent, tasks } = fakeAgent([async () => {}, async () => {}], { mcp: true, resume: true });
+    const session = createAgentSession({ agent, cwd: '.', progress: channel });
+    session.send('first');
+    session.send('queued');
+    await vi.waitFor(() => expect(tasks).toHaveLength(2));
+    await session.idle();
+    expect(session.get().status).toBe('idle');
+    expect(session.get().turns.map((turn) => turn.result?.ok)).toEqual([true, true]);
+    session.close();
+  });
+
+  it('only attaches the loopback progress tool to local agents with MCP support', async () => {
+    const channel = await startProgressChannel();
+    try {
+      for (const capabilities of [{ mcp: true, remote: true }, {}]) {
+        const { agent, tasks } = fakeAgent([], capabilities);
+        const session = createAgentSession({ agent, cwd: '.', progress: channel });
+        session.send('go');
+        await session.idle();
+        expect(tasks[0].mcpServers).toBeUndefined();
+        session.close();
+      }
+    } finally {
+      await channel.close();
+    }
   });
 
   it('builds a structured transcript and resumes the session on the next turn', async () => {

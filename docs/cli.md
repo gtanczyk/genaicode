@@ -66,7 +66,7 @@ not signed in, not installed or crashed (see [failover](agents.md#failover)).
 npx genaicode sessions                       # what every agent has going on, by project
 npx genaicode sessions --since 7d -C ../api  # last week, one project
 npx genaicode sessions -a codex --json       # one JSON object per session
-npx genaicode sessions --cloud               # also Cursor Cloud Agents (CURSOR_API_KEY)
+npx genaicode sessions --cloud               # also cloud sessions (gh, codex, CURSOR_API_KEY)
 npx genaicode sessions --waiting             # only what waits for you, approvals first
 ```
 
@@ -74,6 +74,18 @@ It reads the stores the agents keep on this machine (Claude Code, Codex, Copilot
 CLI, Antigravity, Muse and Vibe) and changes nothing. SQLite-backed stores (Codex, Muse,
 Antigravity, Cursor's model lookup and Copilot's `session-store.db` fallback) are read with
 `node:sqlite`.
+`--cloud` adds sessions that run elsewhere. The vendors do not list them, but a session that
+pushed work signs it: your own pull requests of the last two weeks (asked of GitHub through `gh`,
+with your sign-in) are grouped by the claude.ai project thread, Claude Code cloud session or
+Codex Cloud task their description links, under the repository, with the pull requests as the
+latest word (`Open: owner/repo#12 ...`). A session with an open pull request shows as waiting.
+One that pushed nothing is not seen. Codex Cloud tasks also come from `codex cloud list --json`
+(the latest twenty), and Cursor Cloud Agents from Cursor's API when `CURSOR_API_KEY` is set.
+Without `gh` or `codex` that part is skipped. `-a github` or `-a codex-cloud` shows one of them;
+`sessions mcp --cloud` gives them to an agent. In code: `githubCloudSessions()` and
+`codexCloudSessions()`, both a `SessionSource`; `joinedCloudSessions(pulls, tasks)` names a Codex
+Cloud task that opened a pull request once, as the CLI does.
+
 `●` is a session an agent is working in now, `○` one that waits for you, `◌` one that stopped
 half way. After `npx genaicode hooks install`, Claude Code, Codex, Gemini, Copilot and Cursor report what their sessions
 do, and `◆` marks one that asks for approval (see [hooks](agents.md#which-sessions-need-you-hooks)). Each line ends with the session id; `genaicode chat -a <agent> -C <dir> -r <id>`
@@ -217,11 +229,18 @@ they are a guide, not a bill. A topic opens the Sessions view on its sessions.
 In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 `sessions_waiting` tool shows the same sessions as `genaicode sessions --waiting`, including
 the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
-the same read-only tools over stdio. The agent can read what the other sessions said and what
+the same read-only tools over stdio, and `npx genaicode mcp install` registers that server with
+every installed agent (Claude Code, Codex, Gemini CLI, Copilot, Cursor), so you can ask from any of them. The agent can read what the other sessions said and what
 their open questions ask. Ask it to pass something to another session ("tell Codex in
 knights that...") and it sends it with `sessions_send`; you allow the first message to each
 session in the chat. A session that is working gets it as its next turn, once the current one
 ends. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
+
+During a turn, the desktop and browser chat keep the latest reply, update and plan in view below the collapsed steps.
+Local agents with MCP support can call `genaicode_progress.report_progress` with a short
+`message` and an optional `plan`. Each step has a `step` label and a `status` of `pending`,
+`in_progress` or `completed`. Sending only a message keeps the plan. An empty plan clears it.
+The terminal chat and exported transcripts also include these reports.
 
 ### Open the session tower
 

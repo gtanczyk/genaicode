@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
@@ -369,17 +370,9 @@ function useView(onToast?: (text: string) => void): {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          for (let sep = buffer.indexOf('\n\n'); sep !== -1; sep = buffer.indexOf('\n\n')) {
-            const block = buffer.slice(0, sep);
-            buffer = buffer.slice(sep + 2);
-            let event = 'message';
-            const data: string[] = [];
-            for (const line of block.split(/\r?\n/)) {
-              if (line.startsWith('event:')) event = line.slice(6).trim();
-              else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-            }
-            if (!data.length) continue;
-            const payload = data.join('\n');
+          const taken = takeEvents(buffer);
+          buffer = taken.rest;
+          for (const { event, data: payload } of taken.events) {
             if (event === 'view') {
               setView(JSON.parse(payload) as ChatView);
               setConnected(true);
@@ -469,6 +462,11 @@ interface CachedImage {
 }
 
 /** Resolve local image paths referenced in agent and relay replies to short-lived capability URLs. */
+/** Built outside the component, so the resolver holds the images and nothing else of that render's view. */
+function imageResolver(images: Record<string, string>) {
+  return (path: string) => images[path];
+}
+
 function useLocalImages(
   turns: ChatView['session']['turns'] | undefined,
   notices: ChatView['notices'] | undefined,
@@ -936,6 +934,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
+  // Stable while the images are, so memoized Markdown does not re-render on every update.
+  const imageUrl = useMemo(
+    () => (config?.files ? imageResolver(localImages) : undefined),
+    [config?.files, localImages],
+  );
 
   // Close the viewer if the conversation was cleared and the open artifact no longer exists.
   useEffect(() => {
@@ -1383,7 +1386,7 @@ function App() {
           notices={view?.notices}
           artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
           onOpenArtifact={openArtifactInPanel}
-          imageUrl={config?.files ? (path) => localImages[path] : undefined}
+          imageUrl={imageUrl}
           completions={SLASH_COMMANDS}
           composerExtras={inSetup ? null : controls}
           attachments={config?.uploads && !inSetup ? ATTACH : undefined}
@@ -1546,7 +1549,7 @@ function App() {
             canReveal={config?.reveal}
             onReveal={revealFile}
             onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-            imageUrl={config?.files ? (path) => localImages[path] : undefined}
+            imageUrl={imageUrl}
             onSelectArtifactVersion={(version) =>
               setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
             }

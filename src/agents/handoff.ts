@@ -84,6 +84,11 @@ export function handoffTranscript(turns: readonly SessionTurn[], readArtifact?: 
     out.push(`## Turn ${turn.id} · ${turn.agent}`, '', '**User:**', '', quote(turn.prompt), '');
     for (const entry of turn.entries) {
       switch (entry.kind) {
+        case 'progress':
+          out.push(`**Progress:** ${entry.message}`, '');
+          for (const item of entry.plan ?? []) out.push(`- ${item.step} (${item.status.replace('_', ' ')})`);
+          if (entry.plan?.length) out.push('');
+          break;
         case 'text':
           out.push(`**${turn.agent}:**`, '', entry.text.trim(), '');
           break;

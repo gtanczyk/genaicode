@@ -64,6 +64,15 @@ export {
 } from './hooks.js';
 export type { HookAgent, HooksOptions, HooksStatus } from './hooks.js';
 export {
+  installMcp,
+  MCP_INSTALL_AGENTS,
+  MCP_SERVER_NAME,
+  mcpConfigFile,
+  mcpInstallStatus,
+  uninstallMcp,
+} from './mcp-install.js';
+export type { McpInstallAgent, McpInstallOptions, McpInstallStatus } from './mcp-install.js';
+export {
   findTopic,
   inRunDirectory,
   isAsking,
@@ -91,6 +100,11 @@ export {
 export type { Attention, Topic, TopicFolder, TopicStore, TopicSummary } from './topics.js';
 export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
+export { cloudSessionOf, codexCloudSessions, githubCloudSessions, joinedCloudSessions } from './cloud.js';
+export type { CodexCloudOptions, GitHubCloudOptions, RunCommand } from './cloud.js';
+export { sessionSendMcpTool } from './send-mcp.js';
+export { agentMemoryFiles, memoryTools } from './memory.js';
+export type { AgentMemoryFile, AgentMemoryOptions } from './memory.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
 export { formatSessionUpdate, SessionSendGate, sessionSendTool } from './send-tool.js';
 export type {

@@ -83,6 +83,19 @@ afterEach(() => {
   container.remove();
 });
 
+/** Opens every closed `<details>` under `root` (folds and tool steps build their body only when opened). */
+function openDetails(selector = 'details') {
+  for (let pass = 0; pass < 3; pass++) {
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>(selector))) {
+      if (details.open) continue;
+      act(() => {
+        details.open = true;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    }
+  }
+}
+
 function render(props: Partial<AgentChatProps> = {}) {
   const all: AgentChatProps = { state: fixture(), onSend: vi.fn(), onStop: vi.fn(), ...props };
   act(() => root.render(<AgentChat {...all} />));
@@ -347,6 +360,7 @@ describe('AgentChat', () => {
         ],
       }),
     });
+    openDetails();
     const steps = document.querySelectorAll('.gc-tool');
     expect(steps[0].querySelector('.gc-diff-stat')?.textContent).toBe('+2−1');
     expect(
@@ -380,6 +394,7 @@ describe('AgentChat', () => {
     render({ state });
     expect(document.querySelector('.gc-open-file')).toBeNull();
     render({ state, onOpenFile });
+    openDetails();
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.gc-open-file'));
     expect(buttons.map((button) => button.textContent)).toEqual(['Open /w/a.ts', '/w/b.ts']);
     act(() => buttons[1].click());
@@ -892,6 +907,9 @@ describe('AgentChat', () => {
     const [done, live] = $$('.gc-turn');
     // Two tools and an edit fold; the answer stays out.
     expect(done!.querySelector('.gc-fold > summary')!.textContent).toBe('2 steps · errors');
+    // Closed, the fold builds nothing of what it hides.
+    expect(done!.querySelector('.gc-fold-body')).toBeNull();
+    openDetails('.gc-fold');
     expect(done!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
     expect(done!.querySelector('.gc-fold-body .gc-md')).toBeNull();
     expect(done!.querySelector('.gc-steps > .gc-md')!.textContent).toContain('Fixed two things');
@@ -908,10 +926,164 @@ describe('AgentChat', () => {
     ];
     render({ foldSteps: true, state, formatToolName: (name) => name.replace('mcp__ops__', '') });
     const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
-    // Interim text and an edit fold too; the line names the tool still running.
+    // The tool and edit fold. The last update stays visible as the tool runs.
     expect(summary.textContent).toBe('1 step · costs');
-    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
-    expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
+    openDetails('.gc-fold');
+    expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(2);
+    expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')?.textContent).toBe('Looking');
+  });
+
+  it('keeps the current plan through status-only reports and native commentary until cleared or finished', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'progress', message: 'Check the link', plan: [{ step: 'Open the page', status: 'in_progress' }] },
+      { kind: 'progress', message: 'Running the browser check' },
+      { kind: 'tool', name: 'browser', done: false },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    // What is in view below the closed steps, oldest first.
+    const shown = () =>
+      Array.from(active().children)
+        .filter((child) => !child.classList.contains('gc-fold'))
+        .map((child) => child.textContent);
+    render({ state, foldSteps: true });
+    expect(active().firstElementChild?.classList.contains('gc-fold')).toBe(true);
+    expect(shown()[0]).toBe('Running the browser check');
+    expect(active().querySelector(':scope > ol [aria-current="step"]')?.textContent).toContain('Open the page');
+    openDetails('.gc-fold');
+    expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
+    turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
+    render({ state, foldSteps: true });
+    // A reply after the status leaves the status and its plan in view.
+    expect(shown().slice(0, 2)).toEqual(['Running the browser check', 'Open the page in progress']);
+    expect(shown()[2]).toBe('The page opened.');
+    expect(active().querySelector(':scope > ol')).not.toBeNull();
+    turn.entries.push({ kind: 'progress', message: 'Finishing', plan: [] });
+    render({ state, foldSteps: true });
+    // The latest reply stays in view above the newer status.
+    expect(shown().slice(0, 2)).toEqual(['The page opened.', 'Finishing']);
+    expect(active().querySelector(':scope > ol')).toBeNull();
+    turn.entries.push({ kind: 'text', text: 'Fixed.', streaming: false });
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    expect(active().lastElementChild?.textContent).toBe('Fixed.');
+    expect(active().querySelector(':scope > .gc-progress')).toBeNull();
+  });
+
+  it('keeps a steering input above the update that answers it, and the reply element when the turn ends', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'input', text: 'also check the docs' },
+      { kind: 'text', text: 'Checking the docs too.', streaming: false },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    render({ state, foldSteps: true });
+    const order = Array.from(active().children).map((child) => child.textContent ?? '');
+    const input = order.findIndex((text) => text.includes('also check the docs'));
+    const reply = order.findIndex((text) => text === 'Checking the docs too.');
+    expect(input).toBeGreaterThanOrEqual(0);
+    expect(input).toBeLessThan(reply);
+    const live = Array.from(active().children).find((child) => child.textContent === 'Checking the docs too.');
+
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    const done = Array.from(active().children).find((child) => child.textContent === 'Checking the docs too.');
+    // Moved below the steps, not rebuilt: state inside it (a loaded image) survives.
+    expect(done).toBe(live);
+    expect(active().lastElementChild).toBe(done);
+  });
+
+  it('keeps a reply streaming when progress lands after it, and the same element as the answer', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'text', text: 'Writing the fix', streaming: true },
+      { kind: 'progress', message: 'Running tests' },
+    ];
+    const active = () => $$('.gc-turn')[1]!.querySelector('.gc-steps')!;
+    render({ state, foldSteps: true });
+    const live = Array.from(active().children).find((child) => child.textContent === 'Writing the fix');
+    expect(live).toBeDefined();
+    expect(active().querySelector('.gc-fold-body')?.textContent ?? '').not.toContain('Writing the fix');
+
+    // The full message ends the stream before the turn ends, then the turn ends.
+    turn.entries = [
+      turn.entries[0]!,
+      { kind: 'text', text: 'Writing the fix', streaming: false },
+      { kind: 'progress', message: 'Running tests' },
+    ];
+    render({ state, foldSteps: true });
+    expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);
+    turn.result = state.turns[0]!.result;
+    render({ state, foldSteps: true });
+    expect(Array.from(active().children).find((child) => child.textContent === 'Writing the fix')).toBe(live);
+  });
+
+  it('keeps a tool opened inside a fold open when the fold closes and opens again', () => {
+    render({ foldSteps: true });
+    const fold = $$('.gc-turn')[0]!.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    openDetails('.gc-fold');
+    const tool = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    act(() => {
+      tool.open = true;
+      tool.dispatchEvent(new Event('toggle'));
+    });
+    expect(tool.querySelector('pre')).not.toBeNull();
+    for (const open of [false, true])
+      act(() => {
+        fold.open = open;
+        fold.dispatchEvent(new Event('toggle'));
+      });
+    const again = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    expect(again).toBe(tool);
+    expect(again.open).toBe(true);
+    expect(again.querySelector('pre')).not.toBeNull();
+  });
+
+  it('does not re-render steps once their fold closes again, even with new host callbacks', () => {
+    const formatToolName = vi.fn((name: string) => name);
+    const state = fixture();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    openDetails();
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>('details')).reverse())
+      act(() => {
+        details.open = false;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    formatToolName.mockClear();
+    render({ foldSteps: true, state, formatToolName, onOpenFile: () => {} });
+    type('x');
+    expect(formatToolName).not.toHaveBeenCalled();
+    // Reopened, it shows the latest props again.
+    openDetails('.gc-fold');
+    expect(formatToolName).toHaveBeenCalledWith('Bash');
+  });
+
+  it('builds a step the user opened before hydration', async () => {
+    const { renderToString } = await import('react-dom/server');
+    const { hydrateRoot } = await import('react-dom/client');
+    // Finished turns only: a running turn's elapsed-time label differs between server and client.
+    const props: AgentChatProps = {
+      state: fixture({ status: 'idle', turns: fixture().turns.slice(0, 1) }),
+      foldSteps: true,
+      onSend: () => {},
+    };
+    const host = document.createElement('div');
+    host.innerHTML = renderToString(<AgentChat {...props} />);
+    document.body.append(host);
+    const fold = host.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    fold.open = true;
+    let hydrated!: ReturnType<typeof hydrateRoot>;
+    act(() => {
+      hydrated = hydrateRoot(host, <AgentChat {...props} />);
+    });
+    expect(fold.querySelector('.gc-fold-body')).not.toBeNull();
+    act(() => hydrated.unmount());
+    host.remove();
   });
 
   it('labels the send button by what a prompt will do while running', () => {
@@ -919,6 +1091,44 @@ describe('AgentChat', () => {
     expect(button('Steer')).toBeTruthy();
     expect($<HTMLTextAreaElement>('textarea').placeholder).toBe('Add to the running task…');
   });
+  it('does not move an open artifact frame when the turn ends', () => {
+    const artifact = {
+      id: 'c'.repeat(32),
+      name: 'form',
+      title: 'Form',
+      kind: 'html' as const,
+      mimeType: 'text/html; charset=utf-8',
+      bytes: 10,
+      version: 1,
+    };
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.entries = [
+      { kind: 'tool', name: 'shell', done: true, output: 'ok' },
+      { kind: 'artifact', artifact },
+      { kind: 'text', text: 'Fill in the form.', streaming: false },
+      { kind: 'progress', message: 'Waiting for the form' },
+    ];
+    const props = { foldSteps: true, artifactUrl: (a: typeof artifact) => `/artifacts/${a.id}?v=${a.version}` };
+    render({ state, ...props });
+    const card = $$('.gc-turn')[1]!.querySelector('.gc-artifact')!;
+    act(() => card.querySelector('button')!.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const frame = card.querySelector('iframe')!;
+    expect(frame).not.toBeNull();
+    // A frame taken out of the document, even to be put back elsewhere, reloads and loses what was typed.
+    const parent = card.parentElement!;
+    const insert = vi.spyOn(parent, 'insertBefore');
+    const append = vi.spyOn(parent, 'appendChild');
+    turn.result = state.turns[0]!.result;
+    render({ state, ...props });
+    const moved = [...insert.mock.calls, ...append.mock.calls].map(([node]) => node);
+    insert.mockRestore();
+    append.mockRestore();
+    expect(moved).not.toContain(card);
+    expect(card.isConnected).toBe(true);
+    expect(card.querySelector('iframe')).toBe(frame);
+  });
+
   it('shows a published artifact as a card and previews it in a sandboxed frame', () => {
     const artifact = {
       id: 'a'.repeat(32),

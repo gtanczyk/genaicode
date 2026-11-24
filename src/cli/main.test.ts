@@ -1426,6 +1426,40 @@ describe('genaicode sessions mcp', () => {
     const none = environment({ argv: ['sessions', 'mcp', '-a', 'nobody'], agents: [agent] });
     expect(await main(none.cli)).toBe(EXIT_USAGE);
   });
+
+  it('keeps --cloud to the agent asked for', async () => {
+    const cloud = (name: string) => ({
+      name,
+      where: 'cloud' as const,
+      list: async () => [
+        { source: name, agent: name, id: `${name}-1`, where: 'cloud' as const, updatedAt: Date.now(), cwd: `/${name}` },
+      ],
+    });
+    const call = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'sessions_projects' } };
+    const { cli, out } = environment({
+      argv: ['sessions', 'mcp', '--cloud', '-a', 'github'],
+      env: { PATH: '' },
+      agents: [],
+      cloudSources: [cloud('github'), cloud('codex-cloud')],
+      input: Readable.from([`${JSON.stringify(call)}\n`]),
+    });
+    expect(await main(cli)).toBe(EXIT_OK);
+    const text = JSON.parse(out()).result.content[0].text;
+    expect(text).toContain('/github');
+    expect(text).not.toContain('codex-cloud');
+
+    // Cursor Cloud, by its key, is a store here as it is for `sessions --cloud`.
+    const cursor = environment({
+      argv: ['sessions', 'mcp', '--cloud', '-a', 'cursorCloud'],
+      env: { PATH: '', CURSOR_API_KEY: 'key' },
+      agents: [],
+      cloudSources: [],
+      input: Readable.from([]),
+    });
+    expect(await main(cursor.cli)).toBe(EXIT_OK);
+    const without = environment({ argv: ['sessions', 'mcp', '--cloud', '-a', 'cursorCloud'], agents: [] });
+    expect(await main(without.cli)).toBe(EXIT_USAGE);
+  });
 });
 
 describe('genaicode notify', () => {

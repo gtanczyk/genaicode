@@ -8,6 +8,7 @@ import { limitsAgent, type KnownLimit } from './sessions/limits.js';
 import { approximateSize, EventQueue } from './event-queue.js';
 import { ownMcpServers } from './agent-mcp.js';
 import { startLocalMcpServer } from './mcp-server.js';
+import { isTurnProgressServer } from './progress.js';
 import { unsupportedMode } from './prepare.js';
 import { isReadOnlyApproval } from './read-only.js';
 import type { McpTool } from './mcp-tools.js';
@@ -562,7 +563,7 @@ export function pack(options: PackOptions): Pack {
         ).catch(() => []);
         const byName = new Map<string, McpServer>();
         for (const server of [...own, ...(task.mcpServers ?? [])])
-          if (server.name !== 'pack') byName.set(server.name, server);
+          if (server.name !== 'pack' && !isTurnProgressServer(server)) byName.set(server.name, server);
         return [...byName.values()];
       })();
       let leadRun: AgentRun | undefined;

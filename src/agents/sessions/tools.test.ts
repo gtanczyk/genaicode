@@ -268,4 +268,27 @@ describe('serveMcpStdio', () => {
       signal: controller.signal,
     });
   });
+
+  it('says the input ended before waiting for the answers still on their way', async () => {
+    const order: string[] = [];
+    const left = new AbortController();
+    const slow = {
+      name: 'slow',
+      description: 'Waits until told to stop.',
+      inputSchema: { type: 'object' },
+      call: () =>
+        new Promise<string>((resolve) =>
+          left.signal.addEventListener('abort', () => (order.push('stopped'), resolve('stopped'))),
+        ),
+    };
+    const input = new PassThrough();
+    const served = serveMcpStdio([slow], {
+      input,
+      output: { write: () => undefined },
+      onInputEnd: () => (order.push('ended'), left.abort()),
+    });
+    input.end(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'slow' } })}\n`);
+    await served;
+    expect(order).toEqual(['ended', 'stopped']);
+  });
 });

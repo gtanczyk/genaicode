@@ -1,6 +1,6 @@
 import { runCheckProcess, type CheckResult } from './check-process.js';
 import { worktreeCheck } from './pack-verify.js';
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -40,6 +40,10 @@ import {
   hooksFile,
   hooksStatus,
   installHooks,
+  installMcp,
+  MCP_INSTALL_AGENTS,
+  mcpInstallStatus,
+  uninstallMcp,
   liveDir,
   readLive,
   uninstallHooks,
@@ -47,6 +51,9 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { memoryTools } from '../agents/sessions/memory.js';
+import { sessionSendMcpTool } from '../agents/sessions/send-mcp.js';
+import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
 import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import {
@@ -59,7 +66,7 @@ import {
 import { ANSWER_AGENTS } from '../agents/sessions/hooks.js';
 import { archiveKey, archiveSessions, readArchive, STALE_MS, staleSessions } from '../agents/sessions/archive.js';
 import { startLocalMcpServer } from '../agents/mcp-server.js';
-import type { McpTool } from '../agents/mcp-tools.js';
+import { parseSkill, type McpSkill, type McpTool } from '../agents/mcp-tools.js';
 import {
   notifyFile,
   readNotify,
@@ -143,6 +150,8 @@ export interface CliEnvironment {
   updater?: Partial<UpdateDeps>;
   /** How often `sessions --watch` looks again, in milliseconds. Default: 3 seconds. */
   watchEveryMs?: number;
+  /** What `--cloud` adds to the local stores. Default: GitHub (`gh`) and Codex Cloud (`codex`). */
+  cloudSources?: readonly SessionSource[];
   /** Shows a desktop notification (`notify test`). Default: `sendNotice()`. */
   notify?(notice: Notice): boolean;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
@@ -227,10 +236,11 @@ Usage:
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode sessions send <id> <text>  Send a prompt to a waiting local session in its own agent
   genaicode sessions doctor            Check that the agents' session stores still read as expected
-  genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
+  genaicode sessions mcp [--cloud] [--send]  Serve the session index to an agent as MCP tools (stdio)
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
+  genaicode mcp [install [--send]|uninstall]  Give agents the session index as an MCP server (default: status)
   genaicode limits [--json]           How much of each agent's plan is used, as last seen
   genaicode topics [refresh]          Your sessions as pieces of work, across agents and directories
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
@@ -253,7 +263,9 @@ Update options (for the command scripts/install.sh installs; npx and npm -g upda
 
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
-      --cloud             Also Cursor Cloud Agents (needs CURSOR_API_KEY)
+      --cloud             Also cloud sessions: your pull requests that name a claude.ai thread, a
+                          Claude Code or Codex Cloud session (gh), Codex Cloud tasks (codex) and
+                          Cursor Cloud Agents (CURSOR_API_KEY)
   -w, --waiting           Only sessions waiting for you (approvals first), each with the
                           command that continues it; the last 7 days unless --since says
   -C, --cwd <dir>         Only sessions in this directory or below it
@@ -287,8 +299,10 @@ Sessions options:
 
   "sessions mcp" (-a) serves sessions_projects, sessions_list, sessions_read and sessions_waiting
   on stdio. Any agent can use them to find open sessions and see which ones need your attention:
-  "claude mcp add sessions -- npx genaicode sessions mcp". The agent you give it to reads what
-  the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
+  "genaicode mcp install" registers it with every installed agent (Claude Code, Codex, Gemini,
+  Copilot, Cursor) under the name "genaicode"; -a picks one, "mcp uninstall" takes it out. To
+  agents that load skills from MCP servers it also serves a skill on how to answer from the
+  index. The agent you give it to reads what the other agents' sessions said. "genaicode chat --sessions" gives the same tools to the chat.
   In that chat, /waiting [project] refreshes the queue and /read <id> previews a conversation.
 
 Topics:
@@ -493,6 +507,8 @@ function dispatch(
       return serveSessions(cli, agents, command);
     case 'hooks':
       return manageHooks(cli, command, updater);
+    case 'mcp':
+      return manageMcp(cli, command, updater);
     case 'notify':
       return manageNotify(cli, command);
     case 'limits':
@@ -969,6 +985,7 @@ async function runUi(
     options.sessions && sendGate
       ? [
           ...sessionTools(indexed, { env: cli.env, onSession: (session) => session.cwd && addRoot(session.cwd) }),
+          ...memoryTools({ env: cli.env, cwd: options.cwd }),
           sessionSendTool(sessionAgents, sendGate, { env: cli.env, signal: sends!.signal }),
         ]
       : undefined;
@@ -1034,9 +1051,7 @@ async function serveSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions-mcp' }>,
 ): Promise<number> {
-  const sources = agentSessionSources(
-    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
-  );
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
@@ -1045,13 +1060,144 @@ async function serveSessions(
   const pipe = cli.stdout as Partial<Pick<NodeJS.WritableStream, 'on' | 'off'>>;
   const gone = () => undefined;
   pipe.on?.('error', gone);
-  await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
-    input: cli.input ?? process.stdin,
-    output: cli.stdout,
-    ...(cli.signal ? { signal: cli.signal } : {}),
-  });
+  // `--send`: the agent may message other sessions; its own client asks the user first.
+  const serving = new AbortController();
+  const stopServing = () => serving.abort();
+  cli.signal?.addEventListener('abort', stopServing, { once: true });
+  const send = command.send
+    ? [
+        sessionSendMcpTool(
+          agents.filter((agent) => agent.sessions?.where === 'local'),
+          { env: cli.env, signal: serving.signal },
+        ),
+      ]
+    : [];
+  await serveMcpStdio(
+    [...sessionTools(sources, { env: cli.env }), ...memoryTools({ env: cli.env, cwd: cli.cwd }), ...send],
+    {
+      input: cli.input ?? process.stdin,
+      output: cli.stdout,
+      skills: sessionSkills(),
+      ...(cli.signal ? { signal: cli.signal } : {}),
+      // The host left: what it sent to other sessions ends with it, queued or running.
+      onInputEnd: stopServing,
+    },
+  );
   pipe.off?.('error', gone);
+  stopServing();
+  cli.signal?.removeEventListener('abort', stopServing);
   return EXIT_OK;
+}
+
+/**
+ * The stores `sessions` and `sessions mcp` read: the agents' own, and with `--cloud` what runs
+ * elsewhere (Cursor's API with a key, GitHub and Codex Cloud through their CLIs), `-a` kept.
+ */
+function sessionSourcesFor(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: { agent?: string; cloud?: boolean },
+): SessionSource[] {
+  const cloud: CodingAgent[] = [];
+  if (command.cloud && cli.env.CURSOR_API_KEY) cloud.push(cursorCloud({ apiKey: cli.env.CURSOR_API_KEY }));
+  const picked = (name: string) => command.agent === undefined || name === command.agent;
+  const elsewhere = command.cloud
+    ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name))
+    : [];
+  // A Codex Cloud task that opened a pull request is in both listings: named once.
+  const pulls = elsewhere.find((source) => source.name === 'github');
+  const tasks = elsewhere.find((source) => source.name === 'codex-cloud');
+  const joined = pulls && tasks ? joinedCloudSessions(pulls, tasks) : [];
+  return [
+    ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
+    ...elsewhere.filter((source) => !joined.length || (source !== pulls && source !== tasks)),
+    ...joined,
+  ];
+}
+
+/** Cloud sessions the user's own CLIs can list: pull requests that name their session, and Codex Cloud tasks. */
+function cloudSources(env: NodeJS.ProcessEnv): SessionSource[] {
+  return [githubCloudSessions({ env }), codexCloudSessions({ env })];
+}
+
+/** The skill served beside the session tools: `docs/skills/genaicode-sessions/SKILL.md` in the package. */
+function sessionSkills(): McpSkill[] {
+  try {
+    const file = new URL('../../docs/skills/genaicode-sessions/SKILL.md', import.meta.url);
+    const skill = parseSkill(readFileSync(file, 'utf8'));
+    return skill ? [skill] : [];
+  } catch {
+    // A package without its docs still serves the tools.
+    return [];
+  }
+}
+
+/** `mcp`: the session index in the agents' own MCP configuration. */
+async function manageMcp(
+  cli: CliEnvironment,
+  command: Extract<CliCommand, { kind: 'mcp' }>,
+  updater: UpdateDeps,
+): Promise<number> {
+  const known: readonly string[] = MCP_INSTALL_AGENTS;
+  if (command.agent !== undefined && !known.includes(command.agent)) {
+    cli.stderr.write(`No MCP install for agent "${command.agent}". Agents: ${known.join(', ')}.\n`);
+    return EXIT_USAGE;
+  }
+  // The installed command's server runs `current`, which survives updates; otherwise this package.
+  const install = findInstall(updater.packageRoot);
+  const installedHere = new Map(
+    detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
+  );
+  const chosen = MCP_INSTALL_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
+  let failed = false;
+  for (const agent of chosen) {
+    const found = installedHere.get(agent);
+    const options = {
+      env: cli.env,
+      ...(command.send ? { send: true } : {}),
+      ...(install
+        ? { server: { command: process.execPath, args: [stableCliPath(updater.packageRoot), 'sessions', 'mcp'] } }
+        : {}),
+      ...(found ? { cli: found } : {}),
+    };
+    try {
+      if (command.action === 'install') {
+        if (!found && command.agent === undefined) {
+          cli.stdout.write(`${agent}: not installed, skipped\n`);
+          continue;
+        }
+        const status = await installMcp(agent, options);
+        cli.stdout.write(
+          `${agent}: MCP server "genaicode" added to ${status.file}${status.send ? ', with sessions_send' : ''}\n`,
+        );
+      } else if (command.action === 'uninstall') {
+        const removed = await uninstallMcp(agent, options);
+        const file = (await mcpInstallStatus(agent, options)).file;
+        cli.stdout.write(`${agent}: ${removed ? `MCP server removed from ${file}` : 'no MCP server installed'}\n`);
+      } else {
+        const status = await mcpInstallStatus(agent, options);
+        const state = !status.installed
+          ? 'not installed'
+          : status.current
+            ? 'installed'
+            : 'installed by another genaicode: run "genaicode mcp install"';
+        cli.stdout.write(`${agent}: ${state}${status.send ? ', with sessions_send' : ''}  ${status.file}\n`);
+      }
+    } catch (error) {
+      failed = true;
+      const missing = (error as NodeJS.ErrnoException).code === 'ENOENT' && !found;
+      cli.stderr.write(
+        `${agent}: ${missing ? `its CLI is not found here, and it registers MCP servers itself` : error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+  }
+  if (command.action === 'install' && !failed) {
+    cli.stdout.write(
+      'New sessions of these agents get sessions_projects, sessions_list, sessions_read and sessions_waiting.\n' +
+        'They read what your other agents\' sessions said. "genaicode mcp uninstall" takes them out again.\n',
+    );
+  }
+  return failed ? EXIT_FAILED : EXIT_OK;
 }
 
 /** The front ends are bundled into dist/ui by scripts/build-ui.mjs; the path is kept opaque to tsc. */
@@ -1666,16 +1812,7 @@ async function showSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions' }>,
 ): Promise<number> {
-  // `--cloud` adds the vendor clouds the environment has a key for.
-  const cloud: CodingAgent[] = [];
-  if (command.cloud) {
-    const key = cli.env.CURSOR_API_KEY;
-    if (key) cloud.push(cursorCloud({ apiKey: key }));
-    else cli.stderr.write('--cloud: no CURSOR_API_KEY in the environment, so no cloud is listed.\n');
-  }
-  const sources = agentSessionSources(
-    [...agents, ...cloud].filter((agent) => command.agent === undefined || agent.name === command.agent),
-  );
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
