@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
+
 ## 3.3.0 — 2026-11-24
 
 ### Added
@@ -19,7 +23,6 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - `genaicode mcp install` gives every installed agent (Claude Code, Codex, Gemini CLI, Copilot, Cursor) the session index as an MCP server; `mcp uninstall` and `mcp` (status) go with it, `installMcp()` in code. The server now also speaks MCP 2026-07-28 and serves a `genaicode-sessions` skill to agents that load skills from MCP servers; `startLocalMcpServer({ skills })` and `serveMcpStdio(tools, { skills })` do the same for your tools (#337)
 - The desktop and browser chat keep the latest update and plan in view below the collapsed steps. Local agents can report progress with `report_progress` in desktop, browser and terminal chats (#333)
 - The desktop Help menu, browser UI and terminal help link to support and bug reports (#331)
-- The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
 
 ### Fixed
 
