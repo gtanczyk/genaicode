@@ -61,7 +61,7 @@ export interface PackOptions {
   /** Let the lead draft a message for the tower operator to review. */
   sessionProposalTool?: McpTool;
   /**
-   * Replaces the briefing the lead gets after the person's words on every run, in a tagged block
+   * Replaces the briefing the lead gets after the person's words on its first run, in a tagged block
    * (`<genaicode-briefing>`) that titles and previews leave out. `mcpServers` names the
    * servers the lead can pass on to a task (`delegate`'s `mcpServers`).
    */
@@ -1311,14 +1311,17 @@ export function pack(options: PackOptions): Pack {
         try {
           // Every run, resumed ones too, carries the briefing after the person's words, tagged as
           // genaicode's, so titles and previews come from those words.
-          const roster = await describeMembers(await rosterAt(leadCwd), task.env);
+          // A resumed session has the briefing from its first turn already.
+          const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
           const passable = (await shareable).map((server) => server.name);
-          const brief = options.brief
-            ? options.brief(roster, passable)
-            : defaultBrief(roster, options.operatorMerge, passable);
+          const brief = task.resume
+            ? ''
+            : options.brief
+              ? options.brief(roster, passable)
+              : defaultBrief(roster, options.operatorMerge, passable);
           const run = startRun(lead, {
             ...task,
-            prompt: withBriefing(task.prompt, brief),
+            prompt: brief ? withBriefing(task.prompt, brief) : task.prompt,
             budget: undefined,
             mcpServers: [...(task.mcpServers ?? []), server.mcpServer],
           });

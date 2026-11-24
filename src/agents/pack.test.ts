@@ -687,7 +687,7 @@ describe('pack', () => {
     expect(refused.error).toContain('cannot attach MCP servers');
   });
 
-  it("puts the briefing after the person's words, tagged, on first and resumed turns", async () => {
+  it("puts the briefing after the person's words, tagged, on the first turn only", async () => {
     const cwd = repo();
     const prompts: string[] = [];
     const lead = fake('lead', async (task) => void prompts.push(task.prompt), { mcp: true });
@@ -695,11 +695,10 @@ describe('pack', () => {
     await team.run({ prompt: 'fix the header', cwd }).result;
     await team.run({ prompt: 'again', cwd, resume: 's1' }).result;
     expect(prompts[0]!.startsWith('fix the header\n\n<genaicode-briefing>')).toBe(true);
-    expect(prompts[1]!.startsWith('again\n\n<genaicode-briefing>')).toBe(true);
-    for (const prompt of prompts) {
-      expect(prompt).toContain('Other coding agents on this machine');
-      expect(prompt.endsWith('</genaicode-briefing>')).toBe(true);
-    }
+    expect(prompts[0]).toContain('Other coding agents on this machine');
+    expect(prompts[0]!.endsWith('</genaicode-briefing>')).toBe(true);
+    // The resumed session has it from its first turn.
+    expect(prompts[1]).toBe('again');
     expect(prompts.map(personText)).toEqual(['fix the header', 'again']);
   });
 });
