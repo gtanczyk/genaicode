@@ -51,6 +51,7 @@ import {
   readSession,
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { memoryTools } from '../agents/sessions/memory.js';
 import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import {
@@ -978,6 +979,7 @@ async function runUi(
     options.sessions && sendGate
       ? [
           ...sessionTools(indexed, { env: cli.env, onSession: (session) => session.cwd && addRoot(session.cwd) }),
+          ...memoryTools({ env: cli.env, cwd: options.cwd }),
           sessionSendTool(sessionAgents, sendGate, { env: cli.env, signal: sends!.signal }),
         ]
       : undefined;
@@ -1054,7 +1056,7 @@ async function serveSessions(
   const pipe = cli.stdout as Partial<Pick<NodeJS.WritableStream, 'on' | 'off'>>;
   const gone = () => undefined;
   pipe.on?.('error', gone);
-  await serveMcpStdio(sessionTools(sources, { env: cli.env }), {
+  await serveMcpStdio([...sessionTools(sources, { env: cli.env }), ...memoryTools({ env: cli.env, cwd: cli.cwd })], {
     input: cli.input ?? process.stdin,
     output: cli.stdout,
     skills: sessionSkills(),
