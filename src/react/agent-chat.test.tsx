@@ -933,6 +933,27 @@ describe('AgentChat', () => {
     expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
   });
 
+  it('keeps a tool opened inside a fold open when the fold closes and opens again', () => {
+    render({ foldSteps: true });
+    const fold = $$('.gc-turn')[0]!.querySelector<HTMLDetailsElement>('.gc-fold')!;
+    openDetails('.gc-fold');
+    const tool = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    act(() => {
+      tool.open = true;
+      tool.dispatchEvent(new Event('toggle'));
+    });
+    expect(tool.querySelector('pre')).not.toBeNull();
+    for (const open of [false, true])
+      act(() => {
+        fold.open = open;
+        fold.dispatchEvent(new Event('toggle'));
+      });
+    const again = fold.querySelector<HTMLDetailsElement>('.gc-tool')!;
+    expect(again).toBe(tool);
+    expect(again.open).toBe(true);
+    expect(again.querySelector('pre')).not.toBeNull();
+  });
+
   it('labels the send button by what a prompt will do while running', () => {
     render({ state: fixture({ canSteer: true }) });
     expect(button('Steer')).toBeTruthy();

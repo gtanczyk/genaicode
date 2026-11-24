@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
@@ -369,21 +370,12 @@ function useView(onToast?: (text: string) => void): {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          // Views arriving together replace each other: only the newest is parsed and rendered.
-          let latestView: string | undefined;
-          for (let sep = buffer.indexOf('\n\n'); sep !== -1; sep = buffer.indexOf('\n\n')) {
-            const block = buffer.slice(0, sep);
-            buffer = buffer.slice(sep + 2);
-            let event = 'message';
-            const data: string[] = [];
-            for (const line of block.split(/\r?\n/)) {
-              if (line.startsWith('event:')) event = line.slice(6).trim();
-              else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
-            }
-            if (!data.length) continue;
-            const payload = data.join('\n');
+          const taken = takeEvents(buffer);
+          buffer = taken.rest;
+          for (const { event, data: payload } of taken.events) {
             if (event === 'view') {
-              latestView = payload;
+              setView(JSON.parse(payload) as ChatView);
+              setConnected(true);
             } else if (event === 'release') {
               setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
@@ -392,10 +384,6 @@ function useView(onToast?: (text: string) => void): {
               const parsed = JSON.parse(payload) as { text?: string };
               if (parsed.text) toastRef.current?.(parsed.text);
             }
-          }
-          if (latestView !== undefined) {
-            setView(JSON.parse(latestView) as ChatView);
-            setConnected(true);
           }
         }
       } catch {

@@ -1119,7 +1119,8 @@ function Entry({
 }
 
 /**
- * A `<details>` that builds what it hides only once opened. A long conversation folds hundreds of
+ * A `<details>` that builds what it hides only once opened, then keeps it (and the state inside,
+ * such as tools opened within a fold) when closed again. A long conversation folds hundreds of
  * steps; rendering their output while closed made every update and keystroke slow.
  */
 function LazyDetails({
@@ -1128,7 +1129,7 @@ function LazyDetails({
 }: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
   const [opened, setOpened] = useState(false);
   return (
-    <details {...rest} onToggle={(event) => setOpened(event.currentTarget.open)}>
+    <details {...rest} onToggle={(event) => event.currentTarget.open && setOpened(true)}>
       {summary}
       {opened ? body() : null}
     </details>
