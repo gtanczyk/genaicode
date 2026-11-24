@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentOutputParser } from '../cli-agent.js';
+import type { AgentEvent } from '../types.js';
 import { createCursorParser, cursorArgs } from './cursor.js';
 import { createGeminiParser, gemini, geminiArgs } from './gemini.js';
 import { createOpencodeParser, opencodeArgs } from './opencode.js';
@@ -65,6 +66,107 @@ describe('gemini driver', () => {
     ).toThrow(/cannot be combined/);
   });
 
+  it('reports the model Gemini answered with when its stats name another', () => {
+    const answered = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-1', model: 'gemini-3-pro-preview' },
+      { type: 'result', status: 'success', stats: { models: { 'gemini-3.1-pro-preview': { total_tokens: 9 } } } },
+    ]);
+    expect(answered.filter((event) => event.type === 'session')).toEqual([
+      { type: 'session', sessionId: 'g-1' },
+      { type: 'session', sessionId: 'g-1', model: 'gemini-3.1-pro-preview' },
+    ]);
+    const same = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-2', model: 'gemini-x' },
+      { type: 'result', status: 'success', stats: { models: { 'gemini-x': {} } } },
+    ]);
+    expect(same.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-2',
+      model: 'gemini-x',
+    });
+    const several = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-3', model: 'gemini-3-pro-preview' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: { models: { 'gemini-3.1-pro-preview': {}, 'gemini-3-flash-preview': {} } },
+      },
+    ]);
+    const failedFirst = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-4', model: 'gemini-3-pro-preview' },
+      {
+        type: 'result',
+        status: 'success',
+        stats: {
+          models: {
+            'gemini-3-pro-preview': { total_tokens: 0, input_tokens: 0, output_tokens: 0 },
+            'gemini-3-flash-preview': { total_tokens: 12, output_tokens: 5 },
+          },
+        },
+      },
+    ]);
+    expect(failedFirst.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-4',
+      model: 'gemini-3-flash-preview',
+    });
+    const lastModel = (events: AgentEvent[]) => {
+      const last = events.filter((event) => event.type === 'session').at(-1);
+      return last && 'model' in last ? last.model : 'unset';
+    };
+    // The init model called a tool, a fallback wrote the reply: both produced tokens.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-5', model: 'gemini-flash-lite' },
+          { type: 'tool_use', tool_name: 'read_file', tool_id: 't1', parameters: {} },
+          {
+            type: 'result',
+            status: 'success',
+            stats: { models: { 'gemini-flash-lite': { total_tokens: 4 }, 'gemini-flash': { total_tokens: 9 } } },
+          },
+        ]),
+      ),
+    ).toBeUndefined();
+    // A hook stopped the turn before any model ran: per-model stats, none used.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-7', model: 'gemini-x' },
+          { type: 'result', status: 'success', stats: { models: {} } },
+        ]),
+      ),
+    ).toBeUndefined();
+    // No per-model stats at all (older CLI): the init model stays.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-8', model: 'gemini-x' },
+          { type: 'result', status: 'success', stats: { input_tokens: 1 } },
+        ]),
+      ),
+    ).toBe('gemini-x');
+    // Auto's classifier answered, the chat request failed before replying.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-6', model: 'auto-gemini-3' },
+          {
+            type: 'result',
+            status: 'error',
+            error: { message: 'quota' },
+            stats: { models: { 'gemini-classifier': { total_tokens: 3 } } },
+          },
+        ]),
+      ),
+    ).toBeUndefined();
+    expect(several.filter((event) => event.type === 'session').at(-1)).toEqual({
+      type: 'session',
+      sessionId: 'g-3',
+      model: undefined,
+    });
+  });
+
   it('decodes stream-json', () => {
     const parser = createGeminiParser();
     const events = feed(parser, [
@@ -77,13 +179,15 @@ describe('gemini driver', () => {
       { type: 'result', status: 'success', stats: { total_tokens: 9, input_tokens: 6, output_tokens: 3, cached: 2 } },
     ]);
     expect(events).toEqual([
-      { type: 'session', sessionId: 'g-1', model: 'gemini-x' },
+      // The model waits for the result: the configured one may not be the one that answers.
+      { type: 'session', sessionId: 'g-1' },
       { type: 'text-delta', text: 'Fixing ' },
       { type: 'tool-start', id: 't1', name: 'replace', input: { file_path: 'a.ts' } },
       { type: 'file-change', paths: ['a.ts'] },
       { type: 'tool-end', id: 't1', name: 'replace', isError: false, output: 'ok' },
       { type: 'text-delta', text: 'done.' },
       { type: 'message', text: 'Fixing done.' },
+      { type: 'session', sessionId: 'g-1', model: 'gemini-x' },
       { type: 'usage', usage: { inputTokens: 6, outputTokens: 3, totalTokens: 9, cachedInputTokens: 2 } },
     ]);
     expect(parser.outcome?.()).toEqual({ ok: true });

@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
 
+### Fixed
+
+- Antigravity, Claude, Copilot and Gemini report the model that answered a turn, not the one configured at its start (#342)
+
 ## 3.3.0 — 2026-11-24
 
 ### Added

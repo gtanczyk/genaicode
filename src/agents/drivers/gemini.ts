@@ -300,6 +300,10 @@ export function createGeminiParser(): AgentOutputParser {
   const toolNames = new Map<string, string>();
   let outcome: AgentOutcome | undefined;
   let text = '';
+  let sessionId: string | undefined;
+  let initModel: string | undefined;
+  /** Whether the turn produced a reply or a tool call, not only a failed request. */
+  let answered = false;
 
   return {
     outcome: () => outcome,
@@ -308,14 +312,16 @@ export function createGeminiParser(): AgentOutputParser {
       const events: AgentEvent[] = [];
       switch (value.type) {
         case 'init': {
-          const sessionId = stringField(value, 'session_id');
-          const model = stringField(value, 'model');
-          if (sessionId) events.push({ type: 'session', sessionId, ...(model ? { model } : {}) });
+          sessionId = stringField(value, 'session_id');
+          initModel = stringField(value, 'model');
+          // The configured model, sent before any request: which one answers is known at the result.
+          if (sessionId) events.push({ type: 'session', sessionId });
           break;
         }
         case 'message': {
           const content = stringField(value, 'content');
           if (value.role !== 'assistant' || !content) break;
+          answered = true;
           if (value.delta === true) {
             text += content;
             events.push({ type: 'text-delta', text: content });
@@ -328,6 +334,7 @@ export function createGeminiParser(): AgentOutputParser {
         case 'tool_use': {
           const name = stringField(value, 'tool_name') ?? 'tool';
           const id = stringField(value, 'tool_id');
+          answered = true;
           if (id) toolNames.set(id, name);
           events.push({ type: 'tool-start', ...(id ? { id } : {}), name, input: value.parameters });
           const path = stringField(value.parameters, 'file_path');
@@ -359,6 +366,26 @@ export function createGeminiParser(): AgentOutputParser {
           // Streamed deltas become one final message.
           if (outcome.ok && text.trim()) events.push({ type: 'message', text: text.trim() });
           const stats = value.stats;
+          // The CLI can answer with another model than it started on: its stats name the one(s) used.
+          // A failed attempt is listed with no tokens: only models that produced something count.
+          const models = isObject(stats) && isObject(stats.models) ? stats.models : undefined;
+          const perModel = models !== undefined;
+          const used = models
+            ? Object.entries(models)
+                .filter(([, entry]) => !isObject(entry) || tokensOf(entry) !== 0)
+                .map(([name]) => name)
+            : [];
+          // One model produced the turn: that one. Several (a fallback, a routing classifier, a helper
+          // model for a tool), none, or a turn that failed before answering: no single name is right.
+          // Without per-model stats (older CLIs), a successful turn ran the configured model.
+          const answeredBy = perModel
+            ? (outcome.ok || answered) && used.length === 1
+              ? used[0]
+              : undefined
+            : outcome.ok
+              ? initModel
+              : undefined;
+          if (sessionId) events.push({ type: 'session', sessionId, model: answeredBy });
           const inputTokens = numberField(stats, 'input_tokens');
           const outputTokens = numberField(stats, 'output_tokens');
           const totalTokens = numberField(stats, 'total_tokens');
@@ -380,4 +407,11 @@ export function createGeminiParser(): AgentOutputParser {
       return events;
     },
   };
+}
+
+/** Tokens a `stats.models` entry reports, or undefined when it reports none. */
+function tokensOf(entry: Record<string, unknown>): number | undefined {
+  const counts = ['total_tokens', 'output_tokens', 'input_tokens'].map((field) => numberField(entry, field));
+  if (counts.every((count) => count === undefined)) return undefined;
+  return counts.reduce<number>((sum, count) => sum + (count ?? 0), 0);
 }
