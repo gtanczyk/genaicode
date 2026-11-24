@@ -12,6 +12,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 - The desktop Help menu, browser UI and terminal help link to support and bug reports (#331)
 
+### Fixed
+
+- Long conversations stay responsive in the chat: folded steps and tool calls render only when opened, so a sent message shows up at once and typing does not lag (#336)
+
 ## 3.2.0 — 2026-11-23
 
 ### Added
