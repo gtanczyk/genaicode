@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { handleMcpMessage, parseSkill, skillText, type McpSkill, type McpTool } from './mcp-tools.js';
+import {
+  createMcpState,
+  handleMcpMessage,
+  McpInputRequired,
+  parseSkill,
+  skillText,
+  type McpSkill,
+  type McpTool,
+} from './mcp-tools.js';
 
 const tools: McpTool[] = [
   {
@@ -107,5 +115,136 @@ describe('parseSkill', () => {
   it('is undefined without a name and a description', () => {
     expect(parseSkill('# No frontmatter')).toBeUndefined();
     expect(parseSkill('---\nname: a\n---\nBody')).toBeUndefined();
+  });
+});
+
+describe('tasks and input', () => {
+  const capable = {
+    _meta: {
+      ...modern._meta,
+      'io.modelcontextprotocol/clientCapabilities': { extensions: { 'io.modelcontextprotocol/tasks': {} } },
+    },
+  };
+  const slow = (work: Promise<string>, cancel?: () => void): McpTool => ({
+    name: 'slow',
+    description: 'Takes a while.',
+    inputSchema: { type: 'object' },
+    call: async () => ({
+      text: 'Started.',
+      task: { result: work, status: () => 'Half way', ...(cancel ? { cancel } : {}) },
+    }),
+  });
+  const send = async (
+    tool: McpTool,
+    method: string,
+    params: Record<string, unknown>,
+    state = createMcpState(),
+    wait = 20,
+  ) =>
+    (await handleMcpMessage(
+      { jsonrpc: '2.0', id: 7, method, params },
+      [tool],
+      { name: 't', version: '1', taskWaitMs: wait },
+      state,
+    )) as {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- results are read loosely here
+      result?: Record<string, any>;
+      error?: { code: number };
+    };
+
+  it('offers tasks only with somewhere to keep them', async () => {
+    const tool = slow(Promise.resolve('Done.'));
+    const withState = await send(tool, 'server/discover', modern);
+    expect(withState.result!.capabilities.extensions).toEqual({ 'io.modelcontextprotocol/tasks': {} });
+    const without = await handleMcpMessage(
+      { jsonrpc: '2.0', id: 1, method: 'server/discover', params: modern },
+      [tool],
+      {
+        name: 't',
+        version: '1',
+      },
+    );
+    expect((without as { result: { capabilities: unknown } }).result.capabilities).toEqual({ tools: {} });
+  });
+
+  it('gives a client that takes tasks one to poll, to its end', async () => {
+    let finish!: (text: string) => void;
+    const tool = slow(new Promise<string>((resolve) => (finish = resolve)));
+    const state = createMcpState();
+    const started = (await send(tool, 'tools/call', { ...capable, name: 'slow' }, state)).result!;
+    expect(started).toMatchObject({ resultType: 'task', status: 'working', statusMessage: 'Started.', ttlMs: null });
+    expect(started.taskId).toMatch(/^[\x21-\x7e]{1,128}$/);
+    const taskId = started.taskId as string;
+    expect((await send(tool, 'tasks/get', { ...capable, taskId }, state)).result).toMatchObject({
+      resultType: 'complete',
+      status: 'working',
+      statusMessage: 'Half way',
+    });
+    finish('Done.');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await send(tool, 'tasks/get', { ...capable, taskId }, state)).result).toMatchObject({
+      status: 'completed',
+      result: { content: [{ type: 'text', text: 'Done.' }] },
+    });
+  });
+
+  it('fails a task whose work failed, and lets one go on cancel', async () => {
+    const state = createMcpState();
+    const failing = slow(Promise.reject(new Error('It broke.')));
+    const failed = (await send(failing, 'tools/call', { ...capable, name: 'slow' }, state)).result!;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await send(failing, 'tasks/get', { ...capable, taskId: failed.taskId }, state)).result).toMatchObject({
+      status: 'failed',
+      error: { message: 'It broke.' },
+    });
+
+    let cancelled = false;
+    let finish!: (text: string) => void;
+    const tool = slow(new Promise<string>((resolve) => (finish = resolve)), () => (cancelled = true));
+    const started = (await send(tool, 'tools/call', { ...capable, name: 'slow' }, state)).result!;
+    expect((await send(tool, 'tasks/cancel', { ...capable, taskId: started.taskId }, state)).result).toEqual({
+      resultType: 'complete',
+    });
+    expect(cancelled).toBe(true);
+    finish('Too late.');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((await send(tool, 'tasks/get', { ...capable, taskId: started.taskId }, state)).result!.status).toBe(
+      'cancelled',
+    );
+  });
+
+  it('waits a while for a client that takes no tasks', async () => {
+    const quick = (await send(slow(Promise.resolve('Done.')), 'tools/call', { ...modern, name: 'slow' })).result!;
+    expect(quick).toEqual({ resultType: 'complete', content: [{ type: 'text', text: 'Started.\n\nDone.' }] });
+    const never = (await send(slow(new Promise(() => undefined)), 'tools/call', { ...modern, name: 'slow' })).result!;
+    expect(never.content).toEqual([{ type: 'text', text: 'Started.' }]);
+  });
+
+  it('turns a tool that has to ask into an input request, and passes the answers back in', async () => {
+    const seen: unknown[] = [];
+    const asking: McpTool = {
+      name: 'ask',
+      description: 'Asks first.',
+      inputSchema: { type: 'object' },
+      call: async (_args, context) => {
+        seen.push(context);
+        if (!context?.inputResponses) {
+          throw new McpInputRequired({ ok: { method: 'elicitation/create', params: { message: 'Sure?' } } }, 'state-1');
+        }
+        return 'Went ahead.';
+      },
+    };
+    const first = (await send(asking, 'tools/call', { ...modern, name: 'ask' })).result!;
+    expect(first).toEqual({
+      resultType: 'input_required',
+      inputRequests: { ok: { method: 'elicitation/create', params: { message: 'Sure?' } } },
+      requestState: 'state-1',
+    });
+    const retry = { ...modern, name: 'ask', inputResponses: { ok: { action: 'accept' } }, requestState: 'state-1' };
+    expect((await send(asking, 'tools/call', retry)).result!.content[0].text).toBe('Went ahead.');
+    expect(seen[1]).toMatchObject({ inputResponses: { ok: { action: 'accept' } }, requestState: 'state-1' });
+    // An older client cannot be asked: it gets the refusal as an error.
+    const legacy = (await send(asking, 'tools/call', { name: 'ask' })).result!;
+    expect(legacy.isError).toBe(true);
   });
 });

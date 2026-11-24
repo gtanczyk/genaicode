@@ -16,11 +16,14 @@ export const MCP_SERVER_NAME = 'genaicode';
  * theirs is changed through their own `mcp add` and `mcp remove`. The others read a JSON file.
  */
 const BY_CLI: readonly McpInstallAgent[] = ['claude', 'codex'];
+const SEND_FLAG = '--send';
 
 export interface McpInstallOptions {
   env?: NodeJS.ProcessEnv;
   /** The program and arguments the agent starts: default this genaicode's `cli.js sessions mcp`. */
   server?: { command: string; args: readonly string[] };
+  /** Also serve `sessions_send` (`sessions mcp --send`): the agent may message other sessions once the user confirms. */
+  send?: boolean;
   /** The agent's own CLI, when it is not on PATH under the agent's name. */
   cli?: string;
   /** Runs an agent's CLI (`claude mcp add ...`). Default: `execFile`, with `env`. */
@@ -35,6 +38,8 @@ export interface McpInstallStatus {
   installed: boolean;
   /** Whether it starts the command this genaicode would install. */
   current: boolean;
+  /** Whether it also serves `sessions_send` (`--send`). */
+  send: boolean;
   /** The declared command line, when there is one. */
   command?: string;
 }
@@ -148,6 +153,8 @@ export async function mcpInstallStatus(
   const file = mcpConfigFile(agent, options.env);
   const found = await declared(agent, file);
   const wanted = options.server ?? defaultServer();
+  // With or without `--send`, it is this genaicode's server.
+  const args = (found?.args ?? []).filter((arg) => arg !== SEND_FLAG);
   return {
     agent,
     file,
@@ -155,8 +162,9 @@ export async function mcpInstallStatus(
     current:
       found !== undefined &&
       found.command === wanted.command &&
-      found.args.length === wanted.args.length &&
-      found.args.every((arg, index) => arg === wanted.args[index]),
+      args.length === wanted.args.length &&
+      args.every((arg, index) => arg === wanted.args[index]),
+    send: found?.args.includes(SEND_FLAG) === true,
     ...(found ? { command: [found.command, ...found.args].join(' ') } : {}),
   };
 }
@@ -204,7 +212,8 @@ function runner(options: McpInstallOptions): (command: string, args: readonly st
  */
 export async function installMcp(agent: McpInstallAgent, options: McpInstallOptions = {}): Promise<McpInstallStatus> {
   const file = mcpConfigFile(agent, options.env);
-  const server = options.server ?? defaultServer();
+  const base = options.server ?? defaultServer();
+  const server = { command: base.command, args: [...base.args, ...(options.send ? [SEND_FLAG] : [])] };
   if (BY_CLI.includes(agent)) {
     const run = runner(options);
     // Claude Code refuses a name it already has; Codex replaces it.

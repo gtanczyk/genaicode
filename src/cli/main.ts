@@ -52,6 +52,7 @@ import {
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
+import { sessionSendMcpTool } from '../agents/sessions/send-mcp.js';
 import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
 import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
@@ -235,11 +236,11 @@ Usage:
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode sessions send <id> <text>  Send a prompt to a waiting local session in its own agent
   genaicode sessions doctor            Check that the agents' session stores still read as expected
-  genaicode sessions mcp [--cloud]     Serve the session index to an agent as MCP tools (stdio)
+  genaicode sessions mcp [--cloud] [--send]  Serve the session index to an agent as MCP tools (stdio)
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
-  genaicode mcp [install|uninstall]    Give agents the session index as an MCP server (default: status)
+  genaicode mcp [install [--send]|uninstall]  Give agents the session index as an MCP server (default: status)
   genaicode limits [--json]           How much of each agent's plan is used, as last seen
   genaicode topics [refresh]          Your sessions as pieces of work, across agents and directories
   genaicode notify [on|off|test]      Desktop notification when a session asks for approval
@@ -1059,13 +1060,32 @@ async function serveSessions(
   const pipe = cli.stdout as Partial<Pick<NodeJS.WritableStream, 'on' | 'off'>>;
   const gone = () => undefined;
   pipe.on?.('error', gone);
-  await serveMcpStdio([...sessionTools(sources, { env: cli.env }), ...memoryTools({ env: cli.env, cwd: cli.cwd })], {
-    input: cli.input ?? process.stdin,
-    output: cli.stdout,
-    skills: sessionSkills(),
-    ...(cli.signal ? { signal: cli.signal } : {}),
-  });
+  // `--send`: the agent may message other sessions; its own client asks the user first.
+  const serving = new AbortController();
+  const stopServing = () => serving.abort();
+  cli.signal?.addEventListener('abort', stopServing, { once: true });
+  const send = command.send
+    ? [
+        sessionSendMcpTool(
+          agents.filter((agent) => agent.sessions?.where === 'local'),
+          { env: cli.env, signal: serving.signal },
+        ),
+      ]
+    : [];
+  await serveMcpStdio(
+    [...sessionTools(sources, { env: cli.env }), ...memoryTools({ env: cli.env, cwd: cli.cwd }), ...send],
+    {
+      input: cli.input ?? process.stdin,
+      output: cli.stdout,
+      skills: sessionSkills(),
+      ...(cli.signal ? { signal: cli.signal } : {}),
+      // The host left: what it sent to other sessions ends with it, queued or running.
+      onInputEnd: stopServing,
+    },
+  );
   pipe.off?.('error', gone);
+  stopServing();
+  cli.signal?.removeEventListener('abort', stopServing);
   return EXIT_OK;
 }
 
@@ -1134,6 +1154,7 @@ async function manageMcp(
     const found = installedHere.get(agent);
     const options = {
       env: cli.env,
+      ...(command.send ? { send: true } : {}),
       ...(install
         ? { server: { command: process.execPath, args: [stableCliPath(updater.packageRoot), 'sessions', 'mcp'] } }
         : {}),
@@ -1146,7 +1167,9 @@ async function manageMcp(
           continue;
         }
         const status = await installMcp(agent, options);
-        cli.stdout.write(`${agent}: MCP server "genaicode" added to ${status.file}\n`);
+        cli.stdout.write(
+          `${agent}: MCP server "genaicode" added to ${status.file}${status.send ? ', with sessions_send' : ''}\n`,
+        );
       } else if (command.action === 'uninstall') {
         const removed = await uninstallMcp(agent, options);
         const file = (await mcpInstallStatus(agent, options)).file;
@@ -1158,7 +1181,7 @@ async function manageMcp(
           : status.current
             ? 'installed'
             : 'installed by another genaicode: run "genaicode mcp install"';
-        cli.stdout.write(`${agent}: ${state}  ${status.file}\n`);
+        cli.stdout.write(`${agent}: ${state}${status.send ? ', with sessions_send' : ''}  ${status.file}\n`);
       }
     } catch (error) {
       failed = true;

@@ -123,8 +123,8 @@ export type {
   PackTaskStatus,
 } from './agents/pack.js';
 export { startLocalMcpServer } from './agents/mcp-server.js';
-export { parseSkill, skillText } from './agents/mcp-tools.js';
-export type { McpServerInfo, McpSkill } from './agents/mcp-tools.js';
+export { createMcpState, McpInputRequired, parseSkill, skillText } from './agents/mcp-tools.js';
+export type { McpCallContext, McpServerInfo, McpServerState, McpSkill, McpToolTask } from './agents/mcp-tools.js';
 export type { LocalMcpServer, LocalMcpServerOptions } from './agents/mcp-server.js';
 export {
   agentSessionSources,
@@ -192,6 +192,7 @@ export {
   openCodexServer,
   readCodexThread,
   agentMemoryFiles,
+  sessionSendMcpTool,
   cloudSessionOf,
   joinedCloudSessions,
   codexCloudSessions,

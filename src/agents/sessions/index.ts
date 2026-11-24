@@ -102,6 +102,7 @@ export { checkSessions, cliVersion } from './doctor.js';
 export type { SessionCheck, SessionCheckOptions } from './doctor.js';
 export { cloudSessionOf, codexCloudSessions, githubCloudSessions, joinedCloudSessions } from './cloud.js';
 export type { CodexCloudOptions, GitHubCloudOptions, RunCommand } from './cloud.js';
+export { sessionSendMcpTool } from './send-mcp.js';
 export { agentMemoryFiles, memoryTools } from './memory.js';
 export type { AgentMemoryFile, AgentMemoryOptions } from './memory.js';
 export { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from './tools.js';
