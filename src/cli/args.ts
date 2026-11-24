@@ -61,7 +61,7 @@ export type CliCommand =
   /** `sessions doctor`: whether the session stores still read as expected. */
   | { kind: 'doctor'; json: boolean; api: boolean; agent?: string; sinceMs?: number }
   /** `sessions mcp`: the session index as an MCP server on stdio. */
-  | { kind: 'sessions-mcp'; agent?: string }
+  | { kind: 'sessions-mcp'; agent?: string; cloud?: true }
   /** `mcp`: the session index registered as an MCP server in the agents' own configuration. */
   | { kind: 'mcp'; action: 'status' | 'install' | 'uninstall'; agent?: string }
   | {
@@ -353,12 +353,15 @@ export function parseCli(argv: readonly string[]): CliCommand {
     if (values.stale || values.older !== undefined)
       throw new UsageError('--stale and --older go with "sessions archive".');
     if (positionals[0] === 'mcp') {
-      const extra =
-        values.cloud || values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
+      const extra = values.cwd !== undefined || values.limit !== undefined || values.since !== undefined;
       if (positionals.length > 1 || extra || values.json || values.api || values.waiting || values.archived) {
-        throw new UsageError('Usage: genaicode sessions mcp [-a <agent>]');
+        throw new UsageError('Usage: genaicode sessions mcp [-a <agent>] [--cloud]');
       }
-      return { kind: 'sessions-mcp', ...(values.agent !== undefined ? { agent: values.agent } : {}) };
+      return {
+        kind: 'sessions-mcp',
+        ...(values.agent !== undefined ? { agent: values.agent } : {}),
+        ...(values.cloud ? { cloud: true as const } : {}),
+      };
     }
     if (positionals.length) {
       const extra =

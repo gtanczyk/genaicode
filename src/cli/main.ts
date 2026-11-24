@@ -52,6 +52,7 @@ import {
 } from '../agents/sessions/index.js';
 import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
+import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
 import { codexProjects } from '../agents/sessions/codex.js';
 import { TowerInbox } from '../agents/sessions/tower.js';
 import {
@@ -148,6 +149,8 @@ export interface CliEnvironment {
   updater?: Partial<UpdateDeps>;
   /** How often `sessions --watch` looks again, in milliseconds. Default: 3 seconds. */
   watchEveryMs?: number;
+  /** What `--cloud` adds to the local stores. Default: GitHub (`gh`) and Codex Cloud (`codex`). */
+  cloudSources?: readonly SessionSource[];
   /** Shows a desktop notification (`notify test`). Default: `sendNotice()`. */
   notify?(notice: Notice): boolean;
   /** Runs the `--verify` command. Defaults to a shell in the task directory. */
@@ -232,7 +235,7 @@ Usage:
   genaicode sessions [options]         List the sessions agents keep on this machine, by project
   genaicode sessions send <id> <text>  Send a prompt to a waiting local session in its own agent
   genaicode sessions doctor            Check that the agents' session stores still read as expected
-  genaicode sessions mcp               Serve the session index to an agent as MCP tools (stdio)
+  genaicode sessions mcp [--cloud]     Serve the session index to an agent as MCP tools (stdio)
   genaicode sessions approve|deny <q>  Answer a question a session asks (see "hooks install --answer")
   genaicode sessions archive <id...>   Put sessions away (--stale: all left for 2 days or more)
   genaicode hooks [install|uninstall]  Have agents report what their sessions do (default: status)
@@ -259,7 +262,9 @@ Update options (for the command scripts/install.sh installs; npx and npm -g upda
 
 Sessions options:
   -a, --agent <name>      Only this agent's sessions
-      --cloud             Also Cursor Cloud Agents (needs CURSOR_API_KEY)
+      --cloud             Also cloud sessions: your pull requests that name a claude.ai thread, a
+                          Claude Code or Codex Cloud session (gh), Codex Cloud tasks (codex) and
+                          Cursor Cloud Agents (CURSOR_API_KEY)
   -w, --waiting           Only sessions waiting for you (approvals first), each with the
                           command that continues it; the last 7 days unless --since says
   -C, --cwd <dir>         Only sessions in this directory or below it
@@ -1045,9 +1050,7 @@ async function serveSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions-mcp' }>,
 ): Promise<number> {
-  const sources = agentSessionSources(
-    agents.filter((agent) => command.agent === undefined || agent.name === command.agent),
-  );
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
@@ -1064,6 +1067,37 @@ async function serveSessions(
   });
   pipe.off?.('error', gone);
   return EXIT_OK;
+}
+
+/**
+ * The stores `sessions` and `sessions mcp` read: the agents' own, and with `--cloud` what runs
+ * elsewhere (Cursor's API with a key, GitHub and Codex Cloud through their CLIs), `-a` kept.
+ */
+function sessionSourcesFor(
+  cli: CliEnvironment,
+  agents: readonly CodingAgent[],
+  command: { agent?: string; cloud?: boolean },
+): SessionSource[] {
+  const cloud: CodingAgent[] = [];
+  if (command.cloud && cli.env.CURSOR_API_KEY) cloud.push(cursorCloud({ apiKey: cli.env.CURSOR_API_KEY }));
+  const picked = (name: string) => command.agent === undefined || name === command.agent;
+  const elsewhere = command.cloud
+    ? (cli.cloudSources ?? cloudSources(cli.env)).filter((source) => picked(source.name))
+    : [];
+  // A Codex Cloud task that opened a pull request is in both listings: named once.
+  const pulls = elsewhere.find((source) => source.name === 'github');
+  const tasks = elsewhere.find((source) => source.name === 'codex-cloud');
+  const joined = pulls && tasks ? joinedCloudSessions(pulls, tasks) : [];
+  return [
+    ...agentSessionSources([...agents, ...cloud].filter((agent) => picked(agent.name))),
+    ...elsewhere.filter((source) => !joined.length || (source !== pulls && source !== tasks)),
+    ...joined,
+  ];
+}
+
+/** Cloud sessions the user's own CLIs can list: pull requests that name their session, and Codex Cloud tasks. */
+function cloudSources(env: NodeJS.ProcessEnv): SessionSource[] {
+  return [githubCloudSessions({ env }), codexCloudSessions({ env })];
 }
 
 /** The skill served beside the session tools: `docs/skills/genaicode-sessions/SKILL.md` in the package. */
@@ -1755,16 +1789,7 @@ async function showSessions(
   agents: readonly CodingAgent[],
   command: Extract<CliCommand, { kind: 'sessions' }>,
 ): Promise<number> {
-  // `--cloud` adds the vendor clouds the environment has a key for.
-  const cloud: CodingAgent[] = [];
-  if (command.cloud) {
-    const key = cli.env.CURSOR_API_KEY;
-    if (key) cloud.push(cursorCloud({ apiKey: key }));
-    else cli.stderr.write('--cloud: no CURSOR_API_KEY in the environment, so no cloud is listed.\n');
-  }
-  const sources = agentSessionSources(
-    [...agents, ...cloud].filter((agent) => command.agent === undefined || agent.name === command.agent),
-  );
+  const sources = sessionSourcesFor(cli, agents, command);
   if (!sources.length) {
     cli.stderr.write(`No session store for agent "${command.agent}".\n`);
     return EXIT_USAGE;
