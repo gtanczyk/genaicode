@@ -483,6 +483,7 @@ export function createClaudeParser(): AgentOutputParser {
   const toolNames = new Map<string, string>();
   let outcome: AgentOutcome | undefined;
   let sessionSent = false;
+  let sentModel: string | undefined;
   let lastMessage: string | undefined;
 
   return {
@@ -498,7 +499,16 @@ export function createClaudeParser(): AgentOutputParser {
       const sessionId = stringField(value, 'session_id');
       if (sessionId && !sessionSent) {
         sessionSent = true;
+        sentModel = modelOf(value).model;
         events.push({ type: 'session', sessionId, ...modelOf(value), ...modeOf(value) });
+      }
+      // A configured fallback answers with another model: the top-level reply names it.
+      if (sessionId && value.type === 'assistant' && !stringField(value, 'parent_tool_use_id')) {
+        const answered = isObject(value.message) ? stringField(value.message, 'model') : undefined;
+        if (answered && answered !== '<synthetic>' && answered !== sentModel) {
+          sentModel = answered;
+          events.push({ type: 'session', sessionId, model: answered });
+        }
       }
 
       switch (value.type) {

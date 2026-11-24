@@ -106,6 +106,20 @@ describe('copilot driver', () => {
     });
   });
 
+  it('reports the model Auto picks and the one a reply names', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
+      envelope('session.auto_mode_resolved', { chosenModel: 'claude-sonnet-4.6' }),
+      envelope('assistant.message', { messageId: 'm1', content: 'Hi', model: 'claude-sonnet-4.6' }),
+      envelope('assistant.message', { messageId: 'm2', content: 'Again', model: 'gpt-x' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([
+      { type: 'session', sessionId: 's-1', model: 'auto' },
+      { type: 'session', sessionId: 's-1', model: 'claude-sonnet-4.6' },
+      { type: 'session', sessionId: 's-1', model: 'gpt-x' },
+    ]);
+  });
+
   it('decodes the JSONL session events', () => {
     const parser = createCopilotParser();
     const events = feed(parser, [

@@ -874,9 +874,6 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           ? state.sessionId
           : undefined;
     explicitResume = undefined;
-    // Each turn says its model again: until then the last one may not be what runs (a new session,
-    // or a backup taking over without a failover event).
-    if (state.reportedModel !== undefined) set({ reportedModel: undefined });
     const turnController = new AbortController();
     controller = turnController;
     const { turns: nextTurns, truncatedReason } = keepTurns([...state.turns, turn], state.truncatedReason);
@@ -885,6 +882,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       turns: nextTurns,
       truncatedReason,
       canSteer: false,
+      // Each turn says its model again: until then the last one may not be what runs (a new session,
+      // or a backup taking over without a failover event).
+      reportedModel: undefined,
     });
     const leavingPlan =
       turnMode === undefined &&
@@ -1352,6 +1352,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
               : {}),
         ...(cwdChanged ? { cwd: nextCwd } : {}),
         ...(inheritedMode ? { mode: inheritedMode } : {}),
+        // The adopted turns may have run another model, even in this same session.
+        ...(adopted.length || replace ? { reportedModel: undefined } : {}),
       });
       return true;
     },

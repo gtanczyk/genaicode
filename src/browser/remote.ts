@@ -216,7 +216,9 @@ export function remote(options: RemoteOptions): RemoteAgent {
               }));
         const attached = await abortable(attach(task.attachments ?? [], maxAttachmentText), signal);
         sessionId = task.resume && sessions.has(task.resume) ? task.resume : `remote-${nextSession++}`;
-        emit({ type: 'session', sessionId, model: name });
+        // The model is the backend's: reported when a turn-end names it, not the agent's own name.
+        emit({ type: 'session', sessionId });
+        let reportedModel: string | undefined;
         const keep = (state: string | undefined) => {
           if (!state) return;
           sessions.delete(sessionId!);
@@ -255,6 +257,10 @@ export function remote(options: RemoteOptions): RemoteAgent {
             throw error;
           }
           keep(end.state);
+          if (end.model && end.model !== reportedModel) {
+            reportedModel = end.model;
+            emit({ type: 'session', sessionId, model: end.model });
+          }
           const spent = end.usage?.totalTokens ?? (end.usage?.inputTokens ?? 0) + (end.usage?.outputTokens ?? 0);
           if (spent) {
             tokens += spent;

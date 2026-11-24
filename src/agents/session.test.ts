@@ -159,6 +159,32 @@ describe('createAgentSession', () => {
     expect(session.get()).toMatchObject({ sessionId: 's-1', reportedModel: undefined });
   });
 
+  it('starts a turn in one update, and forgets the model when turns of the same session are adopted', async () => {
+    const { agent } = fakeAgent(
+      [
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+        async (_task, emit) => {
+          emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        },
+      ],
+      { resume: true },
+    );
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    const seen: string[] = [];
+    const stop = session.subscribe((state) => seen.push(state.status));
+    session.send('second');
+    stop();
+    expect(seen[0]).toBe('running');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('model-a');
+    session.adopt([{ id: 9, agent: 'fake', prompt: 'elsewhere', startedAt: 1, entries: [] }], { sessionId: 's-1' });
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
   it('forgets the model of a non-resuming agent when its next turn starts a new session', async () => {
     const report = deferred();
     const { agent } = fakeAgent(
