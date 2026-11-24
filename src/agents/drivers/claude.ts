@@ -233,13 +233,19 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
     prepare: (task, context) => prepareClaude(task, options, context, steer, sessionModes),
     createParser: () => {
       const parser = createClaudeParser();
+      // The first session event of a run says its mode (none: default); a later one, such as a
+      // fallback's model report, changes it only when it names one.
+      let modeSeen = false;
       return {
         outcome: () => parser.outcome?.(),
         ...(parser.input ? { input: (value: unknown) => parser.input!(value) } : {}),
         event(value) {
           const events = parser.event(value);
           for (const event of events) {
-            if (event.type === 'session') rememberMode(event.sessionId, event.mode ?? 'default');
+            if (event.type !== 'session') continue;
+            if (event.mode !== undefined) rememberMode(event.sessionId, event.mode);
+            else if (!modeSeen) rememberMode(event.sessionId, 'default');
+            modeSeen = true;
           }
           return events;
         },

@@ -106,6 +106,15 @@ describe('copilot driver', () => {
     });
   });
 
+  it('names no model Auto picked when the request fails before any reply', () => {
+    const events = feed(createCopilotParser(), [
+      envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),
+      envelope('session.auto_mode_resolved', { chosenModel: 'claude-sonnet-4.6' }),
+      envelope('session.error', { message: 'quota exceeded' }),
+    ]);
+    expect(events.filter((event) => event.type === 'session')).toEqual([{ type: 'session', sessionId: 's-1' }]);
+  });
+
   it('reports the model Auto picks and the one a reply names', () => {
     const events = feed(createCopilotParser(), [
       envelope('session.start', { sessionId: 's-1', selectedModel: 'auto' }),

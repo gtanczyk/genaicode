@@ -188,6 +188,10 @@ export function createCopilotParser(): AgentOutputParser {
     sentModel = model;
     return [{ type: 'session', sessionId: id, ...(model ? { model } : {}) }];
   };
+  // A routing decision (Auto's pick, a switch) is only a candidate until the agent replies or acts:
+  // a request that fails first answered nothing.
+  let candidate: string | undefined;
+  const confirmed = (): AgentEvent[] => answered(candidate);
   // Auto picks a model per turn, and the reply names the one that answered.
   const answered = (model: string | undefined): AgentEvent[] => {
     if (!sessionId || !model || model === sentModel) return [];
@@ -214,20 +218,20 @@ export function createCopilotParser(): AgentOutputParser {
           break;
         }
         case 'session.auto_mode_resolved':
-          events.push(...answered(stringField(data, 'chosenModel')));
+          candidate = stringField(data, 'chosenModel') ?? candidate;
           break;
         case 'session.model_change':
           // A switch mid-turn, such as a fallback after a refusal.
-          if (!nested) events.push(...answered(stringField(data, 'newModel')));
+          if (!nested) candidate = stringField(data, 'newModel') ?? candidate;
           break;
         case 'assistant.message_delta': {
           const text = stringField(data, 'deltaContent');
-          if (!nested && text) events.push({ type: 'text-delta', text });
+          if (!nested && text) events.push(...confirmed(), { type: 'text-delta', text });
           break;
         }
         case 'assistant.message': {
           const text = stringField(data, 'content');
-          if (!nested) events.push(...answered(stringField(data, 'model')));
+          if (!nested) events.push(...answered(stringField(data, 'model') ?? candidate));
           if (!nested && text?.trim()) events.push({ type: 'message', text });
           // JSON output drops `assistant.usage`; each message still carries its output tokens.
           const outputTokens = numberField(data, 'outputTokens');
@@ -238,6 +242,7 @@ export function createCopilotParser(): AgentOutputParser {
           break;
         }
         case 'tool.execution_start': {
+          if (!nested) events.push(...confirmed());
           const id = stringField(data, 'toolCallId');
           const server = stringField(data, 'mcpServerName');
           const tool = stringField(data, 'mcpToolName');
