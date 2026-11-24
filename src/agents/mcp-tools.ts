@@ -1,7 +1,52 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
-/** What a tool returns: text, or text with images (e.g. a screenshot the agent should look at). */
-export type ToolOutput = string | { text: string; images?: ReadonlyArray<{ mimeType: string; data: string }> };
+/**
+ * What a tool returns: text, or text with images (e.g. a screenshot the agent should look at).
+ * With `task`, the text is what can be said at once and the task is the work that goes on.
+ */
+export type ToolOutput =
+  | string
+  | { text: string; images?: ReadonlyArray<{ mimeType: string; data: string }>; task?: McpToolTask };
+
+/**
+ * Work a tool started and did not wait for (a message another agent is answering). A client
+ * that takes MCP tasks (`io.modelcontextprotocol/tasks`) gets a task to poll and goes on working;
+ * any other gets the result if it comes within `McpServerInfo.taskWaitMs`, else the text alone.
+ */
+export interface McpToolTask {
+  /** What the work came to; a rejection fails the task. */
+  result: Promise<ToolOutput>;
+  /** What it is doing now, in a line, while it runs. */
+  status?(): string | undefined;
+  /** The client no longer wants it. */
+  cancel?(): void;
+}
+
+/** What a call knows about the request it answers (MCP 2026-07-28; empty for older clients). */
+export interface McpCallContext {
+  /** The client's capabilities, as this request declares them. */
+  capabilities: Readonly<Record<string, unknown>>;
+  /** The answers to what an earlier attempt of this call asked for (`McpInputRequired`), by key. */
+  inputResponses?: Readonly<Record<string, unknown>>;
+  /** The `requestState` that attempt gave, as the client sent it back. Verify it: the client held it. */
+  requestState?: string;
+}
+
+/**
+ * Thrown by a tool that needs something from the user first: the client asks (`inputRequests`,
+ * by key: e.g. `{ method: 'elicitation/create', params }`) and calls again with the answers in
+ * `McpCallContext.inputResponses`. Only clients of MCP 2026-07-28 can be asked; check
+ * `McpCallContext.capabilities` before throwing.
+ */
+export class McpInputRequired extends Error {
+  constructor(
+    readonly inputRequests: Readonly<Record<string, { method: string; params: Record<string, unknown> }>>,
+    readonly requestState?: string,
+  ) {
+    super('The user has to answer first.');
+    this.name = 'McpInputRequired';
+  }
+}
 
 /** A tool the app serves to the agent over MCP. */
 export interface McpTool {
@@ -10,7 +55,7 @@ export interface McpTool {
   inputSchema: Record<string, unknown>;
   /** Client-specific MCP metadata advertised by `tools/list`. */
   _meta?: Readonly<Record<string, unknown>>;
-  call(args: Record<string, unknown>): Promise<ToolOutput>;
+  call(args: Record<string, unknown>, context?: McpCallContext): Promise<ToolOutput>;
 }
 
 /** The text of a tool's output, without its images. */
@@ -39,6 +84,32 @@ export interface McpServerInfo {
   instructions?: string;
   /** Skills served to clients that speak MCP 2026-07-28; older clients are not told of them. */
   skills?: readonly McpSkill[];
+  /**
+   * How long a call waits for a `McpToolTask` when the client takes no tasks, before it answers
+   * with what it has. Default 45 seconds: under the tool timeouts agents apply.
+   */
+  taskWaitMs?: number;
+}
+
+type TaskStatus = 'working' | 'completed' | 'failed' | 'cancelled';
+interface TaskRecord {
+  taskId: string;
+  status: TaskStatus;
+  createdAt: string;
+  lastUpdatedAt: string;
+  task: McpToolTask;
+  result?: Record<string, unknown>;
+  error?: { code: number; message: string };
+}
+
+/** What a server keeps between requests: the tasks its tools started. One per server. */
+export interface McpServerState {
+  readonly tasks: Map<string, TaskRecord>;
+}
+
+/** Give it to `handleMcpMessage` and the server offers MCP tasks to the clients that take them. */
+export function createMcpState(): McpServerState {
+  return { tasks: new Map() };
 }
 
 interface JsonRpcRequest {
@@ -53,6 +124,13 @@ const DEFAULT_PROTOCOL = '2025-06-18';
 const STATELESS_PROTOCOL = '2026-07-28';
 const PROTOCOL_KEY = 'io.modelcontextprotocol/protocolVersion';
 const SKILLS_EXTENSION = 'io.modelcontextprotocol/skills';
+const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
+const CAPABILITIES_KEY = 'io.modelcontextprotocol/clientCapabilities';
+const TASK_WAIT_MS = 45_000;
+const TASK_POLL_MS = 2_000;
+/** Finished tasks are kept this long for a client that polls late, and at most this many. */
+const TASK_KEEP_MS = 3600_000;
+const TASK_KEEP = 200;
 /** How long a client may keep a listing: the tools and skills of one server process do not change. */
 const LISTING_TTL_MS = 300_000;
 
@@ -66,10 +144,11 @@ export async function handleMcpMessage(
   message: unknown,
   tools: readonly McpTool[],
   serverInfo: McpServerInfo,
+  state?: McpServerState,
 ): Promise<object | null> {
   if (!isRequest(message)) return rpcError(null, -32600, 'invalid request');
   const { id, method, params } = message;
-  const { instructions, skills = [], ...info } = serverInfo;
+  const { instructions, skills = [], taskWaitMs = TASK_WAIT_MS, ...info } = serverInfo;
   if (id === undefined) return null;
   const asked = isObject(params?._meta) ? params._meta[PROTOCOL_KEY] : undefined;
   const stateless = asked !== undefined || method === 'server/discover';
@@ -98,7 +177,15 @@ export async function handleMcpMessage(
         supportedVersions: [STATELESS_PROTOCOL],
         capabilities: {
           tools: {},
-          ...(skills.length ? { resources: {}, extensions: { [SKILLS_EXTENSION]: {} } } : {}),
+          ...(skills.length ? { resources: {} } : {}),
+          ...(skills.length || state
+            ? {
+                extensions: {
+                  ...(skills.length ? { [SKILLS_EXTENSION]: {} } : {}),
+                  ...(state ? { [TASKS_EXTENSION]: {} } : {}),
+                },
+              }
+            : {}),
         },
         _meta: { 'io.modelcontextprotocol/serverInfo': info },
         ...(instructions ? { instructions } : {}),
@@ -143,21 +230,133 @@ export async function handleMcpMessage(
       const tool = tools.find((candidate) => candidate.name === params?.name);
       if (!tool) return rpcError(id, -32602, `unknown tool ${String(params?.name)}`);
       const args = isObject(params?.arguments) ? params.arguments : {};
+      const meta = isObject(params?._meta) ? params._meta : {};
+      const capabilities = stateless && isObject(meta[CAPABILITIES_KEY]) ? meta[CAPABILITIES_KEY] : {};
+      const context: McpCallContext = {
+        capabilities,
+        ...(stateless && isObject(params?.inputResponses) ? { inputResponses: params.inputResponses } : {}),
+        ...(stateless && typeof params?.requestState === 'string' ? { requestState: params.requestState } : {}),
+      };
       try {
-        const output = await tool.call(args);
-        const images = typeof output === 'string' ? [] : (output.images ?? []);
-        return whole({
-          content: [
-            { type: 'text', text: outputText(output) },
-            ...images.map((image) => ({ type: 'image', mimeType: image.mimeType, data: image.data })),
-          ],
-        });
+        const output = await tool.call(args, context);
+        const task = typeof output === 'string' ? undefined : output.task;
+        if (!task) return whole(contentOf(output));
+        const takesTasks = isObject(capabilities.extensions) && isObject(capabilities.extensions[TASKS_EXTENSION]);
+        if (state && takesTasks) return result(id, startTask(state, task, outputText(output)));
+        // No tasks for this client: the answer if it comes soon, else what can be said now.
+        const settled = await soon(task.result, taskWaitMs);
+        if (!settled) return whole(contentOf(output));
+        return whole(contentOf(settled.value, outputText(output)));
       } catch (error) {
+        if (error instanceof McpInputRequired && stateless) {
+          return result(id, {
+            resultType: 'input_required',
+            inputRequests: error.inputRequests,
+            ...(error.requestState !== undefined ? { requestState: error.requestState } : {}),
+          });
+        }
         return whole({ content: [{ type: 'text', text: (error as Error).message }], isError: true });
       }
     }
+    case 'tasks/get': {
+      const record = stateless && typeof params?.taskId === 'string' ? state?.tasks.get(params.taskId) : undefined;
+      if (!record) return rpcError(id, -32602, `unknown task ${String(params?.taskId)}`);
+      return whole(taskView(record));
+    }
+    case 'tasks/cancel': {
+      const record = stateless && typeof params?.taskId === 'string' ? state?.tasks.get(params.taskId) : undefined;
+      if (!record) return rpcError(id, -32602, `unknown task ${String(params?.taskId)}`);
+      if (record.status === 'working') {
+        record.status = 'cancelled';
+        record.lastUpdatedAt = new Date().toISOString();
+        try {
+          record.task.cancel?.();
+        } catch {
+          // The work may not stop; the client is told it was let go.
+        }
+      }
+      return whole({});
+    }
+    case 'tasks/update':
+      // Nothing here asks for input while a task runs.
+      if (!stateless || !state) break;
+      return whole({});
   }
   return rpcError(id, -32601, `method not found: ${method}`);
+}
+
+function contentOf(output: ToolOutput, before?: string): Record<string, unknown> {
+  const images = typeof output === 'string' ? [] : (output.images ?? []);
+  const text = outputText(output);
+  return {
+    content: [
+      { type: 'text', text: before ? `${before}\n\n${text}` : text },
+      ...images.map((image) => ({ type: 'image', mimeType: image.mimeType, data: image.data })),
+    ],
+  };
+}
+
+/** `promise`'s value if it settles within `ms`; a rejection passes through. */
+function soon<T>(promise: Promise<T>, ms: number): Promise<{ value: T } | undefined> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    timer.unref?.();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ value });
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function startTask(state: McpServerState, task: McpToolTask, said: string): Record<string, unknown> {
+  const now = Date.now();
+  // Room first: finished tasks nobody asked about for an hour, then the oldest finished ones.
+  for (const [key, old] of state.tasks) {
+    const done = old.status !== 'working';
+    if (done && (now - Date.parse(old.lastUpdatedAt) > TASK_KEEP_MS || state.tasks.size >= TASK_KEEP)) {
+      state.tasks.delete(key);
+    }
+  }
+  const at = new Date(now).toISOString();
+  const record: TaskRecord = { taskId: randomUUID(), status: 'working', createdAt: at, lastUpdatedAt: at, task };
+  state.tasks.set(record.taskId, record);
+  const end = (status: TaskStatus, outcome: Pick<TaskRecord, 'result' | 'error'>) => {
+    // A cancelled task stays cancelled, whatever the work came to afterwards.
+    if (record.status !== 'working') return;
+    Object.assign(record, outcome, { status, lastUpdatedAt: new Date().toISOString() });
+  };
+  task.result.then(
+    (output) => end('completed', { result: contentOf(output) }),
+    (error: unknown) =>
+      end('failed', { error: { code: -32603, message: error instanceof Error ? error.message : String(error) } }),
+  );
+  return { ...taskView(record), resultType: 'task', statusMessage: said };
+}
+
+function taskView(record: TaskRecord): Record<string, unknown> {
+  let doing: string | undefined;
+  try {
+    doing = record.status === 'working' ? record.task.status?.() : undefined;
+  } catch {
+    doing = undefined;
+  }
+  return {
+    taskId: record.taskId,
+    status: record.status,
+    ...(doing ? { statusMessage: doing } : {}),
+    createdAt: record.createdAt,
+    lastUpdatedAt: record.lastUpdatedAt,
+    ttlMs: null,
+    pollIntervalMs: TASK_POLL_MS,
+    ...(record.result ? { result: record.result } : {}),
+    ...(record.error ? { error: record.error } : {}),
+  };
 }
 
 const skillUri = (skill: McpSkill) => `skill://${skill.name}/SKILL.md`;

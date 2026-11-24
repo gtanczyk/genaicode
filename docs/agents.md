@@ -598,6 +598,20 @@ one of them, up to 64 KiB. So Codex can see what Claude Code was told and noted 
 before it takes the work over. They only read, links are not followed, and a path `memory_list`
 would not name is refused. In code: `memoryTools()` and `agentMemoryFiles(cwd)`.
 
+With `--send` (`genaicode mcp install --send`, or `sessions mcp --send` by hand) the agent also
+gets `sessions_send` outside genaicode's own chat. No chat of genaicode's stands between the
+agent and you there, so the question goes through the agent's own client: the first message to
+each session comes back to it as an MCP elicitation (a form with the recipient and the exact
+text, to accept or decline), and the message goes only on an accept for exactly that text and
+session. A client that cannot ask (no `elicitation` capability, or an older protocol) gets
+nothing sent. The other session's answer is the tool's result. To a client that takes MCP tasks
+(`io.modelcontextprotocol/tasks`) it comes as a task, so the agent goes on working and picks the
+answer up when it is there; any other client waits up to 45 seconds and is told to read it with
+`sessions_read` after that. It is off unless you ask for it. In code: `sessionSendMcpTool(agents)`.
+For your own tools: a `ToolOutput` may carry `task: { result, status?, cancel? }`, a tool may
+throw `McpInputRequired` to ask the user first (answers arrive in the `McpCallContext` of the
+next call), and `handleMcpMessage(..., createMcpState())` keeps the tasks.
+
 The server speaks MCP 2025-06-18 and 2026-07-28. To a client of the newer revision that loads
 skills from MCP servers (`io.modelcontextprotocol/skills`; Claude Code where the feature is on)
 it also serves one skill, [`genaicode-sessions`](skills/genaicode-sessions/SKILL.md): which tool

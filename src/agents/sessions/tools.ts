@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { handleMcpMessage, type McpSkill, type McpTool } from '../mcp-tools.js';
+import { createMcpState, handleMcpMessage, type McpSkill, type McpTool } from '../mcp-tools.js';
 import { asksForSession, pendingAsks } from './answer.js';
 import { isArchived, readArchive } from './archive.js';
 import { oneLine } from './files.js';
@@ -230,6 +230,8 @@ export async function serveMcpStdio(
     instructions?: string;
     /** Skills served beside the tools, to clients that speak MCP 2026-07-28. */
     skills?: readonly McpSkill[];
+    /** How long a call waits for work a tool started, for a client that takes no tasks. */
+    taskWaitMs?: number;
     /** Stops serving, as the end of the input does. */
     signal?: AbortSignal;
   },
@@ -246,6 +248,8 @@ export async function serveMcpStdio(
       // The host is gone: nobody to answer.
     }
   };
+  // Tasks a tool starts are kept for as long as this process serves.
+  const state = createMcpState();
   const stop = () => lines.close();
   streams.signal?.addEventListener('abort', stop, { once: true });
   for await (const line of lines) {
@@ -258,12 +262,18 @@ export async function serveMcpStdio(
       continue;
     }
     // Answered as they finish: a slow listing does not hold a ping back.
-    const answer = handleMcpMessage(message, tools, {
-      name: streams.name ?? 'genaicode-sessions',
-      version: '1',
-      instructions: streams.instructions ?? SESSION_TOOLS_INSTRUCTIONS,
-      ...(streams.skills ? { skills: streams.skills } : {}),
-    })
+    const answer = handleMcpMessage(
+      message,
+      tools,
+      {
+        name: streams.name ?? 'genaicode-sessions',
+        version: '1',
+        instructions: streams.instructions ?? SESSION_TOOLS_INSTRUCTIONS,
+        ...(streams.skills ? { skills: streams.skills } : {}),
+        ...(streams.taskWaitMs !== undefined ? { taskWaitMs: streams.taskWaitMs } : {}),
+      },
+      state,
+    )
       .then((reply) => {
         if (reply !== null) write(reply);
       })

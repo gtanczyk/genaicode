@@ -24,6 +24,11 @@ or wrote down about a project (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor rul
 own notes). Use them when the user asks what an agent knows about a project, or before you take
 another agent's work over. They read only those files.
 
+Where `sessions_send` is offered, it passes a message to another session as its next turn, when
+the user asks you to tell or ask it something. The user confirms the first message to each
+session. Its result is that session's answer; if none came yet, read it later with
+`sessions_read`.
+
 ## How to answer
 
 1. Start narrow. Name the project when the user did; otherwise `sessions_waiting`, then

@@ -170,10 +170,14 @@ export function sessionSendTool(
   agents: readonly CodingAgent[],
   gate: SessionSendGate,
   options: SessionSendToolOptions = {},
-): McpTool {
+): McpTool & {
+  /** The same call, with every update of this one message given to `watch` as well as to the gate. */
+  send(args: Record<string, unknown>, watch?: (state: SessionSendUpdate) => void): Promise<string>;
+} {
   const local = agents.filter((agent) => agent.sessions?.where === 'local' && agent.capabilities.resume);
   const sources = agentSessionSources(local);
-  return {
+  const tool: McpTool & { send: typeof send } = {
+    send: (args, watch) => send(args, watch),
     name: 'sessions_send',
     description:
       'Send a message to another local coding-agent session, as a new turn in it, when the user asks you to tell, ask or pass something to it. Find the session with sessions_list or sessions_waiting first and use its full id. A session that is working right now gets the message queued: it goes as the next turn of that session once the current one ends, and the tool says so ("Queued"); do not hold the message back or ask the user to remind you. The user confirms the first message to each session. The tool returns once the message is sent or queued. The chat shows the session\'s live progress and full answer directly to the user when it finishes, and includes that answer in your context on the next turn; do not promise to poll, check back later, or sleep waiting for it.',
@@ -186,7 +190,14 @@ export function sessionSendTool(
       },
       required: ['id', 'text'],
     },
-    call: async ({ id, source, text }) => {
+    call: ({ id, source, text }) => send({ id, source, text }),
+  };
+  return tool;
+  async function send(
+    { id, source, text }: Record<string, unknown>,
+    watch?: (state: SessionSendUpdate) => void,
+  ): Promise<string> {
+    {
       if (typeof id !== 'string' || !id.trim() || typeof text !== 'string' || !text.trim() || text.length > MAX_TEXT)
         throw new Error(`Provide a session id and a message of 1-${MAX_TEXT} characters.`);
       // Newlines and tabs are fine. Other controls could make what the user saw differ from what is sent.
@@ -217,8 +228,8 @@ export function sessionSendTool(
       let activity: string | undefined;
       let deltaBuffer = '';
       let lastDeltaAt = 0;
-      const emit = (extra?: Partial<SessionSendUpdate>) =>
-        gate.update({
+      const emit = (extra?: Partial<SessionSendUpdate>) => {
+        const state: SessionSendUpdate = {
           id: sendId,
           target,
           text,
@@ -227,7 +238,14 @@ export function sessionSendTool(
           ...(tool ? { tool } : {}),
           ...(activity ? { activity } : {}),
           ...extra,
-        });
+        };
+        gate.update(state);
+        try {
+          watch?.(state);
+        } catch {
+          // Whoever watches one send does not fail it.
+        }
+      };
       emit();
       const onEvent = (event: AgentEvent) => {
         switch (event.type) {
@@ -272,7 +290,7 @@ export function sessionSendTool(
           }
         }
       };
-      const send = () =>
+      const sendNow = () =>
         sendSession(local, target.id, text, {
           source: target.source,
           env: options.env,
@@ -293,7 +311,7 @@ export function sessionSendTool(
       const deliver = async () => {
         try {
           // The session can start a turn, or another sender take it, after the check: then it waits too.
-          const result = await whenFree(send, options, {
+          const result = await whenFree(sendNow, options, {
             // A refusal for its state retries while the session is still working or just became ready, not when archived.
             retry: async (error) => {
               if (error.reason !== 'state') return true;
@@ -345,8 +363,8 @@ export function sessionSendTool(
         'Nothing more to do: the chat shows its live progress and answer directly to the user when it finishes, and you will receive the reply in your context on the next turn. ' +
         'Do not promise to check back later or poll it. A queued message is dropped if this chat closes first.'
       );
-    },
-  };
+    }
+  }
 }
 
 /** Refusals that only mean the session is in the middle of a turn: a message can wait for its end. */
