@@ -369,6 +369,8 @@ function useView(onToast?: (text: string) => void): {
           const { value, done } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
+          // Views arriving together replace each other: only the newest is parsed and rendered.
+          let latestView: string | undefined;
           for (let sep = buffer.indexOf('\n\n'); sep !== -1; sep = buffer.indexOf('\n\n')) {
             const block = buffer.slice(0, sep);
             buffer = buffer.slice(sep + 2);
@@ -381,8 +383,7 @@ function useView(onToast?: (text: string) => void): {
             if (!data.length) continue;
             const payload = data.join('\n');
             if (event === 'view') {
-              setView(JSON.parse(payload) as ChatView);
-              setConnected(true);
+              latestView = payload;
             } else if (event === 'release') {
               setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
@@ -391,6 +392,10 @@ function useView(onToast?: (text: string) => void): {
               const parsed = JSON.parse(payload) as { text?: string };
               if (parsed.text) toastRef.current?.(parsed.text);
             }
+          }
+          if (latestView !== undefined) {
+            setView(JSON.parse(latestView) as ChatView);
+            setConnected(true);
           }
         }
       } catch {
@@ -936,6 +941,11 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
+  // Stable while the images are, so memoized Markdown does not re-render on every update.
+  const imageUrl = useMemo(
+    () => (config?.files ? (path: string) => localImages[path] : undefined),
+    [config?.files, localImages],
+  );
 
   // Close the viewer if the conversation was cleared and the open artifact no longer exists.
   useEffect(() => {
@@ -1379,7 +1389,7 @@ function App() {
           notices={view?.notices}
           artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
           onOpenArtifact={openArtifactInPanel}
-          imageUrl={config?.files ? (path) => localImages[path] : undefined}
+          imageUrl={imageUrl}
           completions={SLASH_COMMANDS}
           composerExtras={inSetup ? null : controls}
           attachments={config?.uploads && !inSetup ? ATTACH : undefined}
@@ -1542,7 +1552,7 @@ function App() {
             canReveal={config?.reveal}
             onReveal={revealFile}
             onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-            imageUrl={config?.files ? (path) => localImages[path] : undefined}
+            imageUrl={imageUrl}
             onSelectArtifactVersion={(version) =>
               setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
             }

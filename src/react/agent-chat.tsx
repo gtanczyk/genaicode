@@ -1,5 +1,6 @@
 import {
   createContext,
+  type ComponentProps,
   useContext,
   useEffect,
   useId,
@@ -886,15 +887,15 @@ function Folded({
   return (
     <>
       {steps.length ? (
-        <details className="gc-fold">
+        <LazyDetails className="gc-fold">
           <summary>
             {turn.result ? null : <span className="gc-spin" />}
             {count} {count === 1 ? 'step' : 'steps'}
             {now ? <span className="gc-fold-now"> · {now}</span> : null}
             {failed ? <span className="gc-err"> · errors</span> : null}
           </summary>
-          <div className="gc-fold-body">{steps.map(([item, i]) => entry(item, i))}</div>
-        </details>
+          {() => <div className="gc-fold-body">{steps.map(([item, i]) => entry(item, i))}</div>}
+        </LazyDetails>
       ) : null}
       {entries.map((item, i) => (inView(item, i) ? entry(item, i) : null))}
     </>
@@ -947,7 +948,7 @@ function Entry({
       const file = openFile ? toolPath(entry.input) : undefined;
       const output = entry.output?.trim();
       return (
-        <details className="gc-tool">
+        <LazyDetails className="gc-tool">
           <summary title={argument || undefined}>
             <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
               {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
@@ -956,25 +957,29 @@ function Entry({
             <span className="gc-tool-arg">{argument}</span>
             {diff ? <DiffStat diff={diff} /> : null}
           </summary>
-          {file ? (
-            <button
-              type="button"
-              className="gc-open-file"
-              data-gc-file={file}
-              onClick={(event) => {
-                event.stopPropagation();
-                openFile?.(file);
-              }}
-            >
-              Open {relativePath(file, cwd)}
-            </button>
-          ) : null}
-          {diff ? <DiffLines diff={diff} /> : null}
-          {/* An edit that went through says nothing worth a box of its own. */}
-          {diff && entry.done && !entry.isError && !output ? null : (
-            <pre>{output || (entry.done ? 'No output.' : 'Running…')}</pre>
+          {() => (
+            <>
+              {file ? (
+                <button
+                  type="button"
+                  className="gc-open-file"
+                  data-gc-file={file}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openFile?.(file);
+                  }}
+                >
+                  Open {relativePath(file, cwd)}
+                </button>
+              ) : null}
+              {diff ? <DiffLines diff={diff} /> : null}
+              {/* An edit that went through says nothing worth a box of its own. */}
+              {diff && entry.done && !entry.isError && !output ? null : (
+                <pre>{output || (entry.done ? 'No output.' : 'Running…')}</pre>
+              )}
+            </>
           )}
-        </details>
+        </LazyDetails>
       );
     }
     case 'files': {
@@ -1111,6 +1116,23 @@ function Entry({
     case 'failover':
       return <div className="gc-failover">{describeFailover(entry.from, entry.to, entry.failure)}</div>;
   }
+}
+
+/**
+ * A `<details>` that builds what it hides only once opened. A long conversation folds hundreds of
+ * steps; rendering their output while closed made every update and keystroke slow.
+ */
+function LazyDetails({
+  children: [summary, body],
+  ...rest
+}: Omit<ComponentProps<'details'>, 'children' | 'onToggle'> & { children: [ReactNode, () => ReactNode] }) {
+  const [opened, setOpened] = useState(false);
+  return (
+    <details {...rest} onToggle={(event) => setOpened(event.currentTarget.open)}>
+      {summary}
+      {opened ? body() : null}
+    </details>
+  );
 }
 
 function DiffStat({ diff }: { diff: ToolDiff }) {

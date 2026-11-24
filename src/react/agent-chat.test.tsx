@@ -83,6 +83,19 @@ afterEach(() => {
   container.remove();
 });
 
+/** Opens every closed `<details>` under `root` (folds and tool steps build their body only when opened). */
+function openDetails(selector = 'details') {
+  for (let pass = 0; pass < 3; pass++) {
+    for (const details of Array.from(document.querySelectorAll<HTMLDetailsElement>(selector))) {
+      if (details.open) continue;
+      act(() => {
+        details.open = true;
+        details.dispatchEvent(new Event('toggle'));
+      });
+    }
+  }
+}
+
 function render(props: Partial<AgentChatProps> = {}) {
   const all: AgentChatProps = { state: fixture(), onSend: vi.fn(), onStop: vi.fn(), ...props };
   act(() => root.render(<AgentChat {...all} />));
@@ -347,6 +360,7 @@ describe('AgentChat', () => {
         ],
       }),
     });
+    openDetails();
     const steps = document.querySelectorAll('.gc-tool');
     expect(steps[0].querySelector('.gc-diff-stat')?.textContent).toBe('+2−1');
     expect(
@@ -380,6 +394,7 @@ describe('AgentChat', () => {
     render({ state });
     expect(document.querySelector('.gc-open-file')).toBeNull();
     render({ state, onOpenFile });
+    openDetails();
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.gc-open-file'));
     expect(buttons.map((button) => button.textContent)).toEqual(['Open /w/a.ts', '/w/b.ts']);
     act(() => buttons[1].click());
@@ -892,6 +907,9 @@ describe('AgentChat', () => {
     const [done, live] = $$('.gc-turn');
     // Two tools and an edit fold; the answer stays out.
     expect(done!.querySelector('.gc-fold > summary')!.textContent).toBe('2 steps · errors');
+    // Closed, the fold builds nothing of what it hides.
+    expect(done!.querySelector('.gc-fold-body')).toBeNull();
+    openDetails('.gc-fold');
     expect(done!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
     expect(done!.querySelector('.gc-fold-body .gc-md')).toBeNull();
     expect(done!.querySelector('.gc-steps > .gc-md')!.textContent).toContain('Fixed two things');
@@ -910,6 +928,7 @@ describe('AgentChat', () => {
     const summary = $$('.gc-turn')[1]!.querySelector('.gc-fold > summary')!;
     // Interim text and an edit fold too; the line names the tool still running.
     expect(summary.textContent).toBe('1 step · costs');
+    openDetails('.gc-fold');
     expect($$('.gc-turn')[1]!.querySelectorAll('.gc-fold-body > *')).toHaveLength(3);
     expect($$('.gc-turn')[1]!.querySelector('.gc-steps > .gc-md')).toBeNull();
   });
