@@ -308,6 +308,7 @@ const report = { answer: JSON.parse(called.result.content[0].text), args, server
 const permIdx = args.indexOf('--permission-mode');
 const permissionMode = permIdx >= 0 ? args[permIdx + 1] : undefined;
 console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 's-1', ...(permissionMode ? { permissionMode } : {}) }));
+if (process.env.FAKE_FALLBACK) console.log(JSON.stringify({ type: 'assistant', session_id: 's-1', message: { model: process.env.FAKE_FALLBACK, content: [] } }));
 console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(report) }));
 `,
 );
@@ -478,6 +479,19 @@ describe('claude() with onApproval', () => {
     for await (const event of first) firstEvents.push(event);
     const firstResult = await first.result;
     expect(firstEvents).toContainEqual({ type: 'session', sessionId: 's-1', mode: 'plan' });
+    // A fallback model's report later in the run (no mode in it) keeps the session's Plan mode.
+    const fallback = persistent.run({
+      prompt: 'plan it',
+      cwd: dir,
+      env: { ...env, FAKE_FALLBACK: 'claude-sonnet' },
+      mode: 'plan',
+      permissions: 'yolo',
+      onApproval,
+    });
+    const fallbackEvents: AgentEvent[] = [];
+    for await (const event of fallback) fallbackEvents.push(event);
+    await fallback.result;
+    expect(fallbackEvents).toContainEqual({ type: 'session', sessionId: 's-1', model: 'claude-sonnet' });
     for (const permissions of [undefined, 'yolo'] as const) {
       const resumed = persistent.run({
         prompt: 'refine it',
