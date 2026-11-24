@@ -345,6 +345,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningAgent: CodingAgent | undefined;
   /** The effort the running turn started with. */
   let runningEffort: string | undefined;
+  /** Whether the running turn started with a model the person set (`setModel()`), not the agent's default. */
+  let runningModelSet = false;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
   /** Whether the caller changed `mode` since the running turn started. */
@@ -424,6 +426,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let pastCost: number | undefined;
 
   const set = (patch: Partial<SessionState>) => {
+    // A reported model belongs to the agent session that reported it: a new or replaced one starts without.
+    if ('sessionId' in patch && patch.sessionId !== state.sessionId && !('reportedModel' in patch))
+      patch = { ...patch, reportedModel: undefined };
     state = { ...state, ...patch };
     for (const listener of [...listeners]) {
       try {
@@ -502,7 +507,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'session':
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
-          if (event.model) patch.reportedModel = event.model;
+          // Only the agent's default is worth showing: a model the person set is in `model` already.
+          if (event.model && !runningModelSet) patch.reportedModel = event.model;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -596,8 +602,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'error':
         addEntry(turnId, { kind: 'error', message: event.message });
         return;
-      case 'budget-warning':
       case 'failover':
+        // The backup agent may not say which model it runs; the one before it no longer does.
+        if (!forgetAfterTurn && own()) set({ reportedModel: undefined });
+        return;
+      case 'budget-warning':
       case 'stderr':
       case 'raw':
       case 'done':
@@ -823,6 +832,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       : state.mode;
     if (!pinnedMode) modeCleared = false;
     runningEffort = turnEffort;
+    runningModelSet = state.model !== undefined;
     runningAgent = turnAgent;
     runningMode = turnMode;
     modeChangedDuringTurn = false;
@@ -1243,7 +1253,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       known.clear();
       missedAfter = carry && state.turns.length ? resetAt : undefined;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ cwd, sessionId: undefined });
+      set({ cwd, sessionId: undefined, reportedModel: undefined });
       return true;
     },
     reset() {
@@ -1254,7 +1264,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       missedAfter = undefined;
       resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ sessionId: undefined });
+      set({ sessionId: undefined, reportedModel: undefined });
     },
     clear(clearOptions) {
       if (state.status === 'running' || closed) return false;
@@ -1267,6 +1277,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       queue = [];
       set({
         sessionId: undefined,
+        reportedModel: undefined,
         turns: [],
         queued: [],
         notes: [],

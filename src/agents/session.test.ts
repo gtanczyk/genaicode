@@ -89,6 +89,63 @@ describe('createAgentSession', () => {
     expect(session.get().reportedModel).toBeUndefined();
   });
 
+  it('shows no reported model for a model the person set, nor after the session is replaced', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'default-model' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'picked-model' });
+      },
+      async (_task, emit) => {
+        // A new session that does not say its model.
+        emit({ type: 'session', sessionId: 's-2' });
+      },
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-3', model: 'default-model' });
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('default-model');
+
+    // The picked model shows as `model`; the agent's default stays the one it reported.
+    session.setModel('picked-model');
+    session.send('second');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('default-model');
+    session.setModel(undefined);
+
+    session.send('third');
+    await session.idle();
+    expect(session.get()).toMatchObject({ sessionId: 's-2', reportedModel: undefined });
+
+    session.send('fourth');
+    await session.idle();
+    expect(session.get().reportedModel).toBe('default-model');
+    session.reset();
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
+  it('forgets the reported model when a backup agent takes over', async () => {
+    const { agent } = fakeAgent([
+      async (_task, emit) => {
+        emit({ type: 'session', sessionId: 's-1', model: 'model-a' });
+        emit({
+          type: 'failover',
+          from: 'fake',
+          to: 'backup',
+          failure: { kind: 'quota', message: 'out' },
+        } as AgentEvent);
+      },
+    ]);
+    const session = createAgentSession({ agent, cwd: '/w' });
+    session.send('first');
+    await session.idle();
+    expect(session.get().reportedModel).toBeUndefined();
+  });
+
   it('builds a structured transcript and resumes the session on the next turn', async () => {
     const { agent, tasks } = fakeAgent([
       async (_task, emit) => {
