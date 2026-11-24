@@ -300,6 +300,8 @@ export function createGeminiParser(): AgentOutputParser {
   const toolNames = new Map<string, string>();
   let outcome: AgentOutcome | undefined;
   let text = '';
+  let sessionId: string | undefined;
+  let initModel: string | undefined;
 
   return {
     outcome: () => outcome,
@@ -308,9 +310,9 @@ export function createGeminiParser(): AgentOutputParser {
       const events: AgentEvent[] = [];
       switch (value.type) {
         case 'init': {
-          const sessionId = stringField(value, 'session_id');
-          const model = stringField(value, 'model');
-          if (sessionId) events.push({ type: 'session', sessionId, ...(model ? { model } : {}) });
+          sessionId = stringField(value, 'session_id');
+          initModel = stringField(value, 'model');
+          if (sessionId) events.push({ type: 'session', sessionId, ...(initModel ? { model: initModel } : {}) });
           break;
         }
         case 'message': {
@@ -359,6 +361,12 @@ export function createGeminiParser(): AgentOutputParser {
           // Streamed deltas become one final message.
           if (outcome.ok && text.trim()) events.push({ type: 'message', text: text.trim() });
           const stats = value.stats;
+          // The CLI can answer with another model than it started on: its stats name the one(s) used.
+          const used = isObject(stats) && isObject(stats.models) ? Object.keys(stats.models) : [];
+          if (sessionId && used.length === 1 && used[0] !== initModel) {
+            initModel = used[0];
+            events.push({ type: 'session', sessionId, model: used[0]! });
+          }
           const inputTokens = numberField(stats, 'input_tokens');
           const outputTokens = numberField(stats, 'output_tokens');
           const totalTokens = numberField(stats, 'total_tokens');

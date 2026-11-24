@@ -65,6 +65,22 @@ describe('gemini driver', () => {
     ).toThrow(/cannot be combined/);
   });
 
+  it('reports the model Gemini answered with when its stats name another', () => {
+    const answered = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-1', model: 'gemini-3-pro-preview' },
+      { type: 'result', status: 'success', stats: { models: { 'gemini-3.1-pro-preview': { total_tokens: 9 } } } },
+    ]);
+    expect(answered.filter((event) => event.type === 'session')).toEqual([
+      { type: 'session', sessionId: 'g-1', model: 'gemini-3-pro-preview' },
+      { type: 'session', sessionId: 'g-1', model: 'gemini-3.1-pro-preview' },
+    ]);
+    const same = feed(createGeminiParser(), [
+      { type: 'init', session_id: 'g-2', model: 'gemini-x' },
+      { type: 'result', status: 'success', stats: { models: { 'gemini-x': {} } } },
+    ]);
+    expect(same.filter((event) => event.type === 'session')).toHaveLength(1);
+  });
+
   it('decodes stream-json', () => {
     const parser = createGeminiParser();
     const events = feed(parser, [
