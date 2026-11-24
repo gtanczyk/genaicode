@@ -231,7 +231,12 @@ export function createCopilotParser(): AgentOutputParser {
         }
         case 'assistant.message': {
           const text = stringField(data, 'content');
-          if (!nested) events.push(...answered(stringField(data, 'model') ?? candidate));
+          if (!nested) {
+            // The reply's own model is the one that answered: later steps of it confirm that, not the pick.
+            const named = stringField(data, 'model');
+            if (named) candidate = named;
+            events.push(...answered(candidate));
+          }
           if (!nested && text?.trim()) events.push({ type: 'message', text });
           // JSON output drops `assistant.usage`; each message still carries its output tokens.
           const outputTokens = numberField(data, 'outputTokens');
