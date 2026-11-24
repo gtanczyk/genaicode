@@ -302,6 +302,8 @@ export function createGeminiParser(): AgentOutputParser {
   let text = '';
   let sessionId: string | undefined;
   let initModel: string | undefined;
+  /** Whether the turn produced a reply or a tool call, not only a failed request. */
+  let answered = false;
 
   return {
     outcome: () => outcome,
@@ -318,6 +320,7 @@ export function createGeminiParser(): AgentOutputParser {
         case 'message': {
           const content = stringField(value, 'content');
           if (value.role !== 'assistant' || !content) break;
+          answered = true;
           if (value.delta === true) {
             text += content;
             events.push({ type: 'text-delta', text: content });
@@ -330,6 +333,7 @@ export function createGeminiParser(): AgentOutputParser {
         case 'tool_use': {
           const name = stringField(value, 'tool_name') ?? 'tool';
           const id = stringField(value, 'tool_id');
+          answered = true;
           if (id) toolNames.set(id, name);
           events.push({ type: 'tool-start', ...(id ? { id } : {}), name, input: value.parameters });
           const path = stringField(value.parameters, 'file_path');
@@ -369,13 +373,12 @@ export function createGeminiParser(): AgentOutputParser {
                   .filter(([, entry]) => !isObject(entry) || tokensOf(entry) !== 0)
                   .map(([name]) => name)
               : [];
-          if (sessionId && used.length === 1 && used[0] !== initModel) {
-            initModel = used[0];
-            events.push({ type: 'session', sessionId, model: used[0]! });
-          } else if (sessionId && used.length > 1 && (!initModel || !used.includes(initModel))) {
-            // Several models, none the one reported: no single name is right, so report none.
-            initModel = undefined;
-            events.push({ type: 'session', sessionId, model: undefined });
+          // One model produced the turn: that one. Several (a fallback, a routing classifier, a helper
+          // model for a tool), or a turn that failed before answering: no single name is right.
+          const answeredBy = outcome.ok || answered ? (used.length === 1 ? used[0] : undefined) : undefined;
+          if (sessionId && answeredBy !== initModel && (answeredBy !== undefined || used.length || !outcome.ok)) {
+            initModel = answeredBy;
+            events.push({ type: 'session', sessionId, model: answeredBy });
           }
           const inputTokens = numberField(stats, 'input_tokens');
           const outputTokens = numberField(stats, 'output_tokens');

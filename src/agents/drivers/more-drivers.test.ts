@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentOutputParser } from '../cli-agent.js';
+import type { AgentEvent } from '../types.js';
 import { createCursorParser, cursorArgs } from './cursor.js';
 import { createGeminiParser, gemini, geminiArgs } from './gemini.js';
 import { createOpencodeParser, opencodeArgs } from './opencode.js';
@@ -105,6 +106,38 @@ describe('gemini driver', () => {
       sessionId: 'g-4',
       model: 'gemini-3-flash-preview',
     });
+    const lastModel = (events: AgentEvent[]) => {
+      const last = events.filter((event) => event.type === 'session').at(-1);
+      return last && 'model' in last ? last.model : 'unset';
+    };
+    // The init model called a tool, a fallback wrote the reply: both produced tokens.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-5', model: 'gemini-flash-lite' },
+          { type: 'tool_use', tool_name: 'read_file', tool_id: 't1', parameters: {} },
+          {
+            type: 'result',
+            status: 'success',
+            stats: { models: { 'gemini-flash-lite': { total_tokens: 4 }, 'gemini-flash': { total_tokens: 9 } } },
+          },
+        ]),
+      ),
+    ).toBeUndefined();
+    // Auto's classifier answered, the chat request failed before replying.
+    expect(
+      lastModel(
+        feed(createGeminiParser(), [
+          { type: 'init', session_id: 'g-6', model: 'auto-gemini-3' },
+          {
+            type: 'result',
+            status: 'error',
+            error: { message: 'quota' },
+            stats: { models: { 'gemini-classifier': { total_tokens: 3 } } },
+          },
+        ]),
+      ),
+    ).toBeUndefined();
     expect(several.filter((event) => event.type === 'session').at(-1)).toEqual({
       type: 'session',
       sessionId: 'g-3',
