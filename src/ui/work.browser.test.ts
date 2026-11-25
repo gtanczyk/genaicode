@@ -219,7 +219,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     // Time runs as usual; the pull request's minute between checks can be skipped.
     await page.clock.install();
     await page.goto(opened!);
-    const composer = page.locator('.workspace .gc-box textarea');
+    const composer = page.locator('.workspace .gc-composer textarea');
     await composer.waitFor();
     // A chat without delegated tasks has no Work button and no panel.
     await expect.poll(() => page.locator('.work-toggle').count()).toBe(0);
