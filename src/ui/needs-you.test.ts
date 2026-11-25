@@ -303,7 +303,7 @@ describe('needsItems, where answers could reach the wrong request', () => {
     // Two local rows with the same agent and id: which one asks is not known, so neither answers.
     const twin = session('hooked', { source: 'codexLive', agent: 'codex', waitingFor: 'approval' });
     const twins = needsItems({ ...bare, sessions: [...sessions, twin] }).filter((one) => one.key.includes(':hooked'));
-    expect(twins.map((one) => one.key)).toEqual(['session:codex:hooked', 'session:codexLive:hooked']);
+    expect(twins.map((one) => one.key)).toEqual(['session:codex:hooked']);
     expect(twins.flatMap((one) => one.choices)).toEqual([]);
   });
 

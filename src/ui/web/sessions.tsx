@@ -9,6 +9,7 @@ import {
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
+import { sessionKey } from '../sidebar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { SessionReply } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
@@ -19,6 +20,7 @@ import {
   groupByTopic,
   groupInOrder,
   resumeCommand,
+  sessionStores,
   UNSORTED_TOPIC,
   type SessionTopic,
 } from '../sessions.js';
@@ -167,26 +169,29 @@ export function Sessions({
     };
   }, [days, token, round, own]);
 
-  const everyones = listing?.sessions ?? [];
-  const all = useMemo(() => {
-    if (!own) {
-      // The agent owns the id. Prefer the store that can read and resume it.
-      const rows = new Map<string, SessionInfo>();
-      const rank = (row: SessionInfo) =>
-        Number(listing?.readable?.includes(row.source) ?? false) * 2 +
-        Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
-      for (const row of everyones) {
-        const key = JSON.stringify([row.agent, row.id]);
-        const other = rows.get(key);
-        if (!other || rank(row) > rank(other) || (rank(row) === rank(other) && row.updatedAt > other.updatedAt))
-          rows.set(key, row);
-      }
-      return [...rows.values()];
+  const index = useMemo(() => {
+    const byStore = new Map<string, SessionInfo[]>();
+    const rows = [];
+    const rank = (row: SessionInfo) =>
+      Number(listing?.readable?.includes(row.source) ?? false) * 2 +
+      Number(listing?.senders?.some(sender => sender.agent === row.agent && sender.source === row.source) ?? false);
+    for (const group of sessionStores(listing?.sessions ?? [])) {
+      // Display the readable source first, preferring one which can also resume the session.
+      group.sort((a,b) => rank(b) - rank(a) || b.updatedAt - a.updatedAt);
+      rows.push(group[0]!);
+      for (const row of group) byStore.set(sessionKey(row), group);
     }
-    if (home) return everyones;
+    return {rows, byStore};
+  }, [listing]);
+  const all = useMemo(() => {
+    if (!own) return index.rows;
+    const sessions = listing?.sessions ?? [];
+    if (home) return sessions;
     const here = cwd.replace(/[\\/]+$/, '');
-    return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
-  }, [everyones, own, home, cwd, listing]);
+    return sessions.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
+  }, [index, own, home, cwd, listing]);
+
+  const storesOf = (row: SessionInfo) => own ? [row] : index.byStore.get(sessionKey(row)) ?? [row];
   const topicNames = useMemo(
     () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
     [listing?.topics],
@@ -202,7 +207,7 @@ export function Sessions({
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
   const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
-    const keys = sessions.map(({ source, id }) => ({ source, id }));
+    const keys = sessions.flatMap(storesOf).map(({ source, id }) => ({ source, id }));
     // In batches the server takes, one after another.
     const send = async () => {
       for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
@@ -297,14 +302,26 @@ export function Sessions({
     const show = () => void window.prompt('Continue it in a terminal with:', command);
     if (!navigator.clipboard) return show();
     void navigator.clipboard.writeText(command).then(() => {
-      setCopied(session.id);
+      setCopied(transcriptUrl(session));
       onStatus?.('Copied resume command');
     }, show);
   };
 
-  const senderOf = (session: SessionInfo) =>
-    acceptsSessionPrompt(session) &&
-    listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
+  const senderOf = (session: SessionInfo) => {
+    if (
+      session.where !== 'local' ||
+      session.state === 'active' ||
+      session.turnInProgress ||
+      session.waitingFor === 'approval'
+    )
+      return;
+    for (const target of [session, ...storesOf(session).filter((row) => row.source !== session.source)]) {
+      const sender =
+        acceptsSessionPrompt(target) &&
+        listing?.senders?.find((s) => s.agent === target.agent && s.source === target.source);
+      if (sender) return { target, sandboxes: sender.sandboxes };
+    }
+  };
   const isReplying = (session: SessionInfo) => replyTo?.source === session.source && replyTo.id === session.id;
   const actions = (session: SessionInfo, close?: () => void) => {
     const action = (label: string, run: () => void, title?: string) => (
@@ -329,7 +346,7 @@ export function Sessions({
           action('Continue here', () => onContinue(session), 'Bring this conversation into the current chat')}
         {resumeCommand(session) &&
           action(
-            copied === session.id && !close ? 'Copied' : 'Copy resume command',
+            copied === transcriptUrl(session) && !close ? 'Copied' : 'Copy resume command',
             () => copy(session),
             resumeCommand(session),
           )}
@@ -345,11 +362,12 @@ export function Sessions({
     );
   };
   const replyEditor = (session: SessionInfo) => {
+    if (!isReplying(session)) return null;
     const sender = senderOf(session);
-    return sender && isReplying(session) ? (
+    return sender ? (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
-        session={session}
+        session={sender.target}
         token={token}
         sandboxes={sender.sandboxes}
         onClose={() => setReplyTo(undefined)}
@@ -364,7 +382,7 @@ export function Sessions({
       />
     ) : null;
   };
-  const detail = selected && (all.find((row) => row.source === selected.source && row.id === selected.id) ?? selected);
+  const detail = selected && (index.byStore.get(sessionKey(selected))?.[0] ?? selected);
   const list = (
     <main hidden={!!detail} className="sessions">
       <div className="tools">

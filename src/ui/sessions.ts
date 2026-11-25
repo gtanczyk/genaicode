@@ -1,5 +1,30 @@
 import { attentionOf, groupSessions, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
 
+/** Alternate stores can index one agent session. Conflicting project locations identify distinct rows. */
+export function sessionStores(rows: readonly SessionInfo[]): SessionInfo[][] {
+  const identity = (row: SessionInfo) => JSON.stringify([row.where, row.agent, row.id]);
+  const location = (row: SessionInfo) => (row.where === 'cloud' ? row.repository : row.cwd);
+  // An index may omit the project. It belongs with the known location only when that is unambiguous.
+  const places = new Map<string, string | null>();
+  for (const row of rows) {
+    const place = location(row);
+    if (!place) continue;
+    const key = identity(row);
+    if (!places.has(key)) places.set(key, place);
+    else if (places.get(key) !== place) places.set(key, null);
+  }
+  const groups = new Map<string, SessionInfo[]>();
+  for (const row of rows) {
+    const id = identity(row);
+    const key =
+      places.get(id) === null ? JSON.stringify([id, location(row), location(row) ? undefined : row.source]) : id;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+  return [...groups.values()];
+}
+
 /** What the Sessions view narrows the list by. */
 export interface SessionFilter {
   /** Words that must all appear in the title, prompts, directory, branch, agent or id. */

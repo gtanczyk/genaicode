@@ -44,14 +44,15 @@ const button = (name: string) =>
 
 it('tells the window when a reply went to a session, so its other lists stop offering one', async () => {
   const sent: string[] = [];
+  const reader = { ...asking, source: 'transcript-store' };
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith('/send')) {
-        sent.push(JSON.parse(String(init?.body)).prompt);
+        sent.push(url, JSON.parse(String(init?.body)).prompt);
         return new Response(JSON.stringify({ ok: true, text: 'Baking today.' }));
       }
-      return new Response(JSON.stringify(listing));
+      return new Response(JSON.stringify({ ...listing, sessions: [reader, asking], readable: [reader.source] }));
     }),
   );
   const onReplied = vi.fn();
@@ -70,8 +71,8 @@ it('tells the window when a reply went to a session, so its other lists stop off
   await act(async () => {
     host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   });
-  expect(sent).toEqual(['Bake today.']);
-  expect(onReplied).toHaveBeenCalledWith(asking);
+  expect(sent).toEqual(['/api/sessions/helper/bakery-1/send', 'Bake today.']);
+  expect(onReplied).toHaveBeenCalledWith(reader);
 });
 
 it('opens the readable store once per session and shows the sources of distinct rows', async () => {
@@ -90,4 +91,21 @@ it('opens the readable store once per session and shows the sources of distinct 
   ]);
   await act(async () => rows[0]!.querySelector('button')!.click());
   expect(onOpen).toHaveBeenCalledWith(asking);
+});
+
+it('archives all store entries for the selected session and leaves a different project alone', async () => {
+  const alias = { ...asking, source: 'index' };
+  const separate = { ...asking, source: 'other', cwd: '/other/project' };
+  const archives: unknown[] = [];
+  vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+    if (url === '/api/archive') archives.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ ...listing, sessions: [asking, alias, separate] }));
+  });
+  await act(async () => root.render(<Sessions token="t" cwd="/work" onOpen={vi.fn()} onContinue={vi.fn()} />));
+  const bakery = Array.from(host.querySelectorAll('.project')).find((group) =>
+    group.querySelector('summary')?.textContent?.includes('/work/bakery'),
+  )!;
+  await act(async () => bakery.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click());
+  await act(async () => button('Archive').click());
+  expect(archives).toEqual([{ sessions: [asking, alias].map(({ source, id }) => ({ source, id })), archived: true }]);
 });

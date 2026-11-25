@@ -9,6 +9,7 @@ import {
   groupByTopic,
   groupInOrder,
   resumeCommand,
+  sessionStores,
   topicsNow,
 } from './sessions.js';
 import { pageHtml } from './web/page.js';
@@ -40,6 +41,15 @@ describe('the Sessions view', () => {
     expect(ids(filterSessions(sessions, { state: 'unfinished' }))).toEqual(['s3']);
     expect(ids(filterSessions(sessions, { text: 'export', state: 'active' }))).toEqual(['s2']);
     expect(ids(filterSessions(sessions, { text: 'nothing' }))).toEqual([]);
+  });
+
+  it('keeps different projects and agents separate when their stores reuse an id', () => {
+    const row = session({ cwd: '/work/a' });
+    const other = session({ cwd: '/work/b', source: 'other' });
+    const otherAgent = session({ agent: 'gemini', source: 'gemini', cwd: '/work/a' });
+    const index = session({ source: 'index' });
+    expect(sessionStores([index, row, otherAgent])).toEqual([[index, row], [otherAgent]]);
+    expect(sessionStores([index, row, other, otherAgent])).toEqual([[index], [row], [other], [otherAgent]]);
   });
 
   it('puts what waits for you first: approvals, then the newest', () => {
