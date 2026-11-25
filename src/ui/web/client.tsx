@@ -988,6 +988,9 @@ function App() {
   // The row's store goes with its id: another store may hold a session with the same one.
   const continueChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
     switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat');
+  // "Continue here" brings a session into the chat: in a project its turns join the conversation.
+  const takeOverChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
+    switchChat({ type: 'continue', id: chat.id, source: chat.source, takeover: true }, 'open that chat');
   const convTopic = conversation?.topic?.name;
   const convTitle =
     conversation?.title ||
@@ -1089,6 +1092,11 @@ function App() {
         return Promise.resolve(false);
       }
       if (own.kind === 'plan') return orderedControl(text);
+      // A chat asked for by id is numbered with those picked in the sidebar: the one asked for last wins.
+      if (own.kind === 'continue' && own.id) {
+        switchChat({ type: 'continue', id: own.id, takeover: true }, 'open that chat');
+        return Promise.resolve(true);
+      }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
       if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
       return command({ type: 'submit', text }).then(
@@ -1487,7 +1495,7 @@ function App() {
             onStatus={showToast}
             onNewTopicChat={isHome ? startTopicChat : undefined}
             // The chat says what happened, also when it could not.
-            onContinue={continueChat}
+            onContinue={takeOverChat}
           />
         ) : null}
         {panel === 'inbox' && view?.tower && (

@@ -220,8 +220,11 @@ export type WebCommand =
 export type WebSwitchCommand = WebSwitchTarget & { order?: SwitchOrder };
 
 type WebSwitchTarget =
-  /** Take over the session with this id, the one in the store `source` when given. */
-  | { type: 'continue'; id: string; source?: string }
+  /**
+   * Open the session with this id, the one in the store `source` when given, in place of the
+   * conversation shown. `takeover`: `/continue <id>`, whose turns join it in `--cwd` mode.
+   */
+  | { type: 'continue'; id: string; source?: string; takeover?: true }
   /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
   | { type: 'topic-chat'; topic: string }
   /** Start a new conversation in this directory, an absolute path (`--home` mode). */
@@ -340,7 +343,9 @@ export function parseCommand(value: unknown): WebCommand | undefined {
         const id = text('id', 200);
         const source = text('source', 200);
         if (!id || (command.source !== undefined && !source)) return undefined;
-        return { type: 'continue', id, ...(source ? { source } : {}), ...order };
+        if (command.takeover !== undefined && command.takeover !== true) return undefined;
+        const takeover = command.takeover ? { takeover: true as const } : {};
+        return { type: 'continue', id, ...(source ? { source } : {}), ...takeover, ...order };
       }
       if (command.type === 'topic-chat') {
         const topic = text('topic', 200);
@@ -1169,7 +1174,12 @@ const isSwitch = (command: WebCommand): command is WebSwitchCommand => SWITCHES.
 function switchTarget(command: WebSwitchCommand): ChatSwitch {
   switch (command.type) {
     case 'continue':
-      return { type: 'continue', id: command.id, ...(command.source ? { source: command.source } : {}) };
+      return {
+        type: 'continue',
+        id: command.id,
+        ...(command.source ? { source: command.source } : {}),
+        ...(command.takeover ? { takeover: true } : {}),
+      };
     case 'topic-chat':
       return { type: 'topic', topic: command.topic };
     case 'project-chat':

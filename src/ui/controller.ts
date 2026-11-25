@@ -200,8 +200,13 @@ export type ChatSwitch =
   | { type: 'home' }
   | { type: 'project'; cwd: string }
   | { type: 'topic'; topic: string }
-  /** `source`: the store that holds the session, as two stores may hold the same id. */
-  | { type: 'continue'; id: string; source?: string }
+  /**
+   * `source`: the store that holds the session, as two stores may hold the same id.
+   * `takeover`: an explicit takeover (`/continue <id>`), as `continueSession`: in `--cwd` mode the
+   * turns join the open conversation. Without it the session replaces what is shown: a chat picked
+   * in the sidebar.
+   */
+  | { type: 'continue'; id: string; source?: string; takeover?: boolean }
   /** Keep the open conversation: only drops the requests still waiting to open another. */
   | { type: 'stay' };
 
@@ -812,8 +817,13 @@ export function createChatController(options: ChatOptions): ChatController {
   /**
    * `from.source`: the store the session is in, so an id two stores hold names one session.
    * `from.keepOpen`: asked for the session that is open here already, nothing changes.
+   * `from.replace`: the session replaces the conversation shown, also in `--cwd` mode, where a
+   * takeover adds its turns to it (`--home` mode always replaces).
    */
-  const openSession = async (id: string, from: { source?: string; keepOpen?: boolean } = {}): Promise<SwitchResult> => {
+  const openSession = async (
+    id: string,
+    from: { source?: string; keepOpen?: boolean; replace?: boolean } = {},
+  ): Promise<SwitchResult> => {
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
     const stores = from.source ? sources.filter((source) => source.name === from.source) : sources;
     const mine = ++switchSeq;
@@ -862,17 +872,32 @@ export function createChatController(options: ChatOptions): ChatController {
           notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
           return 'refused';
         }
-        if (
-          !session.adopt(turns, {
+        batching++;
+        let ok = false;
+        try {
+          ok = session.adopt(turns, {
             ...(own ? { sessionId: theirs.id, mode: theirs.mode } : {}),
             ...(truncatedReason ? { truncatedReason } : {}),
-          })
-        ) {
+            ...(from.replace ? { replace: true } : {}),
+          });
+          if (ok) {
+            // Keep visible live relay cards updating in a retained transcript, but suppress context delivery.
+            contextEpoch += 1;
+            if (from.replace) {
+              // Another chat, not more of this one: nothing of the chat that is left stays on screen.
+              conversationEpoch += 1;
+              relayNotices.clear();
+              notices = [];
+            }
+          }
+        } finally {
+          batching--;
+        }
+        if (!ok) {
           notice('Stop the running turn before taking over another session.', 'error');
           return 'refused';
         }
-        // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
-        contextEpoch += 1;
+        publish();
         const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
         const count = turns.length ? ` (${turns.length} turns)` : '';
         notice(
@@ -991,7 +1016,12 @@ export function createChatController(options: ChatOptions): ChatController {
       case 'topic':
         return openTopic(target.topic);
       case 'continue':
-        return openSession(target.id, { ...(target.source ? { source: target.source } : {}), keepOpen: !!order });
+        return openSession(target.id, {
+          ...(target.source ? { source: target.source } : {}),
+          // A takeover of the open session reads it again, as `/continue` always did.
+          keepOpen: !!order && !target.takeover,
+          replace: !target.takeover,
+        });
       case 'stay':
         // Whatever still waits to open a chat is dropped; the chat that is open stays.
         switchSeq += 1;

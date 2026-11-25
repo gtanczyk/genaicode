@@ -322,7 +322,13 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await castle.getByRole('button', { name: /Round table|Polish the armour/ }).waitFor();
 
     // Every request for another chat is held until the test lets it through (or refuses it).
-    type Asked = { type: string; id?: string; source?: string; order?: { window: string; seq: number } };
+    type Asked = {
+      type: string;
+      id?: string;
+      source?: string;
+      takeover?: boolean;
+      order?: { window: string; seq: number };
+    };
     const held: Array<Asked & { answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
     await page.route('**/api/command', async (route) => {
       const asked = route.request().postDataJSON() as Asked;
@@ -435,6 +441,30 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await composer.press('Enter');
     await vi.waitFor(() => expect(ran.at(-1)!.prompt).toContain('Count the loaves'));
     expect(ran.at(-1)).toMatchObject({ cwd: made[0]!.cwd, resume: made[0]!.id });
+
+    // B asked for by id in the message field (`/continue`), then A's row before B is there: the
+    // command is numbered like a row's request, so A, picked later, is asked for too and wins
+    // although B's request arrives after it.
+    held.length = 0;
+    await composer.fill(`/continue ${roster.id}`);
+    await composer.press('Enter');
+    await vi.waitFor(() => expect(held.length).toBe(1));
+    expect(held[0]).toMatchObject({ type: 'continue', id: roster.id, takeover: true });
+    expect(held[0]!.order!.seq).toBeGreaterThan(0);
+    expect(await disabled()).toBe('true');
+    await first.click();
+    await vi.waitFor(() => expect(held.length).toBe(2));
+    expect(held[1]).toMatchObject({ type: 'continue', id: made[0]!.id, source: 'helper' });
+    expect(held[1]!.order!.window).toBe(held[0]!.order!.window);
+    expect(held[1]!.order!.seq).toBeGreaterThan(held[0]!.order!.seq);
+    held[1]!.answer(true);
+    await held[1]!.answered;
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    const overtaken = page.waitForResponse((response) => response.url().endsWith('/api/command'));
+    held[0]!.answer(true);
+    expect(await (await overtaken).json()).toEqual({ ok: false, superseded: true });
+    await held[0]!.answered;
+    await inA();
     await page.unroute('**/api/command');
 
     // A window under 980 px starts with the rail until the person chooses.

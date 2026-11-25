@@ -1802,6 +1802,14 @@ describe('web UI server', () => {
       order,
     });
     expect(parseCommand({ type: 'continue', id: 'abcd1234', source: '' })).toBeUndefined();
+    // `/continue <id>` typed in the page: a takeover, numbered like a row's request.
+    expect(parseCommand({ type: 'continue', id: 'abcd1234', takeover: true, order })).toEqual({
+      type: 'continue',
+      id: 'abcd1234',
+      takeover: true,
+      order,
+    });
+    expect(parseCommand({ type: 'continue', id: 'abcd1234', takeover: 'yes' })).toBeUndefined();
     expect(parseCommand({ type: 'continue', id: 'abcd1234', source: 7 })).toBeUndefined();
     expect(parseCommand({ type: 'home-chat', order })).toEqual({ type: 'home-chat', order });
     expect(parseCommand({ type: 'stay-chat', order })).toEqual({ type: 'stay-chat', order });
@@ -2663,6 +2671,71 @@ describe('web UI server', () => {
 
   it('names its missing-agent error for hosts that load the bundle', () => {
     expect(new NoAgentError('x').name).toBe('NoAgentError');
+  });
+
+  it('replaces the conversation with a chat picked in the sidebar in --cwd mode, and adds a takeover to it', async () => {
+    const stored = (id: string, prompt: string): SessionTurn => ({
+      id: 1,
+      agent: 'echo',
+      prompt,
+      entries: [{ kind: 'text', text: `Answer to ${prompt}`, streaming: false }],
+      startedAt: 1,
+      result: { status: 'completed', ok: true, exitCode: 0, signal: null, text: `Answer to ${prompt}`, sessionId: id },
+    });
+    const prompts: Record<string, string> = { 'chat-a': 'Prompt of A', 'chat-b': 'Prompt of B' };
+    const source: SessionSource = {
+      name: 'echo',
+      where: 'local',
+      list: async () =>
+        Object.keys(prompts).map((id) => ({
+          source: 'echo',
+          agent: 'echo',
+          id,
+          where: 'local',
+          cwd: '/w',
+          updatedAt: 1000,
+        })),
+      read: async (info) => [stored(info.id, prompts[info.id]!)],
+    };
+    const chat = createChatController({
+      agents: [{ ...echoAgent(), sessions: source }],
+      sessionSources: [source],
+      cwd: '/w',
+      env,
+    });
+    const shown = () => chat.get().session.turns.map((turn) => turn.prompt);
+    const w1 = (seq: number) => ({ window: 'w1', seq });
+    try {
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-a', source: 'echo' }, w1(1))).toBe('done');
+      expect(shown()).toEqual(['Prompt of A']);
+      chat.note('Said in A');
+      // B is picked in the sidebar: A's turns and notices are not B's.
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-b', source: 'echo' }, w1(2))).toBe('done');
+      expect(shown()).toEqual(['Prompt of B']);
+      expect(chat.get().session.sessionId).toBe('chat-b');
+      expect(chat.get().notices.map((one) => one.text)).toEqual([expect.stringContaining('Continuing "chat-b"')]);
+      // The row of the open chat again: nothing changes.
+      const before = chat.get().session;
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-b', source: 'echo' }, w1(3))).toBe('done');
+      expect(chat.get().session).toBe(before);
+      // An explicit takeover still adds to the conversation: `/continue <id>` typed in the page,
+      // in the terminal, and `continueSession`.
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-a', takeover: true }, w1(4))).toBe('done');
+      expect(shown()).toEqual(['Prompt of B', 'Prompt of A']);
+      expect(chat.get().session.sessionId).toBe('chat-a');
+      expect(await chat.continueSession('chat-b')).toBe(true);
+      expect(shown()).toEqual(['Prompt of B', 'Prompt of A', 'Prompt of B']);
+      chat.submit('/continue chat-a');
+      await vi.waitFor(() => expect(shown()).toEqual(['Prompt of B', 'Prompt of A', 'Prompt of B', 'Prompt of A']));
+      // A numbered takeover is ordered like any other request of its window.
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-b', takeover: true }, w1(4))).toBe('superseded');
+      expect(shown()).toHaveLength(4);
+      // And the sidebar after takeovers leaves only the chat picked.
+      expect(await chat.switchChat({ type: 'continue', id: 'chat-b', source: 'echo' }, w1(5))).toBe('done');
+      expect(shown()).toEqual(['Prompt of B']);
+    } finally {
+      chat.close();
+    }
   });
 
   it('resolves per-conversation cwd in --home mode: topics, /where, continueSession, and host open-session', async () => {
