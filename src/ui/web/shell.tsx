@@ -135,7 +135,11 @@ export function Shell(props: ShellProps) {
     setSearching(false);
     const from = searchFrom.current;
     searchFrom.current = null;
-    if (restore && from instanceof HTMLElement && from.isConnected) from.focus();
+    if (!restore) return;
+    if (from instanceof HTMLElement && from.isConnected) from.focus();
+    // What had the focus is gone (the sidebar took the work panel's room, say): the message field
+    // takes it, so the next keys are not lost.
+    else document.querySelector<HTMLElement>('.gc-composer textarea')?.focus();
   };
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const { side } = props;

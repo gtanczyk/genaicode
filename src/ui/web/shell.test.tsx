@@ -595,6 +595,28 @@ describe('Search (⌘K)', () => {
     expect(onToggleWork).toHaveBeenCalledOnce();
   });
 
+  it('gives the focus to the message field when what had it is gone once Search closes', () => {
+    const composer = (
+      <div className="gc-composer">
+        <textarea aria-label="Message" />
+      </div>
+    );
+    const work = (
+      <aside className="gc-work">
+        <button type="button">Tasks</button>
+      </aside>
+    );
+    render(props({ work, children: <div className="workspace">{composer}</div> }));
+    act(() => host.querySelector<HTMLButtonElement>('.gc-work button')!.focus());
+    press('k', mod());
+    expect(palette()).not.toBeNull();
+    // The work panel leaves while Search is open (the sidebar took its room).
+    render(props({ children: <div className="workspace">{composer}</div> }));
+    key('Escape');
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector('.gc-composer textarea'));
+  });
+
   it('moves with the arrows, around the ends, and starts again from the top when the words change', () => {
     render(props());
     press('k', mod());
