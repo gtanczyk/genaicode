@@ -148,7 +148,7 @@
   --_code-bg: var(--gc-code-bg, color-mix(in srgb, var(--_text) 6%, var(--_bg)));
   --_shadow: var(--gc-shadow, 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 16px rgba(0, 0, 0, 0.04));
   --_font: var(--gc-font, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
-  --_mono: var(--gc-mono, var(--gc-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace));
+  --_mono: var(--gc-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   --_radius: var(--gc-radius, 10px);
   --_max-width: var(--gc-max-width, 860px);
   color-scheme: light;
@@ -1978,7 +1978,7 @@ img.gc-artifact-view {
   --_accent: var(--gc-accent, #3b5bdb);
   --_accent-text: var(--gc-accent-text, #ffffff);
   --_font: var(--gc-font, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
-  --_mono: var(--gc-mono, var(--gc-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace));
+  --_mono: var(--gc-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   position: relative;
   flex: none;
   width: min(var(--gc-panel-width, 640px), calc(100vw - 160px));

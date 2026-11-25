@@ -11,8 +11,8 @@
  * differs between macOS and Linux, so each platform has its own directory. For the one you are
  * not on, take the files from CI: the `visual-screenshots` artifact of the `Lint and test` workflow holds
  * what the run drew (`<platform>/<name>.png`, with `<name>.diff.png` beside a mismatch); copy
- * the PNG files without `.diff` into `__screenshots__/<platform>/`. A platform without a
- * directory is not compared (the test passes and says so).
+ * the PNG files without `.diff` into `__screenshots__/<platform>/`. macOS and Linux must have
+ * baselines (a missing one fails); on other platforms the comparison is skipped and says so.
  *
  * A pixel counts as different when a channel is off by more than CHANNEL_TOLERANCE; a screenshot
  * fails when more than MAX_DIFFERENT of its pixels are, or when its size changed.
@@ -40,8 +40,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const baselineDir = join(here, '__screenshots__', process.platform);
 /** What this run drew, for the CI artifact and for looking at a mismatch. Under node_modules, so git ignores it. */
 const outputDir = join(process.cwd(), 'node_modules', '.genaicode-test', 'visual-screenshots', process.platform);
-const update = !!process.env.GENAICODE_UPDATE_SCREENSHOTS;
-const compared = update || existsSync(baselineDir);
+/** Only `1` rewrites baselines: `0`, `false` or any other value compares as usual. */
+const update = process.env.GENAICODE_UPDATE_SCREENSHOTS === '1';
+/** Platforms with committed baselines. On these a missing baseline fails; others are skipped and say so. */
+const BASELINE_PLATFORMS: readonly string[] = ['darwin', 'linux'];
+const compared = update || BASELINE_PLATFORMS.includes(process.platform);
 
 /** The time every screenshot is taken at, so durations and relative times read the same in each run. */
 const NOW = Date.parse('2026-10-06T10:00:00Z');
@@ -127,7 +130,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
   if (!compared) {
     console.warn(
-      `visual: no baselines for ${process.platform} in ${baselineDir}; screenshots are written to ${outputDir} and not compared.`,
+      `visual: ${process.platform} has no baselines; screenshots are written to ${outputDir} and not compared (skipped).`,
     );
   }
 });
