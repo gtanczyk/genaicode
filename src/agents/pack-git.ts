@@ -187,8 +187,9 @@ export async function patchCoversWorktree(
 }
 
 /**
- * Whether a submodule of the worktree holds work of its own (a new commit, edits, untracked files):
- * the patch carries at most its commit, never what is inside it, so removing the worktree loses it.
+ * Whether a submodule of the worktree changed at all (its commit, staged or not, edits, untracked
+ * files): the patch cannot carry what is inside it, nor does Merge locally apply a new commit of
+ * it, so removing the worktree would lose it.
  */
 async function submoduleWork(dir: string): Promise<boolean> {
   const status = await must(dir, [
@@ -198,8 +199,9 @@ async function submoduleWork(dir: string): Promise<boolean> {
     '--untracked-files=all',
     '--ignore-submodules=none',
   ]);
-  // Changed entries ("1 XY sub …", "2 XY sub …", "u XY sub …"): `sub` is S<c><m><u> for a submodule.
-  return status.split('\0').some((entry) => /^[12u] \S\S S(?!\.\.\.)/.test(entry));
+  // Changed entries ("1 XY sub …", "2 XY sub …", "u XY sub …"): `sub` is S<c><m><u> for a submodule,
+  // which git lists only when something about it changed (a staged new commit shows as `S...`).
+  return status.split('\0').some((entry) => /^[12u] \S\S S/.test(entry));
 }
 
 /** The worktree's own index as a tree, written from a copy so the index itself is not touched; undefined while it has conflicts. */

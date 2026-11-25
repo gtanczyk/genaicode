@@ -50,7 +50,14 @@ describe('pullRequestLookup', () => {
     expect(await pullRequestLookup({ run })(URL, WORKTREE)).toEqual({ state: 'open', ours: true });
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'symbolic-ref', '--short', '-q', 'HEAD']);
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'rev-parse', 'HEAD']);
-    expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'status', '--porcelain', '--untracked-files=all']);
+    expect(run).toHaveBeenCalledWith('git', [
+      '-C',
+      WORKTREE,
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--ignore-submodules=none',
+    ]);
     // "Fixed locally, see PR #351 for the original bug": another branch, or none (a detached worktree).
     expect(await pullRequestLookup({ run: tools(view, 'fix-import') })(URL, WORKTREE)).toEqual({
       state: 'open',
@@ -128,6 +135,47 @@ describe('pullRequestLookup', () => {
       expect(await lookup(URL, dir, { fresh: true })).toEqual({ state: 'merged', ours: false });
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('sees an edit inside a submodule git is told to ignore', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-pr-'));
+    try {
+      const at =
+        (dir: string) =>
+        (...args: string[]) =>
+          execFileSync('git', ['-C', dir, '-c', 'protocol.file.allow=always', ...args], { encoding: 'utf8' }).trim();
+      const make = (name: string) => {
+        const dir = join(root, name);
+        const git = at(dir);
+        execFileSync('git', ['init', '-q', '-b', 'work-panel', dir]);
+        git('config', 'user.email', 'test@example.com');
+        git('config', 'user.name', 'Test');
+        writeFileSync(join(dir, 'app.ts'), 'export {};\n');
+        git('add', 'app.ts');
+        git('commit', '-q', '-m', 'work');
+        return git;
+      };
+      make('dep');
+      const git = make('app');
+      const dir = join(root, 'app');
+      git('submodule', 'add', '-q', join(root, 'dep'), 'dep');
+      git('config', 'submodule.dep.ignore', 'dirty');
+      git('commit', '-q', '-m', 'dep');
+      const head = git('rev-parse', 'HEAD');
+      const run = (command: string, args: readonly string[]) =>
+        command === 'gh'
+          ? Promise.resolve(`{"state":"MERGED","headRefName":"work-panel","headRefOid":"${head}"}`)
+          : new Promise<string>((resolve, reject) =>
+              execFile(command, [...args], (error, stdout) => (error ? reject(error) : resolve(stdout))),
+            );
+      const lookup = pullRequestLookup({ run });
+      expect(await lookup(URL, dir, { fresh: true })).toEqual({ state: 'merged', ours: true });
+      writeFileSync(join(dir, 'dep', 'app.ts'), 'kept only here\n');
+      expect(git('status', '--porcelain')).toBe('');
+      expect(await lookup(URL, dir, { fresh: true })).toEqual({ state: 'merged', ours: false });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

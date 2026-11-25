@@ -1265,8 +1265,17 @@ describe('pack chat turns', () => {
       });
       expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
       expect(readFileSync(join(dir, 'dep', 'a.txt'), 'utf8')).toBe('edited in the submodule\n');
+      // A new commit of the submodule, staged in the parent: Merge locally cannot apply it either.
+      execFileSync('git', ['commit', '-q', '-am', 'dep work'], { cwd: join(dir, 'dep') });
+      execFileSync('git', ['add', 'dep'], { cwd: dir });
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()?.state).toBe('unmerged');
       // Back to the parent's edit alone: it merges.
-      execFileSync('git', ['checkout', '-q', '--', 'a.txt'], { cwd: join(dir, 'dep') });
+      execFileSync('git', ['reset', '-q', '--hard', 'HEAD~1'], { cwd: join(dir, 'dep') });
+      execFileSync('git', ['reset', '-q', '--', 'dep'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
     } finally {
       session.close();

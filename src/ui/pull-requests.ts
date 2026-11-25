@@ -71,7 +71,10 @@ export function pullRequestLookup(
   const holds = async (worktree: string, branch: string, commit: string): Promise<boolean> => {
     if ((await git(worktree, 'symbolic-ref', '--short', '-q', 'HEAD'))?.trim() !== branch) return false;
     if ((await git(worktree, 'rev-parse', 'HEAD'))?.trim() !== commit) return false;
-    return (await git(worktree, 'status', '--porcelain', '--untracked-files=all'))?.trim() === '';
+    // Edits inside a submodule count too, whatever its `ignore` setting says.
+    return (
+      (await git(worktree, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'))?.trim() === ''
+    );
   };
   let running = 0;
   const waiting: Array<() => void> = [];
