@@ -7,6 +7,7 @@ import type { RateLimit } from '../../agents/types.js';
 import { limitChips } from '../../react/format.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { agentCardState, CARD_STATE_LABEL, CopyCommand, type AgentCardState } from './onboarding.js';
+import { holdsTypedText } from './shell.js';
 import { Icon, StateGlyph, TERMS_URL } from './sidebar.js';
 import type { ThemeChoice } from './theme.js';
 
@@ -134,6 +135,8 @@ export interface AgentsSectionProps {
   onCheckAgain(): Promise<AgentInspection[] | undefined>;
   /** Makes the agent the one of the open chat. Absent: no Use button. */
   onUse?(name: string): void;
+  /** The window is moving to another chat: Use waits, as it would reach the chat being left. */
+  holding?: boolean;
 }
 
 const STATE_GLYPH: Record<AgentCardState, 'ok' | 'ask' | 'err' | 'idle'> = {
@@ -158,6 +161,7 @@ export function AgentsSection({
   focusAgent,
   onCheckAgain,
   onUse,
+  holding,
 }: AgentsSectionProps) {
   const [note, setNote] = useState<string>();
   const focused = useRef<HTMLDivElement>(null);
@@ -211,6 +215,7 @@ export function AgentsSection({
                     type="button"
                     className="btn sm"
                     aria-label={`Use ${guide.title}`}
+                    disabled={holding}
                     onClick={() => onUse(agent.name)}
                   >
                     Use
@@ -255,7 +260,11 @@ export function AgentsSection({
 
 export interface TeamSectionProps {
   token: string;
-  /** The folder of the open chat, where it names a project. */
+  /**
+   * The folder of the open chat, where it names a project. The team is that project's then, as
+   * `/api/pack-profile` answers only for it: the folder is shown, not chosen. Absent: a folder is
+   * typed, picked from recent ones or chosen.
+   */
   cwd?: string;
   /** Folders of earlier sessions (`/api/sessions`) are offered as recent ones. */
   sessions: boolean;
@@ -277,8 +286,10 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
   const [saved, setSaved] = useState(false);
   const url = (project: string) => '/api/pack-profile?project=' + encodeURIComponent(project);
 
+  const fixed = cwd !== undefined;
+
   useEffect(() => {
-    if (!sessions) return;
+    if (!sessions || fixed) return;
     const controller = new AbortController();
     void fetch('/api/sessions', { headers: { 'x-genaicode-token': token }, signal: controller.signal })
       .then((res) => res.json())
@@ -287,7 +298,7 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [sessions, token]);
+  }, [sessions, fixed, token]);
 
   useEffect(() => {
     if (!directory) return;
@@ -361,59 +372,67 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
         <code>.genaicode/pack.json</code>.
       </p>
       <div className="card">
-        <form
-          className="set col"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (folder.trim()) setDirectory(folder.trim());
-          }}
-        >
-          <span>
-            <b>Project folder</b>
-            <small>
-              {choose ? 'Type a path, pick a recent one, or choose a folder.' : 'Type a path or pick a recent one.'}
-            </small>
-          </span>
-          <div className="set-line">
-            <input
-              className="field mono grow"
-              aria-label="Project folder"
-              list={`${id}-folders`}
-              placeholder="/path/to/project"
-              value={folder}
-              disabled={busy}
-              onChange={(event) => edit(event.target.value)}
-            />
-            <datalist id={`${id}-folders`}>
-              {folders.map((dir) => (
-                <option key={dir} value={dir} />
-              ))}
-            </datalist>
-            <button className="btn" disabled={busy || !folder.trim() || folder.trim() === directory}>
-              Open
-            </button>
-            {choose ? (
-              <button
-                type="button"
-                className="btn"
+        {fixed ? (
+          <Row title="Project folder" note="The folder of this chat.">
+            <span className="mono" aria-label="Project folder">
+              {profile?.project ?? cwd}
+            </span>
+          </Row>
+        ) : (
+          <form
+            className="set col"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (folder.trim()) setDirectory(folder.trim());
+            }}
+          >
+            <span>
+              <b>Project folder</b>
+              <small>
+                {choose ? 'Type a path, pick a recent one, or choose a folder.' : 'Type a path or pick a recent one.'}
+              </small>
+            </span>
+            <div className="set-line">
+              <input
+                className="field mono grow"
+                aria-label="Project folder"
+                list={`${id}-folders`}
+                placeholder="/path/to/project"
+                value={folder}
                 disabled={busy}
-                onClick={() =>
-                  void choose().then(
-                    (path) => {
-                      if (!path) return;
-                      setFolder(path);
-                      setDirectory(path);
-                    },
-                    () => undefined,
-                  )
-                }
-              >
-                Choose…
+                onChange={(event) => edit(event.target.value)}
+              />
+              <datalist id={`${id}-folders`}>
+                {folders.map((dir) => (
+                  <option key={dir} value={dir} />
+                ))}
+              </datalist>
+              <button className="btn" disabled={busy || !folder.trim() || folder.trim() === directory}>
+                Open
               </button>
-            ) : null}
-          </div>
-          {profile && profile.project !== folder.trim() ? <small className="mono">{profile.project}</small> : null}
-        </form>
+              {choose ? (
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={busy}
+                  onClick={() =>
+                    void choose().then(
+                      (path) => {
+                        if (!path) return;
+                        setFolder(path);
+                        setDirectory(path);
+                      },
+                      () => undefined,
+                    )
+                  }
+                >
+                  Choose…
+                </button>
+              ) : null}
+            </div>
+            {profile && profile.project !== folder.trim() ? <small className="mono">{profile.project}</small> : null}
+          </form>
+        )}
         {profile ? (
           <>
             <Row title="Lead" note="Plans the work, delegates and merges.">
@@ -517,20 +536,27 @@ export function ArtifactsSection({ token, hosts }: ArtifactsSectionProps) {
     setSaving(true);
     setError(undefined);
     setSaved(false);
-    const extra = custom
-      .split(/[\n,]+/)
-      .map((host) => host.trim())
-      .filter(Boolean);
+    // A paste may separate hosts with spaces or tabs too.
+    const extra = custom.split(/[\s,]+/).filter(Boolean);
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
         body: JSON.stringify({ artifactCdn: [...(preset ? DEFAULT_ARTIFACT_CDN_HOSTS : []), ...extra] }),
       });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? 'Could not save settings.');
-      } else setSaved(true);
+      const body = (await res.json().catch(() => ({}))) as { error?: string; artifactCdn?: string[] };
+      if (!res.ok) setError(body.error ?? 'Could not save settings.');
+      else {
+        // The form shows what the server keeps now. The config broadcast of this save, before or
+        // after this reply, carries the same list and leaves the form alone.
+        if (body.artifactCdn) {
+          shown.current = body.artifactCdn.join('\n');
+          const now = cdnChoice(body.artifactCdn);
+          setPreset(now.preset);
+          setCustom(now.custom);
+        }
+        setSaved(true);
+      }
     } catch {
       setError('Could not reach genaicode.');
     } finally {
@@ -547,6 +573,7 @@ export function ArtifactsSection({ token, hosts }: ArtifactsSectionProps) {
           <Switch
             label="Allow common library CDNs"
             on={preset}
+            disabled={saving}
             onChange={(on) => {
               setPreset(on);
               setSaved(false);
@@ -556,7 +583,7 @@ export function ArtifactsSection({ token, hosts }: ArtifactsSectionProps) {
         <div className="set col">
           <span>
             <b>Extra allowed hosts</b>
-            <small>One per line or comma-separated.</small>
+            <small>One per line, or separated by commas or spaces.</small>
           </span>
           <textarea
             className="field mono"
@@ -564,6 +591,8 @@ export function ArtifactsSection({ token, hosts }: ArtifactsSectionProps) {
             placeholder="e.g. cdn.skypack.dev"
             aria-label="Extra allowed hosts"
             value={custom}
+            // Until the reply, what is sent is what the form shows.
+            disabled={saving}
             onChange={(event) => {
               setCustom(event.target.value);
               setSaved(false);
@@ -599,6 +628,24 @@ export interface UsageSectionProps {
   /** Opens the sessions of a topic. */
   onTopic?(id: string): void;
   now?: number;
+}
+
+/**
+ * The plan limits of every agent as the window knows them: for the open chat's agent (`agent`, with
+ * the account it draws on), what its runs here reported (`own`) wins over what was last seen (`all`).
+ * The sidebar and Settings › Usage show the same; without `/api/limits` only the chat's own are known.
+ */
+export function chatLimits(
+  all: readonly (RateLimit & { agent: string })[],
+  own: readonly RateLimit[],
+  agent?: string,
+): (RateLimit & { agent: string })[] {
+  if (!agent) return [...all];
+  const account = agent.replace(/Live$/, '');
+  return [
+    ...all.filter((limit) => limit.agent.replace(/Live$/, '') !== account),
+    ...own.map((limit) => ({ ...limit, agent })),
+  ];
 }
 
 /** A part smaller than this is not listed, and no more than this many parts are. */
@@ -760,17 +807,21 @@ export interface SettingsPageProps {
   team?: TeamSectionProps;
   /** Absent where the allow-list cannot be changed from the page. */
   artifacts?: ArtifactsSectionProps;
-  usage: UsageSectionProps;
+  /** Absent where no plan limit is served or reported and no session index is read. */
+  usage?: UsageSectionProps;
   about: AboutSectionProps;
 }
 
 /** The sections this page has, in order: those whose data the server gives. */
-export function settingsSections(props: Pick<SettingsPageProps, 'agents' | 'team' | 'artifacts'>): SettingsSection[] {
+export function settingsSections(
+  props: Pick<SettingsPageProps, 'agents' | 'team' | 'artifacts' | 'usage'>,
+): SettingsSection[] {
   return SETTINGS_SECTIONS.filter(
     (section) =>
       (section !== 'agents' || !!props.agents) &&
       (section !== 'team' || !!props.team) &&
-      (section !== 'artifacts' || !!props.artifacts),
+      (section !== 'artifacts' || !!props.artifacts) &&
+      (section !== 'usage' || !!props.usage),
   );
 }
 
@@ -790,13 +841,7 @@ export function SettingsPage(props: SettingsPageProps) {
       onKeyDown={(event) => {
         // The window keeps a page open while Escape is pressed in a field with text in it, so what
         // was typed is not lost with the page. Here the press leaves the field: the next one goes back.
-        const target = event.target;
-        if (
-          event.key === 'Escape' &&
-          (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) &&
-          target.value
-        )
-          target.blur();
+        if (event.key === 'Escape' && holdsTypedText(event.target)) event.target.blur();
       }}
     >
       <div className="pg">
@@ -829,7 +874,7 @@ export function SettingsPage(props: SettingsPageProps) {
             {/* Another chat's folder is another project: the section starts over with it. */}
             {section === 'team' && props.team ? <TeamSection key={props.team.cwd ?? ''} {...props.team} /> : null}
             {section === 'artifacts' && props.artifacts ? <ArtifactsSection {...props.artifacts} /> : null}
-            {section === 'usage' ? <UsageSection {...props.usage} /> : null}
+            {section === 'usage' && props.usage ? <UsageSection {...props.usage} /> : null}
             {section === 'about' ? <AboutSection {...props.about} /> : null}
           </section>
         </div>

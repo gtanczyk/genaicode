@@ -87,7 +87,11 @@ it('opens Settings from the sidebar, changes settings, and goes back to the chat
     const entry = side.getByRole('button', { name: 'Settings', exact: true });
     const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
     const themeOf = (selector: string) =>
-      page.evaluate((one) => document.querySelector<HTMLElement>(one)?.dataset.theme ?? null, selector);
+      page.evaluate((one) => {
+        // The page's choice is `data-gc-theme` on <html>; the chat's own is its `theme` prop.
+        const found = document.querySelector<HTMLElement>(one);
+        return (one === 'html' ? found?.dataset.gcTheme : found?.dataset.theme) ?? null;
+      }, selector);
 
     await composer.waitFor();
     await composer.fill('a draft that stays');

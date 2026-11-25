@@ -582,6 +582,16 @@ describe('rich content in genaicode ui (browser)', () => {
       await page.keyboard.press('Escape');
       await vi.waitFor(() => expect(longTurnAborted).toBe(true));
 
+      // The Artifacts menu closes when Settings takes the chat's place (⌘,): Escape there goes back.
+      await page.getByRole('button', { name: 'Artifacts · 1' }).click();
+      await page.locator('.artifacts-popover').waitFor();
+      await page.keyboard.press('ControlOrMeta+,');
+      const settings = page.getByRole('main', { name: 'Settings' });
+      await settings.waitFor();
+      await page.keyboard.press('Escape');
+      await settings.waitFor({ state: 'detached' });
+      expect(await page.locator('.artifacts-popover').count()).toBe(0);
+
       // Header Artifacts button re-opens an artifact from earlier in the session.
       await page.getByRole('button', { name: 'Artifacts · 1' }).click();
       await page.locator('.artifacts-popover button', { hasText: 'Survey' }).click();

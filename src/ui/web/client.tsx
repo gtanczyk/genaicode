@@ -44,7 +44,7 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
-import { SettingsPage, type SettingsSection } from './settings.js';
+import { chatLimits, SettingsPage, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 import { TranscriptMenu } from './transcript-menu.js';
@@ -236,6 +236,8 @@ interface PageConfig {
   agents?: boolean;
   uploads?: boolean;
   projectTeams?: boolean;
+  /** True when the plan limits last seen of every agent are served (`/api/limits`). */
+  limits?: boolean;
   files?: boolean;
   /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
   nativeSave?: boolean;
@@ -939,6 +941,8 @@ function App() {
     if (trigger) void checkAgents({ env: false, quiet: true });
   }, [hasAgentsApi, session?.turns]);
   const openSettings = (which: SettingsSection = 'general') => {
+    // What is open over the chat closes with it: hidden, it would keep its claim on Escape.
+    setArtifactsOpen(false);
     setFocusAgent(undefined);
     setSection(which);
     setPanel('settings');
@@ -1096,7 +1100,7 @@ function App() {
     window.addEventListener('mousedown', onPointerDown, true);
     return () => window.removeEventListener('mousedown', onPointerDown, true);
   }, [artifactsOpen]);
-  useEscape(artifactsOpen, () => setArtifactsOpen(false));
+  useEscape(artifactsOpen && panel === 'chat', () => setArtifactsOpen(false));
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1291,20 +1295,13 @@ function App() {
     sessions: chats.all,
     open: { id: session?.sessionId, source: openStore },
   });
-  // One row per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
-  const quota = useMemo(
-    () =>
-      session
-        ? quotaRows(
-            [
-              ...allLimits.filter((limit) => limit.agent.replace(/Live$/, '') !== account),
-              ...rateLimits.map((limit) => ({ ...limit, agent: session.agent })),
-            ],
-            [session.agent],
-          )
-        : [],
-    [allLimits, rateLimits, session?.agent, account],
+  // Per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
+  // The sidebar and Settings › Usage show the same.
+  const knownLimits = useMemo(
+    () => chatLimits(allLimits, rateLimits, session?.agent),
+    [allLimits, rateLimits, session?.agent],
   );
+  const quota = useMemo(() => (session ? quotaRows(knownLimits, [session.agent]) : []), [knownLimits, session?.agent]);
   return (
     <>
       <Shell
@@ -1506,9 +1503,13 @@ function App() {
                     current: session?.agent,
                     focusAgent,
                     onCheckAgain: () => checkAgents({ env: true }),
+                    holding,
                     onUse: inSetup
                       ? undefined
                       : (name) => {
+                          // `agent` names no chat: while another is being opened it would reach the
+                          // one being left.
+                          if (switchingRef.current || lookingUpRef.current > 0) return;
                           dropWaiting();
                           void command({ type: 'agent', name });
                           backToChat();
@@ -1527,16 +1528,21 @@ function App() {
                 : undefined
             }
             artifacts={config?.canConfigureCdn ? { token, hosts: config.artifactCdn ?? [] } : undefined}
-            usage={{
-              token,
-              limits: allLimits,
-              shares: hasSessions,
-              onTopic: (id) => {
-                setTopic(id);
-                setListed('all');
-                setPanel('sessions');
-              },
-            }}
+            usage={
+              // Nothing to say where no limit is served or reported, and no session index tells where work went.
+              config?.limits || hasSessions || knownLimits.length
+                ? {
+                    token,
+                    limits: knownLimits,
+                    shares: hasSessions,
+                    onTopic: (id) => {
+                      setTopic(id);
+                      setListed('all');
+                      setPanel('sessions');
+                    },
+                  }
+                : undefined
+            }
             about={{
               version: release?.version ?? root.dataset.version,
               update: config?.update,

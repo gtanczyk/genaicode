@@ -610,9 +610,11 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByRole('button', { name: 'New chat in Catalog' }).click();
     await home.getByText('What should backup work on in Catalog?').waitFor();
     await openTeam(home);
-    // The chat's own project is filled in, and stays editable.
+    // The chat names its project: the team is that one's, shown and not chosen (the server answers for it only).
     await vi.waitFor(async () => expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup'));
-    expect(await home.getByLabel('Project folder').inputValue()).toBe(project);
+    expect(await home.getByLabel('Project folder').textContent()).toBe(project);
+    expect(await home.getByRole('textbox', { name: 'Project folder' }).count()).toBe(0);
+    expect(await home.getByRole('button', { name: 'Open', exact: true }).count()).toBe(0);
     await home.close();
     stop.abort();
     await running;

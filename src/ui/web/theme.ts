@@ -18,12 +18,14 @@ export function readTheme(store?: Store): ThemeChoice {
 }
 
 /**
- * Puts the choice on the document: `data-theme` on `<html>` forces light or dark for the page's own
- * colors and the design tokens; without it both follow `prefers-color-scheme`.
+ * Puts the choice on the document: `data-gc-theme` on `<html>` forces light or dark for the page's
+ * own colors and the design tokens; without it both follow `prefers-color-scheme`. The attribute is
+ * this app's own: a page that embeds `<AgentChat>` and sets `data-theme` on its `<html>` for its own
+ * styles does not change the chat's tokens.
  */
 export function applyTheme(choice: ThemeChoice, root: HTMLElement = document.documentElement): void {
-  if (choice === 'system') delete root.dataset.theme;
-  else root.dataset.theme = choice;
+  if (choice === 'system') delete root.dataset.gcTheme;
+  else root.dataset.gcTheme = choice;
 }
 
 /** The theme of the window and how to change it. The choice is kept for the next visit. */

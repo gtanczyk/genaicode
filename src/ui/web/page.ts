@@ -44,7 +44,7 @@ const STYLES = `
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-gc-theme='light']) {
     --bg: #141414; --panel: #1d1d1c; --text: #ececea; --muted: #a3a39e; --faint: #74746f;
     --line: #2e2e2c; --accent: #7c9bff; --ok: #69db7c; --err: #ff8787;
     --shadow: 0 1px 2px rgba(0,0,0,.3);
@@ -53,8 +53,8 @@ const STYLES = `
     color-scheme: dark;
   }
 }
-/* The theme chosen in Settings (data-theme on <html>) wins over the system's. */
-:root[data-theme='dark'] {
+/* The theme chosen in Settings (data-gc-theme on <html>) wins over the system's. */
+:root[data-gc-theme='dark'] {
   --bg: #141414; --panel: #1d1d1c; --text: #ececea; --muted: #a3a39e; --faint: #74746f;
   --line: #2e2e2c; --accent: #7c9bff; --ok: #69db7c; --err: #ff8787;
   --shadow: 0 1px 2px rgba(0,0,0,.3);
@@ -501,9 +501,9 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .status-pill[data-state='ready'] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); background: color-mix(in srgb, var(--ok) 10%, var(--panel)); }
 .status-pill[data-state='signed-out'], .status-pill[data-state='broken'] { color: #c45d00; border-color: color-mix(in srgb, #e8590c 40%, transparent); background: color-mix(in srgb, #e8590c 9%, var(--panel)); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .status-pill[data-state='signed-out'], :root:not([data-theme='light']) .status-pill[data-state='broken'] { color: #ffb35c; }
+  :root:not([data-gc-theme='light']) .status-pill[data-state='signed-out'], :root:not([data-gc-theme='light']) .status-pill[data-state='broken'] { color: #ffb35c; }
 }
-:root[data-theme='dark'] .status-pill[data-state='signed-out'], :root[data-theme='dark'] .status-pill[data-state='broken'] { color: #ffb35c; }
+:root[data-gc-theme='dark'] .status-pill[data-state='signed-out'], :root[data-gc-theme='dark'] .status-pill[data-state='broken'] { color: #ffb35c; }
 .card-summary { margin: 5px 0 0; font-size: 13px; color: var(--muted); }
 .card-step { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .card-ready-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }

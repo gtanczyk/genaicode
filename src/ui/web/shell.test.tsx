@@ -7,7 +7,7 @@ import { EscapeActive } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
 import { ViewerPanel } from './file-view.js';
-import { Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
+import { holdsTypedText, Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -317,6 +317,28 @@ describe('<Shell>', () => {
     dialog.remove();
     press('Escape');
     expect(onBack).toHaveBeenCalledTimes(2);
+
+    // A checkbox's value ("on") or a button's is not typed text: the page goes back.
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    host.append(box);
+    press('Escape', {}, box);
+    expect(onBack).toHaveBeenCalledTimes(3);
+    for (const type of ['radio', 'button', 'range', 'color']) {
+      const other = document.createElement('input');
+      other.type = type;
+      other.value = 'x';
+      expect(holdsTypedText(other)).toBe(false);
+    }
+    for (const type of ['text', 'search', 'url', 'email', 'password']) {
+      const other = document.createElement('input');
+      other.type = type;
+      other.value = 'x';
+      expect(holdsTypedText(other)).toBe(true);
+    }
+    const area = document.createElement('textarea');
+    area.value = 'x';
+    expect(holdsTypedText(area)).toBe(true);
   });
 
   it('gives Escape to what was opened last: the menu, then the viewer, then the page, one press each', () => {

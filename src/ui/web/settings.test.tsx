@@ -6,8 +6,10 @@ import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import { agentGuide } from '../../agents/drivers/catalog.js';
 import type { AgentInspection } from '../../agents/status.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
+import { readFileSync } from 'node:fs';
 import {
   AboutSection,
+  chatLimits,
   agentsNeedingYou,
   AgentsSection,
   ArtifactsSection,
@@ -19,6 +21,7 @@ import {
   UsageSection,
   type SettingsPageProps,
 } from './settings.js';
+import { holdsTypedText } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
 import { applyTheme, readTheme, THEME_KEY, useTheme, type ThemeChoice } from './theme.js';
 
@@ -38,7 +41,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   vi.unstubAllGlobals();
-  delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.gcTheme;
 });
 
 const render = (node: React.ReactNode) => act(() => root.render(node));
@@ -102,15 +105,15 @@ describe('theme', () => {
     }
     render(<Probe />);
     expect(host.textContent).toBe('system');
-    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(document.documentElement.dataset.gcTheme).toBeUndefined();
 
     act(() => set('dark'));
     expect(host.textContent).toBe('dark');
-    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(document.documentElement.dataset.gcTheme).toBe('dark');
     expect(store.values.get(THEME_KEY)).toBe('dark');
 
     act(() => set('system'));
-    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(document.documentElement.dataset.gcTheme).toBeUndefined();
     expect(store.values.has(THEME_KEY)).toBe(false);
   });
 
@@ -129,9 +132,20 @@ describe('theme', () => {
     expect(readTheme(blocked)).toBe('system');
     const element = document.createElement('div');
     applyTheme('light', element);
-    expect(element.dataset.theme).toBe('light');
+    expect(element.dataset.gcTheme).toBe('light');
     applyTheme('system', element);
-    expect(element.dataset.theme).toBeUndefined();
+    expect(element.dataset.gcTheme).toBeUndefined();
+  });
+});
+
+describe('theme on the page', () => {
+  it('is set with an attribute of this app’s own, so a host’s `data-theme` on <html> changes no token', () => {
+    applyTheme('dark');
+    expect(document.documentElement.dataset.gcTheme).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    const css = readFileSync('src/react/agent-chat.css', 'utf8');
+    expect(css).toContain(":root[data-gc-theme='dark']");
+    expect(css).not.toMatch(/:root\[data-theme/);
   });
 });
 
@@ -230,6 +244,17 @@ describe('<AgentsSection>', () => {
     expect(row('codex').querySelector('button')).toBeNull();
   });
 
+  it('waits with Use while the window moves to another chat', () => {
+    const onUse = vi.fn();
+    render(
+      <AgentsSection agents={agents} loading={false} checking={false} holding onCheckAgain={vi.fn()} onUse={onUse} />,
+    );
+    const use = row('codex').querySelector('button')!;
+    expect(use.disabled).toBe(true);
+    click(use);
+    expect(onUse).not.toHaveBeenCalled();
+  });
+
   it('marks the agent it was opened for', () => {
     render(
       <AgentsSection agents={agents} loading={false} checking={false} focusAgent="cursor" onCheckAgain={vi.fn()} />,
@@ -257,15 +282,17 @@ describe('<TeamSection>', () => {
       '/api/sessions': () => ({ body: { sessions: [{ cwd: '/work/site' }, { cwd: '/work/app' }, {}] } }),
       '/api/pack-profile': () => ({ body: team }),
     });
-    render(<TeamSection token="tok" cwd="/work/app" sessions />);
+    const choose = vi.fn(async () => '/work/site');
+    render(<TeamSection token="tok" cwd="/work/app" sessions choose={choose} />);
     await flush();
-    const folder = host.querySelector<HTMLInputElement>('input[aria-label="Project folder"]')!;
-    expect(folder.value).toBe('/work/app');
-    // Recent folders are offered, once each.
-    expect(Array.from(host.querySelectorAll('datalist option')).map((one) => one.getAttribute('value'))).toEqual([
-      '/work/app',
-      '/work/site',
-    ]);
+    // The chat names its project, and the server answers for that one only: the folder is shown,
+    // with nothing to type, no recent folders and no Choose….
+    expect(host.querySelector('.set .mono[aria-label="Project folder"]')!.textContent).toBe('/work/app');
+    expect(host.querySelector('input[aria-label="Project folder"]')).toBeNull();
+    expect(host.querySelector('datalist')).toBeNull();
+    expect(button('Choose…')).toBeUndefined();
+    expect(button('Open')).toBeUndefined();
+    expect(calls.map((call) => call.url)).toEqual(['/api/pack-profile?project=%2Fwork%2Fapp']);
     const lead = host.querySelector<HTMLSelectElement>('select[aria-label="Lead"]')!;
     expect(lead.value).toBe('codex');
     // Only installed agents that can lead; only installed ones as workers.
@@ -285,6 +312,20 @@ describe('<TeamSection>', () => {
     expect(JSON.parse(post.init!.body as string)).toEqual({ lead: 'codex', members: ['claude', 'codex', 'gemini'] });
     expect((post.init!.headers as Record<string, string>)['x-genaicode-token']).toBe('tok');
     expect(host.querySelector('[role="status"]')!.textContent).toContain('Team saved in .genaicode/pack.json');
+  });
+
+  it('offers recent folders where a project is chosen', async () => {
+    stubFetch({
+      '/api/sessions': () => ({ body: { sessions: [{ cwd: '/work/site' }, { cwd: '/work/app' }, {}] } }),
+    });
+    render(<TeamSection token="tok" sessions />);
+    await flush();
+    expect(host.querySelector<HTMLInputElement>('input[aria-label="Project folder"]')!.value).toBe('');
+    // Once each.
+    expect(Array.from(host.querySelectorAll('datalist option')).map((one) => one.getAttribute('value'))).toEqual([
+      '/work/app',
+      '/work/site',
+    ]);
   });
 
   it('opens a typed folder, or one from the host’s dialog, and says what went wrong', async () => {
@@ -350,6 +391,45 @@ describe('<ArtifactsSection>', () => {
     // A further change is not saved yet.
     click(preset);
     expect(host.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('splits a pasted list on spaces and tabs too', async () => {
+    const calls = stubFetch({ '/api/settings': () => ({ body: { ok: true } }) });
+    render(<ArtifactsSection token="tok" hosts={[]} />);
+    type(host.querySelector('textarea')!, 'cdn.skypack.dev esm.run\tunpkg.com ,  ga.jspm.io');
+    click(button('Save'));
+    await flush();
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      artifactCdn: ['cdn.skypack.dev', 'esm.run', 'unpkg.com', 'ga.jspm.io'],
+    });
+  });
+
+  it('keeps the form as sent until the reply, and the broadcast of the save changes nothing after it', async () => {
+    let reply!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (reply = resolve))),
+    );
+    render(<ArtifactsSection token="tok" hosts={[]} />);
+    const field = host.querySelector('textarea')!;
+    const preset = host.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    type(field, 'cdn.skypack.dev');
+    click(button('Save'));
+    // While the save is under way nothing can be changed: what the reply says is what was sent.
+    expect(field.disabled).toBe(true);
+    expect(preset.disabled).toBe(true);
+    await act(async () =>
+      reply(new Response(JSON.stringify({ ok: true, artifactCdn: ['https://cdn.skypack.dev'] }), { status: 200 })),
+    );
+    await flush();
+    expect(field.disabled).toBe(false);
+    expect(field.value).toBe('cdn.skypack.dev');
+    expect(host.querySelector('[role="status"]')!.textContent).toBe('Settings saved.');
+
+    // A newer draft, then the config broadcast of that same save: the draft stays.
+    type(field, 'cdn.skypack.dev\nesm.run');
+    render(<ArtifactsSection token="tok" hosts={['https://cdn.skypack.dev']} />);
+    expect(field.value).toBe('cdn.skypack.dev\nesm.run');
   });
 
   it('says why a save failed, and follows a list changed elsewhere', async () => {
@@ -418,6 +498,27 @@ describe('<UsageSection>', () => {
     expect(bars[1]!.querySelector('button')).toBeNull();
     click(bars[0]!.querySelector('button')!);
     expect(onTopic).toHaveBeenCalledWith('t1');
+  });
+
+  it('knows the open chat’s own limits, also where no limits are served', () => {
+    const live = [{ window: '5h' as const, status: 'warning' as const, usedPercent: 91 }];
+    // The embedded page: no `/api/limits`, only what the chat's runs reported.
+    expect(chatLimits([], live, 'claude')).toEqual([{ ...live[0], agent: 'claude' }]);
+    // What the chat reported wins over what was last seen of the same account.
+    expect(
+      chatLimits(
+        [
+          { agent: 'codex', window: '5h', status: 'ok' },
+          { agent: 'claude', window: '5h', status: 'ok' },
+        ],
+        live,
+        'claudeLive',
+      ),
+    ).toEqual([
+      { agent: 'codex', window: '5h', status: 'ok' },
+      { ...live[0], agent: 'claudeLive' },
+    ]);
+    expect(chatLimits([{ agent: 'codex', window: '5h', status: 'ok' }], [], undefined)).toHaveLength(1);
   });
 
   it('asks for no shares without a session index, and says when nothing is known', () => {
@@ -512,6 +613,10 @@ describe('<SettingsPage>', () => {
     render(<SettingsPage {...props} />);
     expect(nav().map((one) => one.textContent)).toEqual(['General', 'Usage', 'About and updates']);
     expect(host.querySelector('.sec')!.getAttribute('data-section')).toBe('general');
+    // No limit served or reported, and no session index: no Usage either.
+    expect(settingsSections({ ...props, usage: undefined })).toEqual(['general', 'about']);
+    render(<SettingsPage {...props} usage={undefined} section="usage" />);
+    expect(host.querySelector('.sec')!.getAttribute('data-section')).toBe('general');
   });
 
   it('leaves a field with text in it on Escape, so the next press goes back to the chat', () => {
@@ -528,6 +633,22 @@ describe('<SettingsPage>', () => {
     escape();
     expect(document.activeElement).not.toBe(field);
     expect(field.value).toBe('cdn.skypack.dev');
+  });
+
+  it('goes back on Escape from a checkbox: its value is not typed text', async () => {
+    stubFetch({
+      '/api/pack-profile': () => ({
+        body: { project: '/work/app', choices: [{ name: 'claude', installed: true, canLead: true }] },
+      }),
+    });
+    render(<SettingsPage {...page({ section: 'team', team: { token: 'tok', cwd: '/work/app', sessions: false } })} />);
+    await flush();
+    const box = host.querySelector<HTMLInputElement>('.check input')!;
+    expect(box.value).toBe('on');
+    act(() => box.focus());
+    act(() => void box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+    expect(document.activeElement).toBe(box);
+    expect(holdsTypedText(box)).toBe(false);
   });
 
   it('shows each section by its name', () => {

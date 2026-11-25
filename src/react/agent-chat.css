@@ -23,7 +23,7 @@
  */
 :root,
 :host,
-:root[data-theme='light'],
+:root[data-gc-theme='light'],
 .gc-chat[data-theme='light'] {
   --gc-color-bg: #fbfaf7;
   --gc-color-side: #f3f1ec;
@@ -76,7 +76,7 @@
   --gc-radius-control: 8px;
   --gc-radius-card: 12px;
 }
-:root[data-theme='dark'],
+:root[data-gc-theme='dark'],
 .gc-chat[data-theme='dark'] {
   --gc-color-bg: #1a1917;
   --gc-color-side: #141312;
