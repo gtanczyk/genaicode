@@ -146,11 +146,31 @@ describe('paletteItems', () => {
 
 describe('paletteProject and paletteTerms', () => {
   it('names the folder, or the home folder', () => {
-    expect(paletteProject({ cwd: '/work/app/' })).toBe('app');
-    expect(paletteProject({ cwd: 'C:\\work\\site' })).toBe('site');
-    expect(paletteProject({})).toBe('Home folder');
-    expect(paletteProject({ cwd: '/home/me/' }, '/home/me')).toBe('Home folder');
-    expect(paletteProject({ cwd: '/home/me' })).toBe('me');
+    const at = (patch: Partial<SessionInfo>) => session('x', { cwd: undefined, ...patch });
+    expect(paletteProject(at({ cwd: '/work/app/' }))).toBe('app');
+    expect(paletteProject(at({ cwd: 'C:\\work\\site' }))).toBe('site');
+    expect(paletteProject(at({}))).toBe('Home folder');
+    expect(paletteProject(at({ cwd: '/home/me/' }), '/home/me')).toBe('Home folder');
+    expect(paletteProject(at({ cwd: '/home/me' }))).toBe('me');
+  });
+
+  it('names a cloud session by its repository, or its platform, as the session index does', () => {
+    const cloud = (patch: Partial<SessionInfo>) => session('c', { where: 'cloud', cwd: undefined, ...patch });
+    expect(paletteProject(cloud({ repository: 'org/bakery' }))).toBe('bakery');
+    expect(paletteProject(cloud({ repository: 'https://github.com/org/bakery.git' }))).toBe('bakery');
+    expect(paletteProject(cloud({ source: 'codex-cloud' }))).toBe('codex-cloud');
+    // The directory wins over the repository.
+    expect(paletteProject(cloud({ repository: 'org/bakery', cwd: '/work/app' }))).toBe('app');
+    // And it is found by its repository's name and owner.
+    const found = {
+      chats: [],
+      sessions: [cloud({ repository: 'org/bakery', title: 'Rye' })],
+      commands: [],
+    } satisfies PaletteSource;
+    expect(
+      paletteItems(found, 'bakery').map((item) => [item.title, item.kind === 'command' ? '' : item.project]),
+    ).toEqual([['Rye', 'bakery']]);
+    expect(paletteItems(found, 'org')).toHaveLength(1);
   });
 
   it('splits what was typed into lower-case words', () => {

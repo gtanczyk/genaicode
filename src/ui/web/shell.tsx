@@ -30,6 +30,15 @@ export function holdsTypedText(target: EventTarget | null): target is HTMLElemen
   return target instanceof HTMLElement && target.isContentEditable && !!target.textContent;
 }
 
+/** The open menus and popovers of the window: each sits beside its button in one anchor. */
+const POPUP = '.menu, .popover, .pop';
+
+/** The button of the open menu or popover that `focused` is in, or undefined outside one. */
+function popupTrigger(focused: Element | null): HTMLElement | undefined {
+  const popup = focused?.closest(POPUP);
+  return popup?.parentElement?.querySelector<HTMLElement>(':scope > button[aria-expanded="true"]') ?? undefined;
+}
+
 export interface ShellProps {
   /** The sidebar's content; the shell owns whether it is collapsed, and Search. */
   side: Omit<SidebarProps, 'collapsed' | 'onToggle' | 'onSearch'>;
@@ -94,7 +103,13 @@ export function Shell(props: ShellProps) {
   const openSearch = () => {
     // Nothing to search, or a dialog is over the page and would cover the palette.
     if (!latest.current.search || searchingRef.current || document.querySelector('dialog[open]')) return;
-    searchFrom.current = document.activeElement;
+    const from = document.activeElement;
+    // A menu or popover open under it closes now, as a press beside it would close it: else the
+    // first press in the palette would, and take away the focus kept for its return. The focus goes
+    // back to the popup's button then.
+    const trigger = popupTrigger(from);
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    searchFrom.current = trigger ?? from;
     setSearching(true);
   };
   const closeSearch = (restore = true) => {

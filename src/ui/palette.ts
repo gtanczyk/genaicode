@@ -1,5 +1,6 @@
 import type { SessionInfo } from '../agents/sessions/group.js';
-import { chatTitle, folderName, sessionKey } from './sidebar.js';
+import { sessionPlace } from '../agents/sessions/group.js';
+import { chatTitle, sessionKey } from './sidebar.js';
 
 /** A command of the window that the palette runs: a place to go, or a switch. */
 export interface PaletteCommand {
@@ -42,11 +43,19 @@ export const PALETTE_LIMIT = 50;
 
 const trimDir = (dir: string) => (dir.length > 1 ? dir.replace(/[\\/]+$/, '') : dir);
 
-/** The project a session is listed under, as the sidebar names it. */
-export function paletteProject(session: Pick<SessionInfo, 'cwd'>, home?: string): string {
+/**
+ * The project a session is listed under, as the session index names it: its directory, else the
+ * repository a cloud session works on, else its platform. This app's chats started without a folder,
+ * and a local session that names no directory, are in the "Home folder".
+ */
+export function paletteProject(
+  session: Pick<SessionInfo, 'cwd' | 'repository' | 'where' | 'source'>,
+  home?: string,
+): string {
   const dir = session.cwd ? trimDir(session.cwd) : undefined;
-  if (!dir || (home !== undefined && dir === trimDir(home))) return 'Home folder';
-  return folderName(dir);
+  if (dir !== undefined && home !== undefined && dir === trimDir(home)) return 'Home folder';
+  const place = sessionPlace(session);
+  return place.key ? place.name : 'Home folder';
 }
 
 const fold = (text: string) => text.toLowerCase();
@@ -101,19 +110,27 @@ function fieldsOf(item: PaletteItem): Fields {
     return { title: fold(item.title), label: fold(item.command.keywords ?? ''), prompt: '' };
   }
   const { session } = item;
+  // The repository's full name too: `org/bakery` is found by `org`.
+  const repository = session.repository && !session.cwd ? ` ${session.repository}` : '';
   return {
     title: fold(item.title),
-    label: fold(`${item.project} ${item.agent} ${session.branch ?? ''}`),
+    label: fold(`${item.project}${repository} ${item.agent} ${session.branch ?? ''}`),
     prompt: fold(`${session.firstPrompt ?? ''}\n${session.lastPrompt ?? ''}`),
   };
 }
 
+/** The rows of a source, in the order shown with nothing typed, each with the text it is found by. */
+export interface PaletteRows {
+  readonly items: readonly PaletteItem[];
+  /** `fields[i]` belongs to `items[i]`: folded once, not on every key. */
+  readonly fields: readonly Fields[];
+}
+
 /**
- * The rows for what was typed. Nothing typed: this app's chats, the latest first, then the other
- * agents' sessions, then the commands. Else the rows that hold every word, the best match first; a
- * command comes before a chat that matches as well, and of two chats the one worked in last.
+ * The rows of a source: this app's chats, the latest first, then the other agents' sessions, then
+ * the commands. Built once per source, so that typing only scores them (`paletteSearch`).
  */
-export function paletteItems(source: PaletteSource, query: string, limit = PALETTE_LIMIT): PaletteItem[] {
+export function paletteRows(source: PaletteSource): PaletteRows {
   const seen = new Set<string>();
   const sessions = (list: readonly SessionInfo[], kind: 'chat' | 'session'): PaletteItem[] =>
     [...list]
@@ -132,22 +149,36 @@ export function paletteItems(source: PaletteSource, query: string, limit = PALET
         agent: session.agent,
         session,
       }));
-  const all: PaletteItem[] = [
+  const items: PaletteItem[] = [
     ...sessions(source.chats, 'chat'),
     ...sessions(source.sessions, 'session'),
     ...source.commands.map(
       (command): PaletteItem => ({ kind: 'command', key: `command:${command.id}`, title: command.label, command }),
     ),
   ];
+  return { items, fields: items.map(fieldsOf) };
+}
+
+/**
+ * The rows for what was typed. Nothing typed: all of them, in their order. Else the rows that hold
+ * every word, the best match first; a command comes before a chat that matches as well, and of two
+ * chats the one worked in last.
+ */
+export function paletteSearch(rows: PaletteRows, query: string, limit = PALETTE_LIMIT): PaletteItem[] {
   const terms = paletteTerms(query);
-  if (!terms.length) return all.slice(0, limit);
+  if (!terms.length) return rows.items.slice(0, limit);
   const order = { command: 0, chat: 1, session: 2 } as const;
-  return all
-    .map((item, index) => ({ item, index, score: score(fieldsOf(item), terms) }))
+  return rows.items
+    .map((item, index) => ({ item, index, score: score(rows.fields[index]!, terms) }))
     .filter((row) => row.score > 0)
     .sort((a, b) => b.score - a.score || order[a.item.kind] - order[b.item.kind] || a.index - b.index)
     .slice(0, limit)
     .map((row) => row.item);
+}
+
+/** `paletteSearch` of a source's rows: the rows for what was typed. */
+export function paletteItems(source: PaletteSource, query: string, limit = PALETTE_LIMIT): PaletteItem[] {
+  return paletteSearch(paletteRows(source), query, limit);
 }
 
 /**

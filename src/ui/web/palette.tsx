@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { useEscape } from '../../react/escape.js';
-import { paletteItems, paletteMove, type PaletteItem, type PaletteSource } from '../palette.js';
+import { paletteMove, paletteRows, paletteSearch, type PaletteItem, type PaletteSource } from '../palette.js';
 import { sessionGlyph, sessionKey, type ChatGlyph } from '../sidebar.js';
 import { Icon, StateGlyph } from './sidebar.js';
 
@@ -35,10 +35,15 @@ const KIND_TITLE = {
 export function Palette(props: PaletteProps) {
   const now = props.now ?? Date.now();
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(0);
-  const items = useMemo(() => paletteItems(props.source, query), [props.source, query]);
-  // The list may get shorter under the selection (a session ended, a command left).
-  const index = Math.min(selected, Math.max(0, items.length - 1));
+  /**
+   * The row selected, by its key: a list refreshed under it (a chat moved up, a session ended) keeps
+   * the same row selected, wherever it is now. Undefined, or a row no longer listed: the first.
+   */
+  const [selected, setSelected] = useState<string>();
+  // Built when the source changes; typing only scores the rows.
+  const rows = useMemo(() => paletteRows(props.source), [props.source]);
+  const items = useMemo(() => paletteSearch(rows, query), [rows, query]);
+  const index = Math.max(0, selected === undefined ? 0 : items.findIndex((item) => item.key === selected));
   const list = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
 
@@ -84,7 +89,7 @@ export function Palette(props: PaletteProps) {
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
-            setSelected(0);
+            setSelected(undefined);
           }}
           onKeyDown={(event) => {
             // The field is all there is to focus here.
@@ -94,12 +99,14 @@ export function Palette(props: PaletteProps) {
               event.preventDefault();
               return open(items[index]);
             }
-            // Home and End move in the text while there is some.
-            if ((event.key === 'Home' || event.key === 'End') && query) return;
+            // Home and End go to the first and last row, typed text or not: one line of search needs
+            // no caret keys. With a modifier (Shift+Home selects) they stay the field's.
+            const caret = event.key === 'Home' || event.key === 'End';
+            if (caret && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)) return;
             const next = paletteMove(event.key, index, items.length);
             if (next === undefined) return;
             event.preventDefault();
-            setSelected(next);
+            setSelected(items[next]!.key);
           }}
         />
         <div className="palette-res" id="palette-results" role="listbox" aria-label="Results" ref={list}>
@@ -113,9 +120,9 @@ export function Palette(props: PaletteProps) {
               title={
                 item.kind === 'command'
                   ? KIND_TITLE.command
-                  : `${KIND_TITLE[item.kind]}${item.session.cwd ? `\n${item.session.cwd}` : ''}`
+                  : `${KIND_TITLE[item.kind]}${(item.session.cwd ?? item.session.repository) ? `\n${item.session.cwd ?? item.session.repository}` : ''}`
               }
-              onMouseMove={() => setSelected(at)}
+              onMouseMove={() => setSelected(item.key)}
               onClick={() => open(item)}
             >
               {item.kind === 'command' ? (

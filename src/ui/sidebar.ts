@@ -149,9 +149,15 @@ export function otherSessions(
   limit = 4,
   now = Date.now(),
 ): { shown: SessionInfo[]; total: number } {
+  // A session is this app's by its store and id, or by its agent and id (the same session read
+  // through another of its agent's stores, or the open chat's row no store lists yet): an id alone
+  // says nothing, as two agents' stores may both hold it.
   const mine = new Set(own.map(sessionKey));
-  const ids = new Set(own.map((session) => session.id));
-  const others = all.filter((session) => !session.archived && !mine.has(sessionKey(session)) && !ids.has(session.id));
+  const agentKey = (session: Pick<SessionInfo, 'agent' | 'id'>) => `${session.agent}\n${session.id}`;
+  const byAgent = new Set(own.filter((session) => session.id).map(agentKey));
+  const others = all.filter(
+    (session) => !session.archived && !mine.has(sessionKey(session)) && !byAgent.has(agentKey(session)),
+  );
   const asks = (session: SessionInfo) => (sessionGlyph(session, now) === 'ask' ? 0 : 1);
   const shown = [...others].sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt).slice(0, limit);
   return { shown, total: others.length };

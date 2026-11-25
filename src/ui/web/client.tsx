@@ -194,8 +194,10 @@ const NO_SESSIONS: SessionInfo[] = [];
  * agent's sessions of the last 7. Asked again when `stamp` changes (a turn ended, another chat was
  * opened), every minute, and when the window is looked at again.
  */
-function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: SessionInfo[] } {
+function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: SessionInfo[]; ownKnown: boolean } {
   const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
+  // Until this app's chats are known, a session of the index cannot be told to be another agent's.
+  const [ownKnown, setOwnKnown] = useState(false);
   const [all, setAll] = useState<SessionInfo[]>(NO_SESSIONS);
   useEffect(() => {
     if (!enabled || !token) return;
@@ -211,7 +213,10 @@ function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: S
         );
     const ask = () => {
       if (document.visibilityState !== 'visible') return;
-      void list('days=30&own=1', setOwn);
+      void list('days=30&own=1', (found) => {
+        setOwn(found);
+        setOwnKnown(true);
+      });
       void list('days=7', setAll);
     };
     ask();
@@ -223,7 +228,7 @@ function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: S
       document.removeEventListener('visibilitychange', ask);
     };
   }, [enabled, stamp]);
-  return { own, all };
+  return { own, all, ownKnown };
 }
 
 interface PageConfig {
@@ -1288,11 +1293,17 @@ function App() {
   const ownChats = useMemo(() => withOpenChat(chats.own, openChat), [chats.own, openChat]);
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
   const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
-  const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
+  // The general index may answer first: none of its sessions is another agent's until this app's
+  // chats are known, or an app chat would show as one (and open All sessions).
+  const othersKnown = hasSessions && chats.ownKnown;
+  const others = useMemo(
+    () => (othersKnown ? otherSessions(chats.all, ownChats) : undefined),
+    [othersKnown, chats.all, ownChats],
+  );
   // Search (⌘K) looks through all of them, not the few the sidebar shows.
   const searchSessions = useMemo(
-    () => (hasSessions ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
-    [chats.all, ownChats],
+    () => (othersKnown ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
+    [othersKnown, chats.all, ownChats],
   );
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,

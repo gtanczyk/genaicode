@@ -295,6 +295,43 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     await page.mouse.click(40, 780);
     await palette.waitFor({ state: 'detached' });
 
+    // The session index may answer before the list of this app's chats: until that list is there,
+    // no session is taken for another agent's (an app chat would open All sessions).
+    {
+      const slow = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const late = await slow.newPage();
+      late.on('pageerror', (error) => errors.push(error.message));
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await late.route(/\/api\/sessions\?.*own=1/, async (route) => {
+        await held;
+        await route.continue();
+      });
+      const general = late.waitForResponse((response) => /\/api\/sessions\?days=7$/.test(response.url()));
+      await late.goto(opened!);
+      await general;
+      const lateSide = late.getByRole('complementary', { name: 'Sidebar' });
+      await lateSide.getByRole('button', { name: 'Search', exact: true }).click();
+      const latePalette = late.getByRole('dialog', { name: 'Search chats and sessions' });
+      await latePalette.waitFor();
+      expect(await latePalette.locator('[role=option] small', { hasText: 'session' }).count()).toBe(0);
+      expect(await lateSide.getByText('Count the loaves').count()).toBe(0);
+      release();
+      // Then this app's chats are chats, and only the other agent's session is a session.
+      await vi.waitFor(async () =>
+        expect(
+          await latePalette
+            .getByRole('option')
+            .evaluateAll((rows) =>
+              rows
+                .filter((row) => row.querySelector('small')?.textContent !== 'command')
+                .map((row) => `${row.querySelector('.grow')?.textContent} ${row.querySelector('small')?.textContent}`),
+            ),
+        ).toEqual(['Polish the armour chat', 'Count the loaves chat', 'Sourdough schedule session']),
+      );
+      await slow.close();
+    }
+
     // It fits a wide and a narrow window, in both themes, the list scrolling inside it.
     for (const width of [1440, 900]) {
       for (const colorScheme of ['light', 'dark'] as const) {

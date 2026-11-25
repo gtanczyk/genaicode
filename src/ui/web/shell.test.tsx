@@ -588,6 +588,69 @@ describe('Search (⌘K)', () => {
     expect(value.search!.onOpenSession).not.toHaveBeenCalled();
   });
 
+  it('keeps the selected row selected when the list is refreshed under it', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    key('ArrowDown');
+    expect(selected()).toBe('Chat b');
+    // A chat worked in just now moves to the top: the rows below it move down one.
+    const fresh = chat('d', { title: 'Chat d', updatedAt: now });
+    render({ ...value, search: { ...value.search!, chats: [fresh, ...chats] } });
+    expect(rows().map(row)[0]).toMatch(/^Chat d/);
+    expect(selected()).toBe('Chat b');
+    key('Enter');
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[1]);
+    // A row that left the list gives the selection back to the first.
+    press('k', mod());
+    key('ArrowDown');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat b');
+    render({ ...value, search: { ...value.search!, chats: [fresh, chats[0]!, chats[2]!] } });
+    expect(selected()).toBe('Chat d');
+  });
+
+  it('moves to the first and last row with Home and End, also with words typed', () => {
+    render(props());
+    press('k', mod());
+    type('chat');
+    expect(selected()).toBe('Chat a');
+    const end = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(end));
+    expect(end.defaultPrevented).toBe(true);
+    expect(selected()).toBe(
+      rows()
+        .map((one) => one.querySelector('.grow')?.textContent)
+        .at(-1),
+    );
+    expect(selected()).not.toBe('Chat a');
+    key('Home');
+    expect(selected()).toBe('Chat a');
+    // Shift+End still selects text in the field.
+    const shiftEnd = new KeyboardEvent('keydown', { key: 'End', shiftKey: true, bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(shiftEnd));
+    expect(shiftEnd.defaultPrevented).toBe(false);
+    expect(selected()).toBe('Chat a');
+  });
+
+  it('closes a menu open under it, so a press in the palette keeps the way back to its button', () => {
+    render(props());
+    click(button('Help'));
+    const item = host.querySelector<HTMLElement>('[role=menu] [role=menuitem], [role=menu] a, [role=menu] button')!;
+    item.focus();
+    expect(document.activeElement).toBe(item);
+    press('k', mod(), item);
+    expect(host.querySelector('[role=menu]')).toBeNull();
+    expect(document.activeElement).toBe(field());
+    // A press in the palette, then Escape: the focus goes back to the menu's button.
+    act(() => void rows()[1]!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })));
+    expect(palette()).not.toBeNull();
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Help'));
+  });
+
   it('goes to another agent’s session, and opens a row on a click', () => {
     const value = props();
     render(value);
