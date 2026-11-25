@@ -109,22 +109,22 @@ failure of its own. A zero exit alone is not treated as success.
 
 ## Events
 
-| Event                     | Meaning                                                              |
-| ------------------------- | -------------------------------------------------------------------- |
-| `session`                 | Agent session or thread id (use it to resume in the agent's own CLI) |
-| `text-delta`              | Streamed assistant text                                              |
-| `message`                 | A complete assistant message. The last one becomes `result.text`     |
-| `tool-start` / `tool-end` | Tool use (`shell`, `Edit`, `server/tool` for MCP, ...)               |
-| `file-change`             | Paths the agent reported editing                                     |
-| `approval-request`        | The agent is waiting for a permission decision                       |
-| `usage`                   | Token usage, plus `costUsd` when the agent reports it                |
-| `rate-limit`              | A plan or account limit: window, status, % used, reset time          |
-| `budget-warning`          | The run crossed `warnAt` of a `task.budget` cap                      |
-| `failover`                | `withFallback()` moved the task to the next agent (`from`, `to`)     |
-| `error`                   | An error the agent reported                                          |
-| `stderr`                  | Raw stderr chunk                                                     |
-| `raw`                     | A stdout line that was not JSON                                      |
-| `done`                    | Always last; carries the `AgentResult`                               |
+| Event                     | Meaning                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `session`                 | Agent session or thread id (use it to resume in the agent's own CLI)                            |
+| `text-delta`              | Streamed assistant text                                                                         |
+| `message`                 | A complete assistant message. The last one becomes `result.text`                                |
+| `tool-start` / `tool-end` | Tool use (`shell`, `Edit`, `server/tool` for MCP, ...)                                          |
+| `file-change`             | Paths the agent reported editing (`toolId`: the call making the change, when told as it starts) |
+| `approval-request`        | The agent is waiting for a permission decision                                                  |
+| `usage`                   | Token usage, plus `costUsd` when the agent reports it                                           |
+| `rate-limit`              | A plan or account limit: window, status, % used, reset time                                     |
+| `budget-warning`          | The run crossed `warnAt` of a `task.budget` cap                                                 |
+| `failover`                | `withFallback()` moved the task to the next agent (`from`, `to`)                                |
+| `error`                   | An error the agent reported                                                                     |
+| `stderr`                  | Raw stderr chunk                                                                                |
+| `raw`                     | A stdout line that was not JSON                                                                 |
+| `done`                    | Always last; carries the `AgentResult`                                                          |
 
 Vendor events that have no mapping are dropped.
 

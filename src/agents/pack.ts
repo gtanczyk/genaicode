@@ -33,6 +33,7 @@ import {
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
 import { withBriefing } from './host-text.js';
+import { redactSecrets } from './redact.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -137,6 +138,12 @@ export interface PackTask {
   canSteer?: boolean;
   /** Input sent to the task while it ran, oldest first. */
   steers?: PackSteer[];
+  /**
+   * What the task did, oldest first: its latest tool calls with the argument that names what each
+   * works on and when it started and ended, its messages, edits, approval requests and errors. Only
+   * the latest `PACK_STEPS_KEPT` are kept. A tool call without `endedAt` is the one running now.
+   */
+  steps?: PackStep[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
   /** The root of a worktree task's worktree (`cwd` may be a folder inside it): what Discard removes. */
@@ -193,6 +200,31 @@ export interface PackSteer {
   /** When it was sent (epoch milliseconds). */
   at: number;
   delivery: Exclude<InputDelivery, 'queued'>;
+  /** When `delivery` left `sending`: the agent took it, it was handed over, or it was dropped. */
+  settledAt?: number;
+  /** When the task's first message after a delivered one came: it answered. */
+  answeredAt?: number;
+}
+
+/** How many of a task's latest steps `PackTask.steps` keeps. */
+export const PACK_STEPS_KEPT = 30;
+
+/**
+ * One thing a delegated task did. `tool`: a tool call, `name` the tool and `text` the argument that
+ * names what it works on (the command, path, pattern...), `endedAt` once it returned and `failed`
+ * when it reported an error. `message`: what the agent said. `edit`: the files it changed.
+ * `approval`: what it asked permission for. `error`: an error it reported. `text` is one line.
+ */
+export interface PackStep {
+  kind: 'tool' | 'message' | 'edit' | 'approval' | 'error';
+  name?: string;
+  text?: string;
+  /** When it happened, or a tool call started (epoch milliseconds). */
+  at: number;
+  endedAt?: number;
+  failed?: boolean;
+  /** A tool call that never returned: the task ended (was stopped, or crashed) while it ran. */
+  interrupted?: boolean;
 }
 
 export interface Pack extends CodingAgent {
@@ -315,8 +347,14 @@ interface Sub {
   result?: AgentResult;
   last?: string;
   steers?: PackSteer[];
-  /** The tool call `last` is about, and the line shown before it started. */
-  tool?: { id?: string; name: string; before?: string };
+  steps?: Step[];
+  /**
+   * The tool call `last` is about, and the line shown before it started. `edit`: `last` is an edit
+   * that call announced, which stays when the call succeeds and is taken back when it fails.
+   */
+  tool?: { id?: string; name: string; before?: string; edit?: boolean };
+  /** The worker's replies so far (`seq`), and whether the latest still streams (`open`). */
+  reply?: { seq: number; open: boolean };
   usage?: TokenUsage;
   costUsd?: number;
   /** Usage accumulated across completed runs of this task (before any current resumed run). */
@@ -495,7 +533,7 @@ const TOOL_INPUT_KEYS = [
   'description',
 ];
 
-/** The one argument worth showing for a tool call (its command, path, pattern...), on one line. */
+/** The one argument worth showing (credentials hidden) for a tool call (its command, path, pattern...), on one line. */
 function toolInputSummary(input: unknown): string {
   const value =
     typeof input === 'string'
@@ -507,7 +545,10 @@ function toolInputSummary(input: unknown): string {
         : undefined;
   // An array is shown only when it holds strings alone (`commands: ['npm test']`); else the tool name.
   const words = Array.isArray(value) && value.every((item) => typeof item === 'string') ? value.join(' ') : value;
-  const text = (typeof words === 'string' ? words : '').replace(/\s+/g, ' ').trim();
+  // Credentials go before the clip: a secret cut by it would keep its start.
+  const text = redactSecrets(typeof words === 'string' ? words : '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text.length > 200 ? `${text.slice(0, 199)}…` : text;
 }
 
@@ -523,7 +564,7 @@ function describe(event: AgentEvent): string | undefined {
     case 'file-change':
       return `edited ${event.paths.join(', ')}`;
     case 'approval-request':
-      return `waiting for approval: ${event.request.summary ?? event.request.kind}`;
+      return `waiting for approval: ${redactSecrets(event.request.summary ?? event.request.kind)}`;
     case 'error':
       return `error: ${clip(event.message, 300)}`;
     default:
@@ -541,10 +582,136 @@ function activity(event: AgentEvent): string | undefined {
 }
 
 /**
+ * A step with the id of its tool call, which its `tool-end` names, or for an edit announced before
+ * its call returned, that call's id (`toolId`): the edit is dropped when the call fails.
+ */
+type Step = PackStep & { id?: string; toolId?: string };
+
+/** A tool call that has not returned (and was not cut short by the task's end). */
+function isOpenCall(step: PackStep): boolean {
+  return step.kind === 'tool' && step.endedAt === undefined;
+}
+
+/** When a step last moved: a returned tool call when it returned, anything else when it happened. */
+function recency(step: PackStep): number {
+  return step.kind === 'tool' && step.endedAt !== undefined ? step.endedAt : step.at;
+}
+
+/** One line of at most `max` characters. */
+function oneLine(text: string, max = 200): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/** The step an event adds to a task's activity, if any. Never throws. */
+function stepOf(event: AgentEvent, at: number): Step | undefined {
+  try {
+    switch (event.type) {
+      case 'message': {
+        const text = oneLine(event.text, 300);
+        return text ? { kind: 'message', text, at } : undefined;
+      }
+      case 'tool-start': {
+        const text = toolInputSummary(event.input);
+        return {
+          kind: 'tool',
+          name: String(event.name),
+          ...(text ? { text } : {}),
+          at,
+          ...(event.id !== undefined ? { id: event.id } : {}),
+        };
+      }
+      case 'file-change':
+        return event.paths.length
+          ? {
+              kind: 'edit',
+              text: oneLine(event.paths.join(', ')),
+              at,
+              ...(event.toolId !== undefined ? { toolId: event.toolId } : {}),
+            }
+          : undefined;
+      case 'approval-request':
+        return { kind: 'approval', text: oneLine(redactSecrets(event.request.summary ?? event.request.kind)), at };
+      case 'error':
+        return { kind: 'error', text: oneLine(event.message, 300), at };
+      default:
+        return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/** What ends a reply that streams: its message, or the worker doing something else. */
+const REPLY_ENDS = new Set<AgentEvent['type']>([
+  'message',
+  'tool-start',
+  'tool-end',
+  'file-change',
+  'approval-request',
+  'error',
+]);
+
+/** The reply (`Sub.reply.seq`) that was the latest when a steer was taken. */
+const steerTakenIn = new WeakMap<PackSteer, number>();
+
+/** Keeps `PackTask.steps`: adds the event's step, or closes the tool call a `tool-end` names. */
+function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
+  // A reply begins with its first delta, or with its message when it streamed none, and ends with
+  // its message or with the next thing the worker does.
+  const reply = (sub.reply ??= { seq: 0, open: false });
+  if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
+  if (event.type === 'text-delta') reply.open = true;
+  else if (REPLY_ENDS.has(event.type)) reply.open = false;
+  if (event.type === 'tool-end') {
+    const open = (sub.steps ?? []).filter((step) => step.kind === 'tool' && step.endedAt === undefined);
+    // By id when both have one; else the latest open call of that name (any, when the end names none).
+    const found =
+      (event.id !== undefined ? open.find((item) => item.id === event.id) : undefined) ??
+      open.findLast(
+        (item) =>
+          (item.id === undefined || event.id === undefined) && (event.name === undefined || event.name === item.name),
+      );
+    if (!found) return;
+    found.endedAt = at;
+    if (event.isError) {
+      found.failed = true;
+      // An edit announced when the call started did not happen.
+      if (found.id !== undefined) sub.steps = sub.steps?.filter((step) => step.toolId !== found.id);
+    }
+    return;
+  }
+  if (event.type === 'message') {
+    // The first message of a reply begun after a steer was taken is its answer; the reply that
+    // streamed when it was taken began before it.
+    for (const steer of sub.steers ?? []) {
+      const takenIn = steerTakenIn.get(steer);
+      if (steer.answeredAt === undefined && takenIn !== undefined && reply.seq > takenIn) steer.answeredAt = at;
+    }
+  }
+  const step = stepOf(event, at);
+  if (!step) return;
+  const steps = [...(sub.steps ?? []), step];
+  // The least recent go first (a call that returned counts from its end, so one that just failed
+  // stays), but never a tool call that still runs: its end is yet to be told.
+  while (steps.length > PACK_STEPS_KEPT) {
+    let drop = -1;
+    steps.forEach((item, index) => {
+      if (isOpenCall(item)) return;
+      if (drop < 0 || recency(item) < recency(steps[drop]!)) drop = index;
+    });
+    steps.splice(drop < 0 ? 0 : drop, 1);
+  }
+  sub.steps = steps;
+}
+
+/**
  * Follows what a running task is doing: its latest activity line and the tool call that line is
- * about, so the call's `tool-end` takes the line back to what was shown before the call.
+ * about, so the call's `tool-end` takes the line back to what was shown before the call. Its steps
+ * are kept beside it (`PackTask.steps`).
  */
 function track(sub: Sub, event: AgentEvent): void {
+  trackSteps(sub, event, Date.now());
   if (event.type === 'approval-resolved') {
     sub.last = undefined;
     sub.tool = undefined;
@@ -557,13 +724,26 @@ function track(sub: Sub, event: AgentEvent): void {
         ? event.id === tool.id
         : event.name === undefined || event.name === tool?.name;
     if (tool && same) {
-      sub.last = tool.before;
+      // An edit the call announced happened only when the call succeeded.
+      if (!tool.edit || event.isError) sub.last = tool.before;
       sub.tool = undefined;
     }
     return;
   }
   const line = activity(event);
   if (line === undefined) return;
+  if (event.type === 'file-change' && event.toolId !== undefined) {
+    // Announced as its call started: tied to that call, so its failure takes the line back.
+    const call = sub.tool?.id === event.toolId ? sub.tool : undefined;
+    sub.tool = {
+      id: event.toolId,
+      name: call?.name ?? 'edit',
+      before: call ? call.before : sub.tool ? sub.tool.before : sub.last,
+      edit: true,
+    };
+    sub.last = line;
+    return;
+  }
   sub.tool =
     event.type === 'tool-start'
       ? {
@@ -721,6 +901,17 @@ export function pack(options: PackOptions): Pack {
     const pullRequest = replyPullRequest(text);
     return { ...(verdict ? { verdict } : {}), ...(pullRequest ? { pullRequest } : {}) };
   };
+  // A tool call the task never ended (it was stopped, or crashed) ended with the task, interrupted.
+  const reportStep = (step: Step, sub: Sub): PackStep => {
+    const copy: Step = { ...step };
+    delete copy.id;
+    delete copy.toolId;
+    if (isOpenCall(copy) && sub.endedAt !== undefined) {
+      copy.endedAt = sub.endedAt;
+      copy.interrupted = true;
+    }
+    return copy;
+  };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
     agent: sub.agent.name,
@@ -734,6 +925,7 @@ export function pack(options: PackOptions): Pack {
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
     ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
+    ...(sub.steps?.length ? { steps: sub.steps.map((step) => reportStep(step, sub)) } : {}),
     cwd: sub.cwd,
     ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
@@ -1520,6 +1712,8 @@ export function pack(options: PackOptions): Pack {
         notify(sub);
         const settle = (delivery: PackSteer['delivery']) => {
           record.delivery = delivery;
+          if (delivery === 'delivered') steerTakenIn.set(record, sub.reply?.seq ?? 0);
+          record.settledAt = Date.now();
           notify(sub);
         };
         let receipt: unknown;

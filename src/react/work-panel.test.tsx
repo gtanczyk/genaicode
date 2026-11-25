@@ -130,16 +130,20 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-meta')).toContain('.genaicode/worktrees/t1');
     expect(text('.gc-work-now')).toBe('Shell npm test -- cart1m 35s');
     expect(text('.gc-work-asked')).toBe('Write tests for total() in src/cart.ts.');
+    // The timeline, newest first: the messages sent to it with their receipts, then its start.
     expect(
-      $$('.gc-work-steers li').map((item) => [
+      $$('.gc-work-tl li[data-kind="steer"]').map((item) => [
         item.querySelector('p')!.textContent,
-        item.querySelector('small')!.textContent,
+        item.querySelector('.gc-work-by b')!.textContent,
+        item.querySelector('.gc-receipt')!.textContent,
+        item.querySelector('.gc-receipt')!.getAttribute('aria-label'),
       ]),
     ).toEqual([
-      ['Skip the snapshot tests.', 'Your message: Seen by codex'],
-      ['Use vitest.', 'Lead’s message: Sending…'],
+      ['Use vitest.', 'Lead', 'Sending…', 'Lead’s message: Sending'],
+      ['Skip the snapshot tests.', 'You', '✓ Delivered', 'Your message: Delivered'],
     ]);
-    expect(labels()).toEqual(['What it was asked', 'Messages sent while it ran']);
+    expect(text('.gc-work-tl li:last-child .gc-work-tl-x')).toBe('Started by claude in .genaicode/worktrees/t1');
+    expect(labels()).toEqual(['What it was asked', 'Timeline']);
     // Nothing to merge or discard while it runs.
     expect(button('Merge locally')).toBeUndefined();
     expect(button('Discard')).toBeUndefined();
@@ -164,6 +168,146 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-steer')).toContain('Stop this task?');
     await actAsync(() => button('Confirm stop')!.click());
     expect(onAction).toHaveBeenLastCalledWith(7, 't1', { type: 'stop' });
+  });
+
+  it('running with steps: the tool it runs now with its argument and time, the latest message, the steps before', () => {
+    const cwd = base.cwd;
+    show(
+      [
+        {
+          ...base,
+          id: 't1',
+          prompt: 'Write tests for total() in src/cart.ts.',
+          status: 'running',
+          canSteer: true,
+          text: 'tool Bash: npm test -- cart',
+          startedAt: t0 + 500_000,
+          steps: [
+            { kind: 'tool', name: 'Read', text: `${cwd}/src/cart.ts`, at: t0 + 501_000, endedAt: t0 + 501_200 },
+            { kind: 'message', text: 'The total skips discounts.', at: t0 + 510_000 },
+            { kind: 'tool', name: 'Edit', text: `${cwd}/src/cart.test.ts`, at: t0 + 520_000, endedAt: t0 + 523_000 },
+            { kind: 'edit', text: 'src/cart.test.ts', at: t0 + 523_000 },
+            { kind: 'tool', name: 'Bash', text: 'npm run lint', at: t0 + 530_000, endedAt: t0 + 542_000, failed: true },
+            { kind: 'approval', text: 'npm install left-pad', at: t0 + 550_000 },
+            { kind: 'tool', name: 'mcp__docs__lookup', at: t0 + 560_000, endedAt: t0 + 560_100 },
+            { kind: 'tool', name: 'Bash', text: 'npm test -- cart', at: t0 + 586_000 },
+          ],
+          steers: [
+            {
+              text: 'Skip the snapshot tests.',
+              from: 'user',
+              at: t0 + 505_000,
+              settledAt: t0 + 505_900,
+              answeredAt: t0 + 510_000,
+              delivery: 'delivered',
+            },
+            { text: 'Also the lint.', from: 'user', at: t0 + 545_000, settledAt: t0 + 547_400, delivery: 'delivered' },
+            { text: 'One more.', from: 'user', at: t0 + 570_000, settledAt: t0 + 570_500, delivery: 'dropped' },
+          ],
+        },
+      ],
+      { props: { onPackAction: vi.fn(async () => 'ok') } },
+    );
+    // Now: a verb, what it works on, how long this call has run; and what the agent said last.
+    expect(text('.gc-work-now')).toBe('Running npm test -- cart14s so far');
+    expect($('.gc-work-now .gc-work-elapsed').getAttribute('title')).toMatch(/^Started \d\d:\d\d/);
+    expect(text('.gc-work-say')).toBe('Latest message · codexThe total skips discounts.');
+
+    // The timeline, newest first, without the call that runs now.
+    const rows = $$('.gc-work-tl li').map((item) =>
+      item.querySelector('.gc-work-bubble')
+        ? `${item.querySelector('.gc-work-by b')!.textContent}: ${item.querySelector('p')!.textContent} [${item.querySelector('.gc-receipt')?.textContent ?? ''}]`
+        : item.querySelector('.gc-work-tl-x')!.textContent,
+    );
+    expect(rows).toEqual([
+      'You: One more. [Not delivered]',
+      'Used mcp__docs__lookup <1s',
+      'Asked to approve npm install left-pad',
+      'You: Also the lint. [✓ Delivered · 2.4s]',
+      'Ran npm run lint failed · 12s',
+      'Edited src/cart.test.ts',
+      'Edited src/cart.test.ts 3s',
+      'codex: The total skips discounts. []',
+      'You: Skip the snapshot tests. [✓✓ Delivered · answered]',
+      'Read src/cart.ts <1s',
+      'Started by claude in .genaicode/worktrees/t1',
+    ]);
+    expect($$('.gc-work-tl .gc-receipt').map((item) => item.getAttribute('data-state'))).toEqual([
+      'failed',
+      'delivered',
+      'answered',
+    ]);
+    expect($('.gc-work-tl li[data-failed] .gc-work-tl-x').textContent).toContain('npm run lint');
+    expect($$('.gc-work-tl time').every((item) => /^\d\d:\d\d/.test(item.textContent ?? ''))).toBe(true);
+  });
+
+  it('a message that was not delivered can be sent again while the task takes messages', async () => {
+    const onAction = vi.fn<PackActionHandler>(async () => 'ok');
+    const task: PackTask = {
+      ...base,
+      id: 't1',
+      prompt: 'x',
+      status: 'running',
+      canSteer: true,
+      startedAt: t0,
+      steers: [
+        { text: 'Use vitest.', from: 'user', at: t0 + 1000, settledAt: t0 + 2000, delivery: 'dropped' },
+        { text: 'From the lead.', from: 'lead', at: t0 + 3000, settledAt: t0 + 4000, delivery: 'dropped' },
+      ],
+    };
+    show([task], { props: { onPackAction: onAction } });
+    // Only your own message: the lead's is the lead's to send again.
+    expect($$('.gc-work-tl button').map((item) => item.textContent)).toEqual(['Send again']);
+    // While the task runs, it is not said to have ended.
+    expect($('.gc-work-tl .gc-receipt').getAttribute('title')).toBe(
+      'codex did not confirm that it took the message, so it may not have read it.',
+    );
+    // A draft in the composer is not what Send again sends: it stays.
+    type('.gc-work-field', 'half a thought');
+    await actAsync(() => button('Send again')!.click());
+    expect(onAction).toHaveBeenCalledWith(7, 't1', { type: 'steer', text: 'Use vitest.' });
+    expect($<HTMLInputElement>('.gc-work-field').value).toBe('half a thought');
+    // Once it ended there is nothing to send to.
+    show([{ ...task, status: 'completed', canSteer: false, endedAt: t0 + 9000 }], {
+      props: { onPackAction: onAction },
+    });
+    expect(button('Send again')).toBeUndefined();
+    expect($('.gc-work-tl .gc-receipt').getAttribute('title')).toBe('The task ended before codex took it.');
+  });
+
+  it('the timeline orders returned calls by their end and leaves out every call still running', () => {
+    show([
+      {
+        ...base,
+        id: 't1',
+        prompt: 'x',
+        status: 'running',
+        startedAt: t0,
+        steps: [
+          // Started first, ran long, failed just now: newest.
+          { kind: 'tool', name: 'Bash', text: 'npm test', at: t0 + 1_000, endedAt: t0 + 590_000, failed: true },
+          // Still running, though an older call than the one in the card.
+          { kind: 'tool', name: 'Bash', text: 'npm run build', at: t0 + 2_000 },
+          { kind: 'message', text: 'Waiting on the tests.', at: t0 + 300_000 },
+          { kind: 'tool', name: 'Read', text: 'a.ts', at: t0 + 400_000 },
+        ],
+      },
+    ]);
+    expect(text('.gc-work-now')).toContain('Reading a.ts');
+    const rows = $$('.gc-work-tl li').map(
+      (item) => item.querySelector('.gc-work-tl-x')?.textContent ?? item.querySelector('p')!.textContent,
+    );
+    expect(rows).toEqual([
+      'Ran npm test failed · 9m 49s',
+      'Waiting on the tests.',
+      'Started by claude in .genaicode/worktrees/t1',
+    ]);
+  });
+
+  it('a task that started and did nothing yet has a timeline with its start', () => {
+    show([{ ...base, id: 't1', prompt: 'x', status: 'running', startedAt: t0 }]);
+    expect(labels()).toContain('Timeline');
+    expect($$('.gc-work-tl li').map((item) => item.getAttribute('data-kind'))).toEqual(['start']);
   });
 
   it('running without steering: says what the person can do instead', () => {
@@ -203,7 +347,9 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-meta')).toMatch(/took 1m 05s$/);
     expect(text('.gc-work-verdict')).toBe('VERDICT: LGTM');
     expect(text('.gc-work-result')).toContain('Read it all.');
-    expect(labels()).toEqual(['What it was asked', 'Result']);
+    // Its timeline still has its start.
+    expect(labels()).toEqual(['What it was asked', 'Result', 'Timeline']);
+    expect($$('.gc-work-tl li').map((item) => item.getAttribute('data-kind'))).toEqual(['start']);
     expect($('.gc-work-steer')).toBeNull();
     expect($('.gc-work-merge')).toBeNull();
     expect($$('.gc-work-detail button').map((item) => item.textContent?.trim())).toEqual(['Tasks']);
@@ -869,6 +1015,39 @@ describe('<WorkPanel> task list', () => {
     view = { tab: 'tasks', scroll: 120 };
     draw();
     expect(scroller().scrollTop).toBe(120);
+  });
+
+  it('a running row says what the task does now: verb, argument and how long, updated in place', () => {
+    const running: PackTask = {
+      ...base,
+      id: 't1',
+      title: 'Cover the cart total',
+      prompt: 'x',
+      status: 'running',
+      startedAt: t0 + 500_000,
+      text: 'tool Bash: npm test -- cart',
+      steps: [{ kind: 'tool', name: 'Read', text: '/work/app/.genaicode/worktrees/t1/src/cart.ts', at: t0 + 580_000 }],
+    };
+    show([running], { list: true });
+    expect(text('.gc-work-line')).toBe('Reading src/cart.ts · 20s so far');
+    const row = $('.gc-work-row');
+    // The call returned and the next one started: the same row, new words.
+    state = session([
+      {
+        ...running,
+        steps: [
+          { ...running.steps![0]!, endedAt: t0 + 590_000 },
+          { kind: 'tool', name: 'Bash', text: 'npm test -- cart', at: t0 + 597_000 },
+        ],
+      },
+    ]);
+    draw();
+    expect(text('.gc-work-line')).toBe('Running npm test -- cart · 3s so far');
+    expect($('.gc-work-row')).toBe(row);
+    // Between two calls: its latest line, as before.
+    state = session([{ ...running, text: 'Looking at the cart', steps: [{ ...running.steps![0]!, endedAt: t0 }] }]);
+    draw();
+    expect(text('.gc-work-line')).toBe('Looking at the cart');
   });
 
   it('groups rows by what to do next, with Done folded, and opens a task', () => {

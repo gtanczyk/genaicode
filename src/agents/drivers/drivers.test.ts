@@ -192,7 +192,7 @@ describe('claude driver', () => {
       { type: 'session', sessionId: 'abc', model: 'claude-x' },
       { type: 'message', text: 'Editing.' },
       { type: 'tool-start', id: 't1', name: 'Edit', input: { file_path: '/w/a.ts' } },
-      { type: 'file-change', paths: ['/w/a.ts'] },
+      { type: 'file-change', paths: ['/w/a.ts'], toolId: 't1' },
       { type: 'tool-end', id: 't1', name: 'Edit', isError: false, output: 'ok' },
       { type: 'message', text: 'Done.' },
       {

@@ -23,6 +23,7 @@ import {
   PackActionError,
   replyPullRequest,
   type PackTask as PackReport,
+  PACK_STEPS_KEPT,
 } from './pack.js';
 import { claude } from './drivers/claude.js';
 
@@ -893,6 +894,8 @@ describe('pack chat turns', () => {
       pendingSteers[0]!.resolve('taken');
       await expect(leadSteer).resolves.toBe('t1 took the input.');
       await vi.waitFor(() => expect(steers()[0]!.delivery).toBe('delivered'));
+      // The receipt has its times: sent, then taken.
+      expect(steers()[0]!.settledAt).toBeGreaterThanOrEqual(steers()[0]!.at);
 
       const user = session.actOnPackTask!(1, 't1', { type: 'steer', text: 'from you' });
       await vi.waitFor(() => expect(steers()[1]).toMatchObject({ from: 'user', delivery: 'sending' }));
@@ -907,6 +910,242 @@ describe('pack chat turns', () => {
       await vi.waitFor(() => expect(steers()[2]).toMatchObject({ text: 'too late', delivery: 'dropped' }));
       expect(steers().map((steer) => steer.delivery)).toEqual(['delivered', 'sent', 'dropped']);
     } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('keeps the latest steps of a task with their outcome, and marks a steer its next message answers', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'npm test' } });
+      emit({ type: 'tool-start', id: 'c2', name: 'Read', input: { file_path: '/work/a.ts' } });
+      emit({ type: 'tool-end', id: 'c1', isError: true });
+      emit({ type: 'file-change', paths: ['src/a.ts', 'src/b.ts'] });
+      emit({ type: 'error', message: 'rate limited,\nretrying' });
+      await step();
+      emit({ type: 'message', text: 'Skipping them.' });
+      await step();
+      for (let i = 0; i < 40; i += 1) emit({ type: 'message', text: `note ${i}` });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => ({ ...base.run(task), steer: async () => 'taken' as const }),
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(4));
+      expect(task()!.steps).toEqual([
+        {
+          kind: 'tool',
+          name: 'Bash',
+          text: 'npm test',
+          at: expect.any(Number),
+          endedAt: expect.any(Number),
+          failed: true,
+        },
+        { kind: 'tool', name: 'Read', text: '/work/a.ts', at: expect.any(Number) },
+        { kind: 'edit', text: 'src/a.ts, src/b.ts', at: expect.any(Number) },
+        { kind: 'error', text: 'rate limited, retrying', at: expect.any(Number) },
+      ]);
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Skip the snapshot tests.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered', settledAt: expect.any(Number) });
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+      next();
+      // Only the latest are kept, and never without the call that still runs.
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('note 39'));
+      expect(task()!.steps).toHaveLength(PACK_STEPS_KEPT);
+      expect(task()!.steps![0]).toMatchObject({ kind: 'tool', name: 'Read' });
+      expect(task()!.steps![0]!.endedAt).toBeUndefined();
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('takes back the live line of an edit whose call failed', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'message', text: 'Looking.' });
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      await step();
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      await step();
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e2' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.text).toBe('edited src/a.ts'));
+      next();
+      await vi.waitFor(() => expect(task()?.steps?.at(-1)).toMatchObject({ kind: 'tool', failed: true }));
+      expect(task()!.text).toBe('Looking.');
+      expect(task()!.steps!.some((item) => item.kind === 'edit')).toBe(false);
+      next();
+      // A call that succeeded keeps its edit.
+      await vi.waitFor(() =>
+        expect(task()?.steps?.find((item) => item.kind === 'tool' && item.text === 'src/b.ts')?.endedAt).toBeTypeOf(
+          'number',
+        ),
+      );
+      expect(task()!.text).toBe('edited src/b.ts');
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('does not take the end of a reply that streamed when a steer was taken for its answer', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'text-delta', text: 'Running npm' });
+      await step();
+      emit({ type: 'message', text: 'Running npm install' });
+      await step();
+      emit({ type: 'message', text: 'Switching to pnpm.' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    // The pack asks for the event after the delta once it has followed the delta.
+    let streamed = () => {};
+    const deltaFollowed = new Promise<void>((resolve) => (streamed = resolve));
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => {
+        const inner = base.run(task);
+        return {
+          ...inner,
+          [Symbol.asyncIterator]: () => {
+            const events = inner[Symbol.asyncIterator]();
+            let asked = 0;
+            return {
+              next: () => {
+                if (++asked === 2) streamed();
+                return events.next();
+              },
+            };
+          },
+          steer: async () => 'taken' as const,
+        };
+      },
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await deltaFollowed;
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Use pnpm.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered' });
+      next();
+      await vi.waitFor(() => expect(task()!.steps?.at(-1)?.text).toBe('Running npm install'));
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('hides credentials in tool arguments, drops edits of failed calls and keeps a long call that just ended', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({
+        type: 'tool-start',
+        id: 'curl',
+        name: 'Bash',
+        input: { command: `curl -H "Authorization: Bearer ${'a'.repeat(190)}" https://api.example.com` },
+      });
+      emit({
+        type: 'tool-start',
+        id: 'env',
+        name: 'Bash',
+        input: { command: 'GITHUB_TOKEN=ghp_abcdefghijkl12 gh pr list' },
+      });
+      emit({ type: 'tool-end', id: 'env' });
+      // An edit announced as its call starts, and the call fails: nothing was edited.
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      emit({ type: 'tool-end', id: 'e2' });
+      await step();
+      // Many messages while the curl call runs, then it fails: it stays, older and shorter steps go.
+      for (let i = 0; i < PACK_STEPS_KEPT; i += 1) emit({ type: 'message', text: `note ${i}` });
+      emit({ type: 'tool-end', id: 'curl', isError: true });
+      emit({ type: 'message', text: 'after' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    // Every event a millisecond after the one before.
+    let clock = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1));
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(5));
+      const steps = task()!.steps!;
+      expect(steps[0]!.text).toBe('curl -H "Authorization: ***" https://api.example.com');
+      expect(steps[1]!.text).toBe('GITHUB_TOKEN=*** gh pr list');
+      expect(JSON.stringify(task())).not.toMatch(/aaaaaaaa|ghp_abcdef/);
+      expect(steps.filter((item) => item.kind === 'edit').map((item) => item.text)).toEqual(['src/b.ts']);
+      expect(steps.find((item) => item.text === 'src/a.ts')).toMatchObject({ kind: 'tool', failed: true });
+      next();
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('after'));
+      const kept = task()!.steps!;
+      expect(kept).toHaveLength(PACK_STEPS_KEPT);
+      expect(kept[0]).toMatchObject({ kind: 'tool', failed: true, text: expect.stringContaining('curl') });
+      expect(kept.some((item) => item.text === 'note 0')).toBe(false);
+    } finally {
+      now.mockRestore();
       session.close();
       await session.idle();
     }
@@ -938,12 +1177,23 @@ describe('pack chat turns', () => {
     try {
       session.send('go');
       await vi.waitFor(() => expect(task()).toMatchObject({ status: 'running', text: 'tool search' }));
+      // Its steps, oldest first: what it said, and the call that runs now with when it started.
+      expect(task()!.steps).toEqual([
+        { kind: 'message', text: 'Reading the code', at: expect.any(Number) },
+        { kind: 'tool', name: 'search', at: expect.any(Number) },
+      ]);
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('Reading the code'));
+      expect(task()!.steps![1]).toMatchObject({ kind: 'tool', name: 'search', endedAt: expect.any(Number) });
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('tool shell: npm test'));
+      expect(task()!.steps![2]).toEqual({ kind: 'tool', name: 'shell', text: 'npm test', at: expect.any(Number) });
       await session.actOnPackTask!(1, 't1', { type: 'stop' });
       expect(task()).toMatchObject({ status: 'aborted', stoppedBy: 'user' });
+      // A call the task never ended is over with the task, and says it was cut short.
+      expect(task()!.steps![2]!.endedAt).toBe(task()!.endedAt);
+      expect(task()!.steps![2]!.interrupted).toBe(true);
+      expect(task()!.steps![1]!.interrupted).toBeUndefined();
     } finally {
       session.close();
       await session.idle();

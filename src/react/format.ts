@@ -2,7 +2,7 @@
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { AgentBudget, InputDelivery, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
-import type { PackSteer, PackStopCause, PackTask } from '../agents/pack.js';
+import type { PackSteer, PackStep, PackStopCause, PackTask } from '../agents/pack.js';
 import type { PackTaskChecks } from '../agents/pack-checks.js';
 
 /**
@@ -61,6 +61,101 @@ export const SUBMIT: Record<SubmitAction, { label: string; title: string }> = {
     title: 'Enter queues this: the agent cannot take input mid-turn, so it runs when the turn ends',
   },
 };
+
+/** Where a message sent to a working agent stands, as its receipt shows it. */
+export type ReceiptState = 'sending' | 'delivered' | 'answered' | 'sent' | 'queued' | 'failed' | 'unknown';
+
+/** A receipt: the words on it ("✓ Delivered · 0.9s"), what they mean, and the same for a screen reader. */
+export interface Receipt {
+  state: ReceiptState;
+  text: string;
+  /** One sentence on what the state means, for a tooltip. */
+  title: string;
+  /** `text` without its marks, to be read aloud. */
+  spoken: string;
+}
+
+/** "0.9s" under ten seconds, else as `formatDuration`. */
+function tookText(ms: number): string {
+  return ms < 9_950 ? `${(Math.max(0, ms) / 1000).toFixed(1)}s` : formatDuration(ms);
+}
+
+/**
+ * The receipt of a message sent to an agent while it worked: the lead (`SessionEntry` input) or a
+ * delegated task (`PackSteer`). `answered`: the agent said something after it took the message.
+ * `scope` is what ran and `ended` whether it is known to have ended: they word why a message was
+ * not delivered.
+ */
+export function messageReceipt(
+  message: { delivery?: InputDelivery; at?: number; settledAt?: number },
+  agent: string,
+  options: { answered?: boolean; scope?: 'turn' | 'task'; ended?: boolean } = {},
+): Receipt {
+  const who = agent || 'the agent';
+  const took =
+    message.at !== undefined && message.settledAt !== undefined ? tookText(message.settledAt - message.at) : '';
+  const after = took ? ` · ${took}` : '';
+  switch (message.delivery) {
+    case 'sending':
+      return { state: 'sending', text: 'Sending…', spoken: 'Sending', title: `Waiting for ${who} to take it.` };
+    case 'delivered':
+      return options.answered
+        ? {
+            state: 'answered',
+            text: '✓✓ Delivered · answered',
+            spoken: 'Delivered, answered',
+            title: `${who} took the message${took ? ` after ${took}` : ''} and has answered since.`,
+          }
+        : {
+            state: 'delivered',
+            text: `✓ Delivered${after}`,
+            spoken: `Delivered${took ? ` after ${took}` : ''}`,
+            title: `${who} took the message${took ? ` after ${took}` : ''}, between two steps of its work.`,
+          };
+    case 'sent':
+      return {
+        state: 'sent',
+        text: `Sent to ${who}${after}`,
+        spoken: `Sent to ${who}`,
+        title: `Handed to ${who}, which does not confirm that it read it.`,
+      };
+    case 'queued':
+      return {
+        state: 'queued',
+        text: 'Queued for the next turn',
+        spoken: 'Queued for the next turn',
+        title: `The turn ended before ${who} took it, so it runs as the next turn.`,
+      };
+    case 'dropped':
+      return {
+        state: 'failed',
+        text: 'Not delivered',
+        spoken: 'Not delivered',
+        title:
+          options.scope === 'task'
+            ? options.ended
+              ? `The task ended before ${who} took it.`
+              : `${who} did not confirm that it took the message, so it may not have read it.`
+            : `The turn was stopped before ${who} took it.`,
+      };
+    default:
+      return {
+        state: 'unknown',
+        text: 'Sent while working',
+        spoken: 'Sent while working',
+        title: 'Sent before delivery was tracked.',
+      };
+  }
+}
+
+/** The receipt of a message steered into a delegated task; `ended`: the task is known to have ended. */
+export function packSteerReceipt(steer: PackSteer, agent: string, ended?: boolean): Receipt {
+  return messageReceipt(steer, agent, {
+    answered: steer.answeredAt !== undefined,
+    scope: 'task',
+    ended: ended ?? false,
+  });
+}
 
 /** Who sent input to a delegated task and what became of it: "Your message: Seen by codex". */
 export function packSteerText(steer: PackSteer, agent: string): string {
@@ -178,6 +273,102 @@ export function packActivity(text: string): { tool?: string; argument?: string; 
   const first = text.split('\n').find((line) => line.trim()) ?? '';
   const plain = plainLine(first);
   return { text: plain.charAt(0).toUpperCase() + plain.slice(1) };
+}
+
+/** What a tool does, in words: while it runs and once it returned, by the tool's name. */
+const TOOL_VERBS: Array<[RegExp, string, string]> = [
+  [/todo|plan/, 'Planning', 'Planned'],
+  [/^task$|agent|delegate/, 'Delegating', 'Delegated'],
+  [/bash|shell|exec|command|terminal/, 'Running', 'Ran'],
+  [/grep|search/, 'Searching', 'Searched'],
+  [/fetch|web|http|browse/, 'Fetching', 'Fetched'],
+  [/edit|patch|replace/, 'Editing', 'Edited'],
+  [/write|create/, 'Writing', 'Wrote'],
+  [/read|view|cat$/, 'Reading', 'Read'],
+  [/glob|find|list|^ls$/, 'Listing', 'Listed'],
+];
+
+/** One step of a task as the activity stream words it: a verb, what it works on, and a detail. */
+export interface PackStepLine {
+  /** "Running", "Ran", "Edited", "Asked to run"... */
+  verb: string;
+  /** The command, path or pattern; a tool without one is named instead. */
+  object: string;
+  /** "14s so far" for a running tool call, how long a finished one took ("<1s" under a second), "failed", "interrupted". */
+  detail: string;
+  /** A tool call that still runs. */
+  running: boolean;
+  failed: boolean;
+}
+
+/** `text` with paths inside `cwd` made relative to it. */
+function withoutCwd(text: string, cwd?: string): string {
+  return cwd ? text.split(cwd.endsWith('/') ? cwd : `${cwd}/`).join('') : text;
+}
+
+/**
+ * A step of a delegated task in words (`Running npm test -- cart · 14s so far`, `Edited src/a.ts`).
+ * Paths inside `cwd` (the task's directory) are shown relative to it.
+ */
+export function packStepLine(step: PackStep, now = Date.now(), cwd?: string): PackStepLine {
+  const text = withoutCwd(step.text ?? '', cwd);
+  const line = (verb: string, object: string, detail = ''): PackStepLine => ({
+    verb,
+    object,
+    detail,
+    running: false,
+    failed: !!step.failed,
+  });
+  switch (step.kind) {
+    case 'message':
+      return line('Said', text);
+    case 'edit':
+      return line(step.failed ? 'Could not edit' : 'Edited', text, step.failed ? 'failed' : '');
+    case 'approval':
+      return line('Asked to approve', text);
+    case 'error':
+      return { ...line('Error', text), failed: true };
+    case 'tool': {
+      const name = step.name ?? 'tool';
+      const running = step.endedAt === undefined;
+      const known = TOOL_VERBS.find(([pattern]) => pattern.test(name.toLowerCase()));
+      // A call the task's end cut short is worded as under way ("Writing"), never as done ("Wrote").
+      const ongoing = running || !!step.interrupted;
+      const verb = known ? known[ongoing ? 1 : 2] : ongoing ? 'Using' : 'Used';
+      // A tool that names nothing it works on is named itself; an unknown one is named with it.
+      const object = known ? text || toolLabel(name) : text ? `${toolLabel(name)} ${text}` : toolLabel(name);
+      const span = (step.endedAt ?? now) - step.at;
+      const took = running ? `${formatDuration(span)} so far` : span >= 1000 ? formatDuration(span) : '<1s';
+      return {
+        verb,
+        object,
+        detail: [step.failed ? 'failed' : '', step.interrupted ? 'interrupted' : '', took].filter(Boolean).join(' · '),
+        running,
+        failed: !!step.failed,
+      };
+    }
+  }
+}
+
+/** When a step last moved: a tool call that returned (or was cut short) when it ended, else when it happened. */
+export function packStepRecency(step: PackStep): number {
+  return step.kind === 'tool' && step.endedAt !== undefined ? step.endedAt : step.at;
+}
+
+/** The tool call a running task is in right now: its latest one that has not returned. */
+export function packRunningStep(task: PackTask): PackStep | undefined {
+  if (task.status !== 'running') return undefined;
+  return task.steps?.findLast((step) => step.kind === 'tool' && step.endedAt === undefined);
+}
+
+/** The latest thing a task said, on one line. */
+export function packLatestMessage(task: PackTask): string | undefined {
+  return task.steps?.findLast((step) => step.kind === 'message')?.text;
+}
+
+/** A time of day as the activity stream shows it ("10:02"). */
+export function clockTime(at: number): string {
+  return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 const STOPPED_BY: Record<PackStopCause, string> = {
