@@ -129,12 +129,16 @@ describe('the Sessions view', () => {
       clientScript: '',
       title: { version: '1', cwd: '/w' },
       token: 'token',
-      async sendPrompt(source, id, prompt, sandbox) {
+      async sendPrompt(source, id, prompt, sandbox, _signal, onResponse) {
         calls.push([source, id, prompt, sandbox]);
         if (id === 'busy') throw new SessionSendError('busy', 'private diagnostic');
         if (id === 'unexpected') throw new Error('private diagnostic');
+        if (id === 'quota') {
+          onResponse();
+          return { ok: false, status: 'failed', exitCode: 1, signal: null, failure: { kind: 'quota' } };
+        }
         if (id === 'failed')
-          return { ok: false, status: 'failed', exitCode: 1, signal: null, error: 'private diagnostic' };
+          return { ok: false, status: 'failed', exitCode: 1, signal: null, error: 'Could not resume the session.' };
         return { ok: true, status: 'completed', exitCode: 0, signal: null, text: 'Done.' };
       },
     });
@@ -170,7 +174,19 @@ describe('the Sessions view', () => {
       ).toBe(403);
       const busy = await post('busy', { prompt: 'go' });
       expect(busy.status).toBe(409);
-      expect(await busy.json()).toEqual({ error: 'A prompt is already running in this session.' });
+      expect(await busy.json()).toEqual({
+        error: 'A prompt is already running in this session.',
+        delivery: 'not-sent',
+      });
+      expect(await (await post('failed', { prompt: 'go' })).json()).toMatchObject({
+        error: 'Could not resume the session.',
+        delivery: 'unknown',
+      });
+      expect(await (await post('quota', { prompt: 'go' })).json()).toMatchObject({
+        error: 'The agent has reached its quota.',
+        kind: 'quota',
+        delivery: 'reached',
+      });
       for (const [id, status] of [
         ['unexpected', 500],
         ['failed', 422],

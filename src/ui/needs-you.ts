@@ -70,7 +70,7 @@ export interface NeedsItem {
    * Where the item is at home: the open chat, another chat of this app, or the list of sessions.
    * Absent while this app's chats are not read yet (`ownKnown: false`) and the session could be one.
    */
-  open?: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions' };
+  open?: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions'; session?: SessionInfo };
   /** Why nothing can be done here, when so. */
   note?: string;
 }
@@ -243,7 +243,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       ? { to: 'own', session }
       : session && input.ownKnown === false
         ? undefined
-        : { to: 'sessions' };
+        : { to: 'sessions', session };
   const named = (session: SessionInfo) => `${sourceOf(session) === 'app' ? 'chat' : 'session'} “${chatTitle(session)}”`;
   const oldestFirst = (a: NeedsItem, b: NeedsItem) => (a.since ?? now) - (b.since ?? now);
 

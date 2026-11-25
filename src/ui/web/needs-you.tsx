@@ -29,6 +29,7 @@ const OPEN_LABEL = { chat: 'Open chat', own: 'Open chat', sessions: 'Open sessio
 export interface NeedsYouPageProps {
   /** The queue (`needsItems`): what the count on the sidebar's "Needs you" counts. */
   items: readonly NeedsItem[];
+  hidden?: boolean;
   /** The open chat's title: the name of its filter. */
   chatTitle?: string;
   connected: boolean;
@@ -97,7 +98,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   const storeErrors = props.unread?.errors ?? [];
   const incomplete = failed.length > 0 || storeErrors.length > 0;
   return (
-    <main className="needs-page" aria-label="Needs you">
+    <main hidden={props.hidden} className="needs-page" aria-label="Needs you">
       <div className="needs-in">
         <div className="needs-h">
           <h2>Needs you</h2>
@@ -197,7 +198,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                 ) : null}
                 {item.open && (item.open.to !== 'sessions' || props.sessionsPage !== false) ? (
                   <button type="button" className="btn sm ghost" onClick={() => props.onOpen(item)}>
-                    {OPEN_LABEL[item.open.to]}
+                    {item.open.to === 'sessions' && !item.open.session ? 'All sessions' : OPEN_LABEL[item.open.to]}
                   </button>
                 ) : null}
               </div>

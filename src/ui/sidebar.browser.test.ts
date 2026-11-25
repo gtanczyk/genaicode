@@ -184,8 +184,9 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await topbar.locator('h1').textContent()).toBe('All sessions');
     await page
       .locator('.session-row', { hasText: 'Sourdough schedule' })
-      .getByRole('button', { name: 'Continue here' })
+      .getByRole('button', { name: /Session actions/ })
       .click();
+    await page.getByRole('menuitem', { name: 'Continue here' }).click();
     const project = chats.locator('details.proj', { hasText: 'bakery' });
     await composer.fill('Plan the next bake');
     await composer.press('Enter');
@@ -313,8 +314,9 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await side.getByRole('button', { name: 'All sessions', exact: true }).click();
     await page
       .locator('.session-row', { hasText: 'Round table' })
-      .getByRole('button', { name: 'Continue here' })
+      .getByRole('button', { name: /Session actions/ })
       .click();
+    await page.getByRole('menuitem', { name: 'Continue here' }).click();
     await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
     await composer.fill('Polish the armour');
     await composer.press('Enter');

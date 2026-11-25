@@ -119,7 +119,7 @@ it('has the actions of each source, and sends each answer where it belongs', asy
   render(props({ decide, onOpen }));
   const names = (within: Element) => Array.from(within.querySelectorAll('button'), (one) => one.textContent?.trim());
   expect(names(card('rm -rf dist'))).toEqual(['Approve', 'Deny', 'Open chat']);
-  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'Open session']);
+  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'All sessions']);
   expect(names(card('npm test'))).toEqual(['Approve once', 'Deny', 'Open session']);
   expect(names(card('Gate verdict retries'))).toEqual(['Reply', 'Open chat']);
   expect(button(card('rm -rf dist'), 'Approve').className).toContain('primary');

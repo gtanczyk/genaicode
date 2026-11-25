@@ -53,7 +53,20 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     name: 'helper',
     command: process.execPath,
     capabilities: { mcp: true, resume: true, approvals: true },
-    sessions: { name: 'helper', where: 'local', list: async () => theirs.map((session) => ({ ...session })) },
+    sessions: {
+      name: 'helper',
+      where: 'local',
+      list: async () => theirs.map((session) => ({ ...session })),
+      read: async (session) => [
+        {
+          id: 1,
+          agent: 'helper',
+          startedAt: 0,
+          prompt: 'Read the recipe for ' + session.id,
+          entries: [{ kind: 'text', text: 'The recipe uses rye flour.' }],
+        },
+      ],
+    },
     run(task) {
       const events: AgentEvent[] = [];
       const done = (async (): Promise<AgentResult> => {
@@ -164,6 +177,48 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await permission.locator('.needs-meta b').textContent()).toBe('Permission request');
     expect(await permission.locator('pre').textContent()).toBe('Bash\nnpm run deploy');
     expect(await permission.locator('.tag').allTextContents()).toEqual(['knights', 'helper']);
+
+    // Open the exact store row without taking over. Back preserves the queue filter.
+    await queue.getByRole('button', { name: 'Questions 1' }).click();
+    await asked.getByRole('button', { name: 'Open session' }).click();
+    const detail = page.getByRole('main', { name: 'Session transcript' });
+    await detail.getByText('Read the recipe for bakery-1').waitFor();
+    await detail.getByText('The recipe uses rye flour.').waitFor();
+    expect(await composer.isVisible()).toBe(false);
+    expect(await detail.locator('textarea').count()).toBe(0);
+    expect(await detail.getByRole('button').allTextContents()).toEqual([
+      'Reply',
+      'Continue here',
+      'Copy resume command',
+      'Archive',
+    ]);
+    await topbar.getByRole('button', { name: 'Needs you' }).click();
+    expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
+
+    await side.getByRole('button', { name: 'All sessions', exact: true }).click();
+    const list = page.locator('main.sessions:visible');
+    const search = list.getByRole('searchbox');
+    await search.fill('sourdough');
+    const row = list.locator('.session-row');
+    expect(await row.getByRole('button').allTextContents()).toEqual(['Open', '⋯']);
+    await row.getByRole('button', { name: 'Open', exact: true }).click();
+    await detail.getByText('Read the recipe for bakery-1').waitFor();
+    await detail.getByRole('button', { name: 'Reply' }).click();
+    await detail.getByRole('textbox').fill('Bake now?');
+    await page.route('**/api/sessions/helper/bakery-1/send', (route) =>
+      route.fulfill({ status: 422, json: { error: 'Could not resume bakery-1.', delivery: 'unknown' } }),
+    );
+    await detail.getByRole('button', { name: 'Send', exact: true }).click();
+    await detail
+      .getByRole('alert')
+      .getByText('Could not resume bakery-1. Delivery to this session is unconfirmed.')
+      .waitFor();
+    await page.unroute('**/api/sessions/helper/bakery-1/send');
+    await detail.getByRole('button', { name: 'Cancel' }).click();
+    await page.keyboard.press('Escape');
+    expect(await search.inputValue()).toBe('sourdough');
+    expect(await row.count()).toBe(1);
+    await needsYou.click();
 
     // The filters count what they hold.
     await queue.getByRole('button', { name: 'Approvals 1' }).click();

@@ -43,6 +43,7 @@ export function SessionReply({
     event.preventDefault();
     if (sending || !prompt.trim()) return;
     keep({ prompt, sandbox, sending: true });
+    let delivery = 'Delivery to this session is unconfirmed.';
     try {
       const target = [session.source, session.id].map(encodeURIComponent).join('/');
       const response = await fetch(`/api/sessions/${target}/send`, {
@@ -51,12 +52,16 @@ export function SessionReply({
         body: JSON.stringify({ prompt, sandbox: sandbox || undefined }),
       });
       const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error ?? `The server answered ${response.status}.`);
+      if (!response.ok || !result.ok) {
+        if (result.delivery === 'not-sent') delivery = 'The message did not reach this session.';
+        if (result.delivery === 'reached') delivery = 'The message reached this session.';
+        throw new Error(result.error ?? `The server answered ${response.status}.`);
+      }
       // The caller drops a draft it keeps; one kept here stays, no longer sending.
       if (!onDraft) setOwn({ prompt, sandbox });
       onSent(result.text ?? '');
     } catch (cause) {
-      keep({ prompt, sandbox, error: cause instanceof Error ? cause.message : String(cause) });
+      keep({ prompt, sandbox, error: `${cause instanceof Error ? cause.message : String(cause)} ${delivery}` });
     }
   };
   return (

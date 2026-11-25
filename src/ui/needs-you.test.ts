@@ -247,7 +247,10 @@ describe('needsItems', () => {
     // A session that asks takes a reply where its agent can be sent to; this app's chat opens as a chat.
     expect(item('session:claude:gate').reply).toEqual({ session: own[1], sandboxes: ['read-only'] });
     expect(item('session:claude:gate').open).toEqual({ to: 'own', session: own[1] });
-    expect(item('session:codex:flaky').open).toEqual({ to: 'sessions' });
+    expect(item('session:codex:flaky').open).toMatchObject({
+      to: 'sessions',
+      session: { source: 'codex', id: 'flaky' },
+    });
     expect(item('session:codex:flaky', { ...input, senders: [] }).reply).toBeUndefined();
     // Without a tower a hook's question is answered at its own endpoint, and one no hook holds is not.
     const bare = { ...input, tower: undefined };

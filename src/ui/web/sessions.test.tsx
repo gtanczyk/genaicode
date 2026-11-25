@@ -55,8 +55,12 @@ it('tells the window when a reply went to a session, so its other lists stop off
     }),
   );
   const onReplied = vi.fn();
-  await act(async () => root.render(<Sessions token="t" cwd="/work" onContinue={vi.fn()} onReplied={onReplied} />));
-  await vi.waitFor(() => expect(button('Reply')).toBeTruthy());
+  await act(async () =>
+    root.render(<Sessions token="t" cwd="/work" onOpen={vi.fn()} onContinue={vi.fn()} onReplied={onReplied} />),
+  );
+  await vi.waitFor(() => expect(button('Open')).toBeTruthy());
+  expect(button('Reply')).toBeUndefined();
+  await act(async () => button('⋯').click());
   await act(async () => button('Reply').click());
   const field = host.querySelector('textarea')!;
   await act(async () => {
@@ -68,4 +72,19 @@ it('tells the window when a reply went to a session, so its other lists stop off
   });
   expect(sent).toEqual(['Bake today.']);
   expect(onReplied).toHaveBeenCalledWith(asking);
+});
+
+it('opens the readable store once per session and shows the sources of distinct rows', async () => {
+  const alias = { ...asking, source: 'index' };
+  const other = { ...asking, source: 'second', id: 'another-id' };
+  vi.stubGlobal(
+    'fetch',
+    async () => new Response(JSON.stringify({ ...listing, sessions: [alias, other, asking], readable: ['helper'] })),
+  );
+  const onOpen = vi.fn();
+  await act(async () => root.render(<Sessions token="t" cwd="/work" onOpen={onOpen} onContinue={vi.fn()} />));
+  const rows = Array.from(host.querySelectorAll('.session-row'));
+  expect(rows.map((row) => row.querySelector('.label small')?.textContent)).toEqual(['helper', 'second']);
+  await act(async () => rows[0]!.querySelector('button')!.click());
+  expect(onOpen).toHaveBeenCalledWith(asking);
 });

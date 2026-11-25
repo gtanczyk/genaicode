@@ -9,6 +9,7 @@ import {
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
+import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { SessionReply } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
 import {
@@ -81,6 +82,9 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
   token,
+  selected,
+  onOpen,
+  onArchived,
   cwd,
   home,
   onContinue,
@@ -97,6 +101,9 @@ export function Sessions({
   onReplied,
 }: {
   token: string;
+  selected?: SessionInfo;
+  onOpen(session: SessionInfo): void;
+  onArchived?(): void;
   /** Where the chat works: sessions from here can be taken over. */
   cwd: string;
   /** True in `--home` mode: any local readable session can be continued, and topics get New chat. */
@@ -162,10 +169,24 @@ export function Sessions({
 
   const everyones = listing?.sessions ?? [];
   const all = useMemo(() => {
-    if (!own || home) return everyones;
+    if (!own) {
+      // Keep distinct local projects and cloud repositories when stores reuse the same id.
+      const rows = new Map<string, SessionInfo>();
+      const rank = (row: SessionInfo) =>
+        Number(listing?.readable?.includes(row.source) ?? false) * 2 +
+        Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
+      for (const row of everyones) {
+        const key = JSON.stringify([row.agent, row.id, row.where, row.cwd ?? row.repository]);
+        const other = rows.get(key);
+        if (!other || rank(row) > rank(other) || (rank(row) === rank(other) && row.updatedAt > other.updatedAt))
+          rows.set(key, row);
+      }
+      return [...rows.values()];
+    }
+    if (home) return everyones;
     const here = cwd.replace(/[\\/]+$/, '');
     return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
-  }, [everyones, own, home, cwd]);
+  }, [everyones, own, home, cwd, listing]);
   const topicNames = useMemo(
     () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
     [listing?.topics],
@@ -195,7 +216,10 @@ export function Sessions({
       return undefined;
     };
     send()
-      .then(setArchiveFailed)
+      .then((error) => {
+        setArchiveFailed(error);
+        if (!error) onArchived?.();
+      })
       .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
       .finally(() => setRound((value) => value + 1));
   };
@@ -272,305 +296,349 @@ export function Sessions({
     // No Clipboard API on a page that is not a secure context: show the command to copy by hand.
     const show = () => void window.prompt('Continue it in a terminal with:', command);
     if (!navigator.clipboard) return show();
-    void navigator.clipboard.writeText(command).then(() => setCopied(session.id), show);
+    void navigator.clipboard.writeText(command).then(() => {
+      setCopied(session.id);
+      onStatus?.('Copied resume command');
+    }, show);
   };
 
+  const senderOf = (session: SessionInfo) =>
+    acceptsSessionPrompt(session) &&
+    listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
+  const isReplying = (session: SessionInfo) => replyTo?.source === session.source && replyTo.id === session.id;
+  const actions = (session: SessionInfo, close?: () => void) => {
+    const action = (label: string, run: () => void, title?: string) => (
+      <button
+        type="button"
+        role={close ? 'menuitem' : undefined}
+        title={title}
+        onClick={() => {
+          close?.();
+          run();
+        }}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <>
+        {senderOf(session) &&
+          !isReplying(session) &&
+          action('Reply', () => setReplyTo(session), `Send to this session in ${session.agent}`)}
+        {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) &&
+          action('Continue here', () => onContinue(session), 'Bring this conversation into the current chat')}
+        {resumeCommand(session) &&
+          action(
+            copied === session.id && !close ? 'Copied' : 'Copy resume command',
+            () => copy(session),
+            resumeCommand(session),
+          )}
+        {session.url && (
+          <a role={close ? 'menuitem' : undefined} href={session.url} target="_blank" rel="noreferrer">
+            {own ? 'Open' : 'Open in browser'}
+          </a>
+        )}
+        {session.where === 'local' &&
+          session.state !== 'active' &&
+          action(session.archived ? 'Unarchive' : 'Archive', () => archive([session], !session.archived))}
+      </>
+    );
+  };
+  const replyEditor = (session: SessionInfo) => {
+    const sender = senderOf(session);
+    return sender && isReplying(session) ? (
+      <SessionReply
+        key={`reply:${session.source}:${session.id}`}
+        session={session}
+        token={token}
+        sandboxes={sender.sandboxes}
+        onClose={() => setReplyTo(undefined)}
+        onSent={(text) => {
+          setReceipt({ session, text });
+          setReplyTo((current) =>
+            current?.source === session.source && current.id === session.id ? undefined : current,
+          );
+          setRound((value) => value + 1);
+          onReplied?.(session);
+        }}
+      />
+    ) : null;
+  };
+  const detail = selected && (all.find((row) => row.source === selected.source && row.id === selected.id) ?? selected);
   return (
-    <main className="sessions">
-      <div className="tools">
-        {own ? (
-          <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
-            Chats of this app ×
-          </button>
-        ) : null}
-        {topic ? (
-          <>
-            <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
-              {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
+    <>
+      {detail && (
+        <main className="sessions session-detail" aria-label="Session transcript">
+          <p className="session-origin">
+            {[detail.agent, detail.source !== detail.agent && detail.source, detail.cwd ?? detail.repository]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <div className="session-actions">{actions(detail)}</div>
+          {replyEditor(detail)}
+          {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
+            <p role="status">{receipt.text || 'Turn completed.'}</p>
+          )}
+          {archiveFailed && <p role="alert">{archiveFailed}</p>}
+          {failed && <p role="alert">{failed}</p>}
+          <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
+        </main>
+      )}
+      <main hidden={!!detail} className="sessions">
+        <div className="tools">
+          {own ? (
+            <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
+              Chats of this app ×
             </button>
-            {onNewTopicChat ? (
-              <button className="chip off" onClick={() => onNewTopicChat(topic)}>
-                New chat
+          ) : null}
+          {topic ? (
+            <>
+              <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
+                {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
               </button>
-            ) : null}
-          </>
-        ) : null}
-        <input
-          type="search"
-          placeholder="Search titles, prompts, directories, branches…"
-          value={text}
-          autoFocus
-          onChange={(event) => setText(event.target.value)}
-        />
-        <select aria-label="Agent" value={agent} onChange={(event) => setAgent(event.target.value)}>
-          <option value="">All agents</option>
-          {agents.map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-        <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)}>
-          <option value="">Any state</option>
-          <option value="active">● Active</option>
-          <option value="approval">◆ Asks for approval</option>
-          <option value="now">◉ Needs you now</option>
-          <option value="stalled">◇ Stalled</option>
-          <option value="waiting">○ Waiting for you</option>
-          <option value="unfinished">◌ Unfinished</option>
-          <option value="archived">Archived</option>
-        </select>
-        {sorted && !own ? (
-          <select
-            aria-label="Group by"
-            value={by}
-            onChange={(event) => setChosen(event.target.value === 'project' ? 'project' : 'topic')}
-          >
-            <option value="topic">By topic</option>
-            <option value="project">By directory</option>
-          </select>
-        ) : null}
-        <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
-          {RANGES.map((range) => (
-            <option key={range.days} value={range.days}>
-              {range.label}
-            </option>
-          ))}
-        </select>
-        {needs.length ? (
-          <button
-            className={`chip waits${state === 'now' ? ' on' : ''}`}
-            title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
-            aria-pressed={state === 'now'}
-            onClick={() => setState(state === 'now' ? '' : 'now')}
-          >
-            {needs.length} need{needs.length === 1 ? 's' : ''} you now
-            {needs.some((session) => session.waitingFor === 'approval')
-              ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
-              : ''}
-          </button>
-        ) : null}
-        {stalled.length ? (
-          <button
-            className={`chip${state === 'stalled' ? ' on' : ''}`}
-            title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
-            aria-pressed={state === 'stalled'}
-            onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
-          >
-            {stalled.length} stalled
-          </button>
-        ) : null}
-        {stale.length && state !== 'archived' ? (
-          <button
-            className="chip"
-            title="Put away every session waiting for you or left half way for 2 days or more. Their files stay; any news brings one back."
-            onClick={() => archive(stale, true)}
-          >
-            Archive {stale.length} stale
-          </button>
-        ) : null}
-        <button className="chip" onClick={() => setRound(round + 1)}>
-          Refresh
-        </button>
-        <span className="count">
-          {listing
-            ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
-            : 'Reading…'}
-        </span>
-      </div>
-      {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
-      {receipt ? (
-        <div className="session-receipt" role="status">
-          <b>
-            {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
-          </b>
-          <p>{receipt.text || 'Turn completed.'}</p>
-        </div>
-      ) : null}
-      {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
-      {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
-      {listing?.errors.map((error) => (
-        <div key={error.source} className="errors">
-          {error.source}: {error.message}
-        </div>
-      ))}
-      {projects.map((project) => {
-        // Stalled sessions fold under their topic unless asked for: they block nobody.
-        const unfold = inbox || open.has(`stalled:${project.key}`);
-        const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
-        const listed = folded.length
-          ? project.sessions.filter((session) => !folded.includes(session))
-          : project.sessions;
-        const whole = open.has(project.key) || listed.length <= FOLD;
-        const rows = whole ? listed : listed.slice(0, FOLD);
-        const topicId =
-          by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
-            ? project.key.slice('topic:'.length)
-            : undefined;
-        return (
-          <details key={project.key} className="project" open>
-            <summary>
-              <b>{project.name}</b>
-              <span className="path">
-                {own && home
-                  ? ''
-                  : by === 'topic'
-                    ? asksOf(project)
-                    : project.key.startsWith('cloud:')
-                      ? 'cloud'
-                      : project.key}
-              </span>
-              <span className="counts">
-                {Object.entries(project.agents)
-                  .map(([name, count]) => `${name} ${count}`)
-                  .join(' · ')}
-              </span>
-              {topicId && onNewTopicChat ? (
-                <button
-                  type="button"
-                  className="topic-new"
-                  aria-label={`New chat in ${project.name}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onNewTopicChat(topicId);
-                  }}
-                >
+              {onNewTopicChat ? (
+                <button className="chip off" onClick={() => onNewTopicChat(topic)}>
                   New chat
                 </button>
               ) : null}
-            </summary>
-            {rows.map((session) => {
-              const sender =
-                acceptsSessionPrompt(session) &&
-                listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
-              const replying = replyTo?.source === session.source && replyTo.id === session.id;
-              const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
-              return [
-                <div key={`${session.source}:${session.id}`} className="session-row">
-                  <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
-                    {MARK[shownState(session)] ?? '·'}
-                  </span>
-                  <span className="agent">{session.agent}</span>
-                  <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
-                    {ago(now - session.updatedAt)}
-                  </span>
-                  <span className="label" title={session.lastPrompt ?? session.title}>
-                    {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
-                    {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
-                    {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
-                    {session.branch ? <small>{session.branch}</small> : null}
-                  </span>
-                  <span className="act">
-                    {sender && !replying ? <button onClick={() => setReplyTo(session)}>Reply</button> : null}
-                    {session.where === 'local' && session.state !== 'active' ? (
-                      <button
-                        title={
-                          session.archived
-                            ? 'Show it among the sessions again'
-                            : 'Hide it from the sessions; any news in it brings it back'
-                        }
-                        onClick={() => archive([session], !session.archived)}
-                      >
-                        {session.archived ? 'Unarchive' : 'Archive'}
-                      </button>
-                    ) : null}
-                    {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) ? (
-                      <button
-                        title="Bring this conversation into the chat: the agent chosen there continues it"
-                        onClick={() => onContinue(session)}
-                      >
-                        Continue here
-                      </button>
-                    ) : null}
-                    {session.url ? (
-                      <a href={session.url} target="_blank" rel="noreferrer">
-                        Open
-                      </a>
-                    ) : resumeCommand(session) ? (
-                      <button title={resumeCommand(session)} onClick={() => copy(session)}>
-                        {copied === session.id ? 'Copied' : 'Copy resume command'}
-                      </button>
-                    ) : null}
-                    <TranscriptMenu
-                      token={token}
-                      endpoint={`/api/sessions/${encodeURIComponent(session.source)}/${encodeURIComponent(session.id)}/transcript`}
-                      sessionId={session.id}
-                      sessionPath={session.path}
-                      storedSession={{ source: session.source, id: session.id }}
-                      nativeSave={nativeSave}
-                      label="⋯"
-                      ariaLabel={`Copy ID or transcript for ${session.title ?? session.id}`}
-                      title="Copy session ID, file path or transcript"
-                      onStatus={onStatus}
-                    />
-                  </span>
-                </div>,
-                replying && sender ? (
-                  <SessionReply
-                    key={`reply:${session.source}:${session.id}`}
-                    session={session}
-                    token={token}
-                    sandboxes={sender.sandboxes}
-                    onClose={() => setReplyTo(undefined)}
-                    onSent={(text) => {
-                      setReceipt({ session, text });
-                      setReplyTo((current) =>
-                        current?.source === session.source && current.id === session.id ? undefined : current,
-                      );
-                      setRound((value) => value + 1);
-                      onReplied?.(session);
-                    }}
-                  />
-                ) : null,
-                ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
-                  <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
-                    <span className="what">
-                      <b>{tool}</b>
-                      <code>{command}</code>
-                    </span>
-                  </div>
-                )),
-                ...questionsOf(session).map((ask) => (
-                  <div key={`ask:${ask.id}`} className="question-row">
-                    <span className="what" title={ask.preview}>
-                      <b>{ask.tool ?? 'A tool'}</b>
-                      {ask.preview ? <code>{ask.preview}</code> : null}
-                    </span>
-                    <span className="act">
-                      <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
-                        Approve
-                      </button>
-                      <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
-                        Deny
-                      </button>
-                    </span>
-                  </div>
-                )),
-              ];
-            })}
-            {whole && !folded.length ? null : (
-              <div className="more">
-                {whole ? null : (
-                  <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
-                )}
-                {folded.length ? (
+            </>
+          ) : null}
+          <input
+            type="search"
+            placeholder="Search titles, prompts, directories, branches…"
+            value={text}
+            autoFocus
+            onChange={(event) => setText(event.target.value)}
+          />
+          <select aria-label="Agent" value={agent} onChange={(event) => setAgent(event.target.value)}>
+            <option value="">All agents</option>
+            {agents.map((name) => (
+              <option key={name}>{name}</option>
+            ))}
+          </select>
+          <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)}>
+            <option value="">Any state</option>
+            <option value="active">● Active</option>
+            <option value="approval">◆ Asks for approval</option>
+            <option value="now">◉ Needs you now</option>
+            <option value="stalled">◇ Stalled</option>
+            <option value="waiting">○ Waiting for you</option>
+            <option value="unfinished">◌ Unfinished</option>
+            <option value="archived">Archived</option>
+          </select>
+          {sorted && !own ? (
+            <select
+              aria-label="Group by"
+              value={by}
+              onChange={(event) => setChosen(event.target.value === 'project' ? 'project' : 'topic')}
+            >
+              <option value="topic">By topic</option>
+              <option value="project">By directory</option>
+            </select>
+          ) : null}
+          <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+            {RANGES.map((range) => (
+              <option key={range.days} value={range.days}>
+                {range.label}
+              </option>
+            ))}
+          </select>
+          {needs.length ? (
+            <button
+              className={`chip waits${state === 'now' ? ' on' : ''}`}
+              title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
+              aria-pressed={state === 'now'}
+              onClick={() => setState(state === 'now' ? '' : 'now')}
+            >
+              {needs.length} need{needs.length === 1 ? 's' : ''} you now
+              {needs.some((session) => session.waitingFor === 'approval')
+                ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
+                : ''}
+            </button>
+          ) : null}
+          {stalled.length ? (
+            <button
+              className={`chip${state === 'stalled' ? ' on' : ''}`}
+              title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
+              aria-pressed={state === 'stalled'}
+              onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
+            >
+              {stalled.length} stalled
+            </button>
+          ) : null}
+          {stale.length && state !== 'archived' ? (
+            <button
+              className="chip"
+              title="Put away every session waiting for you or left half way for 2 days or more. Their files stay; any news brings one back."
+              onClick={() => archive(stale, true)}
+            >
+              Archive {stale.length} stale
+            </button>
+          ) : null}
+          <button className="chip" onClick={() => setRound(round + 1)}>
+            Refresh
+          </button>
+          <span className="count">
+            {listing
+              ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
+              : 'Reading…'}
+          </span>
+        </div>
+        {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
+        {receipt ? (
+          <div className="session-receipt" role="status">
+            <b>
+              {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
+            </b>
+            <p>{receipt.text || 'Turn completed.'}</p>
+          </div>
+        ) : null}
+        {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
+        {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
+        {listing?.errors.map((error) => (
+          <div key={error.source} className="errors">
+            {error.source}: {error.message}
+          </div>
+        ))}
+        {projects.map((project) => {
+          // Stalled sessions fold under their topic unless asked for: they block nobody.
+          const unfold = inbox || open.has(`stalled:${project.key}`);
+          const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
+          const listed = folded.length
+            ? project.sessions.filter((session) => !folded.includes(session))
+            : project.sessions;
+          const whole = open.has(project.key) || listed.length <= FOLD;
+          const rows = whole ? listed : listed.slice(0, FOLD);
+          const topicId =
+            by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
+              ? project.key.slice('topic:'.length)
+              : undefined;
+          return (
+            <details key={project.key} className="project" open>
+              <summary>
+                <b>{project.name}</b>
+                <span className="path">
+                  {own && home
+                    ? ''
+                    : by === 'topic'
+                      ? asksOf(project)
+                      : project.key.startsWith('cloud:')
+                        ? 'cloud'
+                        : project.key}
+                </span>
+                <span className="counts">
+                  {Object.entries(project.agents)
+                    .map(([name, count]) => `${name} ${count}`)
+                    .join(' · ')}
+                </span>
+                {topicId && onNewTopicChat ? (
                   <button
-                    title="Left on an offer, a report that could not be sent, or an old question"
-                    // Every row, so the five-row fold does not hide what was asked for.
-                    onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
+                    type="button"
+                    className="topic-new"
+                    aria-label={`New chat in ${project.name}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onNewTopicChat(topicId);
+                    }}
                   >
-                    Show {folded.length} stalled
+                    New chat
                   </button>
                 ) : null}
-              </div>
-            )}
-          </details>
-        );
-      })}
-      {listing && !shown.length ? (
-        <div className="count">
-          {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}
-        </div>
-      ) : null}
-    </main>
+              </summary>
+              {rows.map((session) => {
+                const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
+                return [
+                  <div key={`${session.source}:${session.id}`} className="session-row">
+                    <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
+                      {MARK[shownState(session)] ?? '·'}
+                    </span>
+                    <span className="agent">{session.agent}</span>
+                    <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
+                      {ago(now - session.updatedAt)}
+                    </span>
+                    <span className="label" title={session.lastPrompt ?? session.title}>
+                      {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                      {!own && <small>{session.source}</small>}
+                      {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
+                      {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
+                      {session.branch ? <small>{session.branch}</small> : null}
+                    </span>
+                    <span className="act">
+                      {own ? (
+                        actions(session)
+                      ) : (
+                        <button className="open-session" onClick={() => onOpen(session)}>
+                          Open
+                        </button>
+                      )}
+                      <TranscriptMenu
+                        extra={own ? undefined : (close) => actions(session, close)}
+                        token={token}
+                        endpoint={transcriptUrl(session)}
+                        sessionId={session.id}
+                        sessionPath={session.path}
+                        storedSession={{ source: session.source, id: session.id }}
+                        nativeSave={nativeSave}
+                        label="⋯"
+                        ariaLabel={`Session actions for ${session.title ?? session.id}`}
+                        title="Session actions"
+                        onStatus={onStatus}
+                      />
+                    </span>
+                  </div>,
+                  !selected && replyEditor(session),
+                  ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
+                    <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
+                      <span className="what">
+                        <b>{tool}</b>
+                        <code>{command}</code>
+                      </span>
+                    </div>
+                  )),
+                  ...questionsOf(session).map((ask) => (
+                    <div key={`ask:${ask.id}`} className="question-row">
+                      <span className="what" title={ask.preview}>
+                        <b>{ask.tool ?? 'A tool'}</b>
+                        {ask.preview ? <code>{ask.preview}</code> : null}
+                      </span>
+                      <span className="act">
+                        <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
+                          Approve
+                        </button>
+                        <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
+                          Deny
+                        </button>
+                      </span>
+                    </div>
+                  )),
+                ];
+              })}
+              {whole && !folded.length ? null : (
+                <div className="more">
+                  {whole ? null : (
+                    <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
+                  )}
+                  {folded.length ? (
+                    <button
+                      title="Left on an offer, a report that could not be sent, or an old question"
+                      // Every row, so the five-row fold does not hide what was asked for.
+                      onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
+                    >
+                      Show {folded.length} stalled
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </details>
+          );
+        })}
+        {listing && !shown.length ? (
+          <div className="count">
+            {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}
+          </div>
+        ) : null}
+      </main>
+    </>
   );
 }

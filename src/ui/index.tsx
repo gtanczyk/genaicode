@@ -758,7 +758,7 @@ function webLink(
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
       },
-      sendPrompt: async (source, id, prompt, sandbox, signal) => {
+      sendPrompt: async (source, id, prompt, sandbox, signal, onResponse) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const found = await findSession(
           sources.filter((s) => s.name === source),
@@ -766,7 +766,16 @@ function webLink(
           { env: options.env, signal },
         ).catch(() => undefined);
         if (found?.session.cwd) addRoot(found.session.cwd);
+        let respondingSession: string | undefined;
         return sendSession(agents, id, prompt, {
+          onEvent(event) {
+            if (event.type === 'session') respondingSession = event.sessionId;
+            if (
+              respondingSession === id &&
+              (event.type === 'message' || event.type === 'text-delta' || event.type === 'tool-start')
+            )
+              onResponse();
+          },
           source,
           env: options.env,
           signal,
