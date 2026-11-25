@@ -581,6 +581,20 @@ describe('Search (⌘K)', () => {
     expect(palette()).not.toBeNull();
   });
 
+  it('keeps the work panel as it is while Search is open: ⌘⌥B waits for Escape', () => {
+    const onToggleWork = vi.fn();
+    render(props({ work: <aside className="gc-work">tasks</aside>, onToggleWork }));
+    press('k', mod());
+    expect(palette()).not.toBeNull();
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' }, field());
+    expect(onToggleWork).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(field());
+    key('Escape');
+    expect(palette()).toBeNull();
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+  });
+
   it('moves with the arrows, around the ends, and starts again from the top when the words change', () => {
     render(props());
     press('k', mod());

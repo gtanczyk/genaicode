@@ -199,7 +199,8 @@ export function Shell(props: ShellProps) {
       if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) || event.shiftKey) return;
       if (event.altKey) {
         // By its place on the keyboard: with Option held, macOS types another letter there.
-        if (event.code === 'KeyB' && now.onToggleWork) {
+        // Not under Search: it keeps the focus until Escape gives it back where it was.
+        if (event.code === 'KeyB' && now.onToggleWork && !searchingRef.current) {
           event.preventDefault();
           now.onToggleWork();
         }
