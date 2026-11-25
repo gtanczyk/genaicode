@@ -38,7 +38,7 @@ import {
   type SlashCommand,
 } from '../format.js';
 import type { UiRelease } from './release.js';
-import type { WebCommand, WebFolder, WebSessionListing, WebSwitchCommand } from './server.js';
+import type { WebCommand, WebFolder, WebSwitchCommand } from './server.js';
 import {
   chatKey as chatKeyOf,
   chatProjects,
@@ -46,7 +46,6 @@ import {
   HOME_FOLDER,
   liveGlyph,
   needsYou,
-  needsYouPage,
   OPEN_CHAT_SOURCE,
   isOpenChat,
   otherSessions,
@@ -61,9 +60,11 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
+import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
+import { LIMITS_EVERY_MS, NO_SESSIONS, useChats } from './chats.js';
+import { NeedsYouPage, useFirstSeen } from './needs-you.js';
 import { chatLimits, SECTION_LABEL, SettingsPage, settingsSections, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
-import { TowerInboxPanel } from './tower-inbox.js';
 import { TranscriptMenu } from './transcript-menu.js';
 
 // The page is the same <AgentChat> hosts get from genaicode/react, fed by this server's SSE.
@@ -173,9 +174,6 @@ function promptBubble(text: string) {
   );
 }
 
-/** How often the limits last seen, and the lists of the sidebar, are asked for again. */
-const LIMITS_EVERY_MS = 60_000;
-
 /**
  * The limits last seen of every agent's plan (`/api/limits`): asked when the page opens, when a
  * turn starts or ends, and every minute. The sidebar shows each agent's worst window.
@@ -202,50 +200,6 @@ function useAllLimits(running: boolean): Array<RateLimit & { agent: string }> {
     };
   }, [running]);
   return limits;
-}
-
-const NO_SESSIONS: SessionInfo[] = [];
-
-/**
- * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
- * agent's sessions of the last 7. Asked again when `stamp` changes (a turn ended, another chat was
- * opened), every minute, and when the window is looked at again.
- */
-function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: SessionInfo[]; ownKnown: boolean } {
-  const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
-  // Until this app's chats are known, a session of the index cannot be told to be another agent's.
-  const [ownKnown, setOwnKnown] = useState(false);
-  const [all, setAll] = useState<SessionInfo[]>(NO_SESSIONS);
-  useEffect(() => {
-    if (!enabled || !token) return;
-    let current = true;
-    const list = (query: string, keep: (sessions: SessionInfo[]) => void) =>
-      fetch(`/api/sessions?${query}`, { headers: { 'x-genaicode-token': token } })
-        .then((res) => (res.ok ? (res.json() as Promise<WebSessionListing>) : undefined))
-        .then(
-          (found) => {
-            if (current && found) keep(found.sessions ?? []);
-          },
-          () => undefined,
-        );
-    const ask = () => {
-      if (document.visibilityState !== 'visible') return;
-      void list('days=30&own=1', (found) => {
-        setOwn(found);
-        setOwnKnown(true);
-      });
-      void list('days=7', setAll);
-    };
-    ask();
-    const timer = window.setInterval(ask, LIMITS_EVERY_MS);
-    document.addEventListener('visibilitychange', ask);
-    return () => {
-      current = false;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', ask);
-    };
-  }, [enabled, stamp]);
-  return { own, all, ownKnown };
 }
 
 interface PageConfig {
@@ -971,13 +925,14 @@ function App() {
   useBark(view);
   const [theme, setTheme] = useTheme();
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
-  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'settings'>('chat');
+  const [panel, setPanel] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
   const [section, setSection] = useState<SettingsSection>('general');
   const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
   const showAgents = panel === 'settings' && section === 'agents';
-  // What the Sessions view lists: every agent's sessions, only the ones that ask now (from Needs
-  // you), or this app's own chats of all time, the archived too (from "All chats").
+  // What the Sessions view lists: every agent's sessions, those with the ones that ask now on top
+  // ("Open session" on the Needs you page), or this app's own chats of all time, the archived too
+  // (from "All chats").
   const [listed, setListed] = useState<'all' | 'needs' | 'own'>('all');
   const needsOnly = listed === 'needs';
   // The window is moving to another chat (a new one in a folder or a topic, or one picked from a
@@ -1153,6 +1108,7 @@ function App() {
   const account = session?.agent.replace(/Live$/, '');
   const plan = useMemo(() => allLimits.filter((limit) => limit.agent === account), [allLimits, account]);
   const chats = useChats(
+    token,
     hasSessions,
     `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
   );
@@ -1425,21 +1381,14 @@ function App() {
     setListed(which);
     setPanel('sessions');
   };
-  // Needs you is one place: the tower's inbox where there is a tower, else the sessions that ask now.
-  const openNeedsYou = () => {
-    const page = needsYouPage({ tower: !!view?.tower, sessions: hasSessions });
-    if (page === 'inbox') setPanel('inbox');
-    else if (page === 'sessions') openSessions('needs');
-    else backToChat();
-  };
+  // Needs you is one page, whatever the sources are: with nothing to list it says so.
+  const openNeedsYou = () => setPanel('needs');
   const pageTitle =
     panel === 'sessions'
-      ? needsOnly
-        ? 'Needs you'
-        : listed === 'own'
-          ? 'All chats'
-          : 'All sessions'
-      : panel === 'inbox'
+      ? listed === 'own'
+        ? 'All chats'
+        : 'All sessions'
+      : panel === 'needs'
         ? 'Needs you'
         : panel === 'settings'
           ? 'Settings'
@@ -1476,12 +1425,74 @@ function App() {
     () => (othersKnown ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
     [othersKnown, chats.all, ownChats],
   );
+  // This app's chats that every agent's list leaves out (an automated one) ask too, and so does a
+  // session a hook's question is open for, though its row was read before the question.
+  const needsRows = useMemo(() => needsSessions(chats.all, ownChats, chats.asks), [chats.all, ownChats, chats.asks]);
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
-    sessions: chats.all,
+    sessions: needsRows,
     open: { id: session?.sessionId, source: openStore },
   });
+  // What has no time of its own waits since this window first saw it.
+  const seen = useFirstSeen([
+    ...(session?.approvals ?? []).map((request) => `chat:${request.id}`),
+    ...(view?.tower?.items ?? []).map((item) => `tower:${item.id}`),
+  ]);
+  // The queue behind that count: the same sources, read the same way.
+  const queue = needsItems({
+    chat: session
+      ? {
+          approvals: session.approvals,
+          turnId: lastTurn?.id,
+          agent: session.agent,
+          cwd: activeCwd,
+          title: convTitle,
+          id: session.sessionId,
+          source: openStore,
+          pack:
+            lastTurn?.pack && !lastTurn.result ? { lead: lastTurn.pack.lead, tasks: lastTurn.pack.tasks } : undefined,
+        }
+      : undefined,
+    tower: view?.tower?.items,
+    sessions: needsRows,
+    own: ownChats,
+    // Until this app's chats are read, a session of the general index may be one: no Open action.
+    ownKnown: chats.ownKnown,
+    asks: chats.asks,
+    senders: chats.senders,
+    seen,
+  });
+  const decideNeed = async (decision: NeedsDecision): Promise<boolean> => {
+    if (decision.via === 'chat') return command({ type: 'approve', id: decision.id, decision: decision.decision });
+    if (decision.via === 'tower') {
+      const done = await command({ type: 'tower', id: decision.id, decision: decision.decision });
+      // A hook's question the tower answered: the listing still has it, and the session waiting,
+      // until it is read again.
+      // The tower's card names the session, so it settles even before the listing has the questions.
+      const card = view?.tower?.items.find((item) => item.id === decision.id);
+      if (done && decision.id.startsWith('hook:'))
+        chats.answered(
+          decision.id.slice('hook:'.length),
+          card?.sessionId ? { agent: card.agent, session: card.sessionId } : undefined,
+        );
+      else chats.refresh();
+      return done;
+    }
+    const res = await fetch(`/api/asks/${decision.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+      body: JSON.stringify({ behavior: decision.behavior }),
+    });
+    // Answered now, or meanwhile elsewhere (409): either way it no longer waits.
+    const asked = chats.asks.find((ask) => ask.id === decision.id);
+    if (res.ok || res.status === 409)
+      chats.answered(decision.id, asked ? { agent: asked.agent, session: asked.session } : undefined);
+    else chats.refresh();
+    // 409: answered meanwhile, elsewhere.
+    if (!res.ok && res.status !== 409) throw new Error(`The server answered ${res.status}.`);
+    return res.ok;
+  };
   // Per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
   // The sidebar and Settings › Usage show the same.
   const knownLimits = useMemo(
@@ -1669,7 +1680,7 @@ function App() {
               ? 'chat'
               : panel === 'settings'
                 ? 'settings'
-                : pageTitle === 'Needs you'
+                : panel === 'needs'
                   ? 'inbox'
                   : listed === 'own'
                     ? 'chats'
@@ -1733,6 +1744,7 @@ function App() {
             home={isHome}
             topic={topic}
             onAllTopics={() => setTopic(undefined)}
+            // From the Needs you page: the sessions that ask now, as the list has them.
             initialState={needsOnly ? 'now' : undefined}
             own={listed === 'own'}
             initialDays={listed === 'own' ? 0 : undefined}
@@ -1742,16 +1754,28 @@ function App() {
             onNewTopicChat={isHome ? startTopicChat : undefined}
             // The chat says what happened, also when it could not.
             onContinue={takeOverChat}
+            onAnswered={chats.answered}
+            onReplied={chats.replied}
           />
         ) : null}
-        {panel === 'inbox' && view?.tower && (
-          <TowerInboxPanel
-            view={view.tower}
+        {panel === 'needs' ? (
+          <NeedsYouPage
+            items={queue}
+            chatTitle={convTitle}
             connected={connected}
-            decide={(id, decision) => command({ type: 'tower', id, decision })}
-            asking={hasSessions ? { count: needs.sessions, onOpen: () => openSessions('needs') } : undefined}
+            token={token}
+            tower={view?.tower}
+            unread={{ failed: chats.failed, errors: chats.errors }}
+            decide={decideNeed}
+            onOpen={(item) => {
+              if (item.open?.to === 'chat') backToChat();
+              else if (item.open?.to === 'own') continueChat(item.open.session);
+              else if (item.open) openSessions('needs');
+            }}
+            sessionsPage={hasSessions}
+            onReplied={chats.replied}
           />
-        )}
+        ) : null}
         {panel === 'settings' ? (
           <SettingsPage
             section={section}
