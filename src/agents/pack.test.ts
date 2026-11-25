@@ -1284,6 +1284,50 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('lists the files of the revision a check ran on, and merges a mix of staged and unstaged edits', async () => {
+    const cwd = repo();
+    writeFileSync(join(cwd, 'b.txt'), 'b\n');
+    git(cwd, 'add', 'b.txt');
+    git(cwd, 'commit', '-q', '-m', 'b');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker], verification: { label: 'ok', run: () => ({ ok: true }) } });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()?.changes).toEqual(['M\ta.txt']);
+      const dir = task()!.cwd;
+      // A file added after the task ended: the check's revision has it, and so does the list.
+      writeFileSync(join(dir, 'c.txt'), 'c\n');
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt']);
+      // a.txt staged, b.txt edited and not: the patch carries both, so it merges.
+      writeFileSync(join(dir, 'b.txt'), 'b changed\n');
+      git(dir, 'add', 'a.txt');
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge', revision: task()!.checks!.revision })).toContain(
+        'Merged t1',
+      );
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
+      expect(readFileSync(join(cwd, 'b.txt'), 'utf8')).toBe('b changed\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it("merges the task's change where it was made, whatever the person's diff settings say", async () => {
     const cwd = repo();
     git(cwd, 'config', 'diff.noprefix', 'true');

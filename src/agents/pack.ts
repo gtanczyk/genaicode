@@ -1149,6 +1149,8 @@ export function pack(options: PackOptions): Pack {
           const repo = sub.repo;
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
+          // The files listed are those of the revision checked, which Merge locally then takes.
+          if (revision !== sub.checks.revision) sub.changes = await worktreeChanges(sub.dir, sub.start, revision);
           const checks = sub.checks;
           const abort = new AbortController();
           const cancel = () => abort.abort();

@@ -182,7 +182,7 @@ export async function patchCoversWorktree(
   const startTree = (await must(dir, ['rev-parse', '--verify', `${start}^{tree}`])).trim();
   if (empty && tree !== startTree) return false;
   const index = await indexTree(dir);
-  if (index === undefined || (index !== startTree && index !== tree)) return false;
+  if (index === undefined || !(await stagedInSnapshot(dir, startTree, index, tree))) return false;
   return !(await submoduleWork(dir)) && !(await gitlinkChanged(dir, start, tree));
 }
 
@@ -195,6 +195,40 @@ async function gitlinkChanged(dir: string, start: string, tree: string): Promise
   const raw = await must(dir, ['diff', '--raw', '-z', '--no-renames', '--ignore-submodules=none', start, tree]);
   // Entries ":<old mode> <new mode> <old id> <new id> <status>": a gitlink is mode 160000.
   return raw.split('\0').some((entry) => /^:\d{6} 160000 /.test(entry));
+}
+
+/**
+ * Whether every path staged in the worktree's index (where it differs from the start) is staged as
+ * the snapshot has it: then the patch carries it. A path staged one way and changed again on disk
+ * keeps a version only the index holds.
+ */
+async function stagedInSnapshot(dir: string, startTree: string, index: string, tree: string): Promise<boolean> {
+  if (index === startTree || index === tree) return true;
+  const entries = async (to: string) => {
+    const raw = await must(dir, [
+      'diff',
+      '--raw',
+      '-z',
+      '--no-renames',
+      '--ignore-submodules=none',
+      '--abbrev=40',
+      startTree,
+      to,
+    ]);
+    // "-z" raw output: ":<modes> <ids> <status>\0<path>\0" for each entry.
+    const parts = raw.split('\0');
+    const found = new Map<string, string>();
+    for (let at = 0; at + 1 < parts.length; at += 2) {
+      const [, , , id] = parts[at]!.slice(1).split(' ');
+      const mode = parts[at]!.slice(1).split(' ')[1];
+      found.set(parts[at + 1]!, `${mode} ${id}`);
+    }
+    return found;
+  };
+  const staged = await entries(index);
+  const snapshot = await entries(tree);
+  for (const [file, entry] of staged) if (snapshot.get(file) !== entry) return false;
+  return true;
 }
 
 /**
