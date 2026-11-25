@@ -1,3 +1,5 @@
+import { checkedForMerge, isPassingVerdict, replyVerdict } from './pack-verdict.js';
+import { trackReply } from './reply.js';
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -23,6 +25,7 @@ import {
   withSnapshot,
   worktreeChanges,
   worktreeDiff,
+  worktreeStats,
 } from './pack-git.js';
 import {
   reviewPatch,
@@ -146,8 +149,12 @@ export interface PackTask {
   steps?: PackStep[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
-  /** The root of a worktree task's worktree (`cwd` may be a folder inside it): what Discard removes. */
+  /** Root of an active worktree task (`cwd` may be a folder inside it). */
   worktree?: string;
+  /** Retained working directory, including the original Git index, after merge or discard. */
+  recoveryDir?: string;
+  stagedOnly?: string[];
+  fileStats?: Record<string, { added: number; removed: number }>;
   /** The agent's final message, or the last thing it did while running. */
   text?: string;
   error?: string;
@@ -230,14 +237,15 @@ export interface PackStep {
 export interface Pack extends CodingAgent {
   /** Every task delegated so far, over all runs. */
   tasks(): PackTask[];
-  /** Stop running tasks and remove the worktrees still on disk (unmerged changes are lost). */
+  /** Stop running tasks and remove active worktrees. Worktrees retained by merge or discard remain on disk. */
   close(): Promise<void>;
 }
 
 export type PackAction =
   | { type: 'steer'; text: string }
-  | { type: 'merge' | 'diff'; revision?: string }
-  | { type: 'stop' | 'review' | 'verify' }
+  | { type: 'merge'; revision?: string; checked?: true }
+  | { type: 'diff'; revision?: string; path?: string }
+  | { type: 'stop' | 'review' | 'verify' | 'restore' }
   /**
    * With `empty`, the discard of a task shown as having changed nothing: refused (`changed`) when its
    * worktree has changes by now, so an edit made since is not lost unseen.
@@ -336,6 +344,9 @@ interface Sub {
   readOnly?: boolean;
   repo?: string;
   dir?: string;
+  recoveryDir?: string;
+  stagedOnly?: string[];
+  fileStats?: Record<string, { added: number; removed: number }>;
   start?: string;
   /** The worker's native session/thread id, for resuming a finished task. */
   sessionId?: string;
@@ -372,8 +383,6 @@ interface Sub {
   dismissed?: boolean;
   /** A `wait` already told the lead how it ended. */
   reported?: boolean;
-  /** A `wait` already reported the task's full prompt; later waits send only a short title. */
-  promptReported?: boolean;
   ended: Promise<void>;
 }
 
@@ -642,16 +651,6 @@ function stepOf(event: AgentEvent, at: number): Step | undefined {
   }
 }
 
-/** What ends a reply that streams: its message, or the worker doing something else. */
-const REPLY_ENDS = new Set<AgentEvent['type']>([
-  'message',
-  'tool-start',
-  'tool-end',
-  'file-change',
-  'approval-request',
-  'error',
-]);
-
 /** The reply (`Sub.reply.seq`) that was the latest when a steer was taken. */
 const steerTakenIn = new WeakMap<PackSteer, number>();
 
@@ -660,9 +659,7 @@ function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
   // A reply begins with its first delta, or with its message when it streamed none, and ends with
   // its message or with the next thing the worker does.
   const reply = (sub.reply ??= { seq: 0, open: false });
-  if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
-  if (event.type === 'text-delta') reply.open = true;
-  else if (REPLY_ENDS.has(event.type)) reply.open = false;
+  trackReply(reply, event);
   if (event.type === 'tool-end') {
     const open = (sub.steps ?? []).filter((step) => step.kind === 'tool' && step.endedAt === undefined);
     // By id when both have one; else the latest open call of that name (any, when the end names none).
@@ -753,34 +750,6 @@ function track(sub: Sub, event: AgentEvent): void {
         }
       : undefined;
   sub.last = line;
-}
-
-/** Fenced code: an opening line of three or more backticks or tildes. */
-const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-
-/**
- * The verdict line of a reply ("VERDICT: LGTM"): its last line that starts with "verdict", outside
- * quotations, fenced code and indented code, so a quoted or sample verdict is not taken for the
- * reply's own. Read from the whole reply, before it is clipped for the report.
- */
-function replyVerdict(text: string): string | undefined {
-  let fence: string | undefined;
-  let verdict: string | undefined;
-  for (const line of text.split('\n')) {
-    const open = FENCE.exec(line);
-    if (fence) {
-      if (open && open[1]![0] === fence[0] && open[1]!.length >= fence.length && !line.slice(open[0].length).trim())
-        fence = undefined;
-      continue;
-    }
-    if (open) {
-      fence = open[1];
-      continue;
-    }
-    if (/^( {4}|\t)/.test(line) || /^\s*>/.test(line)) continue;
-    if (/^[\W_]*verdict\b/i.test(line.trim())) verdict = line.trim();
-  }
-  return verdict && verdict.length > 200 ? `${verdict.slice(0, 199)}…` : verdict;
 }
 
 /**
@@ -935,6 +904,9 @@ export function pack(options: PackOptions): Pack {
         : {}),
     ...(sub.result?.error ? { error: clip(sub.result.error) } : {}),
     ...(sub.result?.failure ? { failure: sub.result.failure } : {}),
+    ...(sub.recoveryDir ? { recoveryDir: sub.recoveryDir } : {}),
+    ...(sub.fileStats ? { fileStats: sub.fileStats } : {}),
+    ...(sub.stagedOnly?.length ? { stagedOnly: sub.stagedOnly } : {}),
     ...(sub.changes ? { changes: sub.changes } : {}),
     ...(sub.state ? { state: sub.state } : {}),
     ...(sub.dismissed ? { dismissed: true } : {}),
@@ -944,11 +916,13 @@ export function pack(options: PackOptions): Pack {
     ...(sub.stoppedBy && sub.status === 'aborted' ? { stoppedBy: sub.stoppedBy } : {}),
   });
 
+  const reportedPrompts = new Map<string, Set<Sub>>();
+
   /** Task view returned by `wait`: full prompt on first report, short title afterwards. */
-  const waitReport = (sub: Sub): Omit<PackTask, 'prompt'> & { prompt?: string } => {
+  const waitReport = (sub: Sub, prompts: Set<Sub>): Omit<PackTask, 'prompt'> & { prompt?: string } => {
     const full = report(sub);
-    if (!sub.promptReported) {
-      sub.promptReported = true;
+    if (!prompts.has(sub)) {
+      prompts.add(sub);
       return full;
     }
     const copy: Omit<PackTask, 'prompt'> & { prompt?: string } = {
@@ -964,6 +938,16 @@ export function pack(options: PackOptions): Pack {
     sub.unwatch = undefined;
     if (sub.repo && sub.dir) await removeWorktree(sub.repo, sub.dir);
     sub.dir = undefined;
+  };
+
+  // Keep the original registered worktree intact. Moving one with initialized submodules can
+  // break their relative gitdir links. close() only removes active worktrees.
+  const retain = (sub: Sub) => {
+    sub.unwatch?.();
+    sub.unwatch = undefined;
+    sub.recoveryDir = sub.dir;
+    sub.dir = undefined;
+    notify(sub);
   };
 
   return {
@@ -997,6 +981,8 @@ export function pack(options: PackOptions): Pack {
       const leadCwd = projectDirectory(task.cwd);
       const events = new EventQueue<AgentEvent>(approximateSize);
       const ended = new AbortController();
+      const prompts = (task.resume && reportedPrompts.get(task.resume)) || new Set<Sub>();
+      let delegated = 0;
       const mine = new Set<Sub>();
       // Tasks started or continued during this lead turn: stopped and drained when this turn ends.
       const turnSubs = new Set<Sub>();
@@ -1117,7 +1103,7 @@ export function pack(options: PackOptions): Pack {
           );
         }
         if (ended.signal.aborted) throw new Error('The run has ended.');
-        if (mine.size + turnStarting >= maxTasksPerTurn)
+        if (delegated + turnStarting >= maxTasksPerTurn)
           throw new Error(
             `This turn has reached the limit of ${maxTasksPerTurn} delegated tasks. ` +
               'Reuse an existing worker with `steer` (on a running or finished task) instead of delegating a new one, ' +
@@ -1399,6 +1385,7 @@ export function pack(options: PackOptions): Pack {
         }
         subs.set(id, sub);
         mine.add(sub);
+        delegated += 1;
         releaseTurnSlot();
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
         launchWorker(sub, prompt, roster);
@@ -1420,24 +1407,23 @@ export function pack(options: PackOptions): Pack {
         if (pending.length && seconds > 0) {
           let timer: NodeJS.Timeout | undefined;
           let progressTimer: NodeJS.Timeout | undefined;
-          const startedWaiting = Date.now();
+          let tick = 0;
           let onAbort: (() => void) | undefined;
           const onEnd = new Promise<void>((resolve) => {
             onAbort = () => resolve();
             ended.signal.addEventListener('abort', onAbort, { once: true });
           });
           if (context?.progress) {
-            const progressEveryMs = Math.min(WAIT_PROGRESS_MS, Math.max(50, Math.floor((seconds * 1000) / 2)));
+            const progressEveryMs = Math.min(WAIT_PROGRESS_MS, Math.max(50, Math.floor((seconds * 1000) / 3)));
             progressTimer = setInterval(() => {
               const running = chosen.filter((sub) => sub.status === 'running');
               if (!running.length) return;
-              const elapsed = Math.min(Math.round((Date.now() - startedWaiting) / 1000), seconds);
               const summary = running
                 .map((sub) => (sub.last ? `${sub.id}: ${sub.last}` : `${sub.id} (${sub.agent.name})`))
                 .join('; ');
               context.progress!(
-                elapsed,
-                seconds,
+                ++tick,
+                undefined,
                 `Waiting on ${running.length} running ${running.length === 1 ? 'task' : 'tasks'}: ${clip(summary, 300)}`,
               );
             }, progressEveryMs);
@@ -1456,7 +1442,11 @@ export function pack(options: PackOptions): Pack {
           }
         }
         for (const sub of chosen) if (sub.status !== 'running') sub.reported = true;
-        return JSON.stringify(chosen.map(waitReport), null, 1);
+        return JSON.stringify(
+          chosen.map((sub) => waitReport(sub, prompts)),
+          null,
+          1,
+        );
       };
 
       const worktreeReason = (sub: Sub): PackActionErrorReason =>
@@ -1477,10 +1467,14 @@ export function pack(options: PackOptions): Pack {
         if (!sub.dir || !sub.start) return undefined;
         try {
           const changes = await worktreeChanges(sub.dir, sub.start, revision);
-          const staged = await stagedChanges(sub.dir);
+          sub.fileStats = await worktreeStats(sub.dir, sub.start, revision);
+          const staged = await stagedChanges(sub.dir, revision);
+          sub.stagedOnly = staged;
           const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
           return [...changes, ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t')))];
         } catch {
+          sub.fileStats = undefined;
+          sub.stagedOnly = undefined;
           return undefined;
         }
       };
@@ -1553,6 +1547,9 @@ export function pack(options: PackOptions): Pack {
               checks[kind] = {
                 revision,
                 status: report.ok ? 'completed' : 'failed',
+                ...(kind === 'review'
+                  ? { passed: report.ok && isPassingVerdict(replyVerdict(report.detail ?? '')) }
+                  : {}),
                 detail: report.detail && (kind === 'review' ? clipReview(report.detail) : clip(report.detail, 16_000)),
               };
             } catch (error) {
@@ -1578,7 +1575,7 @@ export function pack(options: PackOptions): Pack {
         return done;
       };
 
-      const merge = (sub: Sub, threeWay = false, expected?: string): Promise<string> => {
+      const merge = (sub: Sub, threeWay = false, expected?: string, checked = false): Promise<string> => {
         return withWorktree(async () => {
           if (sub.checking) throw new PackActionError('checking');
           if (sub.status === 'running')
@@ -1590,6 +1587,7 @@ export function pack(options: PackOptions): Pack {
           const tree = await snapshotTree(sub.dir);
           const checks = sub.checks;
           await updateRevision(sub, tree);
+          if (checked && (expected !== tree || !checkedForMerge(checks))) throw new PackActionError('stale');
           if (sub.inspected || checks?.review || checks?.verify || expected) {
             if (
               expected
@@ -1599,8 +1597,7 @@ export function pack(options: PackOptions): Pack {
             )
               throw new PackActionError('stale');
           }
-          // The worktree goes once merged: nothing is applied unless the patch covers all it holds
-          // (a commit, or a staged file the working copy no longer has, would go with it).
+          // Only report a complete merge if the patch carries the worktree and index changes.
           if (!(await patchCoversWorktree(sub.dir, sub.start, tree)))
             throw new PackActionError(
               'changed',
@@ -1621,16 +1618,16 @@ export function pack(options: PackOptions): Pack {
                     'Call merge again with threeWay: true to merge what fits and get conflict markers in the rest, or apply the diff by hand.',
                 );
               sub.state = 'merged';
-              await drop(sub);
+              retain(sub);
               events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
-              events.push({ type: 'file-change', paths: leadPaths });
+              events.push({ type: 'file-change', paths: leadPaths, mergedTask: sub.id });
               return `Merged ${sub.id} with conflicts. Resolve the conflict markers in:\n${clip(applied.error)}`;
             }
           }
           sub.state = 'merged';
-          await drop(sub);
+          retain(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
-          if (paths.length) events.push({ type: 'file-change', paths: leadPaths });
+          if (paths.length) events.push({ type: 'file-change', paths: leadPaths, mergedTask: sub.id });
           return paths.length ? `Merged ${sub.id}:\n${(sub.changes ?? []).join('\n')}` : `${sub.id} changed nothing.`;
         });
       };
@@ -1684,6 +1681,22 @@ export function pack(options: PackOptions): Pack {
             sub.inspected = undefined;
             sub.unwatch?.();
             sub.unwatch = undefined;
+            if (sub.checks) sub.checks = { reviewer: sub.checks.reviewer, command: sub.checks.command };
+            sub.changes = undefined;
+            sub.fileStats = undefined;
+            sub.stagedOnly = undefined;
+            if (sub.reply) sub.reply.open = false;
+            const newToTurn = !mine.has(sub);
+            mine.add(sub);
+            if (newToTurn)
+              events.push({
+                type: 'subtask-start',
+                id: sub.id,
+                agent: sub.agent.name,
+                prompt: sub.prompt,
+                cwd: sub.cwd,
+                mode: sub.mode,
+              });
             launchWorker(sub, text, roster, sub.sessionId);
             notify(sub);
             return `Continued ${sub.id} in its existing session. Call wait to follow it.`;
@@ -1734,8 +1747,19 @@ export function pack(options: PackOptions): Pack {
         return `Stopped ${sub.id}.`;
       };
 
-      const diff = (sub: Sub, expected?: string) =>
+      const diff = (sub: Sub, expected?: string, file?: string) =>
         withWorktree(async () => {
+          if (file) {
+            const root = sub.dir ?? sub.recoveryDir;
+            if (!root || !sub.start) throw new PackActionError(worktreeReason(sub));
+            const revision = sub.dir ? await snapshotTree(root) : sub.checks?.revision;
+            if (sub.dir) await updateRevision(sub, revision);
+            if (!revision || (expected && revision !== expected)) throw new PackActionError('stale');
+            return (
+              clip((await worktreeDiff(root, sub.start, revision, file)).toString('utf8'), MAX_DIFF) ||
+              'No working-copy patch for this file.'
+            );
+          }
           if (!sub.dir || !sub.start)
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           const tree = await snapshotTree(sub.dir);
@@ -1744,7 +1768,8 @@ export function pack(options: PackOptions): Pack {
           // up, also when the diff asked for is stale (the detail then reads the newer one); work only
           // the index still holds stays listed.
           const listed = await listChanges(sub, tree);
-          setChanges(sub, listed);
+          sub.changes = listed;
+          notify(sub);
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
@@ -1752,22 +1777,17 @@ export function pack(options: PackOptions): Pack {
           // Work only the index holds is in no patch: say where it is, and what Discard would do to it.
           if (!listed && !text)
             return "No changes in the working copy. Whether its index holds staged work could not be checked: don't discard it before looking.";
-          const staged = (listed ?? []).length && !text ? listed! : [];
-          if (staged.length)
-            return `No changes in the working copy. Staged in the worktree's index only: ${staged
-              .map((line) => line.split('\t').slice(1).join('\t'))
-              .join(
-                ', ',
-              )}. Discarding the worktree removes them; Merge locally refuses until they are restored or unstaged.`;
+          if (sub.stagedOnly?.length) {
+            const paths = sub.stagedOnly.map((line) => line.slice(line.indexOf('\t') + 1));
+            return (
+              (text ? clip(text, MAX_DIFF) + '\n\n' : 'No changes in the working copy. ') +
+              "Staged in the worktree's index only: " +
+              paths.join(', ') +
+              '. Merge locally refuses until these versions are restored or unstaged.'
+            );
+          }
           return clip(text, MAX_DIFF) || 'No changes.';
         });
-
-      // Undefined says the files could not be listed: the panel shows that, and the next look reads again.
-      const setChanges = (sub: Sub, changes: string[] | undefined) => {
-        if (sub.changes?.join('\n') === changes?.join('\n') && !!sub.changes === !!changes) return;
-        sub.changes = changes;
-        notify(sub);
-      };
 
       const discard = (sub: Sub, empty?: boolean) =>
         withWorktree(async () => {
@@ -1793,11 +1813,12 @@ export function pack(options: PackOptions): Pack {
           const tree = empty && sub.dir && sub.start ? await snapshotTree(sub.dir) : undefined;
           if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
             await updateRevision(sub, tree);
-            setChanges(sub, await listChanges(sub, tree));
+            sub.changes = await listChanges(sub, tree);
+            notify(sub);
             throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
           }
           sub.state = 'discarded';
-          await drop(sub);
+          retain(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
           return `Discarded ${sub.id}.`;
         });
@@ -1960,7 +1981,7 @@ export function pack(options: PackOptions): Pack {
         {
           name: 'merge',
           description:
-            "Apply a finished worktree task's changes to your directory and remove its worktree. All or nothing, unless threeWay is true: then what fits is merged and the rest gets conflict markers for you to resolve.",
+            "Apply a finished worktree task's changes to your directory and keep its worktree for recovery. All or nothing, unless threeWay is true: then what fits is merged and the rest gets conflict markers for you to resolve.",
           inputSchema: {
             type: 'object',
             properties: {
@@ -1985,7 +2006,7 @@ export function pack(options: PackOptions): Pack {
         {
           name: 'discard',
           description:
-            "Drop a finished worktree task's changes and remove its worktree, or dismiss a finished shared task from the task list.",
+            'Discard a finished worktree task and keep its worktree for recovery, or dismiss a finished shared task from the task list.',
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
           call: (args) => {
             if (effectiveMode === 'plan') throw new Error('Cannot discard changes while in Plan mode.');
@@ -2042,6 +2063,8 @@ export function pack(options: PackOptions): Pack {
             }
           }
           own = done ?? (await run.result);
+          const sessionId = own.sessionId ?? task.resume;
+          if (sessionId && prompts.size) reportedPrompts.set(sessionId, prompts);
           if (own.usage) leadUsage = own.usage;
           if (own.costUsd !== undefined) leadCost = own.costUsd;
           // A lead that reports usage only at the end can still take the pack over its budget.
@@ -2109,14 +2132,33 @@ export function pack(options: PackOptions): Pack {
               case 'stop':
                 return stop(sub, 'user');
               case 'diff':
-                return diff(sub, action.revision);
+                return diff(sub, action.revision, action.path);
               case 'review':
               case 'verify':
                 return check(sub, action.type, context);
               case 'merge':
-                return merge(sub, false, action.revision);
+                return merge(sub, false, action.revision, action.checked);
               case 'discard':
                 return discard(sub, action.empty);
+              case 'restore':
+                return withWorktree(async () => {
+                  if (
+                    sub.closing ||
+                    sub.state !== 'discarded' ||
+                    !sub.recoveryDir ||
+                    (await repoRoot(sub.recoveryDir)) !== sub.recoveryDir
+                  )
+                    throw new PackActionError('unavailable');
+                  sub.dir = sub.recoveryDir;
+                  sub.recoveryDir = undefined;
+                  sub.state = 'unmerged';
+                  const revision = await snapshotTree(sub.dir).catch(() => undefined);
+                  if (sub.checks) sub.checks.revision = revision;
+                  sub.changes = revision ? await listChanges(sub, revision) : undefined;
+                  observe(sub);
+                  notify(sub);
+                  return `Restored ${sub.id}.`;
+                });
             }
           },
         },

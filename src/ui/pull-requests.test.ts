@@ -32,7 +32,7 @@ function tools(view: string, branch?: string, commit = HEAD, status = '') {
 describe('pullRequestLookup', () => {
   it('reads the state gh reports, and asks once while the answer is fresh', async () => {
     const run = tools('{"state":"MERGED","headRefName":"work-panel"}\n');
-    const lookup = pullRequestLookup({ run });
+    const lookup = pullRequestLookup({ run, matchesCommit: async () => true });
     expect(await lookup(URL)).toEqual({ state: 'merged', ours: false });
     expect(await lookup(URL)).toEqual({ state: 'merged', ours: false });
     expect(run).toHaveBeenCalledTimes(1);
@@ -47,7 +47,10 @@ describe('pullRequestLookup', () => {
   it("is the task's own only when its worktree is the pull request's head branch at its head commit", async () => {
     const view = `{"state":"OPEN","headRefName":"work-panel","headRefOid":"${HEAD}"}`;
     const run = tools(view, 'work-panel');
-    expect(await pullRequestLookup({ run })(URL, WORKTREE)).toEqual({ state: 'open', ours: true });
+    expect(await pullRequestLookup({ run, matchesCommit: async () => true })(URL, WORKTREE)).toEqual({
+      state: 'open',
+      ours: true,
+    });
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'symbolic-ref', '--short', '-q', 'HEAD']);
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'rev-parse', 'HEAD']);
     expect(run).toHaveBeenCalledWith('git', [
@@ -95,7 +98,7 @@ describe('pullRequestLookup', () => {
       if (args[2] === 'status') return status;
       return 'work-panel\n';
     });
-    const lookup = pullRequestLookup({ run });
+    const lookup = pullRequestLookup({ run, matchesCommit: async () => true });
     expect(await lookup(URL, WORKTREE)).toEqual({ state: 'merged', ours: true });
     status = ' M src/app.ts\n';
     // Within the reuse window the answer stands, unless asked fresh.

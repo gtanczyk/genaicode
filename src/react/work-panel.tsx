@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { checkedForMerge } from '../agents/pack-verdict.js';
 import type { PackAction, PackSteer, PackStep } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalDecision, ApprovalRequest, Artifact } from '../agents/types.js';
@@ -26,6 +27,8 @@ import { installResizeHandle } from './resize-handle.js';
 import { WorkLive } from './work-live.js';
 import {
   askSubject,
+  approvalCommand,
+  type ConfirmedCommand,
   changedNothing,
   MERGE_LOCALLY_HELP,
   mergesLocally,
@@ -103,7 +106,7 @@ export interface WorkPanelProps {
    */
   onPackAction?: WorkActionHandler;
   /** Answer an approval a task waits for. Without it the request shows with no buttons. */
-  onApprove?(id: string, decision: ApprovalDecision): void;
+  onApprove?(id: string, decision: ApprovalDecision, confirmed?: ConfirmedCommand): void;
   /** Approve this and every later request of the session. Shown beside Approve when `onApprove` is set. */
   onAutoApprove?(): void;
   /**
@@ -240,7 +243,8 @@ export function WorkPanel(props: WorkPanelProps) {
   // The detail was opened from a row here (not from the chat): its back button takes the focus.
   const fromRow = useRef(false);
   // The detail was opened from a file of Changes: back goes there.
-  const fromChanges = useRef(false);
+  const fromChanges = useRef<string>(undefined);
+  if (fromChanges.current !== view.task) fromChanges.current = undefined;
   // What gets the focus back when the viewer closes: the row it was opened from.
   const viewerFrom = useRef<string>(undefined);
   const pane = useRef<HTMLDivElement>(null);
@@ -264,7 +268,7 @@ export function WorkPanel(props: WorkPanelProps) {
   /** A tab shows its own top level: the open task belongs to the tab it was opened from. */
   const select = (next: WorkTab) => {
     if (next === tab && !viewing && !view.task) return;
-    fromChanges.current = false;
+    fromChanges.current = undefined;
     onView({ ...view, tab: next, task: undefined, viewing: undefined });
   };
   const tabs = useRef<HTMLDivElement>(null);
@@ -315,7 +319,7 @@ export function WorkPanel(props: WorkPanelProps) {
         onBack={() => {
           fromRow.current = false;
           if (fromChanges.current) {
-            fromChanges.current = false;
+            fromChanges.current = undefined;
             onView({ ...view, tab: 'changes', task: undefined });
             return;
           }
@@ -421,7 +425,7 @@ export function WorkPanel(props: WorkPanelProps) {
               openFile ? (path) => openFile({ kind: 'file', path, from: 'changes' }, `file:${path}`) : undefined
             }
             onOpenTask={(key) => {
-              fromChanges.current = true;
+              fromChanges.current = key;
               fromRow.current = true;
               onView({ ...view, tab: 'tasks', task: key });
             }}
@@ -460,6 +464,7 @@ export function WorkPanel(props: WorkPanelProps) {
             now={now}
             view={view}
             onView={onView}
+            act={act}
             focus={back}
             onApprove={approve}
             onOpen={(key) => {
@@ -626,6 +631,11 @@ function ChangesList({
                   <ChangeLetter kind={row.kind} />
                   <code title={row.from ? `${row.from} → ${row.path}` : row.path}>{row.path}</code>
                   <span className="gc-work-delta">
+                    {row.added !== undefined && (
+                      <span>
+                        +{row.added} −{row.removed}{' '}
+                      </span>
+                    )}
                     <span className="gc-work-id">{row.id}</span>{' '}
                     <span data-state={row.state}>{TASK_CHANGE_STATE[row.state]}</span>
                   </span>
@@ -725,12 +735,140 @@ function ArtifactsList({
   );
 }
 
+type BulkTarget =
+  | { kind: 'approve'; key: string; id: string; label: string; turn: number; task: string }
+  | { kind: 'merge'; key: string; id: string; turn: number; revision: string; label: string };
+
+function BulkAction({
+  group,
+  tasks,
+  onApprove,
+  act,
+}: {
+  group: 'ask' | 'unmerged';
+  tasks: WorkTask[];
+  onApprove?: WorkPanelProps['onApprove'];
+  act?: WorkActionHandler;
+}) {
+  const targets = tasks.flatMap((item): BulkTarget[] => {
+    if (!item.interactive) return [];
+    if (group === 'ask' && onApprove)
+      return item.asks
+        .filter((request) => request.kind === 'command' && request.scope !== 'turn')
+        .flatMap((request): BulkTarget[] => {
+          const label = approvalCommand(request);
+          return label
+            ? [{ kind: 'approve', key: item.key, id: request.id, turn: item.turnId, task: item.task.id, label }]
+            : [];
+        });
+    const { task } = item;
+    if (
+      group === 'unmerged' &&
+      act &&
+      task.status === 'completed' &&
+      mergesLocally(task, item.pullRequest) &&
+      checkedForMerge(task.checks)
+    )
+      return [
+        {
+          kind: 'merge',
+          key: item.key,
+          turn: item.turnId,
+          id: task.id,
+          revision: task.checks!.revision!,
+          label: packTaskTitle(task),
+        },
+      ];
+    return [];
+  });
+  const [confirmed, setConfirmed] = useState<BulkTarget[]>();
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const latest = useRef(targets);
+  useLayoutEffect(() => {
+    latest.current = targets;
+    return () => {
+      latest.current = [];
+    };
+  }, [targets]);
+  const label = group === 'ask' ? 'Approve all' : 'Merge all';
+  const apply = async () => {
+    if (busy || !confirmed) return;
+    setBusy(true);
+    try {
+      for (const target of confirmed) {
+        if (
+          !latest.current.some(
+            (now) =>
+              now.kind === target.kind &&
+              now.id === target.id &&
+              now.key === target.key &&
+              now.label === target.label &&
+              (now.kind !== 'merge' || (target.kind === 'merge' && now.revision === target.revision)),
+          )
+        )
+          continue;
+        if (target.kind === 'approve') {
+          const approved: unknown = await onApprove?.(target.id, 'approve', {
+            turn: target.turn,
+            task: target.task,
+            command: target.label,
+          });
+          if (approved === false) throw new Error('That approval is no longer available.');
+        } else await act?.(target.turn, target.id, { type: 'merge', revision: target.revision, checked: true });
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The group action failed.');
+    } finally {
+      setBusy(false);
+      setConfirmed(undefined);
+    }
+  };
+  if (confirmed)
+    return (
+      <fieldset className="gc-work-bulk-confirm" disabled={busy || (!act && !onApprove)} aria-label={label}>
+        {confirmed.map((target) => (
+          <pre key={target.key + ':' + target.id}>
+            {target.key}
+            {'\n'}
+            {target.label}
+            {target.kind === 'merge' ? '\n' + target.revision : ''}
+          </pre>
+        ))}
+        <button type="button" className="gc-work-btn" onClick={() => setConfirmed(undefined)}>
+          Cancel
+        </button>
+        <button type="button" className="gc-work-btn" onClick={() => void apply()}>
+          Confirm {label.toLowerCase()}
+        </button>
+      </fieldset>
+    );
+  return (
+    <>
+      {error && <span role="alert">{error}</span>}
+      {targets.length > 1 && (
+        <button
+          type="button"
+          className="gc-work-btn gc-work-xs"
+          onClick={() => {
+            setError(undefined);
+            setConfirmed(targets);
+          }}
+        >
+          {label}
+        </button>
+      )}
+    </>
+  );
+}
+
 function TaskList({
   tasks,
   now,
   view,
   onView,
   focus,
+  act,
   onApprove,
   onOpen,
 }: {
@@ -740,6 +878,7 @@ function TaskList({
   onView(view: WorkPanelView): void;
   /** The row to focus once, after its detail closed. */
   focus: { current: string | undefined };
+  act?: WorkActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onOpen(key: string): void;
 }) {
@@ -784,7 +923,7 @@ function TaskList({
     settle();
   };
   /** Lets go of one row only: the pointer may be on another row, which stays where it is. */
-  const release = (key: string) => {
+  const releaseRow = (key: string) => {
     for (const how of ['hover', 'focus'] as const) if (over.current[how]?.key === key) over.current[how] = undefined;
     settle();
   };
@@ -832,7 +971,7 @@ function TaskList({
     const chip = scroller.current?.parentElement?.querySelector<HTMLElement>('.gc-work-chip[aria-pressed="true"]');
     const first = scroller.current?.querySelector<HTMLButtonElement>('.gc-work-group-head button:enabled');
     (head && !head.disabled ? head : (chip ?? first))?.focus({ preventScroll: true });
-  });
+  }, [view.dismissed]);
   /** Clears one row from its × (`button`): the next row takes the keyboard, or the one before. */
   const clearRow = (item: WorkTask, button: HTMLElement, section: string) => {
     const box = button.closest('.gc-work-task');
@@ -842,7 +981,7 @@ function TaskList({
     const row = beside?.querySelector<HTMLElement>('.gc-work-row');
     if (row) row.focus({ preventScroll: true });
     else if (box?.contains(document.activeElement)) refocus.current = section;
-    release(item.key);
+    releaseRow(item.key);
     clear([item]);
   };
   // The first of the rows Show N more added takes the focus its button had.
@@ -855,7 +994,7 @@ function TaskList({
       `[data-section="${CSS.escape(target.key)}"] .gc-work-row`,
     );
     rows?.[target.index]?.focus();
-  });
+  }, [view.more]);
   if (!tasks.length) {
     return (
       <div className="gc-work-scroll">
@@ -968,6 +1107,9 @@ function TaskList({
                 </button>
                 {section.folded && list.dense ? <span className="gc-work-summary">{section.summary}</span> : null}
                 <span className="gc-work-grow" />
+                {!section.folded && (group === 'ask' || group === 'unmerged') ? (
+                  <BulkAction group={group} tasks={all} onApprove={onApprove} act={act} />
+                ) : null}
                 {clearable.length ? (
                   <button
                     type="button"
@@ -1322,7 +1464,8 @@ function TaskDetail({
   const [discardAs, setDiscardAs] = useState<{ pullRequest: boolean; empty: boolean }>();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [diff, setDiff] = useState<{ text: string; revision?: string }>();
+  const [fileDiff, setFileDiff] = useState<{ path: string; text: string; revision?: string }>();
+  const [diff, setDiff] = useState<{ text: string; revision?: string; listing: string }>();
   // A merge refused because the worktree moved on from this revision: the diff reloads once the
   // newer revision is known, and the next merge takes another click. Until that diff is on screen the
   // refused revision stays the inspected one and Merge locally stays off, also after leaving the task.
@@ -1348,7 +1491,8 @@ function TaskDetail({
   const empty = changedNothing(task);
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
-  const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
+  const listing = JSON.stringify([task.changes, task.stagedOnly]);
+  const visibleDiff = diff && diff.listing === listing && diff.revision === checks?.revision ? diff.text : undefined;
   /** `composer`: the composer's text this action sends, cleared once sent (Send again leaves a draft alone). */
   const perform = async (action: PackAction, intent?: { pullRequest?: true }, composer?: string) => {
     if (!act || busy) return;
@@ -1357,11 +1501,15 @@ function TaskDetail({
     try {
       const text = await (intent ? act(item.turnId, task.id, action, intent) : act(item.turnId, task.id, action));
       if (action.type === 'diff') {
+        if (action.path) {
+          setFileDiff({ path: action.path, text, revision: action.revision });
+          return;
+        }
         if (action.revision) {
           // Marked inspected once it is on screen (below): a reply after the detail closed shows nothing.
           setStale(undefined);
           setReloadFailed(false);
-          setDiff({ text, revision: action.revision });
+          setDiff({ text, revision: action.revision, listing });
         } else {
           // The revision was not known: the server worked it out and reports it with the task. Read
           // the diff again for that revision, so what shows is what Merge locally then sends.
@@ -1382,7 +1530,7 @@ function TaskDetail({
         setDiff(undefined);
         setStale(action.revision);
         setReloadFailed(false);
-      } else if (action.type === 'diff' && action.revision && refusedStale && !stale) {
+      } else if (action.type === 'diff' && !action.path && action.revision && refusedStale && !stale) {
         // The worktree moved on before its diff was read: read it again once the newer revision is known.
         setFeedback(undefined);
         setReread(action.revision);
@@ -1606,6 +1754,29 @@ function TaskDetail({
                       ) : (
                         <code>{rest.join(' → ') || line}</code>
                       )}
+                      {path && task.fileStats?.[path] && (
+                        <span>
+                          +{task.fileStats[path]!.added} −{task.fileStats[path]!.removed}
+                        </span>
+                      )}
+                      {act && path && (worktree || task.recoveryDir) && (
+                        <button
+                          type="button"
+                          className="gc-work-btn gc-work-xs"
+                          aria-label={`Diff for ${path}`}
+                          disabled={busy}
+                          onClick={() =>
+                            fileDiff?.path === path && fileDiff.revision === checks?.revision
+                              ? setFileDiff(undefined)
+                              : void perform({ type: 'diff', revision: checks?.revision, path })
+                          }
+                        >
+                          Diff
+                        </button>
+                      )}
+                      {fileDiff && fileDiff.path === path && fileDiff.revision === checks?.revision && (
+                        <Diff text={fileDiff.text} />
+                      )}
                     </li>
                   );
                 })}
@@ -1687,12 +1858,29 @@ function TaskDetail({
           </>
         ) : null}
 
+        {task.recoveryDir ? (
+          <p className="gc-work-note">
+            Worktree kept at <code>{task.recoveryDir}</code>{' '}
+            {act && task.state === 'discarded' ? (
+              <button
+                type="button"
+                className="gc-work-btn gc-work-sm"
+                disabled={busy}
+                onClick={() => void perform({ type: 'restore' })}
+              >
+                Undo discard
+              </button>
+            ) : null}
+          </p>
+        ) : null}
         {act && worktree ? (
           <fieldset className="gc-work-merge" disabled={busy} aria-label={`Changes of ${task.id}`}>
             {confirm === 'discard' ? (
               <>
                 <b>Discard this worktree and its changes?</b>
-                <p className="gc-work-note">Its folder is deleted, files Git ignores (logs, build output) included.</p>
+                <p className="gc-work-note">
+                  You can undo this discard. The folder keeps its files, including staged and ignored work.
+                </p>
                 <div className="gc-work-acts">
                   <button type="button" className="gc-work-btn gc-work-sm" onClick={() => setConfirm(undefined)}>
                     Cancel

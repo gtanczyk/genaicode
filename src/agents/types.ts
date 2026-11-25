@@ -265,7 +265,7 @@ export type AgentEvent =
    * `diff`: what changed, as a unified patch, when the agent says. `toolId`: the tool call making the
    * change, when it is announced as the call starts: the change did not happen if that call fails.
    */
-  | { type: 'file-change'; paths: string[]; diff?: string; toolId?: string }
+  | { type: 'file-change'; paths: string[]; mergedTask?: string; diff?: string; toolId?: string }
   | { type: 'approval-request'; request: ApprovalRequest }
   /** `automatic`: decided by `permissions.approval`, without asking anyone. */
   | {

@@ -7,6 +7,9 @@ describe('redactSecrets', () => {
     ['curl -H "Authorization: Basic dXNlcjpwYXNz" https://x', 'curl -H "Authorization: ***" https://x'],
     ["curl -H 'X-Api-Key: zzzz1234' https://x", "curl -H 'X-Api-Key: ***' https://x"],
     ['echo Bearer abcdefghijkl', 'echo Bearer ***'],
+    ["curl -b 'sid=abc; next=def'", 'curl -b ***'],
+    ['curl --cookie="sid=abc; uid=2"', 'curl --cookie=***'],
+    ['curl -uadmin:hunter2 https://x', 'curl -uadmin:*** https://x'],
     ['curl -u admin:hunter2 https://x', 'curl -u admin:*** https://x'],
     ["curl -H 'Cookie: theme=dark; sessionid=example-session' https://x", "curl -H 'Cookie: ***' https://x"],
     ['curl -H "Set-Cookie: a=1; sid=abc; Path=/" https://x', 'curl -H "Set-Cookie: ***" https://x'],
@@ -35,6 +38,7 @@ describe('redactSecrets', () => {
   it.each([
     'mkdir -p src/a && npm test -- cart',
     'docker run -p 8080:80 img',
+    'git checkout -b new-feature',
     'grep -rn monkey=1 src/',
     'src/agents/pack.ts',
     'git commit -m "risk-assessment notes"',

@@ -513,8 +513,10 @@ describe('rich content in genaicode ui (browser)', () => {
       const workButton = page.locator('.work-toggle');
       await workButton.waitFor();
       const work = page.getByRole('complementary', { name: 'Work panel' });
-      // An artifact does not open the panel by itself.
-      expect(await work.count()).toBe(0);
+      // Publishing the first artifact opens the docked panel. Close it, then follow the chat link.
+      await work.waitFor();
+      await work.getByRole('button', { name: 'Close work panel' }).click();
+      await work.waitFor({ state: 'detached' });
       await page.locator('.gc-artifact button', { hasText: 'Open' }).first().click();
       // The viewer is a drill-in of the work panel, with Close as the way back to the chat.
       const panel = work.locator('.viewer-panel');

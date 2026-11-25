@@ -273,7 +273,7 @@ export interface ChatController {
    * received from the same window changes nothing and resolves `'superseded'`, however late it
    * arrives; so does one that another request overtook while it waited.
    */
-  switchChat(target: ChatSwitch, order?: SwitchOrder): Promise<SwitchResult>;
+  switchChat(target: ChatSwitch, order?: SwitchOrder, generation?: number): Promise<SwitchResult>;
   /** Move the active conversation into `target.cwd` (used by `open_project` after user confirmation). */
   moveProject(target: { cwd: string; topic?: { id: string; name: string } }): boolean;
   close(): void;
@@ -339,6 +339,17 @@ export function createChatController(options: ChatOptions): ChatController {
   let autoApprove = options.approveAll === true;
   let notices: Notice[] = [];
   let conversationEpoch = 0;
+  let transcriptEpoch = 0;
+  let switchChain: { window: string; first: number } | undefined;
+  const advanceConversation = (window?: string, keepTranscript = false) => {
+    switchChain = window
+      ? switchChain?.window === window
+        ? switchChain
+        : { window, first: conversationEpoch }
+      : undefined;
+    conversationEpoch += 1;
+    if (!keepTranscript) transcriptEpoch = conversationEpoch;
+  };
   let contextEpoch = 0;
   const relayNotices = new Map<number, number>();
   const relayEpochs = new Map<number, { conversation: number; context: number }>();
@@ -658,14 +669,14 @@ export function createChatController(options: ChatOptions): ChatController {
     );
   };
 
-  const openHome = (): SwitchResult => {
+  const openHome = (window?: string): SwitchResult => {
     switchSeq += 1;
     batching++;
     let ok = false;
     try {
       ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
       if (ok) {
-        conversationEpoch += 1;
+        advanceConversation(window);
         autoApprove = options.approveAll === true;
         contextEpoch += 1;
         relayNotices.clear();
@@ -707,7 +718,7 @@ export function createChatController(options: ChatOptions): ChatController {
     return true;
   };
 
-  const openTopic = async (topicId: string): Promise<SwitchResult> => {
+  const openTopic = async (topicId: string, window?: string): Promise<SwitchResult> => {
     if (!homeMode) return 'refused';
     if (session.get().status === 'running') {
       notice('Stop the running turn before starting another chat.', 'error');
@@ -736,7 +747,7 @@ export function createChatController(options: ChatOptions): ChatController {
       try {
         ok = session.clear({ cwd: resolved.cwd });
         if (ok) {
-          conversationEpoch += 1;
+          advanceConversation(window);
           autoApprove = options.approveAll === true;
           contextEpoch += 1;
           relayNotices.clear();
@@ -796,9 +807,13 @@ export function createChatController(options: ChatOptions): ChatController {
     );
   };
 
-  const openProject = async (requested: string, start: { chosen?: boolean } = {}): Promise<SwitchResult> => {
+  const openProject = async (
+    requested: string,
+    start: { chosen?: boolean } = {},
+    window?: string,
+  ): Promise<SwitchResult> => {
     if (!homeMode) return 'refused';
-    if (isSameDir(requested, homeDir)) return openHome();
+    if (isSameDir(requested, homeDir)) return openHome(window);
     const mine = ++switchSeq;
     // The real path: what a symlink names is checked, and is where the chat then runs.
     let cwd: string | undefined;
@@ -837,7 +852,7 @@ export function createChatController(options: ChatOptions): ChatController {
     try {
       ok = session.clear({ cwd });
       if (ok) {
-        conversationEpoch += 1;
+        advanceConversation(window);
         autoApprove = options.approveAll === true;
         contextEpoch += 1;
         relayNotices.clear();
@@ -866,6 +881,7 @@ export function createChatController(options: ChatOptions): ChatController {
   const openSession = async (
     id: string,
     from: { source?: string; keepOpen?: boolean; replace?: boolean } = {},
+    window?: string,
   ): Promise<SwitchResult> => {
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
     const stores = from.source ? sources.filter((source) => source.name === from.source) : sources;
@@ -926,9 +942,9 @@ export function createChatController(options: ChatOptions): ChatController {
           if (ok) {
             // Keep visible live relay cards updating in a retained transcript, but suppress context delivery.
             contextEpoch += 1;
+            advanceConversation(window, !from.replace);
             if (from.replace) {
               // Another chat, not more of this one: nothing of the chat that is left stays on screen.
-              conversationEpoch += 1;
               autoApprove = options.approveAll === true;
               relayNotices.clear();
               notices = [];
@@ -995,7 +1011,7 @@ export function createChatController(options: ChatOptions): ChatController {
           replace: true,
         });
         if (ok) {
-          conversationEpoch += 1;
+          advanceConversation(window);
           autoApprove = options.approveAll === true;
           contextEpoch += 1;
           relayNotices.clear();
@@ -1044,7 +1060,17 @@ export function createChatController(options: ChatOptions): ChatController {
   const lastOrder = new Map<string, number>();
   const MAX_WINDOWS = 256;
 
-  const switchChat = async (target: ChatSwitch, order?: SwitchOrder): Promise<SwitchResult> => {
+  // Rapid choices in one window may all have been made from the same view. Let the latest
+  // supersede its own earlier switches, but never a switch committed by another window.
+  const switchChat = async (target: ChatSwitch, order?: SwitchOrder, generation?: number): Promise<SwitchResult> => {
+    const before = conversationEpoch;
+    const chain = order && switchChain?.window === order.window ? switchChain : undefined;
+    if (
+      generation !== undefined &&
+      generation !== before &&
+      !(chain && generation >= chain.first && generation < before)
+    )
+      return 'superseded';
     // Decided on arrival, before anything waits or changes: a request the window made before one
     // that is already here must neither open its chat nor take the window from the later one.
     if (order) {
@@ -1055,18 +1081,22 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     switch (target.type) {
       case 'home':
-        return openHome();
+        return openHome(order?.window);
       case 'project':
-        return openProject(target.cwd, target.chosen ? { chosen: true } : {});
+        return openProject(target.cwd, target.chosen ? { chosen: true } : {}, order?.window);
       case 'topic':
-        return openTopic(target.topic);
+        return openTopic(target.topic, order?.window);
       case 'continue':
-        return openSession(target.id, {
-          ...(target.source ? { source: target.source } : {}),
-          // A takeover of the open session reads it again, as `/continue` always did.
-          keepOpen: !!order && !target.takeover,
-          replace: !target.takeover,
-        });
+        return openSession(
+          target.id,
+          {
+            ...(target.source ? { source: target.source } : {}),
+            // A takeover of the open session reads it again, as `/continue` always did.
+            keepOpen: !!order && !target.takeover,
+            replace: !target.takeover,
+          },
+          order?.window,
+        );
       case 'stay':
         // Whatever still waits to open a chat is dropped; the chat that is open stays.
         switchSeq += 1;
@@ -1097,9 +1127,9 @@ export function createChatController(options: ChatOptions): ChatController {
     if (closed) return;
     let epochs = relayEpochs.get(update.id);
     if (!epochs) {
-      epochs = { conversation: conversationEpoch, context: contextEpoch };
+      epochs = { conversation: transcriptEpoch, context: contextEpoch };
       relayEpochs.set(update.id, epochs);
-    } else if (epochs.conversation !== conversationEpoch) {
+    } else if (epochs.conversation !== transcriptEpoch) {
       return;
     }
     const reply =
@@ -1347,6 +1377,8 @@ export function createChatController(options: ChatOptions): ChatController {
           else notice('Use /read <session id>. /waiting shows the IDs.', 'error');
           return 'ok';
         case 'new':
+          switchSeq += 1;
+          advanceConversation(undefined, true);
           contextEpoch += 1;
           session.reset();
           notice('Next prompt starts a new agent session.');

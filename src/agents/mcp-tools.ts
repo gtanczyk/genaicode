@@ -426,7 +426,7 @@ function result(id: string | number | null, value: unknown) {
   return { jsonrpc: '2.0', id, result: value };
 }
 
-function rpcError(id: string | number | null, code: number, message: string, data?: unknown) {
+export function rpcError(id: string | number | null, code: number, message: string, data?: unknown) {
   return { jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } };
 }
 

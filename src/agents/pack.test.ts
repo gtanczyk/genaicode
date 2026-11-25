@@ -1,5 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  chmodSync,
+  renameSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -7,11 +9,13 @@ import {
   readdirSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { patchCoversWorktree, snapshotTree, worktreeMatchesCommit } from './pack-git.js';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
 import { personText } from './host-text.js';
@@ -481,11 +485,11 @@ describe('pack', () => {
     expect(seen).toEqual(['Merged t1:\nA\tb.txt', 'Discarded t2.']);
     expect(readFileSync(join(cwd, 'b.txt'), 'utf8')).toBe('from b\n');
     expect(existsSync(join(cwd, 'c.txt'))).toBe(false);
-    // Merging stages nothing, and the worktrees are gone.
+    // Merging stages nothing, and retained worktrees stay out of the working copy.
     expect(git(cwd, 'diff', '--cached', '--name-only')).toBe('');
     expect(git(cwd, 'status', '--porcelain').trim().split('\n').sort()).toEqual(['?? b.txt', '?? draft.txt']);
-    expect(readdirSync(join(cwd, '.genaicode', 'worktrees'))).toEqual(['.gitignore']);
-    expect(git(cwd, 'worktree', 'list').trim().split('\n')).toHaveLength(1);
+    expect(readFileSync(join(team.tasks()[1]!.recoveryDir!, 'c.txt'), 'utf8')).toBe('from c\n');
+    expect(git(cwd, 'worktree', 'list').trim().split('\n')).toHaveLength(3);
 
     const kinds = events.map((event) =>
       event.type === 'subtask' ? `subtask:${event.id}:${event.event.type}` : event.type,
@@ -495,7 +499,7 @@ describe('pack', () => {
     expect(kinds).toContain('subtask:t2:done');
     expect(events).toContainEqual({ type: 'subtask-update', id: 't1', agent: 'b', state: 'merged', paths: ['b.txt'] });
     expect(events).toContainEqual({ type: 'subtask-update', id: 't2', agent: 'c', state: 'discarded' });
-    expect(events).toContainEqual({ type: 'file-change', paths: ['b.txt'] });
+    expect(events).toContainEqual({ type: 'file-change', paths: ['b.txt'], mergedTask: 't1' });
     expect(events.at(-1)).toMatchObject({ type: 'done' });
     expect(team.tasks().map((task) => task.state)).toEqual(['merged', 'discarded']);
   });
@@ -529,7 +533,7 @@ describe('pack', () => {
       const events = await collect(run);
       expect(await run.result).toMatchObject({ ok: true });
       expect(team.tasks()[0]).toMatchObject({ status: 'completed', state: 'merged' });
-      expect(events).toContainEqual({ type: 'file-change', paths: ['fixture.txt'] });
+      expect(events).toContainEqual({ type: 'file-change', paths: ['fixture.txt'], mergedTask: 't1' });
       expect(readFileSync(join(nested, 'fixture.txt'), 'utf8')).toBe('changed');
     } finally {
       await team.close();
@@ -1316,6 +1320,8 @@ describe('pack chat turns', () => {
       rmSync(join(task()!.cwd, 'other.txt'));
       expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
       expect(task()?.state).toBe('discarded');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'restore' })).toBe('Restored t1.');
+      expect(task()?.state).toBe('unmerged');
     } finally {
       session.close();
       await team.close();
@@ -1463,6 +1469,12 @@ describe('pack chat turns', () => {
       expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
       expect(task()?.state).toBe('unmerged');
       expect(execFileSync('git', ['show', ':notes.txt'], { cwd: dir, encoding: 'utf8' })).toBe('notes\n');
+      const patch = await session.actOnPackTask!(1, 't1', { type: 'diff' });
+      expect(patch).toContain('+four');
+      expect(patch).toContain("Staged in the worktree's index only: notes.txt.");
+      await session.actOnPackTask!(1, 't1', { type: 'discard' });
+      await session.actOnPackTask!(1, 't1', { type: 'restore' });
+      expect(git(dir, 'show', ':notes.txt')).toBe('notes\n');
       // Staging everything the working copy has makes the index match the snapshot: it merges.
       execFileSync('git', ['add', '-A'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
@@ -1508,6 +1520,67 @@ describe('pack chat turns', () => {
     }
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'compares filesystem case, mode and symlinks despite local Git settings',
+    async () => {
+      const cwd = repo();
+      symlinkSync('a.txt', join(cwd, 'link'));
+      git(cwd, 'add', 'link');
+      git(cwd, 'commit', '-qm', 'link');
+      const head = git(cwd, 'rev-parse', 'HEAD').trim();
+      const hidden = async () => {
+        const tree = await snapshotTree(cwd);
+        expect(await patchCoversWorktree(cwd, head, tree, { empty: true })).toBe(false);
+        expect(await worktreeMatchesCommit(cwd, head)).toBe(false);
+      };
+      git(cwd, 'config', 'core.ignoreCase', 'true');
+      renameSync(join(cwd, 'a.txt'), join(cwd, 'A.txt'));
+      await hidden();
+      renameSync(join(cwd, 'A.txt'), join(cwd, 'a.txt'));
+      git(cwd, 'config', 'core.fileMode', 'false');
+      chmodSync(join(cwd, 'a.txt'), 0o755);
+      await hidden();
+      chmodSync(join(cwd, 'a.txt'), 0o644);
+      git(cwd, 'config', 'core.symlinks', 'false');
+      rmSync(join(cwd, 'link'));
+      writeFileSync(join(cwd, 'link'), 'a.txt');
+      await hidden();
+    },
+  );
+
+  it('compares file contents when Git trusts an unchanged size and mtime', async () => {
+    const cwd = repo();
+    const path = join(cwd, 'a.txt');
+    const when = new Date('2024-01-01');
+    git(cwd, 'config', 'core.trustctime', 'false');
+    utimesSync(path, when, when);
+    git(cwd, 'update-index', '--refresh');
+    const head = git(cwd, 'rev-parse', 'HEAD').trim();
+    writeFileSync(path, readFileSync(path, 'utf8').replace('one', 'two'));
+    utimesSync(path, when, when);
+    expect(await worktreeMatchesCommit(cwd, head)).toBe(false);
+  });
+
+  it('finds a nested submodule edit even when the intermediate repository ignores it', async () => {
+    const cwd = repo();
+    const middle = repo();
+    const leaf = repo();
+    const file = ['-c', 'protocol.file.allow=always'];
+    git(middle, ...file, 'submodule', 'add', '-q', leaf, 'leaf');
+    git(middle, 'commit', '-qm', 'add leaf');
+    git(cwd, ...file, 'submodule', 'add', '-q', middle, 'middle');
+    git(cwd, 'commit', '-qm', 'add middle');
+    git(cwd, ...file, 'submodule', 'update', '-q', '--init', '--recursive');
+    const head = git(cwd, 'rev-parse', 'HEAD').trim();
+    expect(await worktreeMatchesCommit(cwd, head)).toBe(true);
+    const child = join(cwd, 'middle');
+    git(child, 'config', 'diff.ignoreSubmodules', 'all');
+    git(child, 'config', 'submodule.leaf.ignore', 'all');
+    writeFileSync(join(child, 'leaf', 'a.txt'), 'nested edit');
+    expect(await worktreeMatchesCommit(cwd, head)).toBe(false);
+    expect(await patchCoversWorktree(cwd, head, await snapshotTree(cwd), { empty: true })).toBe(false);
+  });
+
   it('keeps a worktree whose submodule holds an edit the patch cannot carry', async () => {
     const cwd = repo();
     const dep = repo();
@@ -1534,7 +1607,14 @@ describe('pack chat turns', () => {
       await session.idle();
       expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['M\ta.txt'] });
       const dir = task()!.cwd;
+      writeFileSync(join(dir, 'dep', 'notes.txt'), 'before init');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({ reason: 'changed' });
+      rmSync(join(dir, 'dep', 'notes.txt'));
       execFileSync('git', [...file, 'submodule', 'update', '-q', '--init'], { cwd: dir });
+      git(join(dir, 'dep'), 'config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(join(dir, 'dep', 'notes.txt'), 'untracked');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({ reason: 'changed' });
+      rmSync(join(dir, 'dep', 'notes.txt'));
       writeFileSync(join(dir, 'dep', 'a.txt'), 'edited in the submodule\n');
       // The parent's patch carries a.txt only: merging it would remove the worktree and the edit.
       await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
@@ -1928,6 +2008,59 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('continues a prior task in the new turn with a fresh prompt report and checks', async () => {
+    const cwd = repo();
+    const worker = fake(
+      'worker',
+      async (task) => {
+        writeFileSync(join(task.cwd, 'a.txt'), task.prompt);
+        return { sessionId: 'worker-id' };
+      },
+      { resume: true },
+    );
+    let round = 0;
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (round++ === 0) await tool(task, 'delegate', { agent: 'worker', prompt: 'original' });
+        else {
+          const [first] = JSON.parse(await tool(task, 'wait', { ids: ['t1'] }));
+          expect(first.prompt).toBe('original');
+          await tool(task, 'steer', { id: 't1', text: 'continued' });
+        }
+        await tool(task, 'wait', { ids: ['t1'] });
+      },
+      { mcp: true },
+    );
+    lead.runText = fake('review', async () => ({ text: 'VERDICT: LGTM' })).run;
+    const team = pack({
+      lead,
+      members: [worker],
+      verification: { label: 'test', run: async () => ({ ok: true, detail: 'passed' }) },
+    });
+    try {
+      const first = team.run({ prompt: 'work', cwd });
+      expect((await first.result).ok).toBe(true);
+      await first.pack!.act('t1', { type: 'verify' });
+      await first.pack!.act('t1', { type: 'review' });
+      expect(first.pack!.task('t1')?.checks?.verify?.status).toBe('completed');
+      const second = team.run({ prompt: 'continue', cwd });
+      const result = await second.result;
+      expect(result.ok, result.error).toBe(true);
+      const task = second.pack!.task('t1');
+      expect(task?.checks?.review).toBeUndefined();
+      expect(task?.checks?.verify).toBeUndefined();
+      expect(task?.fileStats?.['a.txt']).toEqual({ added: 1, removed: 3 });
+      const patch = await second.pack!.act('t1', { type: 'diff', path: 'a.txt' });
+      expect(patch).toContain('+continued');
+      await expect(
+        second.pack!.act('t1', { type: 'merge', checked: true, revision: task?.checks?.revision }),
+      ).rejects.toMatchObject({ reason: 'stale' });
+    } finally {
+      await team.close();
+    }
+  });
+
   it('continues a finished task via steer in the same session and worktree, and refuses non-resumable drivers', async () => {
     const cwd = repo();
     const seen: Array<{ prompt: string; resume?: string; cwd: string }> = [];
@@ -2274,8 +2407,9 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false
               },
           );
         const progress = messages.filter((m) => m.method === 'notifications/progress');
-        expect(progress.length).toBeGreaterThanOrEqual(1);
-        expect(progress[0]!.params).toMatchObject({ progressToken: 'wait-tok', total: 0.25 });
+        expect(progress.length).toBeGreaterThanOrEqual(2);
+        for (const [index, message] of progress.entries())
+          expect(message.params).toMatchObject({ progressToken: 'wait-tok', progress: index + 1 });
         const final = messages.find((m) => m.id === 2);
         expect(final?.result?.content[0].text).toContain('"status": "running"');
 

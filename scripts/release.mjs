@@ -16,12 +16,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHANGELOG = 'docs/CHANGELOG.md';
 // Paths that ship in the package: a change there must add a changelog line (tests excluded).
 const SHIPPED = ['src/'];
-const CATEGORIES = ['Breaking', 'Added', 'Fixed', 'Internal'];
-const UNRELEASED = 'Unreleased';
-
-const SECTION_RE = /^## (Unreleased|(\d+)\.(\d+)\.(\d+))(?:\s+[—-]\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
-const CATEGORY_RE = /^### (\w+)\s*$/;
-const ENTRY_RE = /^- (.+)$/;
+import { CATEGORIES, parse, titleErrors, UNRELEASED } from './changelog.mjs';
+export { parse } from './changelog.mjs';
 
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const write = (file, text) => fs.writeFileSync(path.join(ROOT, file), text);
@@ -31,68 +27,6 @@ export function shippedTouched(files) {
   return files.some(
     (file) => SHIPPED.some((prefix) => file.startsWith(prefix)) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file),
   );
-}
-
-export function parse(text) {
-  const lines = text.split('\n');
-  const sections = [];
-  const errors = [];
-  let section = null;
-  let category = null;
-  lines.forEach((line, index) => {
-    const at = index + 1;
-    const head = SECTION_RE.exec(line);
-    if (head) {
-      if (section) section.end = index;
-      section = {
-        version: head[1],
-        date: head[5] ?? null,
-        categories: Object.fromEntries(CATEGORIES.map((c) => [c, []])),
-        intro: [],
-        start: index,
-        end: lines.length,
-      };
-      sections.push(section);
-      category = null;
-      return;
-    }
-    if (line.startsWith('## '))
-      return void errors.push(`${at}: malformed section "${line}" (want "## Unreleased" or "## 1.2.3 — YYYY-MM-DD")`);
-    const cat = CATEGORY_RE.exec(line);
-    if (cat) {
-      if (!section) return void errors.push(`${at}: category before any "## " section`);
-      if (!CATEGORIES.includes(cat[1])) {
-        category = null;
-        return void errors.push(`${at}: unknown category "${cat[1]}" (want ${CATEGORIES.join(' | ')})`);
-      }
-      category = cat[1];
-      return;
-    }
-    const entry = ENTRY_RE.exec(line);
-    if (entry && section) {
-      if (!category) return void errors.push(`${at}: entry outside a "### Category" in ${section.version}`);
-      section.categories[category].push(entry[1].trim());
-      return;
-    }
-    if (/^\s+\S/.test(line) && section && category) {
-      const list = section.categories[category];
-      if (list.length) list[list.length - 1] += ` ${line.trim()}`;
-      return;
-    }
-    // Prose between a version's heading and its first category opens the release notes.
-    if (section && !category && (line.trim() || section.intro.length)) section.intro.push(line);
-  });
-  const unreleased = sections.filter((s) => s.version === UNRELEASED);
-  if (unreleased.length !== 1)
-    errors.push(unreleased.length ? 'more than one "## Unreleased" section' : 'missing "## Unreleased" section');
-  const seen = new Set();
-  for (const s of sections) {
-    if (s.version === UNRELEASED) continue;
-    if (seen.has(s.version)) errors.push(`version ${s.version} appears twice`);
-    seen.add(s.version);
-    if (!s.date) errors.push(`section ${s.version} has no date`);
-  }
-  return { sections, errors, lines };
 }
 
 const unreleased = (parsed) => parsed.sections.find((s) => s.version === UNRELEASED);
@@ -182,6 +116,7 @@ function taken() {
 
 function check(files, base) {
   const parsed = parse(read(CHANGELOG));
+  parsed.errors.push(...titleErrors(parsed));
   if (parsed.errors.length) {
     console.error(`${CHANGELOG} is malformed:\n${parsed.errors.map((e) => `  ${e}`).join('\n')}`);
     return 1;
@@ -203,7 +138,8 @@ function check(files, base) {
   }
   // A line this change added under Unreleased: compared with the base branch's changelog when given,
   // so editing old notes or the intro does not count.
-  const entries = (section) => (section ? CATEGORIES.flatMap((c) => section.categories[c]) : []);
+  const entries = (section) =>
+    section ? CATEGORIES.flatMap((c) => section.categories[c].map((raw) => raw.split('\n')[0])) : [];
   const before = new Set(base === null ? [] : entries(unreleased(parse(base))));
   const added = entries(unreleased(parsed)).filter((e) => !before.has(e));
   if (files.includes(CHANGELOG) && added.length) {
