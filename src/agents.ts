@@ -120,6 +120,7 @@ export type {
   PackControls,
   PackMember,
   PackOptions,
+  PackPullRequest,
   PackSteer,
   PackTask,
   PackTaskStatus,

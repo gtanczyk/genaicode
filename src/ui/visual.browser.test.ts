@@ -484,6 +484,10 @@ describe('the genaicode ui page looks as its baseline', () => {
   let project: string;
   let running: Promise<number> | undefined;
   let url: string | undefined;
+  /** Ends the turn that delegates, which otherwise stays at work. */
+  let release: (() => void) | undefined;
+  /** The tasks of that turn: one running, one with changes to merge and an agent to review them, one failed. */
+  const delegated = tasks.map((task) => (task.id === 't2' ? { ...task, checks: { reviewer: 'helper' } } : task));
 
   /**
    * Puts fixed words where the page shows what differs between runs and releases: the directory of
@@ -514,8 +518,29 @@ describe('the genaicode ui page looks as its baseline', () => {
       name: 'helper',
       command: process.execPath,
       capabilities: { mcp: true, resume: true, approvals: true },
-      run() {
+      run(task) {
         const result: AgentResult = { ...done, sessionId: 'ses_0123456789abcdef', text: reply };
+        // A prompt that asks to delegate gets a turn that stays at work, with three delegated tasks.
+        if (/Delegate/.test(task.prompt)) {
+          const released = new Promise<void>((resolve) => (release = resolve));
+          return {
+            result: released.then(() => result),
+            abort: () => release?.(),
+            pack: {
+              lead: 'helper',
+              maxParallel: 3,
+              task: (id) => delegated.find((item) => item.id === id),
+              act: async () => '',
+            },
+            async *[Symbol.asyncIterator](): AsyncGenerator<AgentEvent> {
+              yield { type: 'session', sessionId: result.sessionId! };
+              for (const item of delegated) yield { type: 'subtask-start', ...item };
+              yield { type: 'message', text: 'Three tasks are out; one is still running.' };
+              await released;
+              yield { type: 'done', result };
+            },
+          };
+        }
         return {
           result: Promise.resolve(result),
           abort() {},
@@ -561,6 +586,7 @@ describe('the genaicode ui page looks as its baseline', () => {
     await vi.waitFor(() => expect(url).toBeTruthy());
   });
   afterAll(async () => {
+    release?.();
     stop.abort();
     await running;
     if (root) rmSync(root, { recursive: true, force: true });
@@ -608,6 +634,46 @@ describe('the genaicode ui page looks as its baseline', () => {
       }
       expect(differing).toEqual([]);
     } finally {
+      await Promise.all(pages.map((page) => page.context().close()));
+    }
+  });
+  // The same conversation, after the turn above: a turn that delegates, with the work panel beside the chat.
+  it("work panel with delegated tasks and one task's detail, light and dark", async () => {
+    const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
+    try {
+      for (const page of pages) {
+        await page.goto(url!);
+        await page.locator('.gc-chat textarea').waitFor();
+      }
+      // How long the turns took, and how long the one at work has run, differ between runs.
+      const mask = (page: Page) => [page.locator('.gc-turn-footer'), page.locator('.gc-working')];
+      const differing: string[] = [];
+      const shot = (page: Page, name: string) =>
+        expectScreenshot(page, name, { mask: mask(page) }).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
+      await pages[0]!.locator('.gc-chat textarea').fill('Now add tests and a changelog line. Delegate what you can.');
+      await pages[0]!.keyboard.press('Enter');
+      for (const [index, page] of pages.entries()) {
+        // At 1280 px the panel opens by itself beside the chat, which keeps 600 px.
+        const work = page.getByRole('complementary', { name: 'Work panel' });
+        await work.locator('[data-task$=":t3"]').waitFor();
+        await page.locator('.gc-workline').waitFor();
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-work-${THEMES[index]}`);
+        // A task with changes to merge: what it was asked, its result, the checks and what Merge locally does.
+        await work.locator('[data-task$=":t2"] .gc-work-row').click();
+        await work.getByRole('button', { name: 'Merge locally' }).waitFor();
+        // The pointer rests on nothing.
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-task-${THEMES[index]}`);
+      }
+      expect(differing).toEqual([]);
+    } finally {
+      release?.();
       await Promise.all(pages.map((page) => page.context().close()));
     }
   });

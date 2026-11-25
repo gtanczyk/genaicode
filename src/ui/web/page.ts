@@ -78,6 +78,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .shell { --side-cur: 268px; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--side-cur) minmax(0, 1fr); }
 .shell.side-collapsed { --side-cur: 56px; }
 .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+/* The work panel: a third column beside the chat, or (no room beside a chat of 600px) a view in the chat's place under the top bar. */
+.shell.has-work { grid-template-columns: var(--side-cur) minmax(0, 1fr) auto; position: relative; }
+.shell > .gc-work { z-index: 2; }
+.shell.work-full { grid-template-columns: var(--side-cur) minmax(0, 1fr); }
+.shell.work-full > .gc-work { position: absolute; top: 46px; bottom: 0; right: 0; left: var(--side-cur); z-index: 29; }
+.btn.danger { color: var(--gc-color-err); }
+.work-toggle .badge-dot { margin-left: -2px; }
 .grow { flex: 1; min-width: 0; }
 svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .sg { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }

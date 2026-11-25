@@ -32,6 +32,7 @@ import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 import type { FileRaw, ProjectFiles } from '../files.js';
+import { PULL_REQUEST_URL, type PullRequestLookup } from '../pull-requests.js';
 
 export interface WebUiOptions {
   projectTeams?: import('../../agents/pack-profile.js').ProjectTeams;
@@ -124,6 +125,11 @@ export interface WebUiOptions {
   >;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
+  /**
+   * Whether a pull request a delegated task ended in is open, merged or closed, at
+   * GET /api/pull-request?url=. Without it the page shows such a pull request without a state.
+   */
+  pullRequest?: PullRequestLookup;
   release?: () => UiRelease;
   /** Live settings that the page can read and update (e.g. opt-in CDN hosts for HTML artifacts). */
   settings?: WebSettings;
@@ -749,6 +755,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       const limits = options.limits ? await options.limits().catch(() => []) : [];
       return send(res, 200, 'application/json', JSON.stringify({ limits }));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/pull-request') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      const address = url.searchParams.get('url') ?? '';
+      if (!PULL_REQUEST_URL.test(address)) return send(res, 400, 'application/json', '{"error":"bad url"}');
+      const state = options.pullRequest ? await options.pullRequest(address).catch(() => undefined) : undefined;
+      return send(res, 200, 'application/json', JSON.stringify(state ? { state } : {}), {
+        'cache-control': 'no-store',
+      });
     }
     if (req.method === 'GET' && url.pathname === '/api/shares') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {

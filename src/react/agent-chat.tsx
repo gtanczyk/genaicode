@@ -29,6 +29,8 @@ import {
   formatUsage,
   inputDeliveryText,
   limitChips,
+  packWorkCount,
+  packWorkLine,
   relativePath,
   shortId,
   toolArgument,
@@ -112,6 +114,12 @@ export interface AgentChatProps {
   onAutoApprove?(): void;
   /** Control a delegated task in its owning turn. Without this, pack tasks are read-only. */
   onPackAction?: PackActionHandler;
+  /**
+   * The host shows delegated tasks in a `<WorkPanel>`: a turn's task card becomes one line
+   * ("3 delegated tasks · 1 running · Open") that calls this with the turn. Approvals of tasks stay
+   * in the transcript. Without it the card is inline, with its list and actions, as before.
+   */
+  onOpenTasks?(turn: SessionTurn): void;
   /**
    * How a prompt bubble shows the text that was sent, e.g. to hide a context prefix the host
    * added. Return null to hide the bubble. `turn` is undefined for queued prompts and for
@@ -407,6 +415,7 @@ export function AgentChat(props: AgentChatProps) {
         onApprove={props.onApprove}
         onAutoApprove={props.onAutoApprove}
         onPackAction={props.disabled ? undefined : props.onPackAction}
+        onOpenTasks={props.onOpenTasks}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
@@ -761,6 +770,7 @@ function Turn({
   onApprove,
   onAutoApprove,
   onPackAction,
+  onOpenTasks,
   prompt,
   toolName,
   artifactUrl,
@@ -782,6 +792,7 @@ function Turn({
   onApprove?: AgentChatProps['onApprove'];
   onAutoApprove?: AgentChatProps['onAutoApprove'];
   onPackAction?: PackActionHandler;
+  onOpenTasks?: AgentChatProps['onOpenTasks'];
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
   fold: boolean;
@@ -821,8 +832,10 @@ function Turn({
   const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
   const filteredEntries = turn.entries.filter((item) => {
     if (hasCustomFailure && item.kind === 'error') return false;
+    // With the tasks in the host's panel, their approvals stay here in the transcript.
     if (
       packShown &&
+      !onOpenTasks &&
       pending.length &&
       item.kind === 'approval' &&
       !item.decision &&
@@ -855,7 +868,13 @@ function Turn({
           </div>
         </div>
       ) : null}
-      {packShown ? (
+      {packShown && onOpenTasks ? (
+        <button type="button" className="gc-workline" onClick={() => onOpenTasks(turn)}>
+          <b>{packWorkCount(turn.pack!.tasks.length)}</b>
+          <span>{packWorkLine(turn.pack!.tasks, pending)}</span>
+          <span className="gc-workline-open">Open ›</span>
+        </button>
+      ) : packShown ? (
         <PackTasks
           turn={turn}
           cwd={cwd}

@@ -18,6 +18,14 @@ import {
   relativePath,
 } from './format.js';
 import { Markdown } from './markdown.js';
+import {
+  MERGE_LOCALLY_HELP,
+  mergesLocally,
+  PULL_REQUEST_HELP,
+  pullRequestLabel,
+  reviewHelp,
+  testsHelp,
+} from './work.js';
 
 export type PackActionHandler = (turnId: number, id: string, action: PackAction) => Promise<string>;
 
@@ -218,6 +226,8 @@ function TaskDetail({
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const running = task.status === 'running';
   const worktree = task.state === 'unmerged';
+  // Changes that are in a pull request are merged there, not here.
+  const merges = mergesLocally(task);
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
   const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
@@ -320,6 +330,14 @@ function TaskDetail({
         <summary>Instructions given to {task.agent}</summary>
         <p>{task.prompt}</p>
       </details>
+      {task.pullRequest ? (
+        <p className="gc-pack-pr">
+          <a href={task.pullRequest.url} target="_blank" rel="noopener noreferrer">
+            {pullRequestLabel(task.pullRequest)}
+          </a>
+          {worktree && !running ? <small> {PULL_REQUEST_HELP}</small> : null}
+        </p>
+      ) : null}
       {task.changes?.length ? <small className="gc-pack-label">Changed files</small> : null}
       {task.changes?.length ? (
         <ul aria-label="Changed files">
@@ -362,13 +380,7 @@ function TaskDetail({
                     </button>
                   )}
                 </div>
-                {!source && worktree && (
-                  <small>
-                    {kind === 'review'
-                      ? 'Requires another agent that can review without tools.'
-                      : 'Choose the test command with --verify.'}
-                  </small>
-                )}
+                {!source && worktree && <small>{kind === 'review' ? reviewHelp(task) : testsHelp(task, cwd)}</small>}
                 {result?.detail && (
                   <details>
                     <summary>{kind === 'review' ? 'Review notes' : 'Test output'}</summary>
@@ -443,14 +455,17 @@ function TaskDetail({
                   >
                     {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
                   </button>
-                  <button
-                    type="button"
-                    className="gc-btn gc-primary"
-                    disabled={checking}
-                    onClick={() => void perform({ type: 'merge', revision: inspected.current ?? checks?.revision })}
-                  >
-                    Merge locally
-                  </button>
+                  {merges ? (
+                    <button
+                      type="button"
+                      className="gc-btn gc-primary"
+                      title={MERGE_LOCALLY_HELP}
+                      disabled={checking}
+                      onClick={() => void perform({ type: 'merge', revision: inspected.current ?? checks?.revision })}
+                    >
+                      Merge locally
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="gc-btn gc-danger"

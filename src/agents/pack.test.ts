@@ -15,7 +15,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
 import { personText } from './host-text.js';
-import { delegationBrief, pack, PackActionError, type PackTask as PackReport } from './pack.js';
+import { delegationBrief, pack, PackActionError, replyPullRequest, type PackTask as PackReport } from './pack.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -591,6 +591,33 @@ describe('pack', () => {
     await vi.waitFor(() => expect(team.tasks()[0]!.endedAt).toBeTypeOf('number'));
     const [task] = team.tasks();
     expect(task!.endedAt!).toBeGreaterThanOrEqual(task!.startedAt!);
+  });
+
+  it('reports the pull request a task ended in: the last one its whole reply links', async () => {
+    const cwd = repo();
+    const reply = [
+      'Builds on https://github.com/acme/app/pull/349.',
+      'x'.repeat(5_000),
+      'Opened https://github.com/acme/app/pull/351 for review.',
+    ].join('\n');
+    const worker = fake('worker', async () => ({ text: reply }));
+    const quiet = fake('quiet', async () => ({ text: 'Done, see https://example.com/pull/7.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'ship it', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'quiet', prompt: 'look', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker, quiet] });
+    await team.run({ prompt: 'go', cwd }).result;
+    const [shipped, looked] = team.tasks();
+    expect(shipped!.text).not.toContain('pull/351');
+    expect(shipped!.pullRequest).toEqual({ url: 'https://github.com/acme/app/pull/351', number: 351 });
+    expect(looked!.pullRequest).toBeUndefined();
+    expect(replyPullRequest('no link here')).toBeUndefined();
   });
 
   it('reads the verdict from the whole reply, outside quotations and code, before clipping it', async () => {

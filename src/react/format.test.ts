@@ -10,6 +10,8 @@ import {
   packTaskOutcome,
   packTaskStopped,
   packTaskTitle,
+  packWorkCount,
+  packWorkLine,
   toolDiff,
 } from './format.js';
 
@@ -184,6 +186,26 @@ describe('packMetrics', () => {
     expect(packMetrics(turn)).toBe('1 task delegated');
     const budgeted = { ...turn, pack: { ...turn.pack, budget: { maxTokens: 5_000_000, maxCostUsd: 50 } } };
     expect(packMetrics(budgeted)).toBe('1 task delegated · budget 3.3M/5.0M tokens');
+  });
+});
+
+describe('packWorkLine', () => {
+  const task = (id: string, status: PackTask['status']): PackTask => ({
+    id,
+    agent: 'codex',
+    prompt: 'x',
+    mode: 'shared',
+    cwd: '/w',
+    status,
+  });
+  it("counts a turn's delegated tasks by where they stand", () => {
+    const tasks = [task('t1', 'running'), task('t2', 'running'), task('t3', 'failed'), task('t4', 'completed')];
+    expect(packWorkCount(tasks.length)).toBe('4 delegated tasks');
+    expect(packWorkCount(1)).toBe('1 delegated task');
+    expect(packWorkLine(tasks, [{ subtaskId: 't2' }, {}])).toBe('1 needs you · 2 running · 1 failed · 1 finished');
+    expect(packWorkLine(tasks, [{ subtaskId: 't1' }, { subtaskId: 't2' }])).toMatch(/^2 need you/);
+    expect(packWorkLine([task('t1', 'aborted'), task('t2', 'timeout')])).toBe('1 failed · 1 finished');
+    expect(packWorkLine([])).toBe('');
   });
 });
 

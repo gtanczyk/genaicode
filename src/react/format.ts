@@ -96,6 +96,27 @@ export function packMetrics(turn: SessionTurn): string {
     .join(' · ');
 }
 
+/** "3 delegated tasks": the name of a turn's delegated work on its line in the chat. */
+export function packWorkCount(count: number): string {
+  return `${count} delegated ${count === 1 ? 'task' : 'tasks'}`;
+}
+
+/** Where a turn's delegated tasks stand, for its line in the chat: "1 needs you · 2 running · 3 finished". */
+export function packWorkLine(tasks: readonly PackTask[], pending: readonly { subtaskId?: string }[] = []): string {
+  const asking = tasks.filter((task) => pending.some((request) => request.subtaskId === task.id)).length;
+  const running = tasks.filter((task) => task.status === 'running').length;
+  const failed = tasks.filter((task) => task.status === 'failed' || task.status === 'timeout').length;
+  const finished = tasks.length - running - failed;
+  return [
+    asking ? `${asking} ${asking === 1 ? 'needs' : 'need'} you` : '',
+    running ? `${running} running` : '',
+    failed ? `${failed} failed` : '',
+    finished ? `${finished} finished` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** One line of Markdown as plain text: no heading, quote or list marker, no emphasis or code ticks. */
 function plainLine(line: string, max = 160): string {
   const text = line

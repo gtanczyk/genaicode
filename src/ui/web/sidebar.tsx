@@ -24,6 +24,12 @@ const ICONS = {
       <path d="M6 3v10" />
     </>
   ),
+  work: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="2" />
+      <path d="M10 3v10" />
+    </>
+  ),
   plus: <path d="M8 3v10M3 8h10" />,
   search: (
     <>

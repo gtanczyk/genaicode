@@ -156,6 +156,17 @@ export interface PackTask {
    * clipped) and outside quotations and code.
    */
   verdict?: string;
+  /**
+   * The pull request the task ended in: the last GitHub pull request link of its final reply, read
+   * from the whole reply. Whether it is open or merged is the host's to look up.
+   */
+  pullRequest?: PackPullRequest;
+}
+
+/** A pull request a delegated task reported: its address and number. */
+export interface PackPullRequest {
+  url: string;
+  number: number;
 }
 
 export type PackStopCause = 'user' | 'lead' | 'lead-finished' | 'turn' | 'budget';
@@ -526,6 +537,15 @@ function replyVerdict(text: string): string | undefined {
 }
 
 /**
+ * The pull request a reply ends in: its last link to a GitHub pull request. A task told to open a
+ * pull request reports its address last, after any it only refers to.
+ */
+export function replyPullRequest(text: string): PackPullRequest | undefined {
+  const found = [...text.matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/g)].at(-1);
+  return found ? { url: found[0], number: Number(found[1]) } : undefined;
+}
+
+/**
  * One `CodingAgent` over the agents on a machine: `lead` gets the prompt plus MCP tools to
  * delegate parts of it to `members` (in parallel, each in its own git worktree), follow them, and
  * merge what they did. Routing is the lead's judgement; genaicode adds the tools, not a loop.
@@ -629,7 +649,8 @@ export function pack(options: PackOptions): Pack {
 
   const verdictOf = (text: string) => {
     const verdict = replyVerdict(text);
-    return verdict ? { verdict } : {};
+    const pullRequest = replyPullRequest(text);
+    return { ...(verdict ? { verdict } : {}), ...(pullRequest ? { pullRequest } : {}) };
   };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,

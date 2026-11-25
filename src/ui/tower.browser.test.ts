@@ -580,6 +580,9 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByRole('button', { name: 'Close project team' }).click();
     await home.getByLabel('Message', { exact: true }).fill('Use worker in the catalog project.');
     await home.getByLabel('Message', { exact: true }).press('Enter');
+    // The turn's tasks are one line in the chat; the task's detail, with the quota hint, is in the work panel.
+    await home.locator('.gc-workline').click();
+    await home.getByRole('complementary', { name: 'Work panel' }).locator('.gc-work-row').click();
     await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
     expect(ran).toEqual(['worker']);
     expect(rosters).toEqual([['worker', 'backup']]);

@@ -6,6 +6,20 @@ import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { EscapeActive, useEscape } from '../../react/escape.js';
+import { storedSize } from '../../react/resize-handle.js';
+import { WorkPanel } from '../../react/work-panel.js';
+import {
+  readWorkView,
+  WORK_PANEL_MIN,
+  WORK_WIDTH_KEY,
+  workNeedsYou,
+  workPanelLayout,
+  workTasks,
+  writeWorkView,
+  type PullRequestState,
+  type WorkPanelView,
+  type WorkTask,
+} from '../../react/work.js';
 import { formatBytes } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
@@ -40,6 +54,7 @@ import {
   withOpenChat,
 } from '../sidebar.js';
 import { Shell } from './shell.js';
+import { Icon } from './sidebar.js';
 import { AgentPicker } from './agent-picker.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
@@ -871,6 +886,60 @@ function WhatsNewDialog({ release, ref, onSeen }: { release: UiRelease; ref: Ref
   );
 }
 
+/** How often a pull request that is still open (or not yet answered for) is asked about again. */
+const PULL_REQUESTS_EVERY_MS = 60_000;
+
+/**
+ * What became of the pull requests the delegated tasks ended in, by address. Asked of the server
+ * (`gh pr view`) when a pull request first shows, and again every minute while `watching` for those
+ * not merged or closed yet.
+ */
+function usePullRequests(tasks: readonly WorkTask[], watching: boolean): Record<string, PullRequestState | undefined> {
+  const [states, setStates] = useState<Record<string, PullRequestState | undefined>>({});
+  const asked = useRef(new Set<string>());
+  const urls = tasks.flatMap((item) => (item.task.pullRequest ? [item.task.pullRequest.url] : []));
+  const stamp = [...new Set(urls)].sort().join('\n');
+  const latest = useRef(states);
+  latest.current = states;
+  useEffect(() => {
+    if (!stamp) return;
+    let stopped = false;
+    const ask = (again: boolean) => {
+      for (const url of stamp.split('\n')) {
+        const known = latest.current[url];
+        if (again ? known === 'merged' || known === 'closed' : asked.current.has(url)) continue;
+        asked.current.add(url);
+        fetch(`/api/pull-request?url=${encodeURIComponent(url)}`, { headers: { 'x-genaicode-token': token } })
+          .then((reply) => (reply.ok ? (reply.json() as Promise<{ state?: PullRequestState }>) : undefined))
+          .then((body) => {
+            if (!stopped && body?.state && latest.current[url] !== body.state)
+              setStates((current) => ({ ...current, [url]: body.state }));
+          })
+          .catch(() => undefined);
+      }
+    };
+    ask(false);
+    if (!watching) return;
+    const timer = window.setInterval(() => ask(true), PULL_REQUESTS_EVERY_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [stamp, watching]);
+  return states;
+}
+
+function workStore(): Pick<Storage, 'getItem' | 'setItem'> {
+  try {
+    return localStorage;
+  } catch {
+    // Storage blocked: the panel's state lasts until the page is closed.
+    return { getItem: () => null, setItem: () => undefined };
+  }
+}
+
+const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
+
 function App() {
   const root = document.getElementById('root')!;
   const [toast, setToast] = useState<{ text: string; error?: boolean }>();
@@ -1032,6 +1101,76 @@ function App() {
   const [viewer, setViewer] = useState<ViewerTarget>();
   const [artifactsOpen, setArtifactsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // The work panel: this chat's delegated tasks, beside the chat where it fits.
+  const tasks = useMemo(() => workTasks(session), [session?.turns, session?.approvals]);
+  // A chat has no id of its own until its agent names the session.
+  const chatKey = conversation?.id ?? session?.sessionId ?? '';
+  // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
+  const [workFullOpen, setWorkFullOpen] = useState(false);
+  const [work, setWork] = useState<{ chat: string; view: WorkPanelView }>(() => ({
+    chat: chatKey,
+    view: readWorkView(workStore(), chatKey),
+  }));
+  if (work.chat !== chatKey) {
+    // The chat got its id: what was chosen in it meanwhile stays. Another chat: what was remembered for it.
+    const carried = work.chat === '' && (work.view.open !== undefined || work.view.task !== undefined);
+    if (carried) writeWorkView(workStore(), chatKey, work.view);
+    setWork({ chat: chatKey, view: carried ? work.view : readWorkView(workStore(), chatKey) });
+    if (!carried) setWorkFullOpen(false);
+  }
+  const workView = work.view;
+  const setWorkView = (next: WorkPanelView) => {
+    setWork({ chat: chatKey, view: next });
+    if (chatKey) writeWorkView(workStore(), chatKey, next);
+  };
+  const [room, setRoom] = useState(() => ({ room: window.innerWidth, window: window.innerWidth }));
+  const [savedWidth, setSavedWidth] = useState(() => workWidth.get());
+  const workLayout = workPanelLayout({ ...room, saved: savedWidth });
+  const latestLayout = useRef(workLayout);
+  latestLayout.current = workLayout;
+  // Beside the chat it opens by itself until the person closes it (remembered per chat). Where it
+  // would cover the chat it opens only by hand.
+  const workOpen =
+    panel === 'chat' && tasks.length > 0 && !viewer && (workLayout.docks ? (workView.open ?? true) : workFullOpen);
+  const workFull = workOpen && !workLayout.docks;
+  const workNeeds = workNeedsYou(tasks);
+  // Work the person has not opened: tasks delegated since the panel was last looked at.
+  const workNews = !workOpen && tasks.length > (workView.seen ?? 0);
+  useEffect(() => {
+    if (workOpen && workView.seen !== tasks.length) setWorkView({ ...workView, seen: tasks.length });
+  }, [workOpen, tasks.length, workView.seen]);
+  const pullRequests = usePullRequests(tasks, workOpen);
+  const focusComposer = () =>
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLTextAreaElement>('.workspace .gc-box textarea')?.focus(),
+    );
+  const closeWork = () => {
+    if (workFull) setWorkFullOpen(false);
+    else setWorkView({ ...workView, open: false });
+    // The panel's view covered the chat, or held the focus: the next key goes to the message field.
+    if (workFull || document.activeElement?.closest('.gc-work')) focusComposer();
+  };
+  const toggleWork = () => {
+    if (workOpen) return closeWork();
+    if (!tasks.length) return;
+    // The viewer has the place beside the chat until the panel takes it.
+    setViewer(undefined);
+    setPanel('chat');
+    if (workLayout.docks) setWorkView({ ...workView, open: true, seen: tasks.length });
+    else setWorkFullOpen(true);
+  };
+  /** A turn's line in the chat opens the panel on that turn's tasks. */
+  const openTasks = () => {
+    setViewer(undefined);
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setWorkView({ ...workView, ...(workLayout.docks ? { open: true } : {}), task: undefined, seen: tasks.length });
+  };
+  // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
+  useEscape(workOpen && !workFull, (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
+    focusComposer();
+  });
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
   // Stable while the images are, so memoized Markdown does not re-render on every update.
@@ -1323,7 +1462,44 @@ function App() {
             ? { name: folderName(activeCwd), path: activeCwd }
             : undefined
         }
-        onBack={panel === 'chat' ? undefined : backToChat}
+        onBack={panel === 'chat' ? (workFull ? closeWork : undefined) : backToChat}
+        onToggleWork={view && session && tasks.length ? toggleWork : undefined}
+        onRoom={setRoom}
+        workFull={workFull}
+        onStop={
+          workFull && running
+            ? () => {
+                dropWaiting();
+                void command({ type: 'stop' });
+              }
+            : undefined
+        }
+        work={
+          workOpen ? (
+            <WorkPanel
+              state={session}
+              view={workView}
+              onView={setWorkView}
+              onClose={closeWork}
+              mode={workFull ? 'full' : 'docked'}
+              width={workLayout.width}
+              bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
+              onWidth={(width, commit) => {
+                setSavedWidth(width);
+                if (commit) workWidth.set(width);
+              }}
+              disabled={!connected}
+              onPackAction={async (turnId, id, action) => {
+                const reply = await postCommand({ type: 'pack-task', turnId, id, action });
+                if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
+                return reply.text ?? '';
+              }}
+              onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+              onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
+              pullRequests={pullRequests}
+            />
+          ) : null
+        }
         usage={!pageTitle && usage ? usage : undefined}
         actions={
           view && session && panel === 'chat' ? (
@@ -1401,6 +1577,21 @@ function App() {
                       : undefined
                   }
                 />
+              ) : null}
+              {tasks.length ? (
+                <button
+                  type="button"
+                  className="btn ghost sm work-toggle"
+                  aria-pressed={workOpen}
+                  title={`Work panel (⌘⌥B)${workNeeds ? ` · ${workNeeds} in this chat ${workNeeds === 1 ? 'needs' : 'need'} you` : ''}${workNews ? ' · new work since you last looked' : ''}`}
+                  data-tauri-drag-region="false"
+                  onClick={toggleWork}
+                >
+                  <Icon name="work" />
+                  Work
+                  {workNeeds ? <span className="count hot">{workNeeds}</span> : null}
+                  {workNews ? <span className="badge-dot" role="img" aria-label="New work" /> : null}
+                </button>
               ) : null}
             </>
           ) : null
@@ -1525,9 +1716,10 @@ function App() {
             />
           </main>
         ) : null}
-        <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
+        {/* Under the full-width work view the chat keeps running, out of reach of the keyboard. */}
+        <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined} inert={workFull}>
           {/* Under a page the chat is hidden, and so is what is open in it: its Escape waits with it. */}
-          <EscapeActive.Provider value={panel === 'chat'}>
+          <EscapeActive.Provider value={panel === 'chat' && !workFull}>
             <AgentChat
               state={session}
               header={null}
@@ -1617,11 +1809,8 @@ function App() {
               onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
               onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
               onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
-              onPackAction={async (turnId, id, action) => {
-                const reply = await postCommand({ type: 'pack-task', turnId, id, action });
-                if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
-                return reply.text ?? '';
-              }}
+              // The tasks are in the work panel: a turn shows them as one line that opens it.
+              onOpenTasks={openTasks}
               hint={inSetup ? 'Connect an agent to start' : null}
               composerTitle={
                 inSetup

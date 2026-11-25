@@ -79,6 +79,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `onAnswer(id, answers)`                                                        | answers an agent's question (a card with its options); Skip calls `onApprove(id, 'deny')`. Pass `session.answer`            |
 | `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests                   |
 | `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                               |
+| `onOpenTasks(turn)`                                                            | the host shows delegated tasks in `<WorkPanel>`: a turn's task card becomes one line that calls this; approvals stay inline |
 | `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                            |
 | `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                                    |
 | `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                            |
@@ -100,6 +101,43 @@ Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,
 (and `--gc-ok`, `--gc-warn`, plus soft shades mixed from these unless set). Unset ones keep
 the `genaicode ui` look, light or dark by `prefers-color-scheme`, or by `theme="light"` /
 `"dark"`. `genaicode ui` and the Vite panel draw this same component.
+
+`<WorkPanel>` shows the tasks a lead agent delegated (`turn.pack.tasks`) beside the chat, as
+`genaicode ui` does: grouped by what to do next, each row opening the task's detail with its
+actions (steer, stop, show the diff, request a review, run tests, merge locally, discard). It is
+presentational like `<AgentChat>`, and optional: without it (and without `onOpenTasks`) the tasks
+stay in the inline card of their turn.
+
+```tsx
+import { AgentChat, WorkPanel, readWorkView, workPanelLayout, writeWorkView } from 'genaicode/react';
+
+const [view, setView] = useState(() => readWorkView(localStorage, chatId)); // what is open, per chat
+const layout = workPanelLayout({ room, window: innerWidth, saved }); // room: the width chat and panel share
+
+<AgentChat state={state} onSend={send} onOpenTasks={() => setView({ ...view, open: true })} />;
+{
+  view.open ? (
+    <WorkPanel
+      state={state}
+      view={view}
+      onView={(next) => (setView(next), writeWorkView(localStorage, chatId, next))}
+      mode={layout.docks ? 'docked' : 'full'} // 'full': a view in the chat's place, below 600 px of chat
+      width={layout.width}
+      bounds={() => [380, layout.max]}
+      onWidth={(width, commit) => setSaved(width)}
+      onPackAction={(turnId, id, action) => session.actOnPackTask!(turnId, id, action)}
+      onApprove={session.approve}
+      pullRequests={{ 'https://github.com/acme/app/pull/12': 'merged' }} // by PackTask.pullRequest.url
+      onClose={() => setView({ ...view, open: false })}
+    />
+  ) : null;
+}
+```
+
+A task whose final reply ends with a GitHub pull request link carries `pullRequest: { url, number }`
+and shows "PR #12" with the link in place of **Merge locally**; give `pullRequests` the state
+(`open`, `merged`, `closed`) once you have looked it up. The panel draws with the design tokens
+(`--gc-color-*`) of `styles.css` and never takes the keyboard focus by itself.
 
 Two smaller pieces come along for hosts that build their own panels around a transcript:
 

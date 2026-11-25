@@ -109,6 +109,39 @@ describe('<Shell>', () => {
     expect(bar.querySelectorAll('button')).toHaveLength(0);
   });
 
+  it("gives the work panel a column, or the chat's place with a way back and Stop; ⌘⌥B toggles it", () => {
+    const onToggleWork = vi.fn();
+    const onRoom = vi.fn();
+    const work = <aside className="gc-work">tasks</aside>;
+    render(props({ work, onToggleWork, onRoom }));
+    expect(shell().className).toBe('shell has-work');
+    expect(shell().lastElementChild?.className).toBe('gc-work');
+    expect(onRoom).toHaveBeenCalledWith({ room: expect.any(Number), window: expect.any(Number) });
+    // By its place on the keyboard: with Option, macOS types another letter.
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+    // ⌘B alone is still the sidebar's.
+    expect(shell().classList.contains('side-collapsed')).toBe(false);
+    press('b', { ...mod(), code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+    expect(shell().classList.contains('side-collapsed')).toBe(true);
+
+    const onBack = vi.fn();
+    const onStop = vi.fn();
+    render(props({ work, workFull: true, onBack, onStop }));
+    expect(shell().classList.contains('work-full')).toBe(true);
+    const bar = host.querySelector('header.topbar')!;
+    click(Array.from(bar.querySelectorAll('button')).find((item) => item.textContent === 'Stop')!);
+    expect(onStop).toHaveBeenCalledOnce();
+    click(Array.from(bar.querySelectorAll('button')).find((item) => item.textContent === 'Chat')!);
+    press('Escape');
+    expect(onBack).toHaveBeenCalledTimes(2);
+    // Without a panel there is no third column, whatever `workFull` says.
+    render(props({ workFull: true }));
+    expect(shell().classList.contains('has-work')).toBe(false);
+    expect(shell().classList.contains('work-full')).toBe(false);
+  });
+
   it('folds to the rail with the button and with ⌘B, and remembers it', () => {
     const store = memoryStore();
     render(props({ store }));

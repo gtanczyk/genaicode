@@ -1718,6 +1718,38 @@ describe('web UI server', () => {
     expect(parseCommand({ ...base, turnId: 0, action: { type: 'discard' } })).toBeUndefined();
   });
 
+  it('answers for a pull request only with the token and a pull request address', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const asked: string[] = [];
+    const ui = await startWebUi({
+      controller: chat,
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+      pullRequest: async (url) => {
+        asked.push(url);
+        return url.endsWith('/351') ? 'merged' : undefined;
+      },
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const get = (url: string, token = 't0k') =>
+      fetch(`${base}api/pull-request?url=${encodeURIComponent(url)}`, { headers: { 'x-genaicode-token': token } });
+    try {
+      const merged = await get('https://github.com/acme/app/pull/351');
+      expect(merged.status).toBe(200);
+      expect(await merged.json()).toEqual({ state: 'merged' });
+      // Unknown to the lookup: an answer without a state.
+      expect(await (await get('https://github.com/acme/app/pull/9')).json()).toEqual({});
+      expect((await get('https://github.com/acme/app/pull/351', 'wrong')).status).toBe(403);
+      expect((await get('https://github.com/acme/app/pull/351 --web')).status).toBe(400);
+      expect((await get('file:///etc/passwd')).status).toBe(400);
+      expect(asked).toEqual(['https://github.com/acme/app/pull/351', 'https://github.com/acme/app/pull/9']);
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
   it('returns public pack action reasons and keeps internal diagnostics local', async () => {
     vi.resetModules();
     const { PackActionError: DriverError } = await import('../agents/pack.js');

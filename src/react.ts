@@ -52,6 +52,21 @@ export {
 export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
 export type { InputDelivery, SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
 export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
+export { WorkPanel } from './react/work-panel.js';
+export type { WorkPanelProps } from './react/work-panel.js';
+export {
+  readWorkView,
+  WORK_CHAT_MIN,
+  WORK_PANEL_DEFAULT,
+  WORK_PANEL_MIN,
+  workNeedsYou,
+  workPanelLayout,
+  workTasks,
+  writeWorkView,
+} from './react/work.js';
+export type { PullRequestState, WorkGroup, WorkPanelView, WorkTask } from './react/work.js';
+export type { PackActionHandler } from './react/pack-tasks.js';
+export type { PackAction, PackPullRequest, PackTask } from './agents/pack.js';
 export { useFollowScroll } from './react/follow-scroll.js';
 export { installResizeHandle, storedSize } from './react/resize-handle.js';
 export type { ResizeHandle, ResizeHandleOptions, StoredSize } from './react/resize-handle.js';

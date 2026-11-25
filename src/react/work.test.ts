@@ -1,0 +1,187 @@
+import { describe, expect, it } from 'vitest';
+import type { PackTask } from '../agents/pack.js';
+import type { SessionState } from '../agents/session.js';
+import {
+  pullRequestLabel,
+  readWorkView,
+  reviewBlocker,
+  WORK_VIEW_KEY,
+  workGroups,
+  workNeedsYou,
+  workPanelLayout,
+  workStatus,
+  workTasks,
+  writeWorkView,
+} from './work.js';
+
+const base = { agent: 'codex', prompt: 'Do it.', cwd: '/work/app', mode: 'worktree' as const };
+const task = (id: string, patch: Partial<PackTask>): PackTask => ({ ...base, id, status: 'completed', ...patch });
+
+function session(tasks: PackTask[], approvals: SessionState['approvals'] = []): SessionState {
+  return {
+    agent: 'claude',
+    cwd: '/work/app',
+    status: 'running',
+    canSteer: true,
+    usage: {},
+    queued: [],
+    approvals,
+    turns: [
+      {
+        id: 1,
+        agent: 'claude',
+        prompt: 'go',
+        startedAt: 0,
+        entries: [],
+        pack: { lead: 'claude', maxParallel: 4, interactive: true, tasks },
+      },
+    ],
+  } as SessionState;
+}
+
+describe('workPanelLayout', () => {
+  // The Widths table of docs/design/desktop-layout.md: sidebar 268 px, rail 56 px.
+  it.each([
+    [1440, 268, true, 420],
+    [1280, 268, true, 412],
+    [1100, 268, false, 380],
+    [1100, 56, true, 420],
+    [900, 56, false, 380],
+  ])('at %i px with a %i px sidebar: docks %s, %i px', (window, side, docks, width) => {
+    expect(workPanelLayout({ room: window - side, window })).toMatchObject({ docks, width });
+  });
+
+  it('keeps a dragged width between 380 px and what the chat and half the window leave', () => {
+    expect(workPanelLayout({ room: 1172, window: 1440, saved: 200 }).width).toBe(380);
+    expect(workPanelLayout({ room: 1172, window: 1440, saved: 500 }).width).toBe(500);
+    // 1172 - 600 = 572 is what the chat leaves.
+    expect(workPanelLayout({ room: 1172, window: 1440, saved: 900 })).toMatchObject({ width: 572, max: 572 });
+    // With the rail the chat would leave 1344; half the window is the limit.
+    expect(workPanelLayout({ room: 1944, window: 2000, saved: 1200 }).width).toBe(1000);
+  });
+});
+
+describe('workTasks', () => {
+  const tasks = [
+    task('t1', { status: 'completed', mode: 'shared' }),
+    task('t2', { status: 'completed', state: 'unmerged' }),
+    task('t3', { status: 'failed', error: 'boom' }),
+    task('t4', { status: 'running' }),
+    task('t5', { status: 'running' }),
+    task('t6', {
+      state: 'unmerged',
+      checks: { revision: 'abc', review: { revision: 'abc', status: 'completed', detail: '- BLOCKER: loses data' } },
+    }),
+    task('t7', { state: 'unmerged', pullRequest: { url: 'https://github.com/o/r/pull/7', number: 7 } }),
+    task('t8', { status: 'aborted', stoppedBy: 'user' }),
+  ];
+  const state = session(tasks, [
+    { id: 't5:ap-1', kind: 'command', subtaskId: 't5', summary: '[codex t5] npm install' },
+  ]);
+
+  it('groups by what to do next, newest first in a group', () => {
+    const list = workTasks(state);
+    expect(workGroups(list).map(({ group, tasks }) => [group, tasks.map((item) => item.task.id)])).toEqual([
+      ['ask', ['t5']],
+      ['failed', ['t3']],
+      ['blocked', ['t6']],
+      ['running', ['t4']],
+      ['unmerged', ['t2']],
+      ['done', ['t8', 't7', 't1']],
+    ]);
+    expect(workNeedsYou(list)).toBe(1);
+    expect(list[0]).toMatchObject({ key: '1:t1', turnId: 1, lead: 'claude', interactive: true });
+  });
+
+  it('names each status with its tone', () => {
+    const status = Object.fromEntries(workTasks(state).map((item) => [item.task.id, workStatus(item)]));
+    expect(status).toEqual({
+      t1: { text: 'Done', tone: 'ok' },
+      t2: { text: 'Unmerged', tone: 'merge' },
+      t3: { text: 'Failed', tone: 'err' },
+      t4: { text: 'Running', tone: 'run' },
+      t5: { text: 'Needs approval', tone: 'ask' },
+      t6: { text: 'Review blocker', tone: 'block' },
+      t7: { text: 'PR #7', tone: 'idle' },
+      t8: { text: 'Stopped', tone: 'idle' },
+    });
+    const pr = workTasks(state).find((item) => item.task.id === 't7')!;
+    expect(workStatus(pr, 'merged')).toEqual({ text: 'PR #7 · merged', tone: 'ok' });
+    expect(workStatus(pr, 'open')).toEqual({ text: 'PR #7 · open', tone: 'idle' });
+    expect(pullRequestLabel(pr.task.pullRequest!, 'closed')).toBe('PR #7 · closed');
+  });
+
+  it('leaves approvals with the turn that still runs', () => {
+    const ended = session(tasks, state.approvals);
+    ended.turns[0]!.result = { status: 'completed', ok: true, exitCode: 0, signal: null };
+    expect(workNeedsYou(workTasks(ended))).toBe(0);
+    expect(workTasks(undefined)).toEqual([]);
+  });
+});
+
+describe('reviewBlocker', () => {
+  const review = (detail: string, status: 'completed' | 'failed' = 'completed', revision = 'abc') =>
+    reviewBlocker({ revision: 'abc', review: { revision, status, detail } });
+  it('is a review of the current revision that failed or lists a blocker', () => {
+    expect(review('**BLOCKER**: the migration drops a column')).toBe(true);
+    expect(review('1. BLOCKER the migration drops a column')).toBe(true);
+    expect(review('LGTM. No BLOCKER found.\nFOLLOW-UP: rename it')).toBe(false);
+    expect(review('could not start', 'failed')).toBe(true);
+    // A review of an earlier revision says nothing about what is there now.
+    expect(review('BLOCKER: x', 'completed', 'old')).toBe(false);
+    expect(reviewBlocker(undefined)).toBe(false);
+  });
+});
+
+describe('what is remembered per chat', () => {
+  const store = () => {
+    const kept = new Map<string, string>();
+    return {
+      getItem: (key: string) => kept.get(key) ?? null,
+      setItem: (key: string, value: string) => kept.set(key, value),
+    };
+  };
+
+  it('keeps each chat its own state, and starts an unknown chat undecided', () => {
+    const kept = store();
+    expect(readWorkView(kept, 'a')).toEqual({ tab: 'tasks' });
+    writeWorkView(kept, 'a', {
+      tab: 'tasks',
+      open: false,
+      task: '1:t2',
+      folded: { done: false },
+      scroll: 120,
+      seen: 3,
+    });
+    writeWorkView(kept, 'b', { tab: 'tasks', open: true });
+    expect(readWorkView(kept, 'a')).toEqual({
+      tab: 'tasks',
+      open: false,
+      task: '1:t2',
+      folded: { done: false },
+      scroll: 120,
+      seen: 3,
+    });
+    expect(readWorkView(kept, 'b')).toEqual({ tab: 'tasks', open: true });
+  });
+
+  it('drops the chats looked at longest ago, and survives a damaged or blocked store', () => {
+    const kept = store();
+    for (let i = 0; i < 60; i++) writeWorkView(kept, `chat-${i}`, { tab: 'tasks', open: true });
+    expect(JSON.parse(kept.getItem(WORK_VIEW_KEY)!)).toHaveLength(50);
+    expect(readWorkView(kept, 'chat-0')).toEqual({ tab: 'tasks' });
+    expect(readWorkView(kept, 'chat-59')).toEqual({ tab: 'tasks', open: true });
+    kept.setItem(WORK_VIEW_KEY, '{not json');
+    expect(readWorkView(kept, 'chat-59')).toEqual({ tab: 'tasks' });
+    const blocked = {
+      getItem(): string | null {
+        throw new Error('blocked');
+      },
+      setItem() {
+        throw new Error('blocked');
+      },
+    };
+    expect(readWorkView(blocked, 'a')).toEqual({ tab: 'tasks' });
+    expect(() => writeWorkView(blocked, 'a', { tab: 'tasks' })).not.toThrow();
+  });
+});
