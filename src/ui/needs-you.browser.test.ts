@@ -155,7 +155,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
       const sessions = source
         ? [{ ...source, source: 'index', updatedAt: source.updatedAt + 1 }, ...listing.sessions]
         : listing.sessions;
-      await route.fulfill({ json: { ...listing, sessions } });
+      await route.fulfill({ json: { ...listing, sessions, topics: [{id: 'bread', name: 'Bread'}], topicOf: { ['index:' + question.id]: 'bread' } } });
     });
     await page.goto(opened!);
 
@@ -212,6 +212,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     const search = list.getByRole('searchbox');
     await list.locator('.session-row').first().waitFor();
     await search.fill('sourdough');
+    expect(await list.locator('.project summary b').textContent()).toBe('Bread');
     const row = list.locator('.session-row');
     expect(await row.getByRole('button').allTextContents()).toEqual(['Open', '⋯']);
     await row.getByRole('button', { name: 'Open', exact: true }).click();

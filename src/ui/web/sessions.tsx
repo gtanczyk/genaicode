@@ -174,6 +174,7 @@ export function Sessions({
   const index = useMemo(() => {
     const byStore = new Map<string, { display: SessionInfo; stores: SessionInfo[] }>();
     const rows = [];
+    const topicsBySession = { ...listing?.topicOf };
     const rank = (row: SessionInfo) =>
       Number(listing?.readable?.includes(row.source) ?? false) * 2 +
       Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
@@ -198,11 +199,14 @@ export function Sessions({
               turnInProgress: activity.turnInProgress,
               archived: activity.archived,
             };
+      const assigned = group.map((row) => listing?.topicOf?.[sessionKey(row)]).filter((id): id is string => !!id);
+      const primaryTopic = topic && assigned.includes(topic) ? topic : assigned[0];
+      if (!own && primaryTopic) topicsBySession[sessionKey(display)] = primaryTopic;
       rows.push(display);
       for (const row of group) byStore.set(sessionKey(row), { display, stores: group });
     }
-    return { rows, byStore };
-  }, [listing]);
+    return { rows, byStore, topicsBySession };
+  }, [listing, own, topic]);
   const all = useMemo(() => {
     if (!own) return index.rows;
     const sessions = listing?.sessions ?? [];
@@ -217,7 +221,7 @@ export function Sessions({
     [listing?.topics],
   );
   const topicNameOf = (session: SessionInfo) => {
-    const id = listing?.topicOf?.[`${session.source}:${session.id}`];
+    const id = index.topicsBySession[sessionKey(session)];
     return id ? topicNames.get(id) : undefined;
   };
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
@@ -250,12 +254,12 @@ export function Sessions({
   };
   const shown = useMemo(() => {
     const inTopic = topic
-      ? all.filter((session) => listing?.topicOf?.[`${session.source}:${session.id}`] === topic)
+      ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic)
       : all;
     const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
     return INBOX.has(state) ? waitingSessions(found) : found;
-  }, [all, text, agent, state, topic, listing]);
+  }, [all, text, agent, state, topic, index]);
   // What waits for you keeps its order across projects: the one with an approval first.
   const inbox = INBOX.has(state);
   const now = Date.now();
@@ -274,11 +278,11 @@ export function Sessions({
       return [{ key: 'own', name: 'Chats of this app', sessions: shown, updatedAt, agents: counts }];
     }
     return by === 'topic'
-      ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
+      ? groupByTopic(shown, listing?.topics ?? [], index.topicsBySession)
       : inbox
         ? groupInOrder(shown)
         : groupSessions(shown);
-  }, [shown, inbox, by, listing, own, home]);
+  }, [shown, inbox, by, listing, index, own, home]);
 
   const [answering, setAnswering] = useState<string>();
   const [answerFailed, setAnswerFailed] = useState<string>();

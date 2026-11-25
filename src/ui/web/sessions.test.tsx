@@ -93,6 +93,22 @@ it('opens the readable store once per session and shows the sources of distinct 
   expect(onOpen).toHaveBeenCalledWith(asking);
 });
 
+it('keeps an index-only topic on the readable row when grouping, filtering and showing directory tags', async () => {
+  const alias = { ...asking, source: 'index' };
+  const data = { ...listing, sessions: [asking, alias], readable: [asking.source],
+    topics: [{id: 'bread', name: 'Bread'}], topicOf: { ['index:' + asking.id]: 'bread' } };
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify(data)));
+  await act(async () => root.render(<Sessions token="t" cwd="/work" topic="bread" onOpen={vi.fn()} onContinue={vi.fn()} />));
+  expect(host.querySelectorAll('.session-row')).toHaveLength(1);
+  expect(host.querySelector('.project summary b')?.textContent).toBe('Bread');
+  const by = host.querySelector<HTMLSelectElement>('[aria-label="Group by"]')!;
+  await act(async () => {
+    by.value = 'project';
+    by.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(host.querySelector('.session-row .topic-tag')?.textContent).toBe('Bread');
+});
+
 it('uses the readable transcript and keeps approvals and their commands from another store', async () => {
   const reader: SessionInfo = { ...asking, state: 'unfinished', ending: undefined };
   const approval: SessionInfo = {
