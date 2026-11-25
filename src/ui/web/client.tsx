@@ -44,9 +44,9 @@ import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './fil
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
 import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
-import { LIMITS_EVERY_MS, useChats } from './chats.js';
+import { LIMITS_EVERY_MS, NO_SESSIONS, useChats } from './chats.js';
 import { NeedsYouPage, useFirstSeen } from './needs-you.js';
-import { chatLimits, SettingsPage, type SettingsSection } from './settings.js';
+import { chatLimits, SECTION_LABEL, SettingsPage, settingsSections, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
 import { TranscriptMenu } from './transcript-menu.js';
 
@@ -1242,7 +1242,18 @@ function App() {
   const ownChats = useMemo(() => withOpenChat(chats.own, openChat), [chats.own, openChat]);
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
   const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
-  const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
+  // The general index may answer first: none of its sessions is another agent's until this app's
+  // chats are known, or an app chat would show as one (and open All sessions).
+  const othersKnown = hasSessions && chats.ownKnown;
+  const others = useMemo(
+    () => (othersKnown ? otherSessions(chats.all, ownChats) : undefined),
+    [othersKnown, chats.all, ownChats],
+  );
+  // Search (⌘K) looks through all of them, not the few the sidebar shows.
+  const searchSessions = useMemo(
+    () => (othersKnown ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
+    [othersKnown, chats.all, ownChats],
+  );
   // This app's chats that every agent's list leaves out (an automated one) ask too.
   const needsRows = useMemo(() => needsSessions(chats.all, ownChats), [chats.all, ownChats]);
   const needs = needsYou({
@@ -1344,7 +1355,7 @@ function App() {
                     Artifacts · {sessionArtifacts.length}
                   </button>
                   {artifactsOpen ? (
-                    <div className="popover artifacts-popover" role="menu" aria-label="Session artifacts">
+                    <div className="popover artifacts-popover" data-popup role="menu" aria-label="Session artifacts">
                       {sessionArtifacts.map((group) => (
                         <button
                           key={group.id}
@@ -1406,6 +1417,20 @@ function App() {
             </>
           ) : null
         }
+        search={{
+          chats: ownChats,
+          sessions: searchSessions,
+          home: isHome ? cwd : undefined,
+          // As its row in the sidebar: another agent's session is shown among all sessions.
+          onOpenSession: () => openSessions('all'),
+          // The sections the Settings page has here, each opened in its place.
+          settings: settingsSections({
+            agents: hasAgentsApi || undefined,
+            team: config?.projectTeams || undefined,
+            artifacts: config?.canConfigureCdn || undefined,
+            usage: usageShown || undefined,
+          }).map((which) => ({ label: SECTION_LABEL[which], onSelect: () => openSettings(which) })),
+        }}
         side={{
           page:
             panel === 'chat'
@@ -1418,8 +1443,6 @@ function App() {
                     ? 'chats'
                     : 'sessions',
           onNewChat: startHomeChat,
-          // The palette comes with a later step; ⌘K and the button are wired to this.
-          onSearch: () => undefined,
           needs,
           onNeedsYou: openNeedsYou,
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,

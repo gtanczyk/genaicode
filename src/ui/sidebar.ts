@@ -140,6 +140,18 @@ export function chatTitle(session: SessionInfo): string {
 }
 
 /**
+ * Tells whether a session is one of this app's chats (`own`): by its store and id, or by its agent
+ * and id (the same session read through another of its agent's stores, or the open chat's row no
+ * store lists yet). An id alone says nothing, as two agents' stores may both hold it.
+ */
+export function ownSession(own: readonly SessionInfo[]): (session: SessionInfo) => boolean {
+  const mine = new Set(own.map(sessionKey));
+  const agentKey = (session: Pick<SessionInfo, 'agent' | 'id'>) => `${session.agent}\n${session.id}`;
+  const byAgent = new Set(own.filter((session) => session.id).map(agentKey));
+  return (session) => mine.has(sessionKey(session)) || byAgent.has(agentKey(session));
+}
+
+/**
  * The sessions this app did not start, for "Other agents' sessions": those that ask for you first,
  * then the latest, at most `limit` of them, and how many there are in all.
  */
@@ -149,9 +161,8 @@ export function otherSessions(
   limit = 4,
   now = Date.now(),
 ): { shown: SessionInfo[]; total: number } {
-  const mine = new Set(own.map(sessionKey));
-  const ids = new Set(own.map((session) => session.id));
-  const others = all.filter((session) => !session.archived && !mine.has(sessionKey(session)) && !ids.has(session.id));
+  const isOwn = ownSession(own);
+  const others = all.filter((session) => !session.archived && !isOwn(session));
   const asks = (session: SessionInfo) => (sessionGlyph(session, now) === 'ask' ? 0 : 1);
   const shown = [...others].sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt).slice(0, limit);
   return { shown, total: others.length };

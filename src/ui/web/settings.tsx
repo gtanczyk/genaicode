@@ -15,7 +15,7 @@ import type { ThemeChoice } from './theme.js';
 export const SETTINGS_SECTIONS = ['general', 'agents', 'team', 'artifacts', 'usage', 'about'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
-const SECTION_LABEL: Record<SettingsSection, string> = {
+export const SECTION_LABEL: Record<SettingsSection, string> = {
   general: 'General',
   agents: 'Agents',
   team: 'Team',
@@ -813,9 +813,9 @@ export interface SettingsPageProps {
 }
 
 /** The sections this page has, in order: those whose data the server gives. */
-export function settingsSections(
-  props: Pick<SettingsPageProps, 'agents' | 'team' | 'artifacts' | 'usage'>,
-): SettingsSection[] {
+export function settingsSections(props: {
+  [Key in 'agents' | 'team' | 'artifacts' | 'usage']?: unknown;
+}): SettingsSection[] {
   return SETTINGS_SECTIONS.filter(
     (section) =>
       (section !== 'agents' || !!props.agents) &&

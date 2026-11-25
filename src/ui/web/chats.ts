@@ -13,6 +13,8 @@ export const NO_SESSIONS: SessionInfo[] = [];
 export interface Chats {
   own: SessionInfo[];
   all: SessionInfo[];
+  /** This app's chats have been read once: until then no session of `all` can be told to be another agent's. */
+  ownKnown: boolean;
   /** The questions hooks hold open, and the agents that take a reply to a session. */
   asks: NonNullable<WebSessionListing['asks']>;
   senders: NonNullable<WebSessionListing['senders']>;
@@ -53,6 +55,8 @@ function knownAsks(asks: PendingAsk[], gone: ReadonlyMap<string, AskedBy | undef
  */
 export function useChats(token: string, enabled: boolean, stamp: string): Chats {
   const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
+  // Until this app's chats are known, a session of the index cannot be told to be another agent's.
+  const [ownKnown, setOwnKnown] = useState(false);
   const [listing, setListing] = useState<WebSessionListing>(NO_LISTING);
   const [round, setRound] = useState(0);
   // The questions answered from here that a listing may still hold, with the session each was asked
@@ -80,7 +84,10 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         );
     const ask = () => {
       if (document.visibilityState !== 'visible') return;
-      void list('days=30&own=1', (found) => setOwn(found.sessions ?? []));
+      void list('days=30&own=1', (found) => {
+        setOwn(found.sessions ?? []);
+        setOwnKnown(true);
+      });
       void list('days=7', keepListing);
     };
     ask();
@@ -102,6 +109,7 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
     return {
       own: shown.own,
       all: shown.sessions,
+      ownKnown,
       asks: shown.asks,
       senders: listing.senders ?? [],
       refresh: () => setRound((value) => value + 1),
@@ -125,5 +133,5 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         setRound((value) => value + 1);
       },
     };
-  }, [own, listing, gone]);
+  }, [own, ownKnown, listing, gone]);
 }

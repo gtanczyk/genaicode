@@ -142,6 +142,18 @@ it('lists the other agents’ sessions: not this app’s, asking first, then the
   expect(total).toBe(3);
 });
 
+it('tells another agent’s session from this app’s chat with the same id by its store', () => {
+  const own = [chat('shared'), withOpenChat([], { id: 'open', agent: 'gemini', cwd: '/work', updatedAt: now })[0]!];
+  const all = [
+    chat('shared'),
+    chat('shared', { agent: 'codex', source: 'codex' }),
+    // The open chat in its agent's store, and a session of another agent with its id.
+    chat('open', { agent: 'gemini', source: 'gemini' }),
+    chat('open', { agent: 'codex', source: 'codex' }),
+  ];
+  expect(otherSessions(all, own, 9, now).shown.map(sessionKey)).toEqual(['codex:shared', 'codex:open']);
+});
+
 it('counts what needs you across projects and in the open chat, the open session once', () => {
   const sessions = [
     chat('open', { state: 'waiting', waitingFor: 'approval' }),

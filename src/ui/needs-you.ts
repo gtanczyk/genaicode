@@ -4,7 +4,15 @@ import type { TowerDecision, TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import type { ApprovalDecision, ApprovalRequest, SandboxPolicy } from '../agents/types.js';
 import { ago } from './sessions.js';
-import { chatTitle, folderName, itemIsFor, sessionKey, TOWER_TURN_ITEM, waitingElsewhere } from './sidebar.js';
+import {
+  chatTitle,
+  folderName,
+  itemIsFor,
+  ownSession,
+  sessionKey,
+  TOWER_TURN_ITEM,
+  waitingElsewhere,
+} from './sidebar.js';
 import { towerAction, towerChoices, towerText } from './tower-format.js';
 
 /**
@@ -124,12 +132,12 @@ const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slic
 
 /**
  * The sessions the queue reads: every agent's (`sessions`), and this app's own chats that list
- * leaves out (an automated one, for instance), each once by store and id; where both have a row,
- * the one of every agent's sessions wins. The count on "Needs you" reads the same.
+ * leaves out (an automated one, for instance), each once by store and id, or by agent and id; where
+ * both have a row, the one of every agent's sessions wins. The count on "Needs you" reads the same.
  */
 export function needsSessions(sessions: readonly SessionInfo[] = [], own: readonly SessionInfo[] = []): SessionInfo[] {
-  const listed = new Set(sessions.map(sessionKey));
-  return [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
+  const listed = ownSession(sessions);
+  return [...sessions, ...own.filter((session) => !listed(session))];
 }
 
 /**
@@ -196,7 +204,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
   const now = input.now ?? Date.now();
   const chat = input.chat;
   const sessions = needsSessions(input.sessions, input.own);
-  const own = new Set((input.own ?? []).map(sessionKey));
+  const isOwn = ownSession(input.own ?? []);
   const asks = input.asks ?? [];
   const elsewhere = waitingElsewhere({
     tower: input.tower,
@@ -204,10 +212,9 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
     open: { id: chat?.id, source: chat?.source },
     now,
   });
-  const sourceOf = (session: SessionInfo | undefined): NeedsSource =>
-    session && own.has(sessionKey(session)) ? 'app' : 'tower';
+  const sourceOf = (session: SessionInfo | undefined): NeedsSource => (session && isOwn(session) ? 'app' : 'tower');
   const openOf = (session: SessionInfo | undefined): NeedsItem['open'] =>
-    session && own.has(sessionKey(session)) ? { to: 'own', session } : { to: 'sessions' };
+    session && isOwn(session) ? { to: 'own', session } : { to: 'sessions' };
   const named = (session: SessionInfo) => `${sourceOf(session) === 'app' ? 'chat' : 'session'} “${chatTitle(session)}”`;
   const oldestFirst = (a: NeedsItem, b: NeedsItem) => (a.since ?? now) - (b.since ?? now);
 

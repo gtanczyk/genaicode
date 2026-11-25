@@ -9,6 +9,7 @@ import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
 import { ViewerPanel } from './file-view.js';
 import { holdsTypedText, Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
+import { TranscriptMenu } from './transcript-menu.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -43,11 +44,16 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
     title: 'Chat a',
     store: memoryStore(),
     children: <div className="workspace">chat</div>,
+    search: {
+      chats,
+      sessions: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work', cwd: '/work/bakery' })],
+      onOpenSession: vi.fn(),
+      settings: [{ label: 'Agents', onSelect: vi.fn() }],
+    },
     ...patch,
     side: {
       page: 'chat',
       onNewChat: vi.fn(),
-      onSearch: vi.fn(),
       needs: needsYou({ approvals: 1, tower: [{ id: 'draft-1' }, { id: 'draft-2' }], now }),
       onNeedsYou: vi.fn(),
       onAllSessions: vi.fn(),
@@ -226,8 +232,8 @@ describe('<Shell>', () => {
     expect(value.side.onNeedsYou).toHaveBeenCalledTimes(1);
     click(button('New chat'));
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
-    // Search waits for its palette: the button says so.
-    expect(button('Search').getAttribute('aria-disabled')).toBe('true');
+    expect(button('Search').getAttribute('aria-disabled')).toBeNull();
+    expect(button('Search').getAttribute('title')).toBe('Search chats and sessions (⌘K)');
 
     expect(host.querySelector('.quota-row')?.textContent).toBe('claude91% · 5h');
     expect(host.querySelector('.quota-row')?.getAttribute('data-level')).toBe('warning');
@@ -478,14 +484,296 @@ describe('<Shell>', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it('starts a chat on ⌘N and calls Search on ⌘K', () => {
+  it('starts a chat on ⌘N, and not on a bare n', () => {
     const value = props();
     render(value);
     press('n', mod());
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
-    press('K', mod());
-    expect(value.side.onSearch).toHaveBeenCalledTimes(1);
     press('n');
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Search (⌘K)', () => {
+  const palette = () => host.querySelector<HTMLElement>('.palette');
+  const field = () => host.querySelector<HTMLInputElement>('.palette input')!;
+  const rows = () => Array.from(host.querySelectorAll('.palette [role=option]'));
+  const row = (item: Element) =>
+    Array.from(item.children)
+      .map((part) => part.textContent)
+      .filter(Boolean)
+      .join(' | ');
+  const selected = () => host.querySelector('.palette [aria-selected=true]')?.querySelector('.grow')?.textContent;
+  // React reads the value through the element's own setter.
+  const type = (text: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), text);
+      field().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  const key = (name: string, init: KeyboardEventInit = {}) => press(name, init, field());
+
+  it('opens on ⌘K and from the sidebar, with the chats, the other sessions and the commands', () => {
+    render(props({}, { onAllChats: vi.fn(), onCommands: vi.fn(), selectedGlyph: 'err' }));
+    expect(palette()).toBeNull();
+    press('k', mod());
+    expect(palette()?.getAttribute('role')).toBe('dialog');
+    expect(palette()?.getAttribute('aria-label')).toBe('Search chats and sessions');
+    expect(document.activeElement).toBe(field());
+    const key = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+    expect(rows().map(row)).toEqual([
+      'Chat a | app | claude | chat',
+      'Chat b | site | claude | chat',
+      'Chat c | site | claude | chat',
+      'Other work | bakery | codex | session',
+      `New chat | ${key}N | command`,
+      'Needs you (3) | command',
+      'All sessions | command',
+      'All chats | command',
+      'Settings: Agents | command',
+      `Collapse sidebar | ${key}B | command`,
+      'Commands and keys | command',
+    ]);
+    expect(rows().filter((one) => one.getAttribute('aria-selected') === 'true')).toHaveLength(1);
+    // The glyphs are those of the sidebar: the open chat as it is now, the others as the stores say.
+    expect(
+      rows()
+        .slice(0, 3)
+        .map((one) => one.querySelector('.sg')?.getAttribute('class')),
+    ).toEqual(['sg err', 'sg run', 'sg ok']);
+    expect(field().getAttribute('aria-activedescendant')).toBe(rows()[0]!.id);
+    // ⌘K again closes it.
+    press('k', mod());
+    expect(palette()).toBeNull();
+    click(button('Search'));
+    expect(palette()).not.toBeNull();
+  });
+
+  it('moves with the arrows, around the ends, and starts again from the top when the words change', () => {
+    render(props());
+    press('k', mod());
+    expect(selected()).toBe('Chat a');
+    key('ArrowDown');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat c');
+    expect(field().getAttribute('aria-activedescendant')).toBe(rows()[2]!.id);
+    key('ArrowUp');
+    expect(selected()).toBe('Chat b');
+    key('Home');
+    key('ArrowUp');
+    expect(selected()).toBe('Collapse sidebar');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat a');
+    key('ArrowDown');
+    type('site');
+    expect(rows().map(row)).toEqual(['Chat b | site | claude | chat', 'Chat c | site | claude | chat']);
+    expect(selected()).toBe('Chat b');
+    type('nothing like it');
+    expect(rows()).toHaveLength(0);
+    expect(host.querySelector('.palette-none')?.textContent).toBe('No chat, session or command matches.');
+    expect(field().hasAttribute('aria-activedescendant')).toBe(false);
+    // Enter with nothing to open leaves it as it is.
+    key('Enter');
+    expect(palette()).not.toBeNull();
+  });
+
+  it('opens the chat under the selection on Enter, as its row in the sidebar does', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('site');
+    key('ArrowDown');
+    key('Enter');
+    expect(palette()).toBeNull();
+    expect(value.side.onOpenChat).toHaveBeenCalledTimes(1);
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[2]);
+    expect(value.search!.onOpenSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps the selected row selected when the list is refreshed under it', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    key('ArrowDown');
+    expect(selected()).toBe('Chat b');
+    // A chat worked in just now moves to the top: the rows below it move down one.
+    const fresh = chat('d', { title: 'Chat d', updatedAt: now });
+    render({ ...value, search: { ...value.search!, chats: [fresh, ...chats] } });
+    expect(rows().map(row)[0]).toMatch(/^Chat d/);
+    expect(selected()).toBe('Chat b');
+    key('Enter');
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[1]);
+    // A row that left the list gives the selection back to the first.
+    press('k', mod());
+    key('ArrowDown');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat b');
+    render({ ...value, search: { ...value.search!, chats: [fresh, chats[0]!, chats[2]!] } });
+    expect(selected()).toBe('Chat d');
+  });
+
+  it('keeps the first row selected when a refresh puts a newer one above it', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    expect(selected()).toBe('Chat a');
+    const fresh = chat('d', { title: 'Chat d', updatedAt: now });
+    render({ ...value, search: { ...value.search!, chats: [fresh, ...chats] } });
+    expect(rows().map(row)[0]).toMatch(/^Chat d/);
+    expect(selected()).toBe('Chat a');
+    key('Enter');
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[0]);
+    // The same after words were typed: the first match is kept.
+    press('k', mod());
+    type('chat');
+    expect(selected()).toBe('Chat d');
+    const newer = chat('e', { title: 'Chat e', updatedAt: now + 1 });
+    render({ ...value, search: { ...value.search!, chats: [newer, fresh, ...chats] } });
+    expect(selected()).toBe('Chat d');
+  });
+
+  it('moves to the first and last row with Home and End, also with words typed', () => {
+    render(props());
+    press('k', mod());
+    type('chat');
+    expect(selected()).toBe('Chat a');
+    const end = new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(end));
+    expect(end.defaultPrevented).toBe(true);
+    expect(selected()).toBe(
+      rows()
+        .map((one) => one.querySelector('.grow')?.textContent)
+        .at(-1),
+    );
+    expect(selected()).not.toBe('Chat a');
+    key('Home');
+    expect(selected()).toBe('Chat a');
+    // Shift+End still selects text in the field.
+    const shiftEnd = new KeyboardEvent('keydown', { key: 'End', shiftKey: true, bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(shiftEnd));
+    expect(shiftEnd.defaultPrevented).toBe(false);
+    expect(selected()).toBe('Chat a');
+  });
+
+  it('closes a menu open under it, so a press in the palette keeps the way back to its button', () => {
+    render(props());
+    click(button('Help'));
+    const item = host.querySelector<HTMLElement>('[role=menu] [role=menuitem], [role=menu] a, [role=menu] button')!;
+    item.focus();
+    expect(document.activeElement).toBe(item);
+    press('k', mod(), item);
+    expect(host.querySelector('[role=menu]')).toBeNull();
+    expect(document.activeElement).toBe(field());
+    // A press in the palette, then Escape: the focus goes back to the menu's button.
+    act(() => void rows()[1]!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })));
+    expect(palette()).not.toBeNull();
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Help'));
+  });
+
+  it('closes the Session menu of the top bar under it, and gives the focus back to its button', () => {
+    render(
+      props({
+        actions: (
+          <TranscriptMenu token="t" endpoint="/api/transcript" sessionId="s" sessionPath="/s.jsonl" label="Session" />
+        ),
+      }),
+    );
+    click(button('Session'));
+    const item = host.querySelector<HTMLElement>('.tm-popover [role=menuitem]')!;
+    item.focus();
+    press('k', mod(), item);
+    expect(host.querySelector('[role=menu]')).toBeNull();
+    expect(document.activeElement).toBe(field());
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Session'));
+  });
+
+  it('goes to another agent’s session, and opens a row on a click', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('codex');
+    key('Enter');
+    expect(value.search!.onOpenSession).toHaveBeenCalledWith(value.search!.sessions[0]);
+    expect(value.side.onOpenChat).not.toHaveBeenCalled();
+    press('k', mod());
+    click(rows()[1]!);
+    expect(palette()).toBeNull();
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[1]);
+  });
+
+  it('runs a command: a page of the sidebar, or the sidebar’s own switch', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('all sessions');
+    key('Enter');
+    expect(value.side.onAllSessions).toHaveBeenCalledTimes(1);
+    press('k', mod());
+    type('settings');
+    key('Enter');
+    expect(value.search!.settings![0]!.onSelect).toHaveBeenCalledTimes(1);
+    press('k', mod());
+    type('sidebar');
+    key('Enter');
+    expect(shell().classList.contains('side-collapsed')).toBe(true);
+    press('k', mod());
+    type('sidebar');
+    expect(rows().map(row)[0]).toMatch(/^Show sidebar/);
+    // ⌘N starts the chat and takes the palette away.
+    press('n', mod(), field());
+    expect(palette()).toBeNull();
+    expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Escape and puts the focus back where it was, without leaving the page under it', () => {
+    const onBack = vi.fn();
+    render(props({ onBack, children: <textarea className="draft" defaultValue="" /> }));
+    const draft = host.querySelector<HTMLTextAreaElement>('.draft')!;
+    draft.focus();
+    press('k', mod(), draft);
+    expect(document.activeElement).toBe(field());
+    type('chat');
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(draft);
+    // One press closed one thing: the page is still there.
+    expect(onBack).not.toHaveBeenCalled();
+    expect(escape.defaultPrevented).toBe(true);
+    press('Escape', {}, draft);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on a press beside it, back to the button that opened it, and keeps Tab in the field', () => {
+    render(props());
+    button('Search').focus();
+    click(button('Search'));
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(true);
+    act(() => {
+      host.querySelector('.palette-bg')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Search'));
+  });
+
+  it('is not there in a window with nothing to search: the button says so', () => {
+    render(props({ search: undefined }));
+    expect(button('Search').getAttribute('aria-disabled')).toBe('true');
+    press('k', mod());
+    click(button('Search'));
+    expect(palette()).toBeNull();
+  });
+
+  it('stays closed under an open dialog', () => {
+    render(props({ children: <dialog open>notes</dialog> }));
+    press('k', mod());
+    expect(palette()).toBeNull();
   });
 });
