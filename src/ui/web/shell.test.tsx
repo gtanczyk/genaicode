@@ -232,6 +232,13 @@ describe('<Shell>', () => {
     expect(host.querySelector('.quota-row')?.textContent).toBe('claude91% · 5h');
     expect(host.querySelector('.quota-row')?.getAttribute('data-level')).toBe('warning');
     expect(host.querySelector('.quota .ring')?.textContent).toBe('91');
+    // The ring opens Settings › Usage only where there is one; else it only shows the limits.
+    expect((button('Plan limits') as HTMLButtonElement).disabled).toBe(true);
+    const onQuota = vi.fn();
+    render(props({}, { ...value.side, onQuota }));
+    expect((button('Plan limits') as HTMLButtonElement).disabled).toBe(false);
+    click(button('Plan limits'));
+    expect(onQuota).toHaveBeenCalledTimes(1);
     click(button('Install 3.4.0 and relaunch'));
     expect(onRelaunch).toHaveBeenCalledTimes(1);
     expect(host.querySelector('.conn')?.textContent).toBe('Connected · 3.3.0');

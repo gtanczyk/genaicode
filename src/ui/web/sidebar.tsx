@@ -411,6 +411,7 @@ export function Sidebar(props: SidebarProps) {
             aria-label="Plan limits"
             title={`Plan limits, the worst window of each agent.\n${quotaTitle}`}
             onClick={props.onQuota}
+            disabled={!props.onQuota}
           >
             <span
               className="ring"

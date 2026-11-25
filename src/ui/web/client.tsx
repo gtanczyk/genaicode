@@ -1302,6 +1302,8 @@ function App() {
     [allLimits, rateLimits, session?.agent],
   );
   const quota = useMemo(() => (session ? quotaRows(knownLimits, [session.agent]) : []), [knownLimits, session?.agent]);
+  // Settings shows Usage where a limit is served or reported, or a session index tells where work went.
+  const usageShown = !!(config?.limits || hasSessions || knownLimits.length);
   return (
     <>
       <Shell
@@ -1442,7 +1444,8 @@ function App() {
           relaunching,
           onRelaunch: relaunch,
           quota,
-          onQuota: () => openSettings('usage'),
+          // Only where Settings has a Usage section to open: else the ring only shows the limits.
+          onQuota: usageShown ? () => openSettings('usage') : undefined,
           onSettings: () => openSettings(panel === 'settings' ? section : 'general'),
           version: release?.version ?? root.dataset.version,
           whatsNewUnread: !!release && seenRelease !== release.version,
@@ -1530,7 +1533,7 @@ function App() {
             artifacts={config?.canConfigureCdn ? { token, hosts: config.artifactCdn ?? [] } : undefined}
             usage={
               // Nothing to say where no limit is served or reported, and no session index tells where work went.
-              config?.limits || hasSessions || knownLimits.length
+              usageShown
                 ? {
                     token,
                     limits: knownLimits,
