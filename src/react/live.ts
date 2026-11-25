@@ -35,11 +35,16 @@ export function missionCounts(
   tasks: readonly WorkTask[],
   dismissed?: readonly string[],
 ): Array<{ group: WorkGroup; count: number }> {
-  const cleared = new Set(dismissed ?? []);
-  const listed = tasks.filter((item) => !(cleared.has(item.key) && workClearable(item)));
+  const listed = listedMissionTasks(tasks, dismissed);
   return WORK_GROUPS.map((group) => ({ group, count: listed.filter((item) => item.group === group).length })).filter(
     (entry) => entry.count,
   );
+}
+
+export function listedMissionTasks(tasks: readonly WorkTask[], dismissed?: readonly string[]): readonly WorkTask[] {
+  if (!dismissed?.length) return tasks;
+  const cleared = new Set(dismissed);
+  return tasks.filter((item) => !cleared.has(item.key) || !workClearable(item));
 }
 
 /**

@@ -171,6 +171,8 @@ changes. Pass `chatId`, your id for the conversation, so a task's detail starts 
 another chat. The panel draws with the design tokens
 (`--gc-color-*`) of `styles.css` and never takes the keyboard focus by itself.
 
+**Approve all** lists the full commands before asking for confirmation. Its third `onApprove` argument identifies the turn, task and command the person saw. **Merge all** sends each confirmed revision with `checked: true`. The pack rechecks the revision, the explicit passing review and the test result before applying it. A discarded worktree with a `recoveryDir` offers **Undo discard** through `{ type: 'restore' }`.
+
 A long list stays short on screen. Above 8 tasks the panel has status chips with counts, a text
 filter (title, agent, id, status) and a switch to group by agent; above 15 a row is one line and a
 group shows its newest 8 rows and **Show N more**, 50 at a time, also under a chip, a filter or

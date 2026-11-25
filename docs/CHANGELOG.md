@@ -8,9 +8,18 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **Review bulk approvals and merges, inspect changed files, and undo a discard.** (#371)
+  - The work panel confirms bulk approvals and checked merges and shows per-file changes. Merged and discarded worktrees stay on disk for recovery (#358, #365).
+
 ### Fixed
 
 - **Read release highlights and expand changes for details.** (#368)
+- **The work panel keeps “Running” on one line beside long commands.** (#370)
+- **Browser commands follow the current conversation across windows.** (#371)
+  - Browser commands follow the conversation generation. Resumed pack tasks renew their checks (#354, #362).
+  - Streaming waits report increasing progress and send a final JSON-RPC response.
 
 ## 3.4.0 — 2026-11-25
 

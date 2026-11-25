@@ -147,7 +147,7 @@ it('lists the files changed in a chat in the work panel, and opens a file in the
 
     const work = page.getByRole('complementary', { name: 'Work panel' });
     await work.waitFor();
-    const VIEWER = 1440 - 268 - 600;
+    const VIEWER = 600;
     const width = () => work.boundingBox().then((box) => Math.round(box!.width));
     const focused = () => page.evaluate(() => document.activeElement?.textContent?.replace(/\s+/g, ' ').trim());
     expect(await work.getByRole('tab').allTextContents()).toEqual(['Tasks 2', 'Live', 'Changes 5', 'Artifacts']);
@@ -176,9 +176,9 @@ it('lists the files changed in a chat in the work panel, and opens a file in the
     expect(await viewer.locator('.gc-work-diff [data-line="add"]').textContent()).toBe(
       '+  items.reduce((a, b) => a + b, 0);',
     );
-    // 600 px where the window has them; at 1440 px the chat keeps its own 600 and leaves 572.
+    // At 1440 px the viewer gets its full preferred width.
     await expect.poll(width).toBe(VIEWER);
-    expect((await page.locator('.workspace .gc-chat').boundingBox())!.width).toBe(600);
+    expect((await page.locator('.workspace .gc-chat').boundingBox())!.width).toBe(1440 - 268 - VIEWER);
     expect(await work.getByRole('tab', { selected: true }).textContent()).toBe('Changes 5');
     // File shows the file as it is now.
     await viewer.getByRole('button', { name: 'File', exact: true }).click();

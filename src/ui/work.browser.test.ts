@@ -364,7 +364,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       /^worker · works in its own copy \(a git worktree\) · started .+ · took 50s\.genaicode\/worktrees\/t2$/,
     );
     expect(await detail.locator('.gc-work-result').textContent()).toBe('Added one line under Unreleased.');
-    expect(await detail.locator('.gc-work-files li').allTextContents()).toEqual(['Mdocs/CHANGELOG.md']);
+    expect(await detail.locator('.gc-work-files li').allTextContents()).toEqual(['Mdocs/CHANGELOG.mdDiff']);
     // No test command in this chat: it says what the person can do.
     expect(await detail.locator('.gc-work-check .gc-work-note').textContent()).toMatch(
       /^No test command is set for this chat, so tests cannot run from here\./,
@@ -391,6 +391,16 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     const live = work.getByRole('region', { name: 'Task t1' });
     await live.waitFor();
     expect(await live.locator('.gc-work-now').textContent()).toMatch(/^Running npm test -- cart\d+s so far$/);
+    // The verb stays on one line beside the command, however long the command is (it once broke a letter a line).
+    await live
+      .locator('.gc-work-now code')
+      .evaluate(
+        (code) =>
+          (code.textContent = 'cd ~/Documents/RecordingsWorkbench/InProgress/site-shots/repo && npx vitest'.repeat(3)),
+      );
+    const verbBox = await live.locator('.gc-work-now b').boundingBox();
+    const codeBox = await live.locator('.gc-work-now code').boundingBox();
+    expect(verbBox!.height).toBeLessThan(codeBox!.height * 1.6);
     expect(await live.locator('.gc-work-say').textContent()).toBe('Latest message · workerThe total skips discounts.');
     // Its timeline, newest first: what it said, what it read, its start. The call that runs is in the card above.
     const timeline = live.getByRole('list', { name: 'Timeline' });

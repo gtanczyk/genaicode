@@ -123,6 +123,8 @@ export function PackInspector({
       );
       setOffset(0);
       setMode('diff');
+    } else if (act && input === 'u' && task.state === 'discarded' && task.recoveryDir) {
+      void perform({ type: 'restore' });
     } else if (act && input === 'x' && !checking && (running || review)) {
       setMode(running ? 'stop' : 'discard');
     } else if (act && review && input === 'd') void perform({ type: 'diff', revision: checks?.revision });
@@ -159,6 +161,7 @@ export function PackInspector({
           ))}
           {task.quotaHint && <Text color="yellow">{plainSessionText(packQuotaText(task.agent, task.quotaHint))}</Text>}
           {task.error && <Text color="red">{plainSessionText(task.error)}</Text>}
+          {task.recoveryDir && <Text>Worktree kept at {plainSessionText(task.recoveryDir)}</Text>}
           {task.changes?.length ? <Text>{plainSessionText(task.changes.join(' · '))}</Text> : null}
           {checks && !running && (review || checks.review || checks.verify) && (
             <>
@@ -211,6 +214,7 @@ export function PackInspector({
             `q approvals (${pending.length})`,
             act && running && task.canSteer && 'i steer',
             act && running && 'x stop',
+            act && task.state === 'discarded' && task.recoveryDir && 'u undo discard',
             act && review && 'd diff · m merge locally · x discard',
             act && review && checks?.reviewer && 'r review',
             act && review && checks?.command && 'v run tests',
