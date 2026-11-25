@@ -1,7 +1,16 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalDecision } from '../agents/types.js';
-import { askVerb, leadNow, leadNowText, missionActive, missionCounts, taskAsks, type TaskAsk } from './live.js';
+import {
+  askVerb,
+  leadNow,
+  leadNowText,
+  listedMissionTasks,
+  missionActive,
+  missionCounts,
+  taskAsks,
+  type TaskAsk,
+} from './live.js';
 import { GROUP_TONE, Glyph } from './work-panel.js';
 import { askSubject, WORK_GROUP_LABEL, workTasks, type PullRequestStatus, type WorkGroup } from './work.js';
 
@@ -38,9 +47,9 @@ export interface MissionStripProps {
  * `<AgentChat missionStrip={...}>` places it; use it directly beside a composer of your own.
  */
 export function MissionStrip(props: MissionStripProps) {
-  const tasks = workTasks(props.state, props.pullRequests);
+  const tasks = listedMissionTasks(workTasks(props.state, props.pullRequests), props.dismissed);
   if (!missionActive(props.state, tasks)) return null;
-  const counts = missionCounts(tasks, props.dismissed);
+  const counts = missionCounts(tasks);
   const now = leadNow(props.state);
   const asks = taskAsks(tasks);
   const head = asks[0];
@@ -132,8 +141,8 @@ function StripAsk({
   useEffect(() => {
     shownAt.current = Date.now();
   }, []);
-  const answer = (decision: ApprovalDecision) => {
-    if (Date.now() - shownAt.current < STRIP_ASK_SETTLE) return;
+  const answer = (decision: ApprovalDecision, clicks: number) => {
+    if (clicks && Date.now() - shownAt.current < STRIP_ASK_SETTLE) return;
     approve?.(head.request.id, decision);
   };
   return (
@@ -164,7 +173,7 @@ function StripAsk({
             className="gc-strip-btn gc-strip-primary"
             aria-label={`Approve for ${head.item.task.id}`}
             title={head.request.scope === 'turn' ? 'Approves it for the rest of this turn' : undefined}
-            onClick={() => answer('approve')}
+            onClick={(event) => answer('approve', event.detail)}
           >
             Approve
           </button>
@@ -172,7 +181,7 @@ function StripAsk({
             type="button"
             className="gc-strip-btn"
             aria-label={`Deny for ${head.item.task.id}`}
-            onClick={() => answer('deny')}
+            onClick={(event) => answer('deny', event.detail)}
           >
             Deny
           </button>

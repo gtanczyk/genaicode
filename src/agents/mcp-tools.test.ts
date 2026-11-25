@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { startLocalMcpServer } from './mcp-server.js';
+import * as protocol from './mcp-tools.js';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createMcpState,
   handleMcpMessage,
@@ -27,6 +29,42 @@ const ask = async (method: string, params?: Record<string, unknown>) =>
   };
 
 describe('handleMcpMessage', () => {
+  it('terminates a started SSE response with the request id on an internal failure', async () => {
+    const local = await startLocalMcpServer({ name: 'progress', tools });
+    const handle = vi
+      .spyOn(protocol, 'handleMcpMessage')
+      .mockImplementationOnce(async (_message, _tools, _info, _state, notify) => {
+        notify!({ jsonrpc: '2.0', method: 'notifications/progress', params: { progress: 1, progressToken: 0 } });
+        throw new Error('Internal failure after progress');
+      });
+    try {
+      const server = local.mcpServer;
+      if (!('url' in server)) throw new Error('Expected an HTTP transport');
+      const response = await fetch(server.url, {
+        method: 'POST',
+        headers: { ...server.headers, accept: 'text/event-stream', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'request',
+          method: 'tools/call',
+          params: { name: 'echo', _meta: { progressToken: 0 } },
+        }),
+      });
+      expect(response.headers.get('content-type')).toBe('text/event-stream');
+      const messages = (await response.text())
+        .split('\n')
+        .filter((line) => line.startsWith('data: '))
+        .map((line) => JSON.parse(line.slice(6)));
+      expect(messages).toEqual([
+        { jsonrpc: '2.0', method: 'notifications/progress', params: { progress: 1, progressToken: 0 } },
+        { jsonrpc: '2.0', id: 'request', error: { code: -32603, message: 'Internal error' } },
+      ]);
+    } finally {
+      handle.mockRestore();
+      await local.close();
+    }
+  });
+
   it('keeps the handshake of older clients as it was', async () => {
     const { result } = await ask('initialize', { protocolVersion: '2025-06-18' });
     expect(result).toEqual({

@@ -2822,6 +2822,19 @@ body[data-resizing='true'] iframe {
 .gc-work-group-head {
   gap: 6px;
 }
+.gc-work-group-head:has(.gc-work-bulk-confirm) {
+  flex-wrap: wrap;
+}
+.gc-work-bulk-confirm {
+  flex: 1 0 100%;
+  min-width: 0;
+  max-height: 45vh;
+  overflow: auto;
+}
+.gc-work-bulk-confirm pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .gc-work-group-head > button:first-child {
   flex: none;
 }
@@ -3202,13 +3215,18 @@ body[data-resizing='true'] iframe {
   align-items: center;
   gap: 8px;
   padding: 4px 6px;
+  flex-wrap: wrap;
+}
+.gc-work-files .gc-work-diff {
+  flex-basis: 100%;
+  min-width: 0;
 }
 .gc-work-files code {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.gc-work-files span {
+.gc-work-files [data-change] {
   font: 600 var(--gc-type-12) var(--gc-font-mono);
   width: 14px;
   text-align: center;

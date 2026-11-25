@@ -1859,6 +1859,20 @@ describe('web UI server', () => {
       });
     const discard = { type: 'pack-task', turnId: 1, id: 't1', action: { type: 'discard' } };
     try {
+      const generation = chat.get().generation!;
+      const reset = vi.spyOn(chat.session, 'reset');
+      expect(await chat.switchChat({ type: 'home' }, { window: 'second', seq: 1 }, generation)).toBe('done');
+      for (const action of [
+        { type: 'submit', text: '/new' },
+        { type: 'approve', id: 'a1', decision: 'approve' },
+        { type: 'auto', on: true },
+        discard,
+      ]) {
+        expect((await post({ ...action, generation })).status).toBe(409);
+      }
+      const late = await post({ type: 'project-chat', cwd: '/w', order: { window: 'first', seq: 1 }, generation });
+      expect(await late.json()).toMatchObject({ ok: false, superseded: true });
+      expect(reset).not.toHaveBeenCalled();
       const left = await post({ ...discard, conversation: 'chat-a' });
       expect(left.status).toBe(409);
       expect(await left.json()).toMatchObject({ ok: false, reason: 'conversation' });

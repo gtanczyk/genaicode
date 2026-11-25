@@ -81,7 +81,10 @@ const $$ = (selector: string) => Array.from(host.querySelectorAll<HTMLElement>(s
 const texts = (selector: string) => $$(selector).map((item) => item.textContent?.replace(/\s+/g, ' ').trim());
 const button = (name: string) =>
   $$('button').find((item) => item.textContent?.trim() === name || item.getAttribute('aria-label') === name);
-const click = (element: Element | undefined) => act(() => (element as HTMLElement).click());
+const click = (element: Element | undefined) =>
+  act(() => {
+    element!.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  });
 /** Lets a newly shown request on the strip settle, so its buttons take clicks. */
 const settle = () => vi.setSystemTime(Date.now() + 500);
 
@@ -204,6 +207,9 @@ describe('<MissionStrip>', () => {
     click(button('Approve for t2'));
     click(button('Deny for t2'));
     expect(onApprove.mock.calls).toEqual([['t1:ap-t1', 'approve']]);
+    // Keyboard activation of the focused button is an intentional choice immediately.
+    act(() => (button('Deny for t2') as HTMLElement).click());
+    expect(onApprove.mock.calls.pop()).toEqual(['t2:ap-t2', 'deny']);
     // Once it has been in view a moment, it takes an answer.
     settle();
     click(button('Approve for t2'));

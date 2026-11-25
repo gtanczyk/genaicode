@@ -358,7 +358,7 @@ width is remembered for the window, and whether it is open and which task shows 
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
 shows which keys are available. You can steer a live worker, stop it, inspect a finished
 worktree's diff, merge the changes into the lead's directory, or discard the worktree.
-Merging leaves the files available for review and commit. Unmerged worktrees stay on disk
+Merged and discarded tasks retain their complete Git worktrees at the path shown on the task, including ignored files and the index. **Undo discard** reopens the worktree while the chat process is running. After exit, the retained directory is still available through `git worktree list`. Merging leaves the project files available for review and commit. Unmerged worktrees stay on disk
 when you exit. The task controls belong to the chat process that started them.
 
 Chat packs leave completed changes on the task card by default. Choose **Request review**

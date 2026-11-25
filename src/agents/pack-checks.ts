@@ -19,6 +19,8 @@ export interface PackCheckResult {
   revision: string;
   status: 'running' | 'completed' | 'failed';
   detail?: string;
+  /** Explicit passing verdict read from the complete review, before its text was clipped. */
+  passed?: boolean;
 }
 
 export interface PackTaskChecks {
