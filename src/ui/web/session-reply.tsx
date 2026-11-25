@@ -4,12 +4,14 @@ import type { SessionInfo } from '../../agents/sessions/types.js';
 
 /**
  * A reply being written: its text and the sandbox chosen for it (`''`: the driver's default), and
- * whether it is on its way (the editor takes no edits until it lands or fails).
+ * whether it is on its way (the editor takes no edits until it lands or fails), and why the last
+ * try to send it failed: an editor shown again says so too.
  */
 export interface SessionReplyDraft {
   prompt: string;
   sandbox: string;
   sending?: boolean;
+  error?: string;
 }
 const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
 
@@ -33,16 +35,14 @@ export function SessionReply({
 }) {
   const [own, setOwn] = useState<SessionReplyDraft>(EMPTY_DRAFT);
   // Kept with the draft: an editor shown again while the reply is on its way takes no edits either.
-  const { prompt, sandbox, sending = false } = draft ?? own;
+  const { prompt, sandbox, sending = false, error } = draft ?? own;
   const keep = (next: SessionReplyDraft) => (onDraft ? onDraft(next) : setOwn(next));
-  const setPrompt = (value: string) => keep({ prompt: value, sandbox });
-  const setSandbox = (value: string) => keep({ prompt, sandbox: value });
-  const [error, setError] = useState<string>();
+  const setPrompt = (value: string) => keep({ prompt: value, sandbox, error });
+  const setSandbox = (value: string) => keep({ prompt, sandbox: value, error });
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (sending || !prompt.trim()) return;
     keep({ prompt, sandbox, sending: true });
-    setError(undefined);
     try {
       const target = [session.source, session.id].map(encodeURIComponent).join('/');
       const response = await fetch(`/api/sessions/${target}/send`, {
@@ -56,8 +56,7 @@ export function SessionReply({
       if (!onDraft) setOwn({ prompt, sandbox });
       onSent(result.text ?? '');
     } catch (cause) {
-      keep({ prompt, sandbox });
-      setError(cause instanceof Error ? cause.message : String(cause));
+      keep({ prompt, sandbox, error: cause instanceof Error ? cause.message : String(cause) });
     }
   };
   return (

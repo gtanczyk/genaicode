@@ -212,6 +212,17 @@ it('says so when nothing needs the person, and keeps what the tower last did', (
   expect(host.querySelector('.errors')?.textContent).toBe('Unavailable stores · gemini');
 });
 
+it('says the queue could not be read, and which stores, in place of saying nothing waits', () => {
+  render(props({ items: [], unread: { failed: ['every agent’s sessions: The server answered 500.'], errors: [] } }));
+  expect(host.querySelector('.needs-empty')).toBeNull();
+  expect(host.textContent).toContain('Could not read the queue: every agent’s sessions: The server answered 500.');
+  render(props({ items: [], unread: { failed: [], errors: [{ source: 'codex', message: 'locked' }] } }));
+  expect(host.querySelector('.needs-empty')).toBeNull();
+  expect(host.textContent).toContain('Could not read codex: locked');
+  render(props({ items: [], unread: { failed: [], errors: [] } }));
+  expect(host.querySelector('.needs-empty b')?.textContent).toBe('Nothing needs you now');
+});
+
 it('gives the next question of a session a card of its own: a button of the last one does not answer it', async () => {
   const hooked: SessionInfo = { ...gate, id: 'hooked', title: 'Ship it', ending: undefined, waitingFor: 'approval' };
   const ask = { id: 'abc', agent: 'claude', session: 'hooked', tool: 'Bash', preview: 'npm publish', at: now, pid: 1 };
@@ -350,7 +361,7 @@ it('keeps the editor of a reply on its way closed to edits when a filter hides i
   expect(card('Gate verdict retries').querySelector('textarea')).toBeNull();
 });
 
-it('gives the draft back, open to edits, when a reply hidden by a filter could not be sent', async () => {
+it('gives the draft back, open to edits and with the error, when a reply hidden by a filter could not be sent', async () => {
   let land!: (res: Response) => void;
   vi.stubGlobal(
     'fetch',
@@ -374,4 +385,5 @@ it('gives the draft back, open to edits, when a reply hidden by a filter could n
   await click(chips()[0]!);
   expect(field().value).toBe('On 502 too.');
   expect(field().disabled).toBe(false);
+  expect(card('Gate verdict retries').querySelector('[role="alert"]')?.textContent).toBe('Busy.');
 });

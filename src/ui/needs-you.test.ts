@@ -107,13 +107,33 @@ const count = (from: NeedsInput) =>
   needsYou({
     approvals: from.chat?.approvals.length ?? 0,
     tower: from.tower,
-    sessions: needsSessions(from.sessions, from.own),
+    sessions: needsSessions(from.sessions, from.own, from.asks),
     open: { id: from.chat?.id, source: from.chat?.source },
     now,
   }).total;
 const item = (key: string, from = input) => needsItems(from).find((one) => one.key === key)!;
 
 describe('needsItems', () => {
+  it('asks for approval where a hook question is open though the row was read before it', () => {
+    // Without a tower: the listing read the session at work, then found the hook's question.
+    const late: NeedsInput = {
+      sessions: [session('late', { source: 'codex', agent: 'codex', state: 'active' })],
+      asks: [
+        { id: 'q1', agent: 'codex', session: 'late', tool: 'Bash', preview: 'rm -rf dist', at: now - MIN, pid: 1 },
+      ],
+      now,
+    };
+    const items = needsItems(late);
+    expect(items.map((one) => [one.key, one.kind, one.text])).toEqual([
+      ['session:codex:late:q1', 'approval', 'Bash\nrm -rf dist'],
+    ]);
+    expect(items[0]!.choices.map((one) => one.decision)).toEqual([
+      { via: 'ask', id: 'q1', behavior: 'allow' },
+      { via: 'ask', id: 'q1', behavior: 'deny' },
+    ]);
+    expect(count(late)).toBe(1);
+  });
+
   it('lists what the sidebar counts, each request once', () => {
     const items = needsItems(input);
     expect(items.map((one) => one.key)).toEqual([

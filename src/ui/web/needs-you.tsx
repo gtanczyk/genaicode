@@ -35,6 +35,11 @@ export interface NeedsYouPageProps {
   token: string;
   /** What the tower last did, and the stores it could not read. */
   tower?: { status?: string; unavailable: readonly string[] };
+  /**
+   * What could not be read of the queue: the listings of sessions that failed, and the stores they
+   * could not read. While any is there, an empty queue does not say nothing waits.
+   */
+  unread?: { failed: readonly string[]; errors: ReadonlyArray<{ source: string; message: string }> };
   /** Applies an answer. False: the item was no longer open. */
   decide(decision: NeedsDecision): Promise<boolean>;
   /** Goes where the item is at home: the chat, another chat, or the list of sessions. */
@@ -88,6 +93,9 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   // What was done here, and what the tower last did (a delivery that failed after a reply was
   // sent says so too): each on its own.
   const towerStatus = towerText(props.tower?.status ?? '');
+  const failed = props.unread?.failed ?? [];
+  const storeErrors = props.unread?.errors ?? [];
+  const incomplete = failed.length > 0 || storeErrors.length > 0;
   return (
     <main className="needs-page" aria-label="Needs you">
       <div className="needs-in">
@@ -102,6 +110,16 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
         {props.tower?.unavailable.length ? (
           <p className="errors">Unavailable stores · {props.tower.unavailable.map((s) => towerText(s)).join(', ')}</p>
         ) : null}
+        {failed.map((why) => (
+          <p key={why} className="errors">
+            Could not read the queue: {towerText(why)}
+          </p>
+        ))}
+        {storeErrors.map((error) => (
+          <p key={error.source} className="errors">
+            Could not read {towerText(error.source)}: {towerText(error.message)}
+          </p>
+        ))}
         <p role="status" className="needs-status">
           {feedback ? <span>{feedback}</span> : null}
           {feedback && towerStatus ? ' · ' : null}
@@ -121,7 +139,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
               </button>
             ))}
           </div>
-        ) : (
+        ) : incomplete ? null : (
           <div className="needs-empty">
             <StateGlyph state="ok" decorative />
             <b>Nothing needs you now</b>

@@ -144,10 +144,24 @@ const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slic
  * leaves out (an automated one, for instance), each once by store and id; where both have a row,
  * the one of every agent's sessions wins. Two stores may hold a session with the same agent and
  * id: both rows stay, so `askOf()` sees they are two. The count on "Needs you" reads the same.
+ *
+ * A session a hook's question (`asks`) is open for waits on it, whatever its row says: the listing
+ * reads the stores before the questions, so a question asked in between finds its session still
+ * at work.
  */
-export function needsSessions(sessions: readonly SessionInfo[] = [], own: readonly SessionInfo[] = []): SessionInfo[] {
+export function needsSessions(
+  sessions: readonly SessionInfo[] = [],
+  own: readonly SessionInfo[] = [],
+  asks: readonly PendingAsk[] = [],
+): SessionInfo[] {
   const listed = new Set(sessions.map(sessionKey));
-  return [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
+  const all = [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
+  if (!asks.length) return all;
+  return all.map((session) =>
+    session.waitingFor !== 'approval' && askOf(session, all, asks)
+      ? { ...session, state: 'waiting', waitingFor: 'approval' }
+      : session,
+  );
 }
 
 /**
@@ -213,7 +227,7 @@ function askOf(session: SessionInfo, sessions: readonly SessionInfo[], asks: rea
 export function needsItems(input: NeedsInput): NeedsItem[] {
   const now = input.now ?? Date.now();
   const chat = input.chat;
-  const sessions = needsSessions(input.sessions, input.own);
+  const sessions = needsSessions(input.sessions, input.own, input.asks);
   const isOwn = ownSession(input.own ?? []);
   const asks = input.asks ?? [];
   const elsewhere = waitingElsewhere({

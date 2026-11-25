@@ -18,6 +18,13 @@ export interface Chats {
   /** The questions hooks hold open, and the agents that take a reply to a session. */
   asks: NonNullable<WebSessionListing['asks']>;
   senders: NonNullable<WebSessionListing['senders']>;
+  /**
+   * Why the last read of a listing failed, for each that did (every agent's sessions, this app's
+   * chats), and the stores the last listing of every agent's sessions could not read: while any is
+   * there, an empty queue does not say nothing waits.
+   */
+  failed: string[];
+  errors: WebSessionListing['errors'];
   /** Asks again now: something was answered from here. */
   refresh(): void;
   /**
@@ -59,6 +66,9 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
   const [ownKnown, setOwnKnown] = useState(false);
   const [listing, setListing] = useState<WebSessionListing>(NO_LISTING);
   const [round, setRound] = useState(0);
+  // Why the last read of each listing failed; absent once one is read.
+  const [failedAll, setFailedAll] = useState<string>();
+  const [failedOwn, setFailedOwn] = useState<string>();
   // The questions answered from here that a listing may still hold, with the session each was asked
   // for where known: forgotten once a listing does not hold it.
   const [gone, setGone] = useState<ReadonlyMap<string, AskedBy | undefined>>(NO_ASKS_GONE);
@@ -73,22 +83,33 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
   useEffect(() => {
     if (!enabled || !token) return;
     let current = true;
-    const list = (query: string, keep: (listing: WebSessionListing) => void) =>
+    const list = (query: string, keep: (listing: WebSessionListing) => void, fail: (why: string | undefined) => void) =>
       fetch(`/api/sessions?${query}`, { headers: { 'x-genaicode-token': token } })
-        .then((res) => (res.ok ? (res.json() as Promise<WebSessionListing>) : undefined))
+        .then((res) => {
+          if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+          return res.json() as Promise<WebSessionListing>;
+        })
         .then(
           (found) => {
-            if (current && found) keep(found);
+            if (!current) return;
+            fail(undefined);
+            keep(found);
           },
-          () => undefined,
+          (error: unknown) => {
+            if (current) fail(error instanceof Error ? error.message : String(error));
+          },
         );
     const ask = () => {
       if (document.visibilityState !== 'visible') return;
-      void list('days=30&own=1', (found) => {
-        setOwn(found.sessions ?? []);
-        setOwnKnown(true);
-      });
-      void list('days=7', keepListing);
+      void list(
+        'days=30&own=1',
+        (found) => {
+          setOwn(found.sessions ?? []);
+          setOwnKnown(true);
+        },
+        setFailedOwn,
+      );
+      void list('days=7', keepListing, setFailedAll);
     };
     ask();
     const timer = window.setInterval(ask, LIMITS_EVERY_MS);
@@ -112,6 +133,11 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
       ownKnown,
       asks: shown.asks,
       senders: listing.senders ?? [],
+      failed: [
+        ...(failedAll ? [`every agent’s sessions: ${failedAll}`] : []),
+        ...(failedOwn ? [`this app’s chats: ${failedOwn}`] : []),
+      ],
+      errors: listing.errors ?? [],
       refresh: () => setRound((value) => value + 1),
       answered: (ask, of) => {
         // The own chats are settled now too: every agent's listing may be read again first and no
@@ -133,5 +159,5 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         setRound((value) => value + 1);
       },
     };
-  }, [own, ownKnown, listing, gone]);
+  }, [own, ownKnown, listing, gone, failedAll, failedOwn]);
 }

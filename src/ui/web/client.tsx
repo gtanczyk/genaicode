@@ -1254,8 +1254,9 @@ function App() {
     () => (othersKnown ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
     [othersKnown, chats.all, ownChats],
   );
-  // This app's chats that every agent's list leaves out (an automated one) ask too.
-  const needsRows = useMemo(() => needsSessions(chats.all, ownChats), [chats.all, ownChats]);
+  // This app's chats that every agent's list leaves out (an automated one) ask too, and so does a
+  // session a hook's question is open for, though its row was read before the question.
+  const needsRows = useMemo(() => needsSessions(chats.all, ownChats, chats.asks), [chats.all, ownChats, chats.asks]);
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
@@ -1524,6 +1525,7 @@ function App() {
             connected={connected}
             token={token}
             tower={view?.tower}
+            unread={{ failed: chats.failed, errors: chats.errors }}
             decide={decideNeed}
             onOpen={(item) => {
               if (item.open?.to === 'chat') backToChat();

@@ -135,3 +135,30 @@ it('settles an own chat whose tower card was approved before every agent’s lis
   expect(queue([])).toEqual([]);
   expect(needsYou({ approvals: 0, tower: [], sessions: needsSessions(chats.all, chats.own), now }).total).toBe(0);
 });
+
+it('says which listing could not be read, and which stores, until it is read again', async () => {
+  const answers: Array<(res: Response) => void> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>((resolve) => void answers.push(resolve))),
+  );
+  let chats!: Chats;
+  function Probe() {
+    chats = useChats('t', true, 'stamp');
+    return null;
+  }
+  act(() => root.render(<Probe />));
+  const [own, all] = answers.splice(0);
+  await act(async () => own!(new Response(JSON.stringify({ sessions: [], errors: [] }))));
+  await act(async () => all!(new Response('{}', { status: 500 })));
+  expect(chats.failed).toEqual(['every agent’s sessions: The server answered 500.']);
+  expect(chats.errors).toEqual([]);
+
+  act(() => chats.refresh());
+  const [, again] = answers.splice(0);
+  await act(async () =>
+    again!(new Response(JSON.stringify({ sessions: [], errors: [{ source: 'codex', message: 'locked' }] }))),
+  );
+  expect(chats.failed).toEqual([]);
+  expect(chats.errors).toEqual([{ source: 'codex', message: 'locked' }]);
+});
