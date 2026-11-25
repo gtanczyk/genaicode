@@ -2052,7 +2052,12 @@ function App() {
                     more: undefined,
                     folded: { ...workView.folded, [group]: false },
                   }),
-                onOpenTask: (key) => openWork({ task: key }),
+                // A task's detail shows on Tasks and Live only: from Changes or Artifacts it opens on Tasks.
+                onOpenTask: (key) =>
+                  openWork({
+                    task: key,
+                    ...(workView.tab === 'changes' || workView.tab === 'artifacts' ? { tab: 'tasks' as const } : {}),
+                  }),
               }}
               hint={
                 inSetup ? (
