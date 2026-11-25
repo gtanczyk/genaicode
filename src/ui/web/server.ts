@@ -1,5 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
@@ -16,6 +18,7 @@ import type { SessionTurn } from '../../agents/session.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController, ChatSwitch, SwitchOrder } from '../controller.js';
+import { currentBranch, repoRoot } from '../../agents/pack-git.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
   activeChatTruncation,
@@ -172,6 +175,76 @@ export interface HostApp {
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
   saveSettings?(settings: { artifactCdn: readonly string[] }): void;
+  /**
+   * Ask the person for a folder with the host's own dialog (the project a new chat starts in).
+   * Resolves to its absolute path, or undefined when they chose none.
+   */
+  chooseFolder?(): Promise<string | undefined>;
+}
+
+/** What GET /api/folder says of a path typed as the folder of a new chat. */
+export interface WebFolder {
+  /** The path as an absolute one (`~` is the home folder). */
+  path: string;
+  /** False when there is no such directory. */
+  exists: boolean;
+  /** True inside a git repository. */
+  git?: boolean;
+  /** The branch checked out there. */
+  branch?: string;
+}
+
+/** The folder a path names once links are followed; the path itself when there is none. */
+function realFolder(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** A typed folder as an absolute path: `~` expanded, spaces around it dropped. Undefined when it is not one. */
+function typedFolder(given: string, home: string): string | undefined {
+  const typed = given.trim();
+  const expanded = typed === '~' ? home : /^~[\\/]/.test(typed) ? join(home, typed.slice(2)) : typed;
+  return expanded && isAbsolute(expanded) ? resolve(expanded) : undefined;
+}
+
+/** Reads what the new chat's project line shows of a typed path: whether it is there, a repository, and its branch. */
+export async function inspectFolder(given: string, home = homedir()): Promise<WebFolder | undefined> {
+  const path = typedFolder(given, home);
+  return path === undefined ? undefined : describeFolder(path);
+}
+
+/**
+ * The folder the host's dialog returned, exactly as given (a name may end in a space): its real
+ * path, which is both what the person may open and where the chat then runs. Undefined when it is
+ * not an existing directory.
+ */
+export async function chosenFolder(chosen: string): Promise<WebFolder | undefined> {
+  if (!isAbsolute(chosen)) return undefined;
+  let path: string;
+  try {
+    path = realpathSync(chosen);
+  } catch {
+    return undefined;
+  }
+  const folder = await describeFolder(path);
+  return folder.exists ? folder : undefined;
+}
+
+/** Whether `path`, an absolute path, is a directory, a git repository, and its branch. */
+async function describeFolder(path: string): Promise<WebFolder> {
+  let exists = false;
+  try {
+    exists = statSync(path).isDirectory();
+  } catch {
+    exists = false;
+  }
+  if (!exists) return { path, exists };
+  const git = !!(await repoRoot(path).catch(() => null));
+  const branch = git ? await currentBranch(path).catch(() => undefined) : undefined;
+  return { path, exists, git, ...(branch ? { branch } : {}) };
 }
 
 /**
@@ -210,7 +283,12 @@ export type WebCommand =
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
   | WebSwitchCommand
   | { type: 'agent'; name: string }
-  | { type: 'model'; model: string };
+  | { type: 'model'; model: string }
+  /**
+   * `/auto on|off` for the conversation numbered `generation` (`ChatView.generation`), the one
+   * shown when it was asked for: refused once another is shown.
+   */
+  | { type: 'auto'; on: boolean; generation: number };
 
 /**
  * A request for another conversation (`ChatController.switchChat`). `order` says where it stands
@@ -365,6 +443,17 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const model = text('model', 200);
       return model === undefined ? undefined : { type: 'model', model };
     }
+    case 'auto': {
+      const { on, generation } = command;
+      if (
+        typeof on !== 'boolean' ||
+        typeof generation !== 'number' ||
+        !Number.isSafeInteger(generation) ||
+        generation < 0
+      )
+        return undefined;
+      return { type: 'auto', on, generation };
+    }
     default:
       return undefined;
   }
@@ -388,6 +477,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   const cookieName = () => `genaicode_${port}`;
   const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  /** Folders the person picked in the host app's dialog (real paths): a chat may start in them. */
+  const chosenFolders = new Set<string>();
   const cookieOk = (req: IncomingMessage) => {
     const header = req.headers.cookie;
     if (!header) return false;
@@ -442,6 +533,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       files: !!options.files,
       ...(options.hostApp?.saveTranscript ? { nativeSave: true } : {}),
       reveal: !!options.hostApp?.reveal,
+      ...(options.hostApp?.chooseFolder ? { chooseFolder: true } : {}),
       artifactCdn,
       canConfigureCdn: !!options.settings,
       ...(update ? { update } : {}),
@@ -627,6 +719,48 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         if (cap) urls[item] = `/files/${cap.id}`;
       }
       return send(res, 200, 'application/json', JSON.stringify({ urls }), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/folder') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      // `cwd`: a folder by its exact absolute path (the chat's own), taken as it is. `path`: one typed
+      // in, where `~` is expanded and spaces around it are dropped.
+      const exact = url.searchParams.get('cwd');
+      const given = exact ?? url.searchParams.get('path') ?? '';
+      const path =
+        given.length > 4096
+          ? undefined
+          : exact !== null
+            ? isAbsolute(exact)
+              ? exact
+              : undefined
+            : typedFolder(given, homedir());
+      if (path === undefined) return send(res, 400, 'application/json', '{"error":"bad path"}');
+      // With a fixed project (`--cwd`) the page asks only about the folder the chat is in, that very
+      // folder: `repo\` or `repo ` beside it is another one.
+      const project = controller.session.get().cwd;
+      if (!options.title.home && realFolder(path) !== realFolder(project)) {
+        return send(res, 403, 'application/json', '{"error":"not this project"}');
+      }
+      const folder = await describeFolder(options.title.home ? path : project);
+      return send(res, 200, 'application/json', JSON.stringify(folder), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/choose-folder') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.hostApp?.chooseFolder) {
+        return send(res, 404, 'application/json', '{"error":"no folder dialog"}');
+      }
+      const chosen = await options.hostApp.chooseFolder().catch(() => undefined);
+      // The exact path the dialog returned, by its real path: what the person picked may be opened,
+      // also when no session worked there yet, and nothing beside it.
+      const folder = chosen ? await chosenFolder(chosen) : undefined;
+      if (folder) chosenFolders.add(folder.path);
+      return send(res, 200, 'application/json', JSON.stringify(folder ? { folder } : {}), {
+        'cache-control': 'no-store',
+      });
     }
     if (req.method === 'POST' && url.pathname === '/api/reveal') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
@@ -1110,7 +1244,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         }
       }
       if (isSwitch(command)) {
-        const result = await controller.switchChat(switchTarget(command), command.order);
+        const result = await controller.switchChat(switchTarget(command, chosenFolders), command.order);
         return send(
           res,
           200,
@@ -1171,7 +1305,7 @@ const SWITCHES: ReadonlySet<string> = new Set<WebSwitchCommand['type']>([
 const isSwitch = (command: WebCommand): command is WebSwitchCommand => SWITCHES.has(command.type);
 
 /** The conversation a command asks for. */
-function switchTarget(command: WebSwitchCommand): ChatSwitch {
+function switchTarget(command: WebSwitchCommand, chosenFolders: ReadonlySet<string>): ChatSwitch {
   switch (command.type) {
     case 'continue':
       return {
@@ -1182,8 +1316,14 @@ function switchTarget(command: WebSwitchCommand): ChatSwitch {
       };
     case 'topic-chat':
       return { type: 'topic', topic: command.topic };
-    case 'project-chat':
-      return { type: 'project', cwd: command.cwd };
+    case 'project-chat': {
+      // What the person picked in the host's dialog may be opened, whoever worked there before. The
+      // path is resolved once: the one checked is the one opened, also when a link is moved meanwhile.
+      const real = realFolder(command.cwd);
+      return chosenFolders.has(real)
+        ? { type: 'project', cwd: real, chosen: true }
+        : { type: 'project', cwd: command.cwd };
+    }
     case 'home-chat':
       return { type: 'home' };
     case 'stay-chat':
@@ -1226,6 +1366,8 @@ async function run(
     case 'model':
       controller.setModel(command.model.trim() || undefined);
       return true;
+    case 'auto':
+      return controller.setAutoApprove(command.on, command.generation);
   }
 }
 

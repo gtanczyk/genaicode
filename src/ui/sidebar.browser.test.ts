@@ -144,7 +144,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
 
     const side = page.getByRole('complementary', { name: 'Sidebar' });
     const chats = side.getByRole('navigation', { name: 'Chats' });
-    const composer = page.locator('.gc-box textarea');
+    const composer = page.locator('.gc-composer textarea');
     const topbar = page.locator('header.topbar');
 
     // The shell: a full sidebar beside the chat, one top bar, and no second row of controls.

@@ -31,6 +31,9 @@ import {
   limitChips,
   relativePath,
   shortId,
+  SUBMIT,
+  submitAction,
+  submitTitle,
   toolArgument,
   toolDiff,
   toolLabel,
@@ -196,12 +199,28 @@ export interface AgentChatProps {
    * mode). The attach buttons move to that row too, so the field holds the text and Send only.
    */
   composerExtras?: ReactNode;
+  /**
+   * `'card'` draws the composer as one card: the message field on top and one row under it with
+   * the attach buttons, `composerExtras`, Stop and the submit button (with its Enter key hint).
+   * Default: the field with Stop and submit beside it, and `composerExtras` in a row below.
+   */
+  composerLayout?: 'card';
+  /**
+   * A line above the message field, e.g. where a new chat starts. In the card layout it is the
+   * card's first line.
+   */
+  composerHeader?: ReactNode;
   /** Line under the composer. Default: the keys. Pass null for none. */
   hint?: ReactNode;
   /** A tooltip on the message box, e.g. its keys when `hint` is `null`. */
   composerTitle?: string;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
   disabled?: boolean;
+  /**
+   * While `disabled`, a message this accepts is sent all the same (without files), e.g. the host's
+   * commands that move it to another chat while it waits for one.
+   */
+  sendsWhileDisabled?(draft: string): boolean;
   autoFocus?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
   theme?: 'auto' | 'light' | 'dark';
@@ -272,7 +291,10 @@ export function AgentChat(props: AgentChatProps) {
 
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);
-  const sendable = (!!draft.trim() || attached.files.length > 0) && !props.disabled && !attached.recording;
+  const sendable =
+    (!!draft.trim() || attached.files.length > 0) &&
+    (!props.disabled || (!attached.files.length && !!props.sendsWhileDisabled?.(draft))) &&
+    !attached.recording;
   // What is in the composer now, for an answer that comes later.
   const composing = useRef({ draft, files: attached.files });
   composing.current = { draft, files: attached.files };
@@ -314,6 +336,18 @@ export function AgentChat(props: AgentChatProps) {
   };
   const extras = props.composerExtras;
   const hasExtras = extras !== undefined && extras !== null && extras !== false;
+  const card = props.composerLayout === 'card';
+  const header = props.composerHeader;
+  const hasHeader = header !== undefined && header !== null && header !== false;
+  // What Enter does now: the submit button says it, and Stop is a button of its own beside it.
+  const action = submitAction(state);
+  const submitHover = sendable
+    ? submitTitle(state)
+    : props.disabled
+      ? undefined
+      : attached.enabled
+        ? 'Type a message or attach a file'
+        : 'Type a message';
   // Host controls take a row of their own under the field, with the attach buttons; without them
   // the attach buttons sit inside the field, under the text.
   const stacked = attached.enabled && !hasExtras;
@@ -498,6 +532,71 @@ export function AgentChat(props: AgentChatProps) {
     </>
   ) : null;
 
+  const pendingFiles = (
+    <>
+      {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
+      {attached.problem ? (
+        <div className="gc-attach-problem" role="alert">
+          {attached.problem}
+        </div>
+      ) : null}
+    </>
+  );
+  const field = (
+    <textarea
+      ref={input}
+      rows={card ? 2 : 1}
+      autoFocus={props.autoFocus}
+      value={draft}
+      placeholder={placeholder}
+      title={props.composerTitle}
+      aria-label="Message"
+      aria-disabled={props.disabled || undefined}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        setPicked(0);
+        setClosedAt(undefined);
+      }}
+      aria-autocomplete={props.completions ? 'list' : undefined}
+      role={props.completions ? 'combobox' : undefined}
+      aria-expanded={props.completions ? !!choice : undefined}
+      aria-controls={choice ? listId : undefined}
+      aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
+      onKeyDown={onKeyDown}
+      onPaste={onPaste}
+    />
+  );
+  // Stop never takes the place of the submit button: while the agent works both are there.
+  const stopButton =
+    (running || props.canStop) && props.onStop ? (
+      <button
+        type="button"
+        className="gc-btn gc-danger gc-stop"
+        title="Stop the turn. Queued prompts are dropped."
+        onClick={() => props.onStop?.()}
+      >
+        {card ? (
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor" />
+          </svg>
+        ) : null}
+        Stop
+      </button>
+    ) : null;
+  const submitButton = (
+    <button
+      type="button"
+      className="gc-btn gc-primary gc-submit"
+      data-action={action}
+      title={submitHover}
+      disabled={!sendable}
+      onClick={send}
+    >
+      {SUBMIT[action].label}
+      {card ? <kbd aria-hidden="true">↵</kbd> : null}
+    </button>
+  );
+
   const onFileContextMenu = onRevealFile
     ? (event: ReactMouseEvent<HTMLDivElement>) => {
         const el = (event.target as Element).closest?.('[data-gc-file]');
@@ -578,7 +677,7 @@ export function AgentChat(props: AgentChatProps) {
                 ) : null}
               </div>
             </div>
-            <div className="gc-composer">
+            <div className={card ? 'gc-composer gc-composer-card' : 'gc-composer'}>
               {state.queued.length ? (
                 <div className="gc-queued">
                   {state.queued.map((prompt, i) => {
@@ -613,50 +712,33 @@ export function AgentChat(props: AgentChatProps) {
                   ))}
                 </ul>
               ) : null}
-              {attached.enabled ? <PendingAttachments files={attached.files} onRemove={attached.remove} /> : null}
-              {attached.problem ? (
-                <div className="gc-attach-problem" role="alert">
-                  {attached.problem}
+              {hasHeader && !card ? <div className="gc-composer-header">{header}</div> : null}
+              {card ? null : pendingFiles}
+              {card ? (
+                <div className="gc-card" data-disabled={props.disabled ? '1' : undefined}>
+                  {hasHeader ? <div className="gc-composer-header">{header}</div> : null}
+                  {pendingFiles}
+                  {field}
+                  <div className="gc-card-row">
+                    {attachButtons}
+                    {hasExtras ? extras : <span className="gc-grow" />}
+                    {stopButton}
+                    {submitButton}
+                  </div>
                 </div>
-              ) : null}
-              <div
-                className={stacked ? 'gc-box gc-stacked' : 'gc-box'}
-                data-disabled={props.disabled ? '1' : undefined}
-              >
-                <textarea
-                  ref={input}
-                  rows={1}
-                  autoFocus={props.autoFocus}
-                  value={draft}
-                  placeholder={placeholder}
-                  title={props.composerTitle}
-                  aria-label="Message"
-                  aria-disabled={props.disabled || undefined}
-                  onChange={(event) => {
-                    setDraft(event.target.value);
-                    setPicked(0);
-                    setClosedAt(undefined);
-                  }}
-                  aria-autocomplete={props.completions ? 'list' : undefined}
-                  role={props.completions ? 'combobox' : undefined}
-                  aria-expanded={props.completions ? !!choice : undefined}
-                  aria-controls={choice ? listId : undefined}
-                  aria-activedescendant={choice ? optionId(offered.indexOf(choice)) : undefined}
-                  onKeyDown={onKeyDown}
-                  onPaste={onPaste}
-                />
-                {hasExtras ? null : attachButtons}
-                {stacked ? <span className="gc-grow" /> : null}
-                {(running || props.canStop) && props.onStop ? (
-                  <button type="button" className="gc-btn gc-danger" onClick={() => props.onStop?.()}>
-                    Stop
-                  </button>
-                ) : null}
-                <button type="button" className="gc-btn gc-primary" disabled={!sendable} onClick={send}>
-                  {running ? (state.canSteer ? 'Steer' : 'Queue') : 'Send'}
-                </button>
-              </div>
-              {hasExtras ? (
+              ) : (
+                <div
+                  className={stacked ? 'gc-box gc-stacked' : 'gc-box'}
+                  data-disabled={props.disabled ? '1' : undefined}
+                >
+                  {field}
+                  {hasExtras ? null : attachButtons}
+                  {stacked ? <span className="gc-grow" /> : null}
+                  {stopButton}
+                  {submitButton}
+                </div>
+              )}
+              {hasExtras && !card ? (
                 <div className="gc-under">
                   {attachButtons}
                   <span className="gc-grow" />

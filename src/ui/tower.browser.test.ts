@@ -290,11 +290,17 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
     await vi.waitFor(() => expect(opened).toBeTruthy());
     const page = await browser.newPage();
     await page.goto(opened!);
-    await page.getByRole('button', { name: 'Ask first' }).waitFor();
-    await page.getByRole('button', { name: 'Auto-approve all' }).click();
-    await page.getByRole('button', { name: '✓ Auto-approve' }).waitFor();
+    // The composer's switch says Ask first; the approval card's own button turns it for the session.
+    const permission = page.getByRole('group', { name: 'Permission requests in this chat' });
+    const auto = permission.getByRole('button', { name: 'Auto-approve all' });
+    await vi.waitFor(async () =>
+      expect(await permission.getByRole('button', { name: 'Ask first' }).getAttribute('aria-pressed')).toBe('true'),
+    );
+    const cards = page.getByRole('log');
+    await cards.getByRole('button', { name: 'Auto-approve all' }).first().click();
+    await vi.waitFor(async () => expect(await auto.getAttribute('aria-pressed')).toBe('true'));
     await vi.waitFor(() => expect(decisions).toEqual(['first approve', 'second approve']));
-    expect(await page.getByRole('button', { name: 'Auto-approve all' }).count()).toBe(0);
+    expect(await cards.getByRole('button', { name: 'Auto-approve all' }).count()).toBe(0);
   } finally {
     stop.abort();
     await browser.close();

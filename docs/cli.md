@@ -287,8 +287,8 @@ links to its page. Once [`genaicode topics refresh`](#your-work-as-topics-topics
 your sessions, the view groups them by topic instead (those that ask for you first), and
 **By directory** brings the projects back.
 
-The composer shows how much of the chosen agent's plan is used (`7d 19%`), and the bottom of the
-sidebar each agent's worst window (`claude 62% · 5h`): what the session's runs
+The bottom of the sidebar shows each agent's worst window (`claude 62% · 5h`), and the line under
+the composer names an agent above 80% of its plan: what the session's runs
 report, and before that what `genaicode limits` last saw. With a plan limit known, the price of
 the session's tokens is left out: on a plan it would be an estimate nobody pays.
 
@@ -372,12 +372,12 @@ whether to merge it. In the terminal use `r` for review, `v` for tests and `c` t
 Each prompt after the first continues the agent's own session (`AgentTask.resume`), so you
 can say "now add a test for that". Prompts sent while the agent works wait in a queue and
 run next; Esc stops the agent. When the agent asks for permission, `y` approves, `n`
-denies and `a` approves everything from then on (`/auto`, **Auto-approve all** on the request, or the
-the mode button in the browser's prompt box; `-y` starts that way). `!` on an empty prompt switches to shell mode, as in Claude
+denies and `a` approves everything from then on in this chat (`/auto`, **Auto-approve all** on the request, or the
+the mode button in the browser's prompt box; `-y` starts every chat that way). `!` on an empty prompt switches to shell mode, as in Claude
 Code: `!npm run dev` runs in the project with its output in the transcript, and `/stop` (or
 Esc) ends it. `/agent`, `/model` and `/new` switch agent,
 model and session; `/effort high` sets how hard the agent thinks from the next prompt, in the agent's own words (`/effort` lists them, `/effort default` clears it); `/fallback codex,gemini` picks the agents to switch to when the current one
-runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. In the browser the agent, the model, the effort (for an agent that takes one), the approval mode and the plan's limits sit in a row under the prompt field, and files can be attached, pasted (a copied screenshot) or dropped on the chat: they are kept in `.genaicode/uploads/` in the project (git-ignored, 20 MB each, 8 per prompt) and the agent gets their paths. An edit step shows its diff, and the path of a file the agent read or edited opens the file beside the chat (text files inside the project only). `/agent codex` hands the
+runs out (`/fallback off` stops it); `/help` lists the rest, and the browser offers them as you type `/`. In the browser the composer is one card: an agent chip (agent, model, effort for an agent that takes one, fallback), **Plan**, **Ask first / Auto-approve all**, **Stop** and the submit button (**Send**, **Steer** or **Queue**, for what Enter does) sit in a row under the prompt field; a new chat names the folder it starts in above it (in `--home` mode: recent folders, a path, the home folder, or **Choose…** with the system's folder dialog in the desktop app), and files can be attached, pasted (a copied screenshot) or dropped on the chat: they are kept in `.genaicode/uploads/` in the project (git-ignored, 20 MB each, 8 per prompt) and the agent gets their paths. An edit step shows its diff, and the path of a file the agent read or edited opens the file beside the chat (text files inside the project only). `/agent codex` hands the
 conversation over: codex gets a recap and a transcript file in `.genaicode/handoff/`, and
 switching back resumes the earlier agent's own session (`/agent codex --fresh` starts with no
 context).
@@ -468,7 +468,7 @@ disabled ("Connect an agent to start") and the Sessions view keeps working. `GET
 reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
 binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
 (or installed), the onboarding collapses into the normal home; **Connect another agent** stays in the
-agent picker alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
+agent chip's popover alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
 a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
 **Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
 send it back (`env <json>` on stdin) so newly installed CLIs are picked up without a restart.

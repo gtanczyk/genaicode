@@ -382,8 +382,11 @@ describe('pack', () => {
     try {
       session.send('delegate');
       await session.idle();
+      expect(session.get().sendAction).toBe('start');
       const first = session.actOnPackTask!(1, 't1', { type: 'review' });
       await vi.waitFor(() => expect(caps).toEqual([10]));
+      // No turn runs, but a prompt waits for the review that holds the budget: the state says so.
+      expect(session.get()).toMatchObject({ status: 'idle', sendAction: 'queue' });
       await expect(session.actOnPackTask!(1, 't2', { type: 'review' })).rejects.toMatchObject({
         reason: 'budget-busy',
       });
@@ -392,6 +395,7 @@ describe('pack', () => {
       release();
       await first;
       await session.idle();
+      expect(session.get().sendAction).toBe('start');
       expect(session.get().turns[1].pack?.budget?.maxTokens).toBe(2);
       await session.actOnPackTask!(1, 't2', { type: 'review' });
       expect(caps).toEqual([10, 2]);

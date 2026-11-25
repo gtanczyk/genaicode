@@ -125,6 +125,12 @@ export interface SessionState {
   fallback?: string[];
   /** Whether `send()` during a turn reaches the running agent instead of the queue. */
   canSteer: boolean;
+  /**
+   * What `send()` does with a prompt now: starts a turn, steers the running one, or queues it. It
+   * queues also with no turn running, while a pack review holds the session's token or cost budget.
+   * Absent in a state built elsewhere: derive it from `status` and `canSteer`.
+   */
+  sendAction?: 'start' | 'steer' | 'queue';
   /** Whether the current agent can ask the person to choose (own tool, or `ask_user` over MCP). */
   canAsk?: boolean;
   /** Set when earlier turns of this conversation were omitted (e.g. `maxTurns` cap or resuming a truncated session). */
@@ -328,6 +334,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback?.length ? { fallback: options.fallback.map((candidate) => candidate.name) } : {}),
     canSteer: false,
+    sendAction: 'start',
     canAsk: agentCanAsk(agent),
   };
   let fallback: readonly CodingAgent[] = options.fallback ?? [];
@@ -444,6 +451,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if ('sessionId' in patch && patch.sessionId !== state.sessionId && !('reportedModel' in patch))
       patch = { ...patch, reportedModel: undefined };
     state = { ...state, ...patch };
+    state.sendAction = state.status === 'idle' && !budgetInReview() ? 'start' : state.canSteer ? 'steer' : 'queue';
     for (const listener of [...listeners]) {
       try {
         listener(state);
@@ -1244,7 +1252,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const left = reviewing ? remainingBudget(state.budget, state.usage, state.costUsd) : undefined;
       if (left?.spent) throw new PackActionError('budget', left.spent);
       if (left?.budget && (activeReviews || state.status !== 'idle')) throw new PackActionError('budget-busy');
-      if (reviewing) activeReviews++;
+      if (reviewing) {
+        activeReviews++;
+        // Prompts sent meanwhile wait for the review: the state says so.
+        if (budgetInReview()) set({});
+      }
       try {
         if (reviewing || action.type === 'verify') {
           return await controls.act(id, action, {
@@ -1262,7 +1274,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }
         return await controls.act(id, action);
       } finally {
-        if (reviewing) activeReviews--;
+        if (reviewing) {
+          activeReviews--;
+          if (state.sendAction !== 'start' && state.status === 'idle' && !budgetInReview()) set({});
+        }
         syncPackTask(turnId, id);
         if (reviewing && !activeReviews && state.status === 'idle') {
           const next = !closed && takeNext();

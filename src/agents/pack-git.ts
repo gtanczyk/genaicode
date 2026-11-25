@@ -56,6 +56,12 @@ export async function repoRoot(cwd: string): Promise<string | null> {
   return result.code === 0 ? result.stdout.toString('utf8').trim() : null;
 }
 
+/** The branch checked out in `cwd`; undefined outside a repository, on a detached HEAD or before the first commit. */
+export async function currentBranch(cwd: string): Promise<string | undefined> {
+  const result = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  return result.code === 0 ? result.stdout.toString('utf8').trim() || undefined : undefined;
+}
+
 /** Everything in `dir` (tracked, changed and untracked, minus ignored) as a git tree. Stages nothing. */
 export async function snapshotTree(dir: string): Promise<string> {
   const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
