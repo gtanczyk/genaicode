@@ -3766,7 +3766,8 @@
           feedAll: false,
           pal: 0,
         };
-        const PM = {};
+        // Keyed by scenario only; no prototype, so no key can reach Object.prototype.
+        const PM = Object.create(null);
         const P = () =>
           (PM[st.scn] ??= {
             tab: st.scn === 'chat' ? 'live' : 'tasks',
@@ -4878,14 +4879,20 @@
             }
         }, 2400);
 
+        // The URL hash only picks among known states; anything else falls back to the default.
         const h = new URLSearchParams(location.hash.slice(1));
-        theme(h.get('theme') || 'system');
+        const pick = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
+        theme(pick(h.get('theme'), ['system', 'light', 'dark'], 'system'));
         section('general');
-        st.scn = h.get('scn') || 'tasks';
+        st.scn = pick(h.get('scn'), ['tasks', 'big', 'chat', 'new'], 'tasks');
         if (hasWork()) st.work = st.scn;
-        if (h.get('tab')) (P().tab = h.get('tab')), (P().open = true);
-        if (h.get('task')) Object.assign(P(), { task: h.get('task'), tab: 'tasks', open: true });
-        go(h.get('page') || 'chat', { sec: h.get('sec') });
+        const tab = pick(h.get('tab'), ['live', 'tasks', 'changes', 'artifacts'], '');
+        if (tab) (P().tab = tab), (P().open = true);
+        const task = /^t\d{1,3}$/.test(h.get('task') || '') ? h.get('task') : '';
+        if (task) Object.assign(P(), { task, tab: 'tasks', open: true });
+        go(pick(h.get('page'), ['chat', 'inbox', 'sessions', 'settings'], 'chat'), {
+          sec: pick(h.get('sec'), ['general', 'agents', 'team', 'artifacts', 'usage', 'about'], undefined),
+        });
       })();
     </script>
   </body>
