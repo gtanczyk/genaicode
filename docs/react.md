@@ -80,6 +80,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests                   |
 | `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                               |
 | `onOpenTasks(turn)`                                                            | the host shows delegated tasks in `<WorkPanel>`: a turn's task card becomes one line that calls this; approvals stay inline |
+| `missionStrip`                                                                 | the mission strip above the message box (see below); with `onOpenTasks`, approvals of tasks move from the transcript to it  |
 | `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                            |
 | `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                                    |
 | `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                            |
@@ -163,6 +164,24 @@ Done and Failed); the session keeps it, and **Show them** brings it back. All of
 (`filter`, `query`, `by`, `more`, `folded`, `dismissed`), so it is remembered wherever you keep
 `view`. The inline card of `<AgentChat>` does the same above 15 tasks: one-line rows, the first 12,
 a filter and **Clear N finished**; pass it `chatId` so what it remembers stays with its conversation.
+
+The panel has two tabs, **Live** and **Tasks** (`view.tab`; a chat starts on Tasks). Live answers
+"what is everybody doing": the approvals this chat's tasks wait for (`needsYou={{ total, onOpen }}`
+adds "all N ›" to your own queue across chats), the lead's plan from `report_progress` and what it
+does now, up to three running tasks as cards (the ones pinned with the card's pin, then the ones
+the person messaged, then the newest; `view.pinned`), and one feed over all tasks, newest first:
+what a task said, asked for, failed at or finished with, and the person's messages with their
+receipts. A task's routine reads, edits and commands are one line ("2 reads, 1 edit in `src`")
+until **Everything** is chosen (`view.feed`). A task id anywhere opens that task.
+
+`<AgentChat missionStrip={{ onOpenGroup, onOpenTask, pullRequests }}>` puts the **mission strip**
+above the message box while delegated work runs: one count per state (a click calls
+`onOpenGroup(group)`: set `view` to `{ tab: 'tasks', filter: group }`), what the lead does now, and
+the first approval a task waits for, with Approve and Deny through `onApprove` and "1 of 3 in this
+chat". With it and `onOpenTasks`, an approval of a task no longer shows in the transcript; the
+lead's own approvals and every question stay inline. It renders nothing in a chat without running
+delegated work and never takes the keyboard focus. `<MissionStrip state=… />` is the same strip
+for a composer of your own. Without `missionStrip` nothing changes.
 
 Two smaller pieces come along for hosts that build their own panels around a transcript:
 

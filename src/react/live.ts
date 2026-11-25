@@ -89,7 +89,10 @@ export function leadNow(state: SessionState | null | undefined): LeadNow | undef
   if (last?.kind === 'tool' && !last.done) {
     // The pack's own wait says nothing the count of running tasks does not say better.
     if (running && /(^|_)wait$/.test(last.name)) return waiting;
-    const line = packStepLine({ kind: 'tool', name: last.name, text: firstLine(toolArgument(last.input, state.cwd)), at: 0 }, 0);
+    const line = packStepLine(
+      { kind: 'tool', name: last.name, text: firstLine(toolArgument(last.input, state.cwd)), at: 0 },
+      0,
+    );
     return { lead, verb: line.verb, object: line.object };
   }
   if (last?.kind === 'text' && last.streaming) return { lead, verb: 'Writing its reply' };
@@ -214,12 +217,11 @@ export const FEED_KEPT = 60;
  * `everything` each routine step has its own line, and so have a task's start and the lead's messages.
  */
 export function teamFeed(tasks: readonly WorkTask[], options: { everything?: boolean } = {}): FeedItem[] {
-  const feed: Array<FeedItem & { order: number }> = [];
-  let order = 0;
+  const feed: FeedItem[] = [];
   for (const item of tasks) {
     const { task } = item;
     const add = (entry: Omit<FeedItem, 'task' | 'taskId' | 'agent' | 'from' | 'quiet'> & Partial<FeedItem>) =>
-      feed.push({ task: item.key, taskId: task.id, agent: task.agent, from: 'task', quiet: false, order: order++, ...entry });
+      feed.push({ task: item.key, taskId: task.id, agent: task.agent, from: 'task', quiet: false, ...entry });
     if (options.everything && task.startedAt !== undefined)
       add({ id: `${item.key} start`, at: task.startedAt, tone: 'idle', text: `started by ${item.lead}`, quiet: true });
     const routine: PackStep[] = [];
@@ -264,7 +266,13 @@ export function teamFeed(tasks: readonly WorkTask[], options: { everything?: boo
       const status = workStatus(item);
       const failed = task.status === 'failed' || task.status === 'timeout';
       const outcome = failed ? (packTaskError(task) ?? '') : packTaskOutcome(task);
-      const word = failed ? (task.status === 'timeout' ? 'timed out' : 'failed') : task.status === 'aborted' ? 'stopped' : 'finished';
+      const word = failed
+        ? task.status === 'timeout'
+          ? 'timed out'
+          : 'failed'
+        : task.status === 'aborted'
+          ? 'stopped'
+          : 'finished';
       add({
         id: `${item.key} end`,
         at: task.endedAt,
@@ -287,10 +295,11 @@ export function teamFeed(tasks: readonly WorkTask[], options: { everything?: boo
       });
     }
   }
+  // At the same instant the later one is on top (the sort keeps their order).
   return feed
-    .sort((a, b) => b.at - a.at || b.order - a.order)
-    .slice(0, FEED_KEPT)
-    .map(({ order: _order, ...entry }) => entry);
+    .reverse()
+    .sort((a, b) => b.at - a.at)
+    .slice(0, FEED_KEPT);
 }
 
 /** "12s", "4m", "2h": how long ago, in one unit; "now" for what waits right now. */

@@ -21,6 +21,7 @@ import {
 } from './format.js';
 import { Markdown } from './markdown.js';
 import { installResizeHandle } from './resize-handle.js';
+import { WorkLive } from './work-live.js';
 import {
   askSubject,
   changedNothing,
@@ -47,6 +48,7 @@ import {
   type PullRequestStatus,
   type WorkGroup,
   type WorkPanelView,
+  type WorkTab,
   type WorkTask,
   type WorkTone,
 } from './work.js';
@@ -91,6 +93,11 @@ export interface WorkPanelProps {
    * pull request the task opened stands in for Merge locally; any other is a link beside it.
    */
   pullRequests?: Readonly<Record<string, PullRequestStatus | undefined>>;
+  /**
+   * Everything that waits for the person, in every chat: Live › Needs you says "all N" beside this
+   * chat's own count, and `onOpen` goes to the host's queue. Without it only this chat's count shows.
+   */
+  needsYou?: { total: number; onOpen(): void };
   /** Keep the person from acting (the host is disconnected): the panel keeps what it showed, dimmed. */
   disabled?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
@@ -199,6 +206,11 @@ export function WorkPanel(props: WorkPanelProps) {
   const inspected = useRef(new Map<string, Inspected>());
   const chat = props.chatId ?? props.state?.sessionId ?? '';
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
+  const tab = view.tab === 'live' ? 'live' : 'tasks';
+  /** A tab shows its own top level: the open task belongs to the tab it was opened from. */
+  const showTab = (next: WorkTab) => {
+    if (next !== tab || view.task) onView({ ...view, tab: next, task: undefined });
+  };
   const act = props.disabled ? undefined : props.onPackAction;
   const approve = props.disabled ? undefined : props.onApprove;
   return (
@@ -222,8 +234,37 @@ export function WorkPanel(props: WorkPanelProps) {
         />
       ) : null}
       <div className="gc-work-top">
-        <div role="tablist" aria-label="Work">
-          <button type="button" role="tab" className="gc-work-tab" aria-selected="true">
+        <div
+          role="tablist"
+          aria-label="Work"
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            const next = event.key === 'ArrowLeft' ? 'live' : 'tasks';
+            event.preventDefault();
+            showTab(next);
+            event.currentTarget.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            className="gc-work-tab"
+            data-tab="live"
+            aria-selected={tab === 'live'}
+            tabIndex={tab === 'live' ? 0 : -1}
+            onClick={() => showTab('live')}
+          >
+            Live
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className="gc-work-tab"
+            data-tab="tasks"
+            aria-selected={tab === 'tasks'}
+            tabIndex={tab === 'tasks' ? 0 : -1}
+            onClick={() => showTab('tasks')}
+          >
             Tasks <span className="gc-work-count">{tasks.length}</span>
           </button>
         </div>
@@ -242,7 +283,7 @@ export function WorkPanel(props: WorkPanelProps) {
           </button>
         ) : null}
       </div>
-      <div className="gc-work-pane" role="tabpanel" aria-label="Tasks">
+      <div className="gc-work-pane" role="tabpanel" aria-label={tab === 'live' ? 'Live' : 'Tasks'}>
         {open ? (
           <TaskDetail
             // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
@@ -259,6 +300,7 @@ export function WorkPanel(props: WorkPanelProps) {
             now={now}
             cwd={props.state?.cwd ?? ''}
             focusBack={fromRow.current}
+            backLabel={tab === 'live' ? 'Live' : 'Tasks'}
             act={open.interactive ? act : undefined}
             onApprove={approve}
             onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
@@ -266,6 +308,22 @@ export function WorkPanel(props: WorkPanelProps) {
               back.current = open.key;
               fromRow.current = false;
               onView({ ...view, task: undefined });
+            }}
+          />
+        ) : tab === 'live' ? (
+          <WorkLive
+            key={chat}
+            state={props.state}
+            tasks={tasks}
+            now={now}
+            view={view}
+            onView={onView}
+            needsYou={props.needsYou}
+            onApprove={approve}
+            onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
+            onOpen={(key) => {
+              fromRow.current = true;
+              onView({ ...view, task: key });
             }}
           />
         ) : (
@@ -744,16 +802,19 @@ function TaskRow({
   );
 }
 
-function AskCard({
+export function AskCard({
   agent,
   request,
   onApprove,
   onAutoApprove,
+  task,
 }: {
   agent: string;
   request: ApprovalRequest;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
+  /** Outside the task's own detail: its id, as a link to it. */
+  task?: { id: string; onOpen(): void };
 }) {
   const what =
     request.kind === 'command'
@@ -768,6 +829,14 @@ function AskCard({
       <b>
         {agent} {what}
       </b>
+      {task ? (
+        <>
+          {' · '}
+          <button type="button" className="gc-work-ref" aria-label={`Open task ${task.id}`} onClick={task.onOpen}>
+            {task.id}
+          </button>
+        </>
+      ) : null}
       <pre className="gc-work-box">{askSubject(request)}</pre>
       {request.kind === 'question' ? (
         <p className="gc-work-note">Answer it in the chat, where its options are.</p>
@@ -844,6 +913,7 @@ function TaskDetail({
   now,
   cwd,
   focusBack,
+  backLabel,
   act,
   onApprove,
   onAutoApprove,
@@ -855,6 +925,8 @@ function TaskDetail({
   now: number;
   cwd: string;
   focusBack: boolean;
+  /** Where the back button goes: the tab the task was opened from. */
+  backLabel: string;
   act?: WorkActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
@@ -1000,7 +1072,7 @@ function TaskDetail({
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M10 3 5 8l5 5" />
           </svg>
-          Tasks
+          {backLabel}
         </button>
         <div className="gc-work-head">
           <h3>
