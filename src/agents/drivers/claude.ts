@@ -1,4 +1,5 @@
 import { claudeSessions } from '../sessions/claude.js';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +56,68 @@ export interface ClaudeAgentOptions {
    * passes the prompt as an argument and declares no steering.
    */
   steer?: boolean;
+  /**
+   * Stream replies as Claude writes them (`--include-partial-messages`, `text-delta` events).
+   * Default: on when `claude --help` lists the flag (asked once per command), so a CLI too old for
+   * it runs as before, its replies arriving whole.
+   */
+  partialMessages?: boolean;
+}
+
+const PARTIAL_FLAG = '--include-partial-messages';
+const partialProbes = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether the Claude Code at `command` takes `--include-partial-messages`: its `--help` lists it.
+ * Its answer is kept per command; false, and asked again next time, when it cannot be asked
+ * within a few seconds or does not start.
+ */
+export function claudeTakesPartialMessages(command: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  const running = partialProbes.get(command);
+  if (running) return running;
+  // Only what the CLI said is kept: a probe that timed out or could not start is asked again next time.
+  let settled = false;
+  const probe = new Promise<{ takes: boolean; keep: boolean }>((resolve) => {
+    const done = (takes: boolean, keep: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ takes, keep });
+    };
+    let out = '';
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, ['--help'], {
+        cwd: tmpdir(),
+        env,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
+      });
+    } catch {
+      done(false, false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      done(false, false);
+    }, 5_000);
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      if (out.length < 1_000_000) out += chunk;
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      done(false, false);
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      done(out.includes(PARTIAL_FLAG), true);
+    });
+  }).then(({ takes, keep }) => {
+    if (!keep && partialProbes.get(command) === probe) partialProbes.delete(command);
+    return takes;
+  });
+  partialProbes.set(command, probe);
+  return probe;
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -216,6 +279,8 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
     capabilities: {
       ...(steer ? { steer: true } : {}),
       effort: ['low', 'medium', 'high', 'xhigh', 'max'],
+      // Claude Code's model aliases: each names the latest model of its kind.
+      models: ['opus', 'sonnet', 'haiku'],
       maxTurns: true,
       usage: true,
       rateLimits: true,
@@ -230,7 +295,15 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
       },
     },
     args: (task) => claudeArgs(task, options, undefined, undefined, steer),
-    prepare: (task, context) => prepareClaude(task, options, context, steer, sessionModes),
+    prepare: async (task, context) =>
+      prepareClaude(
+        task,
+        options,
+        context,
+        steer,
+        sessionModes,
+        options.partialMessages ?? (await claudeTakesPartialMessages(command, task.env ?? process.env)),
+      ),
     createParser: () => {
       const parser = createClaudeParser();
       // The first session event of a run says its mode (none: default); a later one, such as a
@@ -333,6 +406,7 @@ async function prepareClaude(
   context: PrepareContext,
   stdinPrompt: boolean,
   sessionModes?: ReadonlyMap<string, AgentMode>,
+  partialMessages = false,
 ): Promise<PreparedRun> {
   if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
     throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
@@ -355,13 +429,15 @@ async function prepareClaude(
   const inheritMode =
     settingsDefaultMode !== undefined && !(effectiveTask.mode === 'default' && settingsDefaultMode === 'plan');
   if (!servers.length)
-    return { args: claudeArgs(effectiveTask, options, undefined, undefined, stdinPrompt, inheritMode) };
+    return {
+      args: claudeArgs(effectiveTask, options, undefined, undefined, stdinPrompt, inheritMode, partialMessages),
+    };
   let dir: string | undefined;
   try {
     dir = mkdtempSync(join(tmpdir(), 'genaicode-claude-mcp-'));
     const file = join(dir, 'mcp.json');
     writeFileSync(file, JSON.stringify(claudeMcpConfig(servers)), { mode: 0o600 });
-    const args = claudeArgs(effectiveTask, options, file, approvals?.args, stdinPrompt, inheritMode);
+    const args = claudeArgs(effectiveTask, options, file, approvals?.args, stdinPrompt, inheritMode, partialMessages);
     const created = dir;
     return {
       args,
@@ -431,6 +507,8 @@ export function claudeArgs(
   stdinPrompt = false,
   /** Omit the default `--permission-mode acceptEdits` so Claude Code uses `permissions.defaultMode` from settings. */
   inheritPermissionMode?: boolean,
+  /** Stream text deltas (`--include-partial-messages`); only for a CLI that takes the flag. */
+  partialMessages = false,
 ): string[] {
   const args = ['-p', '--verbose'];
   // Multi-value flags come first: a single-value flag must follow them before the prompt.
@@ -449,6 +527,7 @@ export function claudeArgs(
   if (task.mode !== undefined && task.mode !== 'default' && task.mode !== 'plan')
     throw new Error(`Invalid task.mode for claude: ${JSON.stringify(task.mode)}. Expected 'default' or 'plan'.`);
   args.push('--output-format', 'stream-json');
+  if (partialMessages) args.push(PARTIAL_FLAG);
   if (stdinPrompt) args.push('--input-format', 'stream-json', '--replay-user-messages');
   const settingsMode = defaultModeInSettings(undefined, options.settings);
   const inheritMode =

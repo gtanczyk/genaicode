@@ -23,24 +23,50 @@ const LEGACY = [
   /^Other coding agents on this machine \([^\n]*\) are available through the `pack` MCP tools\.\nWhen asked to involve another agent \(a second opinion, a review, a parallel piece of work\), use `delegate`\nand `wait`, never its CLI from a shell:[^\n]*(?:\n[^\S\n]*\S[^\n]*)*\n\s*\n/,
 ];
 
+/**
+ * How the recap `handoffPreamble()` puts before the person's first message to an agent taking over a
+ * conversation starts and ends ("Continue here", `run --from`).
+ */
+export const HANDOFF_OPEN = 'You are taking over a conversation that the user had with another coding agent (';
+export const HANDOFF_CLOSE = "The user's new message follows.";
+// Its end, also when the text was put on one line (a title, a preview); the recap can quote an
+// earlier takeover, so the last one counts.
+const HANDOFF_END = /(?:^|\s)The user's new message follows\.\s+---(?:\s+|$)/g;
+
+/**
+ * Without a takeover recap in front: the words after it, or nothing when the text was cut short
+ * inside the recap.
+ */
+function withoutHandoff(text: string): string {
+  if (!text.startsWith(HANDOFF_OPEN)) return text;
+  let end = -1;
+  for (const match of text.matchAll(HANDOFF_END)) end = match.index + match[0].length;
+  return end < 0 ? '' : text.slice(end).trimStart();
+}
+
 /** The person's prompt first, so an agent that names a session after its first words names it after the request. */
 export function withBriefing(prompt: string, brief: string): string {
   if (!brief.trim()) return prompt;
   return `${prompt}${BLOCK_START}${brief.trim()}\n\n${CLOSE}`;
 }
 
-/** Whether the text opens with a briefing an earlier genaicode version put in front of the prompt. */
+/**
+ * Whether the text opens with a briefing an earlier genaicode version put in front of the prompt, or
+ * with the recap an agent taking over a conversation gets.
+ */
 export function hasLeadingBriefing(text: string): boolean {
   const start = text.trimStart();
+  if (start.startsWith(HANDOFF_OPEN)) return true;
   return LEGACY.some((lead) => lead.test(start));
 }
 
 /**
  * What the person wrote: without the trailing block `withBriefing()` adds (also when the text was
- * cut short inside it), or a briefing older versions put in front.
+ * cut short inside it), a briefing older versions put in front, or the recap an agent taking over a
+ * conversation gets in front of the person's message (empty when cut short inside that recap).
  */
 export function personText(text: string): string {
-  let out = text.trimStart();
+  let out = withoutHandoff(text.trimStart());
   for (const lead of LEGACY) out = out.replace(lead, '');
   const at = out.lastIndexOf(BLOCK_START);
   if (at >= 0) {

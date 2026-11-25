@@ -45,6 +45,7 @@ import {
   type ToolDiff,
 } from './format.js';
 import { Markdown, readFileLinkPosition, type FilePosition } from './markdown.js';
+import { RevealRegistry, RevealTurn, useReveal, useRevealRegistry } from './reveal.js';
 import { MissionStrip, type MissionStripProps } from './mission-strip.js';
 import { PackTasks, type PackActionHandler } from './pack-tasks.js';
 import { SessionRelayCard, type ChatSessionRelay } from './session-relay.js';
@@ -468,29 +469,31 @@ export function AgentChat(props: AgentChatProps) {
   useLayoutEffect(() => {
     previousChat.current = { id: chatId, firstTurn, key: conversation };
   }, [chatId, firstTurn, conversation]);
+  const revealSeen = useRevealRegistry(state.turns, (turn) => `${conversation}:${turn.id}`);
   state.turns.forEach((turn, index) => {
     flush(index);
     items.push(
-      <Turn
-        key={`${conversation}:${turn.id}`}
-        turn={turn}
-        now={now}
-        cwd={state.cwd}
-        pending={turn.result ? [] : state.approvals}
-        onApprove={props.onApprove}
-        onAutoApprove={props.onAutoApprove}
-        onPackAction={props.disabled ? undefined : props.onPackAction}
-        onOpenTasks={props.onOpenTasks}
-        taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
-        prompt={props.renderPrompt}
-        toolName={props.formatToolName ?? toolLabel}
-        artifactUrl={props.artifactUrl}
-        onOpenArtifact={props.onOpenArtifact}
-        renderArtifact={props.renderArtifact}
-        renderFailure={props.renderFailure}
-        submitArtifact={submitArtifact}
-        fold={props.foldSteps ?? false}
-      />,
+      <RevealTurn.Provider key={`${conversation}:${turn.id}`} value={`${conversation}:${turn.id}`}>
+        <Turn
+          turn={turn}
+          now={now}
+          cwd={state.cwd}
+          pending={turn.result ? [] : state.approvals}
+          onApprove={props.onApprove}
+          onAutoApprove={props.onAutoApprove}
+          onPackAction={props.disabled ? undefined : props.onPackAction}
+          onOpenTasks={props.onOpenTasks}
+          taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
+          prompt={props.renderPrompt}
+          toolName={props.formatToolName ?? toolLabel}
+          artifactUrl={props.artifactUrl}
+          onOpenArtifact={props.onOpenArtifact}
+          renderArtifact={props.renderArtifact}
+          renderFailure={props.renderFailure}
+          submitArtifact={submitArtifact}
+          fold={props.foldSteps ?? false}
+        />
+      </RevealTurn.Provider>,
     );
     const after = props.renderAfterTurn?.(turn, index);
     if (after !== undefined && after !== null && after !== false) {
@@ -654,190 +657,192 @@ export function AgentChat(props: AgentChatProps) {
     : undefined;
 
   return (
-    <MarkdownConfig.Provider value={markdownConfig}>
-      <AnswerQuestion.Provider value={answerQuestion}>
-        <OpenFile.Provider value={openFile}>
-          <div
-            className={rootClass}
-            data-theme={theme}
-            data-status={state.status}
-            style={props.style}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onContextMenu={onFileContextMenu}
-            // A file link or local image thumbnail (`data-gc-file`, from Markdown) opens like any other path.
-            onClick={
-              onOpenFile
-                ? (event) => {
-                    const el = (event.target as Element).closest?.('[data-gc-file]');
-                    const path = el?.getAttribute('data-gc-file');
-                    if (!el || !path) return;
-                    const position = readFileLinkPosition(el);
-                    if (position) onOpenFile(path, position);
-                    else onOpenFile(path);
-                  }
-                : undefined
-            }
-          >
-            {props.header !== undefined ? (
-              props.header
-            ) : (
-              <div className="gc-header">
-                {state.agent ? (
-                  <span className="gc-avatar" aria-hidden="true">
-                    {state.agent.slice(0, 2)}
-                  </span>
-                ) : null}
-                <b className="gc-agent">{state.agent || 'Agent'}</b>
-                {state.model ? <span className="gc-model">{state.model}</span> : null}
-                {state.mode === 'plan' ? <span className="gc-chip">plan</span> : null}
-                {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
-                <span className="gc-spacer" />
-                {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
-                {usage ? <span className="gc-chip">{usage}</span> : null}
-                {limits.map((chip) => (
-                  <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
-                    {chip.text}
-                  </span>
-                ))}
-                {props.headerExtras}
-              </div>
-            )}
-            <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
-              <div className="gc-thread" role="log" aria-live="polite">
-                {state.turns.length === 0
-                  ? (props.emptyState ?? (
-                      <div className="gc-empty">
-                        <div className="gc-empty-title">What should {agentName} work on?</div>
-                      </div>
-                    ))
-                  : null}
-                {items}
-                {footer !== undefined && footer !== null && footer !== false ? (
-                  <div className="gc-footer-slot">{footer}</div>
-                ) : null}
-              </div>
-            </div>
-            <div className={card ? 'gc-composer gc-composer-card' : 'gc-composer'}>
-              {props.missionStrip ? (
-                <MissionStrip
-                  state={state}
-                  {...props.missionStrip}
-                  onApprove={props.onApprove}
-                  disabled={props.disabled}
-                />
-              ) : null}
-              {state.queued.length ? (
-                <div className="gc-queued">
-                  {state.queued.map((prompt, i) => {
-                    const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
-                    return shown === null || shown === undefined || shown === false ? null : (
-                      <span key={i}>⏸ {shown}</span>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {choice ? (
-                <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
-                  {offered.map((one, index) => (
-                    <li
-                      key={one.name}
-                      id={optionId(index)}
-                      ref={one === choice ? chosen : undefined}
-                      role="option"
-                      aria-selected={one === choice}
-                      // Before the box loses focus.
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        complete(one);
-                      }}
-                    >
-                      <span className="gc-completion-name">
-                        <b>{one.name}</b>
-                        {one.args ? <code>{one.args}</code> : null}
-                      </span>
-                      {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
-                    </li>
+    <RevealRegistry.Provider value={revealSeen}>
+      <MarkdownConfig.Provider value={markdownConfig}>
+        <AnswerQuestion.Provider value={answerQuestion}>
+          <OpenFile.Provider value={openFile}>
+            <div
+              className={rootClass}
+              data-theme={theme}
+              data-status={state.status}
+              style={props.style}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onContextMenu={onFileContextMenu}
+              // A file link or local image thumbnail (`data-gc-file`, from Markdown) opens like any other path.
+              onClick={
+                onOpenFile
+                  ? (event) => {
+                      const el = (event.target as Element).closest?.('[data-gc-file]');
+                      const path = el?.getAttribute('data-gc-file');
+                      if (!el || !path) return;
+                      const position = readFileLinkPosition(el);
+                      if (position) onOpenFile(path, position);
+                      else onOpenFile(path);
+                    }
+                  : undefined
+              }
+            >
+              {props.header !== undefined ? (
+                props.header
+              ) : (
+                <div className="gc-header">
+                  {state.agent ? (
+                    <span className="gc-avatar" aria-hidden="true">
+                      {state.agent.slice(0, 2)}
+                    </span>
+                  ) : null}
+                  <b className="gc-agent">{state.agent || 'Agent'}</b>
+                  {state.model ? <span className="gc-model">{state.model}</span> : null}
+                  {state.mode === 'plan' ? <span className="gc-chip">plan</span> : null}
+                  {running ? <span className="gc-spin" role="status" aria-label="Working" /> : null}
+                  <span className="gc-spacer" />
+                  {state.sessionId ? <span className="gc-chip">session {shortId(state.sessionId)}</span> : null}
+                  {usage ? <span className="gc-chip">{usage}</span> : null}
+                  {limits.map((chip) => (
+                    <span key={chip.key} className="gc-chip gc-limit" data-level={chip.level} title={chip.title}>
+                      {chip.text}
+                    </span>
                   ))}
-                </ul>
-              ) : null}
-              {hasHeader && !card ? <div className="gc-composer-header">{header}</div> : null}
-              {card ? null : pendingFiles}
-              {card ? (
-                <div className="gc-card" data-disabled={props.disabled ? '1' : undefined}>
-                  {hasHeader ? <div className="gc-composer-header">{header}</div> : null}
-                  {pendingFiles}
-                  {field}
-                  <div className="gc-card-row">
-                    {attachButtons}
-                    {hasExtras ? extras : <span className="gc-grow" />}
+                  {props.headerExtras}
+                </div>
+              )}
+              <div className="gc-scroll" ref={scroller} onScroll={onScroll}>
+                <div className="gc-thread" role="log" aria-live="polite">
+                  {state.turns.length === 0
+                    ? (props.emptyState ?? (
+                        <div className="gc-empty">
+                          <div className="gc-empty-title">What should {agentName} work on?</div>
+                        </div>
+                      ))
+                    : null}
+                  {items}
+                  {footer !== undefined && footer !== null && footer !== false ? (
+                    <div className="gc-footer-slot">{footer}</div>
+                  ) : null}
+                </div>
+              </div>
+              <div className={card ? 'gc-composer gc-composer-card' : 'gc-composer'}>
+                {props.missionStrip ? (
+                  <MissionStrip
+                    state={state}
+                    {...props.missionStrip}
+                    onApprove={props.onApprove}
+                    disabled={props.disabled}
+                  />
+                ) : null}
+                {state.queued.length ? (
+                  <div className="gc-queued">
+                    {state.queued.map((prompt, i) => {
+                      const shown = props.renderPrompt ? props.renderPrompt(prompt) : prompt;
+                      return shown === null || shown === undefined || shown === false ? null : (
+                        <span key={i}>⏸ {shown}</span>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {choice ? (
+                  <ul className="gc-completions" id={listId} role="listbox" aria-label="Commands">
+                    {offered.map((one, index) => (
+                      <li
+                        key={one.name}
+                        id={optionId(index)}
+                        ref={one === choice ? chosen : undefined}
+                        role="option"
+                        aria-selected={one === choice}
+                        // Before the box loses focus.
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          complete(one);
+                        }}
+                      >
+                        <span className="gc-completion-name">
+                          <b>{one.name}</b>
+                          {one.args ? <code>{one.args}</code> : null}
+                        </span>
+                        {one.help ? <span className="gc-completion-help">{one.help}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {hasHeader && !card ? <div className="gc-composer-header">{header}</div> : null}
+                {card ? null : pendingFiles}
+                {card ? (
+                  <div className="gc-card" data-disabled={props.disabled ? '1' : undefined}>
+                    {hasHeader ? <div className="gc-composer-header">{header}</div> : null}
+                    {pendingFiles}
+                    {field}
+                    <div className="gc-card-row">
+                      {attachButtons}
+                      {hasExtras ? extras : <span className="gc-grow" />}
+                      {stopButton}
+                      {submitButton}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={stacked ? 'gc-box gc-stacked' : 'gc-box'}
+                    data-disabled={props.disabled ? '1' : undefined}
+                  >
+                    {field}
+                    {hasExtras ? null : attachButtons}
+                    {stacked ? <span className="gc-grow" /> : null}
                     {stopButton}
                     {submitButton}
                   </div>
-                </div>
-              ) : (
+                )}
+                {hasExtras && !card ? (
+                  <div className="gc-under">
+                    {attachButtons}
+                    <span className="gc-grow" />
+                    {extras}
+                  </div>
+                ) : null}
+                {props.hint === null ? null : (
+                  <div className="gc-hint">
+                    {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+                  </div>
+                )}
+              </div>
+              {fileMenu && onRevealFile ? (
                 <div
-                  className={stacked ? 'gc-box gc-stacked' : 'gc-box'}
-                  data-disabled={props.disabled ? '1' : undefined}
+                  className="gc-context-menu"
+                  role="menu"
+                  style={{ left: fileMenu.x, top: fileMenu.y }}
+                  onClick={(event) => event.stopPropagation()}
                 >
-                  {field}
-                  {hasExtras ? null : attachButtons}
-                  {stacked ? <span className="gc-grow" /> : null}
-                  {stopButton}
-                  {submitButton}
-                </div>
-              )}
-              {hasExtras && !card ? (
-                <div className="gc-under">
-                  {attachButtons}
-                  <span className="gc-grow" />
-                  {extras}
-                </div>
-              ) : null}
-              {props.hint === null ? null : (
-                <div className="gc-hint">
-                  {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
-                </div>
-              )}
-            </div>
-            {fileMenu && onRevealFile ? (
-              <div
-                className="gc-context-menu"
-                role="menu"
-                style={{ left: fileMenu.x, top: fileMenu.y }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                {onOpenFile ? (
+                  {onOpenFile ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        const { path, position } = fileMenu;
+                        setFileMenu(undefined);
+                        if (position) onOpenFile(path, position);
+                        else onOpenFile(path);
+                      }}
+                    >
+                      Open
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      const { path, position } = fileMenu;
+                      const { path } = fileMenu;
                       setFileMenu(undefined);
-                      if (position) onOpenFile(path, position);
-                      else onOpenFile(path);
+                      onRevealFile(path);
                     }}
                   >
-                    Open
+                    {/Mac/.test(navigator.platform) ? 'Reveal in Finder' : 'Reveal in file manager'}
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    const { path } = fileMenu;
-                    setFileMenu(undefined);
-                    onRevealFile(path);
-                  }}
-                >
-                  {/Mac/.test(navigator.platform) ? 'Reveal in Finder' : 'Reveal in file manager'}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </OpenFile.Provider>
-      </AnswerQuestion.Provider>
-    </MarkdownConfig.Provider>
+                </div>
+              ) : null}
+            </div>
+          </OpenFile.Provider>
+        </AnswerQuestion.Provider>
+      </MarkdownConfig.Provider>
+    </RevealRegistry.Provider>
   );
 }
 
@@ -955,6 +960,12 @@ function Turn({
     };
   };
   const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
+  const openTool = running
+    ? turn.entries.findLast(
+        (item): item is Extract<SessionEntry, { kind: 'tool' }> => item.kind === 'tool' && !item.done,
+      )
+    : undefined;
+  const openToolArgument = openTool ? toolArgument(openTool.input, cwd) : '';
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const visiblePackTasks = turn.pack ? turn.pack.tasks.filter((task) => !task.dismissed) : [];
   const packShown = !!turn.pack && (visiblePackTasks.length > 0 || pending.some((request) => request.subtaskId));
@@ -1026,6 +1037,12 @@ function Turn({
           <span className="gc-spin" /> {speaker} is working
           {/* The ticking time stays out of the transcript's live region. */}
           <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
+          {/* The step it is on, here at the bottom: the steps themselves sit above the messages sent since. */}
+          {openTool ? (
+            <span className="gc-working-now" title={openToolArgument || undefined}>
+              · <b>{toolName(openTool.name)}</b> {openToolArgument}
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
@@ -1063,8 +1080,27 @@ function Folded({
   const plan = turn.result
     ? undefined
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
+  // A message sent while the turn runs starts a new stretch: the steps after it fold below it, and
+  // the last reply of each earlier stretch stays in view (the answer to that message).
+  // A message the host hides (`renderPrompt` gives nothing) starts no stretch.
+  const splits = (item: SessionEntry) => {
+    if (item.kind !== 'input') return false;
+    const render = entryProps(item).prompt;
+    const shown = render ? render(item.text) : item.text;
+    return shown !== null && shown !== undefined && shown !== false;
+  };
+  const segment: number[] = [];
+  const replies: number[] = [];
+  let segments = 1;
+  entries.forEach((item, i) => {
+    if (splits(item)) segments++;
+    segment[i] = segments - 1;
+    if (item.kind === 'text') replies[segments - 1] = i;
+  });
+  const segmentReply = new Set(replies.slice(0, -1).filter((i) => i !== undefined));
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
+    segmentReply.has(i) ||
     // The latest reply stays out of the steps while the turn runs, also when a progress report lands
     // after it: it keeps its place in this list, and its state, until it ends as the answer.
     i === lastText ||
@@ -1073,44 +1109,57 @@ function Folded({
     item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
-  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => i !== update && !inView(item, i));
-  const tools = steps.filter(([item]) => item.kind === 'tool').length;
-  const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
+  const stretchSteps: (readonly [SessionEntry, number])[][] = Array.from({ length: segments }, () => []);
+  entries.forEach((item, i) => {
+    if (i !== update && !inView(item, i)) stretchSteps[segment[i]].push([item, i]);
+  });
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
-  const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
+  const openIndex = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'tool' && !item.done);
+  const open = entries[openIndex];
   const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
-  const count = tools || steps.length;
-  // One keyed list in a fixed order, the steps first and then what is in view, oldest first: the
-  // end of the turn moves nothing (a moved artifact frame would reload and lose what was typed in it),
-  // and the latest reply keeps its element and state when it becomes the answer.
-  const fold = steps.length ? (
-    <LazyDetails
-      key="fold"
-      className="gc-fold"
-      summary={
-        <summary>
-          {turn.result ? null : <span className="gc-spin" />}
-          {count} {count === 1 ? 'step' : 'steps'}
-          {now ? <span className="gc-fold-now"> · {now}</span> : null}
-          {failed ? <span className="gc-err"> · errors</span> : null}
-        </summary>
-      }
-      data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
-      Body={FoldBody}
-    />
-  ) : null;
+  // One keyed list in a fixed order, per stretch its steps first and then what is in view, oldest
+  // first: the end of the turn moves nothing (a moved artifact frame would reload and lose what was
+  // typed in it), and the latest reply keeps its element and state when it becomes the answer.
+  const fold = (s: number) => {
+    const steps = stretchSteps[s];
+    if (!steps.length) return null;
+    const tools = steps.filter(([item]) => item.kind === 'tool').length;
+    const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
+    const count = tools || steps.length;
+    // The spinner and the step it is on go on the fold that holds the open call, else the newest.
+    const latest = openIndex >= 0 ? segment[openIndex] === s : s === segments - 1;
+    return (
+      <LazyDetails
+        key={s ? `fold-${s}` : 'fold'}
+        className="gc-fold"
+        summary={
+          <summary>
+            {turn.result || !latest ? null : <span className="gc-spin" />}
+            {count} {count === 1 ? 'step' : 'steps'}
+            {now && latest ? <span className="gc-fold-now"> · {now}</span> : null}
+            {failed ? <span className="gc-err"> · errors</span> : null}
+          </summary>
+        }
+        data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
+        Body={FoldBody}
+      />
+    );
+  };
   const planShown = plan?.kind === 'progress' && plan !== entries[update];
   return (
     <>
       {[
-        fold,
-        ...entries.flatMap((item, i) =>
-          i === update
-            ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
-            : inView(item, i)
-              ? [entry(item, i)]
-              : [],
-        ),
+        fold(0),
+        ...entries.flatMap((item, i) => {
+          const shown =
+            i === update
+              ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
+              : inView(item, i)
+                ? [entry(item, i)]
+                : [];
+          // A sent message opens its stretch: the steps taken since fold right below it.
+          return splits(item) ? [...shown, fold(segment[i])] : shown;
+        }),
       ]}
     </>
   );
@@ -1126,6 +1175,24 @@ function ProgressPlan({ steps }: { steps?: ProgressStep[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** A reply's text, revealed quickly when it arrived whole (`useReveal`). */
+function RevealedMarkdown(props: {
+  text: string;
+  streaming?: boolean;
+  imageUrl?: (path: string) => string | undefined;
+  remoteImages?: 'click' | 'load';
+}) {
+  const shown = useReveal(props.text, props.streaming);
+  return (
+    <Markdown
+      text={shown}
+      streaming={props.streaming || shown !== props.text}
+      imageUrl={props.imageUrl}
+      remoteImages={props.remoteImages}
+    />
   );
 }
 
@@ -1173,7 +1240,7 @@ function Entry({
       );
     case 'text':
       return (
-        <Markdown
+        <RevealedMarkdown
           text={entry.text}
           streaming={entry.streaming}
           imageUrl={mdConfig.imageUrl}

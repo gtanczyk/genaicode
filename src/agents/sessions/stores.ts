@@ -9,7 +9,6 @@ import {
   homeOf,
   isRecord,
   mapLimited,
-  oneLine,
   promptLine,
   readJson,
   select,
@@ -39,9 +38,11 @@ async function rows(file: string, table: string, wanted: readonly string[], tail
   return (await queryDatabase(file, `SELECT ${present.join(', ')} FROM ${table} ${tail}`)) ?? [];
 }
 
+// Agents that title a session from its first message name a taken-over one after the recap
+// genaicode put in front: the person's words count.
 const title = (value: unknown) => {
   const found = text(value);
-  return found ? oneLine(found, 120) : undefined;
+  return found ? promptLine(found, 120) || undefined : undefined;
 };
 const prompt = (value: unknown) => {
   const found = text(value);

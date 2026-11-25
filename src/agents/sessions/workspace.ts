@@ -7,7 +7,7 @@ import type { McpTool } from '../mcp-tools.js';
 import type { ApprovalRequest, McpServer, QuestionAnswers, QuestionHandler } from '../types.js';
 import { archiveKey } from './archive.js';
 import { codexProjects, type CodexProject } from './codex.js';
-import { homeOf, isScratchDir, oneLine } from './files.js';
+import { homeOf, isScratchDir, promptLine } from './files.js';
 import { groupSessions } from './group.js';
 import { liveDir } from './live.js';
 import { findTopic, readTopics, type Topic, type TopicStore } from './topics.js';
@@ -706,7 +706,9 @@ async function readConversationsUnlocked(file: string): Promise<ConversationReco
             id: rec.id,
             cwd: rec.cwd,
             origin: rec.origin as ConversationOrigin,
-            ...(typeof rec.title === 'string' ? { title: rec.title } : {}),
+            ...(typeof rec.title === 'string' && promptLine(rec.title, 120)
+              ? { title: promptLine(rec.title, 120) }
+              : {}),
             ...(typeof rec.topicId === 'string' ? { topicId: rec.topicId } : {}),
             ...(typeof rec.topicName === 'string' ? { topicName: rec.topicName } : {}),
             ...(typeof rec.agent === 'string' ? { agent: rec.agent } : {}),
@@ -759,7 +761,7 @@ export async function saveConversation(
       const existing = await readConversationsUnlocked(file);
       const cleaned: ConversationRecord = {
         ...record,
-        ...(record.title ? { title: oneLine(record.title, 120) } : {}),
+        ...(record.title && promptLine(record.title, 120) ? { title: promptLine(record.title, 120) } : {}),
       };
       const next = [cleaned, ...existing.filter((item) => item.id !== record.id)]
         .sort((a, b) => b.updatedAt - a.updatedAt)
