@@ -53,6 +53,7 @@ it('opens Settings from the sidebar, changes settings, and goes back to the chat
     const launch = (options: UiLaunch) =>
       runWeb({
         ...options,
+        version: '3.4.0',
         stderr: new PassThrough().resume(),
         openUrl(url) {
           opened = url;
@@ -137,6 +138,19 @@ it('opens Settings from the sidebar, changes settings, and goes back to the chat
     await sections.getByRole('button', { name: 'About and updates', exact: true }).click();
     const about = settings.getByRole('region', { name: 'About and updates' });
     expect(await about.getByRole('link', { name: 'Get help' }).count()).toBe(1);
+
+    await about.getByRole('button', { name: 'Read' }).click();
+    const dialog = page.getByRole('dialog', { name: 'What’s new in Genaicode 3.4.0' });
+    await dialog.getByText('The new window layout', { exact: false }).waitFor();
+    const change = dialog
+      .locator('li')
+      .filter({ has: page.getByText('Read file changes and published artifacts in the work panel.', { exact: true }) });
+    const detail = change.getByText('Artifacts replaces', { exact: false });
+    expect(await detail.isVisible()).toBe(false);
+    await change.locator('summary').click();
+    await detail.waitFor();
+    expect(await dialog.getByText('workChanges', { exact: false }).count()).toBe(0);
+    await dialog.getByRole('button', { name: 'Close' }).click();
 
     // Escape goes back to the chat: the draft is as it was left, and the next key goes to it.
     await page.keyboard.press('Escape');
