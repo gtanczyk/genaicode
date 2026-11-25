@@ -8,7 +8,6 @@ import {
   HOME_FOLDER,
   liveGlyph,
   needsYou,
-  needsYouPage,
   OPEN_CHAT_SOURCE,
   otherSessions,
   quotaRows,
@@ -207,13 +206,6 @@ it('keeps sessions of two stores apart when they share an id', () => {
   expect(needsYou({ approvals: 1, sessions, open: { id: 'same', source: 'codex' }, now }).sessions).toBe(1);
   // No store known for the open chat: the id alone, as before.
   expect(needsYou({ approvals: 1, sessions, open: { id: 'same' }, now }).sessions).toBe(0);
-});
-
-it('opens the tower inbox from Needs you whenever there is a tower, also an empty one', () => {
-  expect(needsYouPage({ tower: true, sessions: true })).toBe('inbox');
-  expect(needsYouPage({ tower: true, sessions: false })).toBe('inbox');
-  expect(needsYouPage({ tower: false, sessions: true })).toBe('sessions');
-  expect(needsYouPage({ tower: false, sessions: false })).toBe('chat');
 });
 
 describe('quotaRows', () => {
