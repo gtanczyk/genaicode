@@ -976,10 +976,10 @@ function App() {
   }, [inSetup, showAgents]);
   /**
    * Asks for another chat in this window. `what` names it when no answer comes at all. Resolves to
-   * whether that chat is the one open now: false when the server refused, did not answer, or another
-   * chat was asked for meanwhile.
+   * whether that chat is the one open now: false when the server refused or did not answer,
+   * undefined when another chat was asked for meanwhile.
    */
-  const switchChat = (request: WebSwitchCommand, what: string): Promise<boolean> => {
+  const switchChat = (request: WebSwitchCommand, what: string): Promise<boolean | undefined> => {
     // What still waits here was meant for the conversation that is left.
     dropWaiting();
     setViewer(undefined);
@@ -993,7 +993,7 @@ function App() {
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
-        if (mine !== switchSeq.current) return false;
+        if (mine !== switchSeq.current) return undefined;
         switchingRef.current = false;
         setSwitching(false);
         // The chat says why when the server refused; no answer at all is said here.
@@ -1012,15 +1012,18 @@ function App() {
     void switchChat({ type: 'continue', id: chat.id, source: chat.source, takeover: true }, 'open that chat');
   const startProjectChat = (path: string, name = folderName(path)) =>
     switchChat({ type: 'project-chat', cwd: path }, `start a chat in ${name}`);
+  /**
+   * The project line's choice of a folder, made at `mark` (`chatMark()`) and found only now (a typed
+   * path looked up, the host's dialog answered): dropped, resolving undefined, when another chat was
+   * asked for since, so a slow answer never takes the window back from a later choice.
+   */
+  const chatMark = () => switchSeq.current;
+  const startChosenProject = (path: string, mark: number) =>
+    mark === switchSeq.current ? startProjectChat(path) : Promise.resolve(undefined);
   // A new chat: no prompt yet, so where it starts can still be chosen.
   const newChat = !!session && session.turns.length === 0 && !inSetup;
-  // "New worktree" on the project line: made when the first prompt is sent, not before.
-  const [worktree, setWorktree] = useState(false);
-  const wantsWorktree = useRef(false);
-  wantsWorktree.current = worktree && newChat && isHome && conversation?.origin !== 'home';
   const [folder, setFolder] = useState<WebFolder>();
   useEffect(() => {
-    setWorktree(false);
     setFolder(undefined);
     if (!newChat || !activeCwd || !token) return;
     let current = true;
@@ -1145,20 +1148,7 @@ function App() {
       );
     }
     const dropped = waiting.signal;
-    // The first prompt of a chat that starts in a new worktree makes the worktree, then goes there.
-    const copy = wantsWorktree.current ? activeCwd : undefined;
-    if (copy) {
-      wantsWorktree.current = false;
-      setWorktree(false);
-    }
-    const mine = sending.then(async () => {
-      if (copy) {
-        if (dropped.aborted) return STOPPED;
-        const made = await command({ type: 'project-chat', cwd: copy, worktree: true }).catch(() => false);
-        if (!made) return 'Not sent: the new worktree could not be made.';
-      }
-      return sendPrompt(text, files ?? [], dropped);
-    });
+    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped));
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
@@ -1548,9 +1538,8 @@ function App() {
                     folder={folder}
                     projects={projects}
                     canChange={isHome}
-                    worktree={worktree}
-                    onWorktree={setWorktree}
-                    onProject={(path) => startProjectChat(path)}
+                    mark={chatMark}
+                    onProject={startChosenProject}
                     onHome={startHomeChat}
                     inspect={inspectFolder}
                     choose={config?.chooseFolder ? chooseFolder : undefined}

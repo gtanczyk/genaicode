@@ -125,16 +125,12 @@ const IDENTITY = {
  * A new detached worktree at `dir` holding `repo` as it is now, uncommitted and untracked files
  * included. Returns the commit it starts from (reachable only from the worktree).
  */
-export async function addWorktree(
-  repo: string,
-  dir: string,
-  message = 'genaicode pack: start of a delegated task',
-): Promise<string> {
+export async function addWorktree(repo: string, dir: string): Promise<string> {
   const tree = await snapshotTree(repo);
   const head = await git(repo, ['rev-parse', '--verify', '-q', 'HEAD']);
   const parent = head.code === 0 ? ['-p', head.stdout.toString().trim()] : [];
   const commit = (
-    await must(repo, ['commit-tree', tree, ...parent, '-m', message], {
+    await must(repo, ['commit-tree', tree, ...parent, '-m', 'genaicode pack: start of a delegated task'], {
       env: { ...process.env, ...IDENTITY },
     })
   ).trim();

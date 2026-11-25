@@ -247,12 +247,12 @@ export function PlanToggle({ on, onToggle }: { on: boolean; onToggle(on: boolean
 }
 
 /**
- * Ask first / Auto-approve all, for this session. In a narrow composer only "Auto-approve all"
- * shows, so pressing it again goes back to asking.
+ * Ask first / Auto-approve all, for this chat: another chat starts from the configured default. In a
+ * narrow composer only "Auto-approve all" shows, so pressing it again goes back to asking.
  */
 export function PermissionSwitch({ auto, onChange }: { auto: boolean; onChange(auto: boolean): void }) {
   return (
-    <span className="seg perm" role="group" aria-label="Permission requests in this session">
+    <span className="seg perm" role="group" aria-label="Permission requests in this chat">
       <button
         type="button"
         aria-pressed={!auto}
@@ -266,8 +266,8 @@ export function PermissionSwitch({ auto, onChange }: { auto: boolean; onChange(a
         aria-pressed={auto}
         title={
           auto
-            ? 'Every permission request in this session is approved without asking. Click for Ask first.'
-            : 'Approves every permission request for the rest of this session'
+            ? 'Every permission request in this chat is approved without asking. Click for Ask first.'
+            : 'Approves every permission request for the rest of this chat'
         }
         onClick={() => onChange(!auto)}
       >
@@ -288,11 +288,16 @@ export interface StartsInProps {
   projects: readonly ChatProject[];
   /** Another folder can be picked (`ui --home`). Without it the line only names the folder. */
   canChange?: boolean;
-  /** The chat starts in a new worktree of the folder. */
-  worktree: boolean;
-  onWorktree(on: boolean): void;
-  /** Start in this directory, an absolute path. Resolves false when the chat could not start there. */
-  onProject(path: string): Promise<boolean>;
+  /**
+   * Records that the person chose now. A choice that is found only later (a typed path looked up,
+   * the host's dialog answered) passes it to `onProject`, so another choice made meanwhile wins.
+   */
+  mark(): number;
+  /**
+   * Start in this directory, an absolute path, as chosen at `mark`. Resolves false when the chat
+   * could not start there, undefined when another chat was asked for since.
+   */
+  onProject(path: string, mark: number): Promise<boolean | undefined>;
   onHome(): void;
   /** Looks a typed path up; undefined when it is not one. */
   inspect(path: string): Promise<WebFolder | undefined>;
@@ -305,7 +310,7 @@ const MOST_RECENT = 6;
 
 /**
  * The context line of a new chat: **Starts in** the folder (recent ones, a path, the host's
- * dialog, the home folder), **This folder / New worktree**, and where the prompt will run.
+ * dialog, the home folder) and where the prompt will run.
  */
 export function StartsIn(props: StartsInProps) {
   const [typed, setTyped] = useState('');
@@ -313,8 +318,6 @@ export function StartsIn(props: StartsInProps) {
   const [busy, setBusy] = useState(false);
   const name = props.atHome ? 'Home folder' : folderName(props.cwd);
   const branch = props.folder?.branch;
-  // The home folder is for questions across projects: there is nothing there to copy.
-  const git = props.folder?.git === true && !props.atHome;
   const recent = props.projects.filter((project) => project.key !== HOME_FOLDER && project.path).slice(0, MOST_RECENT);
   const here = props.cwd.replace(/(?!^)[\\/]+$/, '');
   const label = (
@@ -327,14 +330,18 @@ export function StartsIn(props: StartsInProps) {
   const open = async (close: () => void) => {
     const path = typed.trim();
     if (!path || busy) return;
+    const mark = props.mark();
     setBusy(true);
     const found = await props.inspect(path).catch(() => undefined);
+    // Another folder or chat was picked while this one was looked up: that choice stands.
+    if (mark !== props.mark()) return setBusy(false);
     if (!found?.exists) {
       setBusy(false);
       return setProblem(found ? `No folder ${found.path}.` : 'Give the full path of a folder, or one from ~.');
     }
-    const started = await props.onProject(found.path).catch(() => false);
+    const started = await props.onProject(found.path, mark).catch(() => false);
     setBusy(false);
+    if (started === undefined) return;
     // The chat says why. A folder nobody worked in yet is opened with the host's dialog, where there is one.
     if (!started) {
       return setProblem(
@@ -380,7 +387,7 @@ export function StartsIn(props: StartsInProps) {
                     aria-checked={!props.atHome && project.path === here}
                     onClick={() => {
                       close();
-                      if (props.atHome || project.path !== here) void props.onProject(project.path!);
+                      if (props.atHome || project.path !== here) void props.onProject(project.path!, props.mark());
                     }}
                   >
                     <FolderIcon />
@@ -435,12 +442,14 @@ export function StartsIn(props: StartsInProps) {
                       title="Pick a folder with the system's dialog"
                       disabled={busy}
                       onClick={async () => {
+                        const mark = props.mark();
                         setBusy(true);
                         const found = await props.choose!().catch(() => undefined);
                         setBusy(false);
-                        if (!found?.exists) return;
+                        // Another folder or chat was picked while the dialog was open: that choice stands.
+                        if (!found?.exists || mark !== props.mark()) return;
                         close();
-                        void props.onProject(found.path);
+                        void props.onProject(found.path, mark);
                       }}
                     >
                       Choose…
@@ -462,30 +471,8 @@ export function StartsIn(props: StartsInProps) {
           {label}
         </span>
       )}
-      {props.canChange ? (
-        <span className="seg" role="group" aria-label="Where the agent edits">
-          <button type="button" aria-pressed={!props.worktree} onClick={() => props.onWorktree(false)}>
-            This folder
-          </button>
-          <button
-            type="button"
-            aria-pressed={props.worktree}
-            disabled={!git}
-            title={
-              git
-                ? 'The agent works in a copy of the folder as it is now; nothing reaches the folder until you merge it'
-                : props.atHome
-                  ? 'Pick a project folder first'
-                  : 'Not a git repository'
-            }
-            onClick={() => props.onWorktree(true)}
-          >
-            New worktree
-          </button>
-        </span>
-      ) : null}
       <span className="starts-where" title={props.cwd}>
-        {props.worktree && git ? `a copy of ${branch ?? name}, merged when you say` : props.cwd}
+        {props.cwd}
       </span>
     </>
   );

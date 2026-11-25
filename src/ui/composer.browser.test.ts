@@ -199,13 +199,13 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await message.click();
     await pop.waitFor({ state: 'detached' });
 
-    // Plan is a toggle; the permission switch names both states and covers the session.
+    // Plan is a toggle; the permission switch names both states and covers the chat.
     const plan = card.getByRole('button', { name: 'Plan', exact: true });
     await plan.click();
     await vi.waitFor(async () => expect(await plan.getAttribute('aria-pressed')).toBe('true'));
     await plan.click();
     await vi.waitFor(async () => expect(await plan.getAttribute('aria-pressed')).toBe('false'));
-    const permission = card.getByRole('group', { name: 'Permission requests in this session' });
+    const permission = card.getByRole('group', { name: 'Permission requests in this chat' });
     const ask = permission.getByRole('button', { name: 'Ask first' });
     const auto = permission.getByRole('button', { name: 'Auto-approve all' });
     expect(await ask.getAttribute('aria-pressed')).toBe('true');
@@ -214,9 +214,8 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await ask.click();
     await vi.waitFor(async () => expect(await ask.getAttribute('aria-pressed')).toBe('true'));
 
-    // The project line: a folder by its path, then a new worktree of it for this chat.
-    const worktree = starts.getByRole('button', { name: 'New worktree' });
-    expect(await worktree.isDisabled()).toBe(true);
+    // The project line: a folder by its path. There is no worktree choice in it.
+    expect(await starts.getByRole('button', { name: 'New worktree' }).count()).toBe(0);
     await project.click();
     const projects = card.getByRole('dialog', { name: 'Project' });
     expect(await projects.getByRole('radio', { name: /Home folder/ }).getAttribute('aria-checked')).toBe('true');
@@ -250,11 +249,8 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await vi.waitFor(async () => expect(await project.textContent()).toContain('main'));
     await vi.waitFor(async () => expect(await focused()).toBe(true));
     expect(await starts.locator('.starts-where').textContent()).toBe(knights);
-    await vi.waitFor(async () => expect(await worktree.isDisabled()).toBe(false));
-    await worktree.click();
-    expect(await starts.locator('.starts-where').textContent()).toBe('a copy of main, merged when you say');
 
-    // The first prompt makes the worktree and runs there. While it runs, Stop sits beside the submit
+    // The first prompt runs in the folder. While it runs, Stop sits beside the submit
     // button, which says what Enter does for this agent: it takes input mid-turn, so Steer.
     await message.fill('hold the gate');
     expect(await submit.textContent()).toBe('Send↵');
@@ -278,9 +274,9 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     expect(await agents.getByRole('radio', { name: /backup/ }).isDisabled()).toBe(true);
     await page.keyboard.press('Escape');
     helper.release();
-    const ran = log.getByText(/Ran in .*\.genaicode[\\/]chats[\\/]knights-[0-9a-f]{8}$/);
+    const ran = log.getByText(/^Ran in /);
     await ran.waitFor();
-    expect(await ran.textContent()).toContain(join(knights, '.genaicode', 'chats', 'knights-'));
+    expect(await ran.textContent()).toContain(knights);
     await stopButton.waitFor({ state: 'detached' });
     expect(await submit.textContent()).toBe('Send↵');
 

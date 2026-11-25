@@ -30,10 +30,23 @@ export function inputDeliveryText(delivery: InputDelivery | undefined, agent: st
 /** What Enter does with the message: starts a turn, goes into the running one, or waits for its end. */
 export type SubmitAction = 'send' | 'steer' | 'queue';
 
-/** The submit action for a session: an agent that takes input mid-turn is steered, another gets the prompt queued. */
-export function submitAction(state: Pick<SessionState, 'status' | 'canSteer'>): SubmitAction {
+/**
+ * The submit action for a session: what `send()` does now (`SessionState.sendAction`), so a prompt
+ * that waits for a pack review is Queue too. A state without it: an agent that takes input
+ * mid-turn is steered, another gets the prompt queued.
+ */
+export function submitAction(state: Pick<SessionState, 'status' | 'canSteer' | 'sendAction'>): SubmitAction {
+  if (state.sendAction) return state.sendAction === 'start' ? 'send' : state.sendAction;
   if (state.status !== 'running') return 'send';
   return state.canSteer ? 'steer' : 'queue';
+}
+
+/** What the submit button says on hover: a prompt queued with no turn running waits for a pack review. */
+export function submitTitle(state: Pick<SessionState, 'status' | 'canSteer' | 'sendAction'>): string {
+  const action = submitAction(state);
+  if (action === 'queue' && state.status !== 'running')
+    return 'Enter queues this: a review of delegated work holds the budget, so it runs when the review ends';
+  return SUBMIT[action].title;
 }
 
 /** The submit button's label and what it says on hover, for each action. */

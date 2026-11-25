@@ -33,6 +33,7 @@ import {
   shortId,
   SUBMIT,
   submitAction,
+  submitTitle,
   toolArgument,
   toolDiff,
   toolLabel,
@@ -332,8 +333,8 @@ export function AgentChat(props: AgentChatProps) {
   const hasHeader = header !== undefined && header !== null && header !== false;
   // What Enter does now: the submit button says it, and Stop is a button of its own beside it.
   const action = submitAction(state);
-  const submitTitle = sendable
-    ? SUBMIT[action].title
+  const submitHover = sendable
+    ? submitTitle(state)
     : props.disabled
       ? undefined
       : attached.enabled
@@ -579,7 +580,7 @@ export function AgentChat(props: AgentChatProps) {
       type="button"
       className="gc-btn gc-primary gc-submit"
       data-action={action}
-      title={submitTitle}
+      title={submitHover}
       disabled={!sendable}
       onClick={send}
     >

@@ -291,7 +291,7 @@ it('turns on auto-approve from a permission prompt and approves pending and foll
     const page = await browser.newPage();
     await page.goto(opened!);
     // The composer's switch says Ask first; the approval card's own button turns it for the session.
-    const permission = page.getByRole('group', { name: 'Permission requests in this session' });
+    const permission = page.getByRole('group', { name: 'Permission requests in this chat' });
     const auto = permission.getByRole('button', { name: 'Auto-approve all' });
     await vi.waitFor(async () =>
       expect(await permission.getByRole('button', { name: 'Ask first' }).getAttribute('aria-pressed')).toBe('true'),

@@ -299,6 +299,23 @@ describe('AgentChat', () => {
     expect(text('.gc-header .gc-chip')).toContain('plan');
   });
 
+  it('says Queue while a review of delegated work holds the budget, with no turn running', () => {
+    render({ state: fixture({ status: 'idle', turns: [], queued: [], approvals: [], sendAction: 'queue' }) });
+    const submit = $<HTMLButtonElement>('.gc-submit');
+    expect(submit.dataset.action).toBe('queue');
+    expect(submit.textContent).toContain('Queue');
+    act(() => {
+      const box = $<HTMLTextAreaElement>('textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'next');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect($<HTMLButtonElement>('.gc-submit').title).toBe(
+      'Enter queues this: a review of delegated work holds the budget, so it runs when the review ends',
+    );
+    render({ state: fixture({ status: 'idle', turns: [], queued: [], approvals: [], sendAction: 'start' }) });
+    expect($<HTMLButtonElement>('.gc-submit').textContent).toContain('Send');
+  });
+
   it('shows the whole tool argument, not a cut one', () => {
     const command = `cd game && grep -rn "will" --include='*.ts' . | grep -v node_modules | head -50 ${'x'.repeat(300)}\necho done`;
     const state = fixture();

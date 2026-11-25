@@ -19,6 +19,7 @@ import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController, ChatSwitch, SwitchOrder } from '../controller.js';
 import { currentBranch, repoRoot } from '../../agents/pack-git.js';
+import { isSameDir } from '../../agents/sessions/workspace.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
   activeChatTruncation,
@@ -188,7 +189,7 @@ export interface WebFolder {
   path: string;
   /** False when there is no such directory. */
   exists: boolean;
-  /** True inside a git repository: a chat can start in a new worktree of it. */
+  /** True inside a git repository. */
   git?: boolean;
   /** The branch checked out there. */
   branch?: string;
@@ -203,12 +204,38 @@ function realFolder(path: string): string {
   }
 }
 
-/** Reads what the new chat's project line shows of a folder: whether it is there, a repository, and its branch. */
-export async function inspectFolder(given: string, home = homedir()): Promise<WebFolder | undefined> {
+/** A typed folder as an absolute path: `~` expanded, spaces around it dropped. Undefined when it is not one. */
+function typedFolder(given: string, home: string): string | undefined {
   const typed = given.trim();
   const expanded = typed === '~' ? home : /^~[\\/]/.test(typed) ? join(home, typed.slice(2)) : typed;
-  if (!expanded || !isAbsolute(expanded)) return undefined;
-  const path = resolve(expanded);
+  return expanded && isAbsolute(expanded) ? resolve(expanded) : undefined;
+}
+
+/** Reads what the new chat's project line shows of a typed path: whether it is there, a repository, and its branch. */
+export async function inspectFolder(given: string, home = homedir()): Promise<WebFolder | undefined> {
+  const path = typedFolder(given, home);
+  return path === undefined ? undefined : describeFolder(path);
+}
+
+/**
+ * The folder the host's dialog returned, exactly as given (a name may end in a space): its real
+ * path, which is both what the person may open and where the chat then runs. Undefined when it is
+ * not an existing directory.
+ */
+export async function chosenFolder(chosen: string): Promise<WebFolder | undefined> {
+  if (!isAbsolute(chosen)) return undefined;
+  let path: string;
+  try {
+    path = realpathSync(chosen);
+  } catch {
+    return undefined;
+  }
+  const folder = await describeFolder(path);
+  return folder.exists ? folder : undefined;
+}
+
+/** Whether `path`, an absolute path, is a directory, a git repository, and its branch. */
+async function describeFolder(path: string): Promise<WebFolder> {
   let exists = false;
   try {
     exists = statSync(path).isDirectory();
@@ -274,11 +301,8 @@ type WebSwitchTarget =
   | { type: 'continue'; id: string; source?: string; takeover?: true }
   /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
   | { type: 'topic-chat'; topic: string }
-  /**
-   * Start a new conversation in this directory, an absolute path (`--home` mode). `worktree`: in a
-   * new git worktree of it (`ChatController.startProjectChat`).
-   */
-  | { type: 'project-chat'; cwd: string; worktree?: true }
+  /** Start a new conversation in this directory, an absolute path (`--home` mode). */
+  | { type: 'project-chat'; cwd: string }
   /** Start a new conversation: back in the neutral home in `--home` mode, as `/clear` otherwise. */
   | { type: 'home-chat' }
   /** Stay in the open conversation: drops the requests that still wait to open another. */
@@ -403,8 +427,7 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       }
       if (command.type === 'project-chat') {
         const cwd = text('cwd', 4096);
-        if (!cwd || (command.worktree !== undefined && typeof command.worktree !== 'boolean')) return undefined;
-        return { type: 'project-chat', cwd, ...(command.worktree ? { worktree: true as const } : {}), ...order };
+        return cwd ? { type: 'project-chat', cwd, ...order } : undefined;
       }
       return { type: command.type, ...order };
     }
@@ -687,8 +710,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
       const given = url.searchParams.get('path') ?? '';
-      const folder = given.length <= 4096 ? await inspectFolder(given) : undefined;
-      if (!folder) return send(res, 400, 'application/json', '{"error":"bad path"}');
+      const path = given.length <= 4096 ? typedFolder(given, homedir()) : undefined;
+      if (path === undefined) return send(res, 400, 'application/json', '{"error":"bad path"}');
+      // With a fixed project (`--cwd`) the page asks only about the folder the chat is in.
+      if (!options.title.home && !isSameDir(path, controller.session.get().cwd)) {
+        return send(res, 403, 'application/json', '{"error":"not this project"}');
+      }
+      const folder = await describeFolder(path);
       return send(res, 200, 'application/json', JSON.stringify(folder), { 'cache-control': 'no-store' });
     }
     if (req.method === 'POST' && url.pathname === '/api/choose-folder') {
@@ -699,10 +727,11 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 404, 'application/json', '{"error":"no folder dialog"}');
       }
       const chosen = await options.hostApp.chooseFolder().catch(() => undefined);
-      const folder = chosen ? await inspectFolder(chosen) : undefined;
-      // What the person picked in the host's dialog may be opened, also when no session worked there yet.
-      if (folder?.exists) chosenFolders.add(realFolder(folder.path));
-      return send(res, 200, 'application/json', JSON.stringify(folder?.exists ? { folder } : {}), {
+      // The exact path the dialog returned, by its real path: what the person picked may be opened,
+      // also when no session worked there yet, and nothing beside it.
+      const folder = chosen ? await chosenFolder(chosen) : undefined;
+      if (folder) chosenFolders.add(folder.path);
+      return send(res, 200, 'application/json', JSON.stringify(folder ? { folder } : {}), {
         'cache-control': 'no-store',
       });
     }
@@ -1264,7 +1293,6 @@ function switchTarget(command: WebSwitchCommand, chosenFolders: ReadonlySet<stri
       return {
         type: 'project',
         cwd: command.cwd,
-        ...(command.worktree ? { worktree: true } : {}),
         // What the person picked in the host's dialog may be opened, whoever worked there before.
         ...(chosenFolders.has(realFolder(command.cwd)) ? { chosen: true } : {}),
       };

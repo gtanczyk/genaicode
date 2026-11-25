@@ -224,10 +224,11 @@ describe('Plan and the permission switch', () => {
     expect(onToggle).toHaveBeenLastCalledWith(false);
   });
 
-  it('names both permission states, "Auto-approve all" for the session', () => {
+  it('names both permission states, "Auto-approve all" for the chat', () => {
     const onChange = vi.fn();
     render(<PermissionSwitch auto={false} onChange={onChange} />);
-    expect($('[role="group"]').getAttribute('aria-label')).toBe('Permission requests in this session');
+    expect($('[role="group"]').getAttribute('aria-label')).toBe('Permission requests in this chat');
+    expect(button('Auto-approve all').title).toBe('Approves every permission request for the rest of this chat');
     expect($$('button').map((element) => [element.textContent, element.getAttribute('aria-pressed')])).toEqual([
       ['Ask first', 'true'],
       ['Auto-approve all', 'false'],
@@ -258,15 +259,23 @@ describe('StartsIn', () => {
     })),
     { home: '/home/me/.genaicode/home' },
   );
+  // As the page numbers the chats a window asks for: each choice that switches counts one up.
+  let asked = 0;
+  beforeEach(() => {
+    asked = 0;
+  });
   const line = (patch: Partial<StartsInProps> = {}): StartsInProps => ({
     cwd: '/work/app',
     folder: { path: '/work/app', exists: true, git: true, branch: 'main' },
     projects,
     canChange: true,
-    worktree: false,
-    onWorktree: vi.fn(),
-    onProject: vi.fn(async () => true),
-    onHome: vi.fn(),
+    mark: () => asked,
+    onProject: vi.fn(async (_path: string, mark: number) => {
+      if (mark !== asked) return undefined;
+      asked += 1;
+      return true;
+    }),
+    onHome: vi.fn(() => void (asked += 1)),
     inspect: vi.fn(async (path: string) =>
       path === '~/src/new' ? { path: '/home/me/src/new', exists: true, git: false } : { path, exists: false },
     ),
@@ -276,34 +285,16 @@ describe('StartsIn', () => {
   const pop = () => $('[role="dialog"][aria-label="Project"]');
   const path = () => $<HTMLInputElement>('input[aria-label="Folder path"]');
 
-  it('says where the prompt will run: the folder and its branch, This folder or a new worktree', () => {
+  it('says where the prompt will run: the folder and its branch', () => {
     const props = line();
     render(<StartsIn {...props} />);
     expect(host.textContent).toContain('Starts in');
     expect(trigger().getAttribute('aria-label')).toBe('Starts in app, branch main');
     expect(trigger().title).toBe('/work/app');
     expect($('.starts-where').textContent).toBe('/work/app');
-    expect(button('This folder').getAttribute('aria-pressed')).toBe('true');
-    expect(button('New worktree').disabled).toBe(false);
-    click(button('New worktree'));
-    expect(props.onWorktree).toHaveBeenCalledWith(true);
-    render(<StartsIn {...props} worktree />);
-    expect(button('New worktree').getAttribute('aria-pressed')).toBe('true');
-    expect($('.starts-where').textContent).toBe('a copy of main, merged when you say');
-    click(button('This folder'));
-    expect(props.onWorktree).toHaveBeenLastCalledWith(false);
-  });
-
-  it('offers a worktree only inside a repository, and not in the home folder', () => {
-    render(<StartsIn {...line({ folder: { path: '/work/app', exists: true, git: false } })} />);
-    expect(button('New worktree').disabled).toBe(true);
-    expect(button('New worktree').title).toBe('Not a git repository');
+    expect(button('New worktree')).toBeUndefined();
     render(<StartsIn {...line({ atHome: true, cwd: '/home/me/.genaicode/home' })} />);
     expect(trigger().getAttribute('aria-label')).toBe('Starts in Home folder, branch main');
-    expect(button('New worktree').disabled).toBe(true);
-    // Not known yet: nothing is promised.
-    render(<StartsIn {...line({ folder: undefined })} />);
-    expect(button('New worktree').disabled).toBe(true);
   });
 
   it('lists the recent directories and the home folder, and starts in the one picked', () => {
@@ -317,7 +308,7 @@ describe('StartsIn', () => {
       ['Home folderquestions across projects', 'false'],
     ]);
     click(options[1]!);
-    expect(props.onProject).toHaveBeenCalledWith('/work/site');
+    expect(props.onProject).toHaveBeenCalledWith('/work/site', 0);
     expect(pop()).toBeNull();
     click(trigger());
     click(named('radio', 'Home folderquestions across projects'));
@@ -353,7 +344,7 @@ describe('StartsIn', () => {
     press(path(), 'Enter');
     await settle();
     expect(props.inspect).toHaveBeenLastCalledWith('~/src/new');
-    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new');
+    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new', 0);
     expect(pop()).toBeNull();
   });
 
@@ -365,7 +356,7 @@ describe('StartsIn', () => {
     click(button('Open'));
     await settle();
     await settle();
-    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new');
+    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new', 0);
     expect($('[role="alert"]').textContent).toBe(
       'Could not start in /home/me/src/new: a typed path opens only a folder one of your sessions worked in. Choose… opens any folder.',
     );
@@ -387,8 +378,42 @@ describe('StartsIn', () => {
     expect(pop()).not.toBeNull();
     click(button('Choose…'));
     await settle();
-    expect(props.onProject).toHaveBeenCalledWith('/work/picked');
+    expect(props.onProject).toHaveBeenCalledWith('/work/picked', 0);
     expect(pop()).toBeNull();
+  });
+
+  it('drops a typed folder found only after another folder was picked', async () => {
+    let found!: (folder: { path: string; exists: boolean }) => void;
+    const props = line({
+      inspect: vi.fn(() => new Promise<{ path: string; exists: boolean }>((resolve) => (found = resolve))),
+    });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    fill(path(), '/work/slow');
+    click(button('Open'));
+    // While the typed folder is looked up, the person picks a recent one.
+    click(named('radio', 'site/work/site'));
+    expect(props.onProject).toHaveBeenCalledWith('/work/site', 0);
+    found({ path: '/work/slow', exists: true });
+    await settle();
+    await settle();
+    expect(props.onProject).toHaveBeenCalledTimes(1);
+    expect($('[role="alert"]')).toBeNull();
+  });
+
+  it('drops a folder the dialog answers with after another chat was asked for', async () => {
+    let picked!: (folder: { path: string; exists: boolean }) => void;
+    const props = line({
+      choose: vi.fn(() => new Promise<{ path: string; exists: boolean }>((resolve) => (picked = resolve))),
+    });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    click(button('Choose…'));
+    // The sidebar starts another chat while the dialog is open.
+    asked += 1;
+    picked({ path: '/work/picked', exists: true });
+    await settle();
+    expect(props.onProject).not.toHaveBeenCalled();
   });
 
   it('only names the folder where the chat has one project', () => {
