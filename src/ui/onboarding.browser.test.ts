@@ -227,9 +227,9 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Not logged in" >&2; exi
     expect(await menu.textContent()).toContain('More agents');
     expect(await menu.getByRole('button', { name: 'Install' }).count()).toBe(1);
 
-    // Clicking Sign in on Codex opens the Coding agents panel focused on Codex with `codex login`.
+    // Clicking Sign in on Codex opens Settings › Agents at Codex, with `codex login`.
     await menu.getByRole('button', { name: 'Sign in' }).click();
-    const codexCard = page.locator('li[data-agent="codex"]');
+    const codexCard = page.getByRole('region', { name: 'Agents' }).locator('[data-agent="codex"]');
     await codexCard.waitFor();
     expect(await codexCard.textContent()).toContain('Installed, not signed in');
     expect(await codexCard.textContent()).toContain('codex login');
@@ -344,11 +344,14 @@ it('keeps onboarding accessible after continuing an existing session during setu
     expect(await banner.getByRole('button', { name: 'Check again' }).count()).toBe(1);
     expect(await page.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(true);
 
-    // Open the full onboarding instructions from the banner.
+    // The banner opens Settings › Agents, with the commands; the top bar leads back to the conversation.
     await banner.getByRole('button', { name: 'Connect agent' }).click();
-    await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
-    expect(await page.locator('li[data-agent="codex"]').textContent()).toContain('npm i -g @openai/codex');
-    expect(await page.getByRole('button', { name: '← Back to conversation' }).count()).toBe(1);
+    const agents = page.getByRole('main', { name: 'Settings' }).getByRole('region', { name: 'Agents' });
+    await agents.waitFor();
+    expect(await agents.locator('[data-agent="codex"]').textContent()).toContain('npm i -g @openai/codex');
+    // Nothing to switch to yet: no agent can be used.
+    expect(await agents.getByRole('button', { name: /^Use / }).count()).toBe(0);
+    expect(await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).count()).toBe(1);
 
     // Install and sign in to codex -> Check again -> returns directly to the loaded conversation ready to send.
     writeScript(
@@ -357,8 +360,9 @@ it('keeps onboarding accessible after continuing an existing session during setu
       `if [ "$1" = "--version" ]; then echo "codex-cli 0.170.0"; exit 0; fi
 if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT" >&2; exit 0; fi`,
     );
-    await page.getByRole('button', { name: 'Check again' }).click();
+    await agents.getByRole('button', { name: 'Check again' }).click();
     await page.getByText('Found the missing backoff guard.').waitFor();
+    await agents.waitFor({ state: 'detached' });
     await vi.waitFor(async () => {
       expect(await page.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(false);
     });

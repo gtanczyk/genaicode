@@ -8,7 +8,6 @@ import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { EscapeActive, useEscape } from '../../react/escape.js';
 import { formatBytes, submitAction } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
-import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
@@ -45,7 +44,8 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
-import { ProjectTeamDialog } from './project-team.js';
+import { SettingsPage, type SettingsSection } from './settings.js';
+import { applyTheme, readTheme, useTheme } from './theme.js';
 import { TowerInboxPanel } from './tower-inbox.js';
 import { TranscriptMenu } from './transcript-menu.js';
 
@@ -737,79 +737,6 @@ function collectSessionArtifacts(turns: ChatView['session']['turns'] | undefined
   return [...byId.values()].reverse();
 }
 
-const PRESET_CDN_ORIGINS = DEFAULT_ARTIFACT_CDN_HOSTS.map((host) => `https://${host}`);
-
-function CdnSettingsPopover({ hosts, onClose }: { hosts: readonly string[]; onClose(): void }) {
-  const fullPreset = PRESET_CDN_ORIGINS.every((origin) => hosts.includes(origin));
-  // Keep individually enabled preset hosts in the custom box unless the full preset is on.
-  const initialCustom = (fullPreset ? hosts.filter((h) => !PRESET_CDN_ORIGINS.includes(h)) : hosts).map((h) =>
-    h.replace(/^https:\/\//, ''),
-  );
-  const [presetOn, setPresetOn] = useState(fullPreset);
-  const [customText, setCustomText] = useState(() => initialCustom.join('\n'));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
-
-  const save = async () => {
-    setSaving(true);
-    setError(undefined);
-    const custom = customText
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const next = [...(presetOn ? DEFAULT_ARTIFACT_CDN_HOSTS : []), ...custom];
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
-        body: JSON.stringify({ artifactCdn: next }),
-      });
-      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!res.ok || !body.ok) {
-        setError(body.error ?? 'Could not save settings.');
-        setSaving(false);
-        return;
-      }
-      onClose();
-    } catch {
-      setError('Could not reach the server.');
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="popover settings-popover" role="dialog" aria-label="Artifact network settings">
-      <h3>HTML artifact CDNs</h3>
-      <label className="settings-toggle">
-        <input type="checkbox" checked={presetOn} onChange={(event) => setPresetOn(event.target.checked)} />
-        <span>Allow common library CDNs ({DEFAULT_ARTIFACT_CDN_HOSTS.join(', ')})</span>
-      </label>
-      <label className="settings-field">
-        <span>Extra allowed hosts (one per line or comma-separated)</span>
-        <textarea
-          rows={3}
-          placeholder="e.g. cdn.skypack.dev"
-          value={customText}
-          onChange={(event) => setCustomText(event.target.value)}
-        />
-      </label>
-      <p className="settings-note">
-        Off by default. Allowed hosts can serve scripts, styles and fonts inside HTML artifacts; fetch, images and forms
-        stay blocked. Only allow CDNs you trust — loaded scripts run with the artifact&apos;s data.
-      </p>
-      {error ? <div className="settings-error">{error}</div> : null}
-      <div className="settings-actions">
-        <button type="button" className="chip" onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" className="chip primary" disabled={saving} onClick={() => void save()}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /** The message field, for the focus: a new chat and the way back from a page start there. */
 function focusComposer() {
   window.requestAnimationFrame(() =>
@@ -929,12 +856,13 @@ function App() {
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   const hasAgentsApi = config?.agents === true;
   useBark(view);
-  const [showTeam, setShowTeam] = useState(false);
-  // The Sessions / Agents views take the chat's place; the chat keeps running behind them.
-  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'agents'>('chat');
+  const [theme, setTheme] = useTheme();
+  // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
+  const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'settings'>('chat');
+  const [section, setSection] = useState<SettingsSection>('general');
   const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
-  const showAgents = panel === 'agents';
+  const showAgents = panel === 'settings' && section === 'agents';
   // What the Sessions view lists: every agent's sessions, only the ones that ask now (from Needs
   // you), or this app's own chats of all time, the archived too (from "All chats").
   const [listed, setListed] = useState<'all' | 'needs' | 'own'>('all');
@@ -1010,9 +938,14 @@ function App() {
     }
     if (trigger) void checkAgents({ env: false, quiet: true });
   }, [hasAgentsApi, session?.turns]);
+  const openSettings = (which: SettingsSection = 'general') => {
+    setFocusAgent(undefined);
+    setSection(which);
+    setPanel('settings');
+  };
   const openSetup = (agent?: string) => {
+    openSettings('agents');
     setFocusAgent(agent);
-    setPanel('agents');
   };
   // When onboarding opened as a panel during setup finishes, return straight to the conversation.
   const wasSetupRef = useRef(inSetup);
@@ -1138,7 +1071,6 @@ function App() {
   // The file or artifact open in the side viewer panel beside the chat.
   const [viewer, setViewer] = useState<ViewerTarget>();
   const [artifactsOpen, setArtifactsOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
   // Stable while the images are, so memoized Markdown does not re-render on every update.
@@ -1156,22 +1088,15 @@ function App() {
 
   // Dismiss header popovers on outside click or Escape (the popover opened last, so it is asked before the viewer).
   useEffect(() => {
-    if (!artifactsOpen && !settingsOpen) return;
-    const close = () => {
-      setArtifactsOpen(false);
-      setSettingsOpen(false);
-    };
+    if (!artifactsOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       if ((event.target as Element).closest?.('.popover-anchor')) return;
-      close();
+      setArtifactsOpen(false);
     };
     window.addEventListener('mousedown', onPointerDown, true);
     return () => window.removeEventListener('mousedown', onPointerDown, true);
-  }, [artifactsOpen, settingsOpen]);
-  useEscape(artifactsOpen || settingsOpen, () => {
-    setArtifactsOpen(false);
-    setSettingsOpen(false);
-  });
+  }, [artifactsOpen]);
+  useEscape(artifactsOpen, () => setArtifactsOpen(false));
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1304,6 +1229,12 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const relaunch = () => {
+    setRelaunching(true);
+    fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
+      .then((reply) => reply.ok || setRelaunching(false))
+      .catch(() => setRelaunching(false));
+  };
   const backToChat = () => {
     setPanel('chat');
     // Back from a page, the next key goes to the message field.
@@ -1330,8 +1261,8 @@ function App() {
           : 'All sessions'
       : panel === 'inbox'
         ? 'Needs you'
-        : panel === 'agents'
-          ? 'Agents'
+        : panel === 'settings'
+          ? 'Settings'
           : undefined;
   const lastTurn = session?.turns.at(-1);
   // The store of the chat's agent: another store may hold a session with the same id.
@@ -1374,23 +1305,6 @@ function App() {
         : [],
     [allLimits, rateLimits, session?.agent, account],
   );
-  const settingsItems = [
-    ...(hasAgentsApi ? [{ label: 'Agents', onSelect: () => openSetup() }] : []),
-    ...(config?.projectTeams ? [{ label: 'Project team', onSelect: () => setShowTeam(true) }] : []),
-    ...(config?.canConfigureCdn
-      ? [
-          {
-            label: 'HTML artifact CDNs',
-            ...(config.artifactCdn?.length ? { detail: String(config.artifactCdn.length) } : {}),
-            onSelect: () => {
-              setArtifactsOpen(false);
-              setSettingsOpen(true);
-            },
-          },
-        ]
-      : []),
-  ];
-
   return (
     <>
       <Shell
@@ -1413,10 +1327,7 @@ function App() {
                     aria-expanded={artifactsOpen}
                     aria-pressed={artifactsOpen}
                     title="Artifacts published in this conversation"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      setArtifactsOpen((v) => !v);
-                    }}
+                    onClick={() => setArtifactsOpen((v) => !v)}
                   >
                     Artifacts · {sessionArtifacts.length}
                   </button>
@@ -1469,7 +1380,7 @@ function App() {
                               role="menuitem"
                               onClick={() => {
                                 close();
-                                setShowTeam(true);
+                                openSettings('team');
                               }}
                             >
                               Team for this project…
@@ -1487,7 +1398,7 @@ function App() {
           page:
             panel === 'chat'
               ? 'chat'
-              : panel === 'agents'
+              : panel === 'settings'
                 ? 'settings'
                 : pageTitle === 'Needs you'
                   ? 'inbox'
@@ -1532,21 +1443,10 @@ function App() {
           others,
           update: config?.update,
           relaunching,
-          onRelaunch: () => {
-            setRelaunching(true);
-            fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
-              .then((reply) => reply.ok || setRelaunching(false))
-              .catch(() => setRelaunching(false));
-          },
+          onRelaunch: relaunch,
           quota,
-          onQuota: hasAgentsApi ? () => openSetup() : undefined,
-          settings: settingsItems,
-          settingsPopover:
-            settingsOpen && config?.canConfigureCdn ? (
-              <div className="popover-anchor side-popover">
-                <CdnSettingsPopover hosts={config.artifactCdn ?? []} onClose={() => setSettingsOpen(false)} />
-              </div>
-            ) : null,
+          onQuota: () => openSettings('usage'),
+          onSettings: () => openSettings(panel === 'settings' ? section : 'general'),
           version: release?.version ?? root.dataset.version,
           whatsNewUnread: !!release && seenRelease !== release.version,
           onWhatsNew: release ? () => whatsNew.current?.showModal() : undefined,
@@ -1584,24 +1484,67 @@ function App() {
             asking={hasSessions ? { count: needs.sessions, onOpen: () => openSessions('needs') } : undefined}
           />
         )}
-        {showAgents ? (
-          <main className="agents-panel">
-            <Onboarding
-              agents={agentList}
-              limits={allLimits}
-              loading={loadingAgents}
-              checking={checkingAgents}
-              setup={inSetup}
-              focusAgent={focusAgent}
-              onCheckAgain={() => checkAgents({ env: true })}
-              onSelectAgent={(name) => {
-                dropWaiting();
-                void command({ type: 'agent', name });
-                setPanel('chat');
-              }}
-              onClose={() => setPanel('chat')}
-            />
-          </main>
+        {panel === 'settings' ? (
+          <SettingsPage
+            section={section}
+            onSection={(which) => {
+              setFocusAgent(undefined);
+              setSection(which);
+            }}
+            general={{
+              theme,
+              onTheme: setTheme,
+              bark: view?.bark,
+              onBark: (on) => control(`/bark ${on ? 'on' : 'off'}`),
+            }}
+            agents={
+              hasAgentsApi
+                ? {
+                    agents: agentList,
+                    loading: loadingAgents,
+                    checking: checkingAgents,
+                    current: session?.agent,
+                    focusAgent,
+                    onCheckAgain: () => checkAgents({ env: true }),
+                    onUse: inSetup
+                      ? undefined
+                      : (name) => {
+                          dropWaiting();
+                          void command({ type: 'agent', name });
+                          backToChat();
+                        },
+                  }
+                : undefined
+            }
+            team={
+              config?.projectTeams
+                ? {
+                    token,
+                    cwd: teamFolder,
+                    sessions: hasSessions,
+                    choose: config.chooseFolder ? () => chooseFolder().then((found) => found?.path) : undefined,
+                  }
+                : undefined
+            }
+            artifacts={config?.canConfigureCdn ? { token, hosts: config.artifactCdn ?? [] } : undefined}
+            usage={{
+              token,
+              limits: allLimits,
+              shares: hasSessions,
+              onTopic: (id) => {
+                setTopic(id);
+                setListed('all');
+                setPanel('sessions');
+              },
+            }}
+            about={{
+              version: release?.version ?? root.dataset.version,
+              update: config?.update,
+              relaunching,
+              onRelaunch: relaunch,
+              onWhatsNew: release ? () => whatsNew.current?.showModal() : undefined,
+            }}
+          />
         ) : null}
         <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
           {/* Under a page the chat is hidden, and so is what is open in it: its Escape waits with it. */}
@@ -1612,6 +1555,7 @@ function App() {
               // The work in one line that opens on click: a long run of tool calls buries the answer.
               foldSteps
               autoFocus={!inSetup}
+              theme={theme === 'system' ? undefined : theme}
               disabled={!connected || inSetup || holding}
               sendsWhileDisabled={
                 connected && !inSetup && holding
@@ -1844,16 +1788,6 @@ function App() {
           }}
         />
       ) : null}
-      {showTeam && (
-        <ProjectTeamDialog
-          token={token}
-          key={activeCwd}
-          chooseProject={!teamFolder}
-          cwd={teamFolder}
-          sessions={hasSessions}
-          onClose={() => setShowTeam(false)}
-        />
-      )}
       {toast ? (
         <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
           {toast.text}
@@ -1863,4 +1797,6 @@ function App() {
   );
 }
 
+// Before the first paint: the theme chosen in Settings, where there is one.
+applyTheme(readTheme());
 createRoot(document.getElementById('root')!).render(<App />);

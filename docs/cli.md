@@ -297,9 +297,9 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-In the desktop app or `genaicode ui --pack`, open **Settings › Project team** in the sidebar, choose a lead and workers,
-and click **Remember this team for the project**. In the desktop home view, first choose or enter
-the project's folder. Opening a new chat from a project’s topic also selects its saved lead. The next `genaicode ui --pack`, `chat --pack` or `tower` in that project
+In the desktop app or `genaicode ui --pack`, open **Settings › Team** from the sidebar, choose a lead and workers,
+and click **Remember this team for the project**. The folder of the open chat is filled in; type another
+path, pick a recent one or use **Choose…** for another project. Opening a new chat from a project’s topic also selects its saved lead. The next `genaicode ui --pack`, `chat --pack` or `tower` in that project
 reads the same `.genaicode/pack.json`, at the Git worktree root or the working directory outside Git.
 For example, `{"lead":"claude","members":["codex","gemini"]}` lets Claude delegate to Codex and Gemini.
 With no profile, all installed agents join and the first MCP-capable agent leads.

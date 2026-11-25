@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { build } from 'esbuild';
-import { chromium } from 'playwright';
+import { chromium, type Page } from 'playwright';
 import { expect, it, vi } from 'vitest';
 import { pendingAsks, waitForAnswer, writeTopics, type SessionInfo } from '../agents/sessions/index.js';
 import type { AgentResult, AgentTask, CodingAgent } from '../agents/types.js';
@@ -570,8 +570,15 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
   };
   try {
     const home = await start(root, ['ui', '--sessions', '--delegate', '--home', '--no-artifacts']);
-    await home.getByRole('button', { name: 'Settings', exact: true }).click();
-    await home.getByRole('menuitem', { name: 'Project team' }).click();
+    // Settings › Team: the project's folder is typed here, as no chat names one yet.
+    const openTeam = async (page: Page) => {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      await page
+        .getByRole('navigation', { name: 'Settings sections' })
+        .getByRole('button', { name: 'Team', exact: true })
+        .click();
+    };
+    await openTeam(home);
     await home.getByLabel('Project folder').fill(project);
     await home.getByRole('button', { name: 'Open', exact: true }).click();
     await home.getByLabel('Lead', { exact: true }).selectOption('backup');
@@ -583,7 +590,14 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
       lead: 'backup',
       members: ['worker', 'backup'],
     });
-    await home.getByRole('button', { name: 'Close project team' }).click();
+    // Escape goes back to the chat; from the folder field, which has text in it, it leaves the field first.
+    const folderField = home.getByLabel('Project folder');
+    await folderField.focus();
+    await home.keyboard.press('Escape');
+    expect(await folderField.evaluate((one) => one === document.activeElement)).toBe(false);
+    expect(await home.getByRole('main', { name: 'Settings' }).count()).toBe(1);
+    await home.keyboard.press('Escape');
+    await home.getByRole('main', { name: 'Settings' }).waitFor({ state: 'detached' });
     await home.getByLabel('Message', { exact: true }).fill('Use worker in the catalog project.');
     await home.getByLabel('Message', { exact: true }).press('Enter');
     await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
@@ -595,17 +609,17 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
       .click();
     await home.getByRole('button', { name: 'New chat in Catalog' }).click();
     await home.getByText('What should backup work on in Catalog?').waitFor();
-    await home.getByRole('button', { name: 'Settings', exact: true }).click();
-    await home.getByRole('menuitem', { name: 'Project team' }).click();
-    expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup');
-    expect(await home.getByLabel('Project folder').count()).toBe(0);
+    await openTeam(home);
+    // The chat's own project is filled in, and stays editable.
+    await vi.waitFor(async () => expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup'));
+    expect(await home.getByLabel('Project folder').inputValue()).toBe(project);
     await home.close();
     stop.abort();
     await running;
     const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
     await scoped.getByText('Project pack: backup leads · members: worker, backup.').waitFor();
-    await scoped.getByRole('button', { name: 'Settings', exact: true }).click();
-    await scoped.getByRole('menuitem', { name: 'Project team' }).click();
+    await openTeam(scoped);
+    await scoped.getByRole('checkbox', { name: 'spare' }).waitFor();
     expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
     expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);
   } finally {

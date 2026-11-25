@@ -57,7 +57,7 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
       onNewChatIn: vi.fn(),
       others: { shown: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work' })], total: 7 },
       quota: quotaRows([{ agent: 'claude', window: '5h', status: 'warning', usedPercent: 91 }], ['claude'], now),
-      settings: [{ label: 'Agents', onSelect: vi.fn() }],
+      onSettings: vi.fn(),
       version: '3.3.0',
       connected: true,
       now,
@@ -274,17 +274,27 @@ describe('<Shell>', () => {
     expect(host.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('opens Settings as a menu of what the page can configure', () => {
-    const onSelect = vi.fn();
-    render(props({}, { settings: [{ label: 'HTML artifact CDNs', detail: '2', onSelect }] }));
+  it('opens the Settings page from its button and on ⌘, and marks it while it shows', () => {
+    const onSettings = vi.fn();
+    render(props({}, { onSettings }));
+    // A button of its own, not a menu: the page has the sections.
+    expect(button('Settings').getAttribute('aria-haspopup')).toBeNull();
+    expect(button('Settings').getAttribute('aria-current')).toBeNull();
     click(button('Settings'));
-    const item = host.querySelector('[role="menu"][aria-label="Settings"] [role="menuitem"]')!;
-    expect(item.textContent).toBe('HTML artifact CDNs2');
-    click(item);
-    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    press(',', mod());
+    expect(onSettings).toHaveBeenCalledTimes(2);
 
-    render(props({}, { settings: [] }));
+    render(props({ title: 'Settings', onBack: vi.fn() }, { onSettings, page: 'settings' }));
+    expect(button('Settings').getAttribute('aria-current')).toBe('page');
+
+    render(props({}, { onSettings: undefined }));
     expect(button('Settings')).toBeUndefined();
+    // Without a page to open the key is left alone.
+    const event = new KeyboardEvent('keydown', { key: ',', bubbles: true, cancelable: true, ...mod() });
+    act(() => void document.body.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it('goes back from a page on Escape, but not past a dialog or over typed text', () => {

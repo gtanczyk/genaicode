@@ -40,7 +40,7 @@ export interface ShellProps {
 /**
  * The window: the sidebar on the left, and the slim top bar over the chat or a page. ⌘B folds the
  * sidebar to its rail (remembered; the rail is the default in a narrow window), ⌘N starts a chat,
- * ⌘K is Search. Escape goes back from a page to the chat; it never reaches a running turn from here.
+ * ⌘K is Search, ⌘, opens Settings. Escape goes back from a page to the chat; it never reaches a running turn from here.
  */
 export function Shell(props: ShellProps) {
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(readStore(props.store), window.innerWidth));
@@ -93,6 +93,9 @@ export function Shell(props: ShellProps) {
       } else if (key === 'k') {
         event.preventDefault();
         now.side.onSearch?.();
+      } else if (key === ',' && now.side.onSettings) {
+        event.preventDefault();
+        now.side.onSettings();
       }
     };
     window.addEventListener('resize', onResize);
