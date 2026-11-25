@@ -279,6 +279,10 @@ export const SAVE_SESSION_TRANSCRIPT_PREFIX = 'Save session-transcript ';
 export const REFRESH_ENV_LINE = 'Refresh env';
 /** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
 export const REVEAL_PREFIX = 'Reveal ';
+/** What the host app reads from stderr when the page asks for a folder: it answers `folder <json path or null>` on stdin. */
+export const CHOOSE_FOLDER_LINE = 'Choose folder';
+/** How long the folder dialog may stay open before the page is told that nothing was chosen. */
+const CHOOSE_FOLDER_TIMEOUT_MS = 10 * 60_000;
 /** What the host app reads from stderr when the page saves desktop settings. */
 export const SETTINGS_PREFIX = 'Settings ';
 /** Max buffered bytes for one partial stdin line from the host shell (a full login env JSON). */
@@ -342,6 +346,18 @@ function hostApp(
     finishEnvRefresh();
   };
 
+  let folderChoice: Promise<string | undefined> | undefined;
+  let resolveFolder: ((path: string | undefined) => void) | undefined;
+  let folderTimer: ReturnType<typeof setTimeout> | undefined;
+  const finishFolderChoice = (path: string | undefined) => {
+    if (folderTimer) clearTimeout(folderTimer);
+    folderTimer = undefined;
+    const done = resolveFolder;
+    resolveFolder = undefined;
+    folderChoice = undefined;
+    done?.(path);
+  };
+
   const onData = (chunk: Buffer | string) => {
     const lines = (rest + chunk.toString()).split('\n');
     rest = (lines.pop() ?? '').slice(-HOST_LINE_MAX);
@@ -350,6 +366,16 @@ function hostApp(
       if (!line) continue;
       if (line.startsWith('env ')) {
         applyEnvLine(line.slice(4));
+        continue;
+      }
+      if (line.startsWith('folder ')) {
+        let path: unknown;
+        try {
+          path = JSON.parse(line.slice(7));
+        } catch {
+          path = undefined;
+        }
+        finishFolderChoice(typeof path === 'string' && path ? path : undefined);
         continue;
       }
       const toast = TOAST_LINE.exec(line);
@@ -389,7 +415,10 @@ function hostApp(
       for (const listener of listeners) listener();
     }
   };
-  const onEnd = () => finishEnvRefresh();
+  const onEnd = () => {
+    finishEnvRefresh();
+    finishFolderChoice(undefined);
+  };
   options.stdin.on('data', onData);
   options.stdin.once('end', onEnd);
 
@@ -418,6 +447,16 @@ function hostApp(
     saveSettings: (settings) => void options.stderr.write(`${SETTINGS_PREFIX}${JSON.stringify(settings)}\n`),
     ...(canRefreshEnv
       ? {
+          // One dialog at a time: a second click waits for the answer of the first.
+          chooseFolder() {
+            folderChoice ??= new Promise<string | undefined>((resolve) => {
+              resolveFolder = resolve;
+              folderTimer = setTimeout(() => finishFolderChoice(undefined), CHOOSE_FOLDER_TIMEOUT_MS);
+              folderTimer.unref?.();
+              options.stderr.write(`${CHOOSE_FOLDER_LINE}\n`);
+            });
+            return folderChoice;
+          },
           refreshEnv() {
             if (envRefresh) return envRefresh;
             envRefresh = new Promise<void>((resolve) => {
@@ -432,6 +471,7 @@ function hostApp(
       : {}),
     close() {
       finishEnvRefresh();
+      finishFolderChoice(undefined);
       options.stdin.off('data', onData);
       options.stdin.off('end', onEnd);
       listeners.clear();

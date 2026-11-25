@@ -56,6 +56,12 @@ export async function repoRoot(cwd: string): Promise<string | null> {
   return result.code === 0 ? result.stdout.toString('utf8').trim() : null;
 }
 
+/** The branch checked out in `cwd`; undefined outside a repository, on a detached HEAD or before the first commit. */
+export async function currentBranch(cwd: string): Promise<string | undefined> {
+  const result = await git(cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  return result.code === 0 ? result.stdout.toString('utf8').trim() || undefined : undefined;
+}
+
 /** Everything in `dir` (tracked, changed and untracked, minus ignored) as a git tree. Stages nothing. */
 export async function snapshotTree(dir: string): Promise<string> {
   const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
@@ -119,12 +125,16 @@ const IDENTITY = {
  * A new detached worktree at `dir` holding `repo` as it is now, uncommitted and untracked files
  * included. Returns the commit it starts from (reachable only from the worktree).
  */
-export async function addWorktree(repo: string, dir: string): Promise<string> {
+export async function addWorktree(
+  repo: string,
+  dir: string,
+  message = 'genaicode pack: start of a delegated task',
+): Promise<string> {
   const tree = await snapshotTree(repo);
   const head = await git(repo, ['rev-parse', '--verify', '-q', 'HEAD']);
   const parent = head.code === 0 ? ['-p', head.stdout.toString().trim()] : [];
   const commit = (
-    await must(repo, ['commit-tree', tree, ...parent, '-m', 'genaicode pack: start of a delegated task'], {
+    await must(repo, ['commit-tree', tree, ...parent, '-m', message], {
       env: { ...process.env, ...IDENTITY },
     })
   ).trim();

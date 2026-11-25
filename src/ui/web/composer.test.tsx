@@ -1,0 +1,425 @@
+// @vitest-environment happy-dom
+import { act, type ReactNode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { agentGuide } from '../../agents/drivers/catalog.js';
+import type { AgentInspection } from '../../agents/status.js';
+import { chatProjects, quotaRows } from '../sidebar.js';
+import {
+  AgentChip,
+  ComposerHint,
+  fallbackNames,
+  PermissionSwitch,
+  PlanToggle,
+  StartsIn,
+  type AgentChipProps,
+  type StartsInProps,
+} from './composer.js';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+});
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+});
+
+const render = (node: ReactNode) => act(() => root.render(node));
+const $ = <T extends Element = HTMLElement>(selector: string) => host.querySelector(selector) as T;
+const $$ = <T extends Element = HTMLElement>(selector: string) => Array.from(host.querySelectorAll<T>(selector));
+const click = (element: Element) => act(() => (element as HTMLElement).click());
+const named = (role: string, name: string) =>
+  $$(`[role="${role}"], button`).find(
+    (element) => (element.getAttribute('aria-label') ?? element.textContent) === name,
+  )!;
+const button = (label: string) => $$<HTMLButtonElement>('button').find((element) => element.textContent === label)!;
+function fill(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+const press = (target: Element | Window, key: string) =>
+  act(() => {
+    target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  });
+const blur = (input: HTMLElement) =>
+  act(() => {
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  });
+const settle = () => act(async () => void (await Promise.resolve()));
+
+const inspection = (name: string, patch: Partial<AgentInspection> = {}): AgentInspection => ({
+  name,
+  command: name,
+  installed: true,
+  auth: 'ready',
+  guide: agentGuide(name, name),
+  ...patch,
+});
+
+describe('AgentChip', () => {
+  const agents = [
+    inspection('claude', { plan: 'Max' }),
+    inspection('codex', { auth: 'signed-out' }),
+    inspection('gemini', { auth: 'unknown' }),
+    inspection('cursor', { installed: false, auth: 'unknown' }),
+  ];
+  const chip = (patch: Partial<AgentChipProps> = {}): AgentChipProps => ({
+    agent: 'claude',
+    model: 'claude-opus-5-5',
+    effort: 'high',
+    efforts: ['low', 'medium', 'high'],
+    fallback: ['codex'],
+    agents,
+    noQuestions: new Set(['gemini']),
+    onAgent: vi.fn(),
+    onModel: vi.fn(),
+    onEffort: vi.fn(),
+    onFallback: vi.fn(),
+    onOpenSetup: vi.fn(),
+    ...patch,
+  });
+  const trigger = () => $<HTMLButtonElement>('.agent-chip');
+  const pop = () => $('[role="dialog"]');
+  const field = (label: string) =>
+    $$<HTMLLabelElement>('.pop label')
+      .find((element) => element.textContent === label)!
+      .querySelector('input')!;
+
+  it('is one chip that names the agent and its model, and opens one popover for agent, model, effort and fallback', () => {
+    render(<AgentChip {...chip()} />);
+    expect($$('select')).toEqual([]);
+    expect(trigger().textContent).toBe('Cclaude · claude-opus-5-5');
+    expect(trigger().getAttribute('aria-label')).toBe('Agent: claude, model claude-opus-5-5');
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+    expect(pop()).toBeNull();
+
+    click(trigger());
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
+    expect(pop().getAttribute('aria-label')).toBe('Agent, model, effort and fallback');
+    // Agents: the usable ones can be chosen, the others say what they need.
+    const radios = $$('[role="radiogroup"][aria-label="Agent"] [role="radio"]');
+    expect(radios.map((element) => [element.textContent, element.getAttribute('aria-checked')])).toEqual([
+      ['Claude CodeMax', 'true'],
+      ['Gemini CLIInstalled · no questions', 'false'],
+    ]);
+    expect(pop().textContent).toContain('Not signed in');
+    expect(pop().textContent).toContain('More agents');
+    expect(field('Model').value).toBe('claude-opus-5-5');
+    expect(
+      $$('[role="group"][aria-labelledby="composer-effort"] button').map((element) => [
+        element.textContent,
+        element.getAttribute('aria-pressed'),
+      ]),
+    ).toEqual([
+      ['default', 'false'],
+      ['low', 'false'],
+      ['medium', 'false'],
+      ['high', 'true'],
+    ]);
+    expect(field('Fallback when it runs out').value).toBe('codex');
+  });
+
+  it('reports each choice: another agent closes the popover, a field commits on Enter or when left', () => {
+    const props = chip();
+    render(<AgentChip {...props} />);
+    click(trigger());
+    click(button('low'));
+    expect(props.onEffort).toHaveBeenCalledWith('low');
+    click(button('default'));
+    expect(props.onEffort).toHaveBeenLastCalledWith('default');
+
+    fill(field('Model'), ' claude-sonnet-5-5 ');
+    expect(props.onModel).not.toHaveBeenCalled();
+    blur(field('Model'));
+    expect(props.onModel).toHaveBeenCalledWith('claude-sonnet-5-5');
+    // Left as it was: nothing to say.
+    blur(field('Model'));
+    expect(props.onModel).toHaveBeenCalledTimes(1);
+
+    fill(field('Fallback when it runs out'), 'codex, gemini  codex');
+    blur(field('Fallback when it runs out'));
+    expect(props.onFallback).toHaveBeenCalledWith(['codex', 'gemini']);
+    fill(field('Fallback when it runs out'), '');
+    blur(field('Fallback when it runs out'));
+    expect(props.onFallback).toHaveBeenLastCalledWith([]);
+
+    click(button('Sign in'));
+    expect(props.onOpenSetup).toHaveBeenCalledWith('codex');
+    expect(pop()).toBeNull();
+
+    click(trigger());
+    click(named('radio', 'Gemini CLIInstalled · no questions'));
+    expect(props.onAgent).toHaveBeenCalledWith('gemini');
+    expect(pop()).toBeNull();
+    // The agent it already is: closed, and nothing to switch.
+    click(trigger());
+    click(named('radio', 'Claude CodeMax'));
+    expect(props.onAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Escape, which goes no further, and on a click outside', () => {
+    render(<AgentChip {...chip()} />);
+    const reached = vi.fn();
+    window.addEventListener('keydown', reached);
+    try {
+      click(trigger());
+      press(pop(), 'Escape');
+      expect(pop()).toBeNull();
+      expect(reached).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(trigger());
+      click(trigger());
+      act(() => {
+        document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      });
+      expect(pop()).toBeNull();
+    } finally {
+      window.removeEventListener('keydown', reached);
+    }
+  });
+
+  it('keeps the agent while a turn runs, has no effort control for an agent without levels, and no setup rows without an agents page', () => {
+    render(
+      <AgentChip
+        {...chip({ running: true, efforts: [], model: undefined, reportedModel: 'gpt-6', onOpenSetup: undefined })}
+      />,
+    );
+    expect(trigger().textContent).toBe('Cclaude · gpt-6');
+    click(trigger());
+    expect($<HTMLButtonElement>('[role="radio"][aria-checked="false"]').disabled).toBe(true);
+    expect(pop().textContent).toContain('The agent can be changed when this turn ends.');
+    expect($('[aria-labelledby="composer-effort"]')).toBeNull();
+    expect(field('Model').value).toBe('');
+    expect(field('Model').placeholder).toBe('default (last ran gpt-6)');
+    expect(button('Sign in')).toBeUndefined();
+    expect(button('Connect another agent…')).toBeUndefined();
+  });
+
+  it('reads a typed fallback list', () => {
+    expect(fallbackNames('codex, agy')).toEqual(['codex', 'agy']);
+    expect(fallbackNames(' codex   codex,,gemini ')).toEqual(['codex', 'gemini']);
+    expect(fallbackNames('')).toEqual([]);
+  });
+});
+
+describe('Plan and the permission switch', () => {
+  it('toggles Plan', () => {
+    const onToggle = vi.fn();
+    render(<PlanToggle on={false} onToggle={onToggle} />);
+    expect(button('Plan').getAttribute('aria-pressed')).toBe('false');
+    click(button('Plan'));
+    expect(onToggle).toHaveBeenCalledWith(true);
+    render(<PlanToggle on onToggle={onToggle} />);
+    expect(button('Plan').getAttribute('aria-pressed')).toBe('true');
+    click(button('Plan'));
+    expect(onToggle).toHaveBeenLastCalledWith(false);
+  });
+
+  it('names both permission states, "Auto-approve all" for the session', () => {
+    const onChange = vi.fn();
+    render(<PermissionSwitch auto={false} onChange={onChange} />);
+    expect($('[role="group"]').getAttribute('aria-label')).toBe('Permission requests in this session');
+    expect($$('button').map((element) => [element.textContent, element.getAttribute('aria-pressed')])).toEqual([
+      ['Ask first', 'true'],
+      ['Auto-approve all', 'false'],
+    ]);
+    click(button('Auto-approve all'));
+    expect(onChange).toHaveBeenCalledWith(true);
+    render(<PermissionSwitch auto onChange={onChange} />);
+    expect(button('Auto-approve all').getAttribute('aria-pressed')).toBe('true');
+    // Where only this button shows (a narrow composer), pressing it again asks first.
+    click(button('Auto-approve all'));
+    expect(onChange).toHaveBeenLastCalledWith(false);
+    click(button('Ask first'));
+    expect(onChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
+describe('StartsIn', () => {
+  const now = Date.parse('2026-11-25T10:00:00Z');
+  const projects = chatProjects(
+    ['/work/app', '/work/site', '/home/me/.genaicode/home'].map((cwd, index) => ({
+      source: 'claude',
+      agent: 'claude',
+      id: `s${index}`,
+      where: 'local' as const,
+      cwd,
+      state: 'waiting' as const,
+      updatedAt: now - index * 60_000,
+    })),
+    { home: '/home/me/.genaicode/home' },
+  );
+  const line = (patch: Partial<StartsInProps> = {}): StartsInProps => ({
+    cwd: '/work/app',
+    folder: { path: '/work/app', exists: true, git: true, branch: 'main' },
+    projects,
+    canChange: true,
+    worktree: false,
+    onWorktree: vi.fn(),
+    onProject: vi.fn(async () => true),
+    onHome: vi.fn(),
+    inspect: vi.fn(async (path: string) =>
+      path === '~/src/new' ? { path: '/home/me/src/new', exists: true, git: false } : { path, exists: false },
+    ),
+    ...patch,
+  });
+  const trigger = () => $$<HTMLButtonElement>('button').find((element) => element.getAttribute('aria-haspopup'))!;
+  const pop = () => $('[role="dialog"][aria-label="Project"]');
+  const path = () => $<HTMLInputElement>('input[aria-label="Folder path"]');
+
+  it('says where the prompt will run: the folder and its branch, This folder or a new worktree', () => {
+    const props = line();
+    render(<StartsIn {...props} />);
+    expect(host.textContent).toContain('Starts in');
+    expect(trigger().getAttribute('aria-label')).toBe('Starts in app, branch main');
+    expect(trigger().title).toBe('/work/app');
+    expect($('.starts-where').textContent).toBe('/work/app');
+    expect(button('This folder').getAttribute('aria-pressed')).toBe('true');
+    expect(button('New worktree').disabled).toBe(false);
+    click(button('New worktree'));
+    expect(props.onWorktree).toHaveBeenCalledWith(true);
+    render(<StartsIn {...props} worktree />);
+    expect(button('New worktree').getAttribute('aria-pressed')).toBe('true');
+    expect($('.starts-where').textContent).toBe('a copy of main, merged when you say');
+    click(button('This folder'));
+    expect(props.onWorktree).toHaveBeenLastCalledWith(false);
+  });
+
+  it('offers a worktree only inside a repository, and not in the home folder', () => {
+    render(<StartsIn {...line({ folder: { path: '/work/app', exists: true, git: false } })} />);
+    expect(button('New worktree').disabled).toBe(true);
+    expect(button('New worktree').title).toBe('Not a git repository');
+    render(<StartsIn {...line({ atHome: true, cwd: '/home/me/.genaicode/home' })} />);
+    expect(trigger().getAttribute('aria-label')).toBe('Starts in Home folder, branch main');
+    expect(button('New worktree').disabled).toBe(true);
+    // Not known yet: nothing is promised.
+    render(<StartsIn {...line({ folder: undefined })} />);
+    expect(button('New worktree').disabled).toBe(true);
+  });
+
+  it('lists the recent directories and the home folder, and starts in the one picked', () => {
+    const props = line();
+    render(<StartsIn {...props} />);
+    click(trigger());
+    const options = $$('[role="radiogroup"][aria-label="Project"] [role="radio"]');
+    expect(options.map((element) => [element.textContent, element.getAttribute('aria-checked')])).toEqual([
+      ['app/work/app', 'true'],
+      ['site/work/site', 'false'],
+      ['Home folderquestions across projects', 'false'],
+    ]);
+    click(options[1]!);
+    expect(props.onProject).toHaveBeenCalledWith('/work/site');
+    expect(pop()).toBeNull();
+    click(trigger());
+    click(named('radio', 'Home folderquestions across projects'));
+    expect(props.onHome).toHaveBeenCalledTimes(1);
+    // The one it is in already: closed, and nothing started again.
+    click(trigger());
+    click(named('radio', 'app/work/app'));
+    expect(props.onProject).toHaveBeenCalledTimes(1);
+    expect(pop()).toBeNull();
+  });
+
+  it('names a folder that is in no list, first and checked', () => {
+    render(<StartsIn {...line({ cwd: '/work/other/' })} />);
+    click(trigger());
+    expect($('[role="radio"]').textContent).toBe('other/work/other/');
+    expect($('[role="radio"]').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('takes another folder by its path, and says when there is none', async () => {
+    const props = line();
+    render(<StartsIn {...props} />);
+    click(trigger());
+    expect(button('Choose…')).toBeUndefined();
+    expect(button('Open').disabled).toBe(true);
+    fill(path(), '/work/nowhere');
+    click(button('Open'));
+    await settle();
+    expect($('[role="alert"]').textContent).toBe('No folder /work/nowhere.');
+    expect(props.onProject).not.toHaveBeenCalled();
+    // Typing again takes the complaint away; Enter opens too, and `~` is the server's to read.
+    fill(path(), '~/src/new');
+    expect($('[role="alert"]')).toBeNull();
+    press(path(), 'Enter');
+    await settle();
+    expect(props.inspect).toHaveBeenLastCalledWith('~/src/new');
+    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new');
+    expect(pop()).toBeNull();
+  });
+
+  it('keeps the popover open and says so when the chat could not start in a typed folder', async () => {
+    const props = line({ onProject: vi.fn(async () => false), choose: vi.fn(async () => undefined) });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    fill(path(), '~/src/new');
+    click(button('Open'));
+    await settle();
+    await settle();
+    expect(props.onProject).toHaveBeenCalledWith('/home/me/src/new');
+    expect($('[role="alert"]').textContent).toBe(
+      'Could not start in /home/me/src/new: a typed path opens only a folder one of your sessions worked in. Choose… opens any folder.',
+    );
+    expect(pop()).not.toBeNull();
+    expect(path().value).toBe('~/src/new');
+  });
+
+  it('has the host’s folder dialog where there is one; a dismissed dialog changes nothing', async () => {
+    const choose = vi
+      .fn<NonNullable<StartsInProps['choose']>>()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce({ path: '/work/picked', exists: true, git: true });
+    const props = line({ choose });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    click(button('Choose…'));
+    await settle();
+    expect(props.onProject).not.toHaveBeenCalled();
+    expect(pop()).not.toBeNull();
+    click(button('Choose…'));
+    await settle();
+    expect(props.onProject).toHaveBeenCalledWith('/work/picked');
+    expect(pop()).toBeNull();
+  });
+
+  it('only names the folder where the chat has one project', () => {
+    render(<StartsIn {...line({ canChange: false })} />);
+    expect(host.textContent).toBe('Starts inapp · main/work/app');
+    expect($$('button')).toEqual([]);
+    expect($('.starts-fixed').title).toBe('/work/app');
+  });
+});
+
+describe('ComposerHint', () => {
+  const quota = quotaRows(
+    [
+      { agent: 'claude', window: '5h', status: 'ok', usedPercent: 40 },
+      { agent: 'gemini', window: '7d', status: 'warning', usedPercent: 91 },
+      { agent: 'codex', window: '5h', status: 'exceeded' },
+    ],
+    [],
+    Date.parse('2026-11-25T10:00:00Z'),
+  );
+
+  it('says what Enter does, and names only the agents above 80% of their plan', () => {
+    render(<ComposerHint action="send" quota={quota} files />);
+    expect($('span').textContent).toBe('Enter sends · Shift+Enter new line · / for commands · files send without text');
+    expect($$('.hot').map((element) => element.textContent)).toEqual(['codex out', 'gemini 91% · 7d']);
+    render(<ComposerHint action="steer" canStop quota={[]} />);
+    expect($('span').textContent).toMatch(
+      /^Enter steers · Shift\+Enter new line · \/ for commands · (⌘\.|Ctrl\+\.) or Esc stops$/,
+    );
+    expect($$('.hot')).toEqual([]);
+    render(<ComposerHint action="queue" quota={[]} />);
+    expect($('span').textContent).toMatch(/^Enter queues/);
+  });
+});

@@ -1,5 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
@@ -16,6 +18,7 @@ import type { SessionTurn } from '../../agents/session.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController, ChatSwitch, SwitchOrder } from '../controller.js';
+import { currentBranch, repoRoot } from '../../agents/pack-git.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
   activeChatTruncation,
@@ -172,6 +175,50 @@ export interface HostApp {
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
   saveSettings?(settings: { artifactCdn: readonly string[] }): void;
+  /**
+   * Ask the person for a folder with the host's own dialog (the project a new chat starts in).
+   * Resolves to its absolute path, or undefined when they chose none.
+   */
+  chooseFolder?(): Promise<string | undefined>;
+}
+
+/** What GET /api/folder says of a path typed as the folder of a new chat. */
+export interface WebFolder {
+  /** The path as an absolute one (`~` is the home folder). */
+  path: string;
+  /** False when there is no such directory. */
+  exists: boolean;
+  /** True inside a git repository: a chat can start in a new worktree of it. */
+  git?: boolean;
+  /** The branch checked out there. */
+  branch?: string;
+}
+
+/** The folder a path names once links are followed; the path itself when there is none. */
+function realFolder(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** Reads what the new chat's project line shows of a folder: whether it is there, a repository, and its branch. */
+export async function inspectFolder(given: string, home = homedir()): Promise<WebFolder | undefined> {
+  const typed = given.trim();
+  const expanded = typed === '~' ? home : /^~[\\/]/.test(typed) ? join(home, typed.slice(2)) : typed;
+  if (!expanded || !isAbsolute(expanded)) return undefined;
+  const path = resolve(expanded);
+  let exists = false;
+  try {
+    exists = statSync(path).isDirectory();
+  } catch {
+    exists = false;
+  }
+  if (!exists) return { path, exists };
+  const git = !!(await repoRoot(path).catch(() => null));
+  const branch = git ? await currentBranch(path).catch(() => undefined) : undefined;
+  return { path, exists, git, ...(branch ? { branch } : {}) };
 }
 
 /**
@@ -227,8 +274,11 @@ type WebSwitchTarget =
   | { type: 'continue'; id: string; source?: string; takeover?: true }
   /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
   | { type: 'topic-chat'; topic: string }
-  /** Start a new conversation in this directory, an absolute path (`--home` mode). */
-  | { type: 'project-chat'; cwd: string }
+  /**
+   * Start a new conversation in this directory, an absolute path (`--home` mode). `worktree`: in a
+   * new git worktree of it (`ChatController.startProjectChat`).
+   */
+  | { type: 'project-chat'; cwd: string; worktree?: true }
   /** Start a new conversation: back in the neutral home in `--home` mode, as `/clear` otherwise. */
   | { type: 'home-chat' }
   /** Stay in the open conversation: drops the requests that still wait to open another. */
@@ -353,7 +403,8 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       }
       if (command.type === 'project-chat') {
         const cwd = text('cwd', 4096);
-        return cwd ? { type: 'project-chat', cwd, ...order } : undefined;
+        if (!cwd || (command.worktree !== undefined && typeof command.worktree !== 'boolean')) return undefined;
+        return { type: 'project-chat', cwd, ...(command.worktree ? { worktree: true as const } : {}), ...order };
       }
       return { type: command.type, ...order };
     }
@@ -388,6 +439,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   const cookieName = () => `genaicode_${port}`;
   const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  /** Folders the person picked in the host app's dialog (real paths): a chat may start in them. */
+  const chosenFolders = new Set<string>();
   const cookieOk = (req: IncomingMessage) => {
     const header = req.headers.cookie;
     if (!header) return false;
@@ -442,6 +495,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       files: !!options.files,
       ...(options.hostApp?.saveTranscript ? { nativeSave: true } : {}),
       reveal: !!options.hostApp?.reveal,
+      ...(options.hostApp?.chooseFolder ? { chooseFolder: true } : {}),
       artifactCdn,
       canConfigureCdn: !!options.settings,
       ...(update ? { update } : {}),
@@ -627,6 +681,30 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         if (cap) urls[item] = `/files/${cap.id}`;
       }
       return send(res, 200, 'application/json', JSON.stringify({ urls }), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/folder') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      const given = url.searchParams.get('path') ?? '';
+      const folder = given.length <= 4096 ? await inspectFolder(given) : undefined;
+      if (!folder) return send(res, 400, 'application/json', '{"error":"bad path"}');
+      return send(res, 200, 'application/json', JSON.stringify(folder), { 'cache-control': 'no-store' });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/choose-folder') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.hostApp?.chooseFolder) {
+        return send(res, 404, 'application/json', '{"error":"no folder dialog"}');
+      }
+      const chosen = await options.hostApp.chooseFolder().catch(() => undefined);
+      const folder = chosen ? await inspectFolder(chosen) : undefined;
+      // What the person picked in the host's dialog may be opened, also when no session worked there yet.
+      if (folder?.exists) chosenFolders.add(realFolder(folder.path));
+      return send(res, 200, 'application/json', JSON.stringify(folder?.exists ? { folder } : {}), {
+        'cache-control': 'no-store',
+      });
     }
     if (req.method === 'POST' && url.pathname === '/api/reveal') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
@@ -1110,7 +1188,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         }
       }
       if (isSwitch(command)) {
-        const result = await controller.switchChat(switchTarget(command), command.order);
+        const result = await controller.switchChat(switchTarget(command, chosenFolders), command.order);
         return send(
           res,
           200,
@@ -1171,7 +1249,7 @@ const SWITCHES: ReadonlySet<string> = new Set<WebSwitchCommand['type']>([
 const isSwitch = (command: WebCommand): command is WebSwitchCommand => SWITCHES.has(command.type);
 
 /** The conversation a command asks for. */
-function switchTarget(command: WebSwitchCommand): ChatSwitch {
+function switchTarget(command: WebSwitchCommand, chosenFolders: ReadonlySet<string>): ChatSwitch {
   switch (command.type) {
     case 'continue':
       return {
@@ -1183,7 +1261,13 @@ function switchTarget(command: WebSwitchCommand): ChatSwitch {
     case 'topic-chat':
       return { type: 'topic', topic: command.topic };
     case 'project-chat':
-      return { type: 'project', cwd: command.cwd };
+      return {
+        type: 'project',
+        cwd: command.cwd,
+        ...(command.worktree ? { worktree: true } : {}),
+        // What the person picked in the host's dialog may be opened, whoever worked there before.
+        ...(chosenFolders.has(realFolder(command.cwd)) ? { chosen: true } : {}),
+      };
     case 'home-chat':
       return { type: 'home' };
     case 'stay-chat':

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { realpathSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { supportHelp } from '../support.js';
 import { detectAgents } from '../agents/discovery.js';
@@ -52,6 +52,7 @@ import type {
   McpServer,
   QuestionAnswers,
 } from '../agents/types.js';
+import { addWorktree, removeWorktree, repoRoot } from '../agents/pack-git.js';
 import { parseShell, parseSlash, SLASH_COMMANDS } from './format.js';
 import { formatTruncationReason } from './transcript.js';
 
@@ -198,7 +199,11 @@ export interface ChatOptions {
 /** The conversation a window asks for (`ChatController.switchChat`). */
 export type ChatSwitch =
   | { type: 'home' }
-  | { type: 'project'; cwd: string }
+  /**
+   * `worktree`: in a new git worktree of the folder. `chosen`: the person picked the folder in the
+   * host's own dialog (`ChatController.startProjectChat`).
+   */
+  | { type: 'project'; cwd: string; worktree?: boolean; chosen?: boolean }
   | { type: 'topic'; topic: string }
   /**
    * `source`: the store that holds the session, as two stores may hold the same id.
@@ -247,9 +252,13 @@ export interface ChatController {
   startTopicChat(topicId: string): Promise<boolean>;
   /**
    * Start a new conversation in `cwd`, an existing directory given by its absolute path (`--home`
-   * mode): the sidebar's "new chat here" on a project. Resolves false, with a notice, when it cannot.
+   * mode): the sidebar's "new chat here" on a project. With `worktree` the chat works in a new git
+   * worktree under the repository's `.genaicode/chats/` (git-ignored): a copy of the files as they
+   * are now, so nothing reaches `cwd` until the person merges it. Resolves false, with a notice,
+   * when it cannot. `chosen`: the person picked the folder in the host's own dialog, so it need not
+   * be one a session already worked in.
    */
-  startProjectChat(cwd: string): Promise<boolean>;
+  startProjectChat(cwd: string, options?: { worktree?: boolean; chosen?: boolean }): Promise<boolean>;
   /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
   startHomeChat(): boolean;
   /**
@@ -761,9 +770,12 @@ export function createChatController(options: ChatOptions): ChatController {
     );
   };
 
-  const openProject = async (requested: string): Promise<SwitchResult> => {
+  const openProject = async (
+    requested: string,
+    start: { worktree?: boolean; chosen?: boolean } = {},
+  ): Promise<SwitchResult> => {
     if (!homeMode) return 'refused';
-    if (isSameDir(requested, homeDir)) return openHome();
+    if (isSameDir(requested, homeDir) && !start.worktree) return openHome();
     const mine = ++switchSeq;
     // The real path: what a symlink names is checked, and is where the chat then runs.
     let cwd: string | undefined;
@@ -777,7 +789,12 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(`No folder ${requested} to start a chat in.`, 'error');
       return 'refused';
     }
-    const known = await isProjectDir(cwd);
+    // A folder the person picked in the host's own dialog is theirs to open, and the one the chat is
+    // in already is no new root (a worktree of it is asked for from there); the unsafe ones stay closed.
+    const known =
+      start.chosen || isSameDir(cwd, session.get().cwd)
+        ? !isDisallowedWorkspace(cwd, { env })
+        : await isProjectDir(cwd);
     // Another chat was opened meanwhile: this request is dropped, and says nothing in that chat.
     if (mine !== switchSeq) return 'superseded';
     if (!known) {
@@ -790,6 +807,40 @@ export function createChatController(options: ChatOptions): ChatController {
     const savedLead = await options.projectLead?.(cwd)?.catch(() => undefined);
     const lead = savedLead ? byName.get(savedLead) : undefined;
     if (mine !== switchSeq) return 'superseded';
+    const project = cwd;
+    let copy: { repo: string; dir: string } | undefined;
+    if (start.worktree) {
+      // Asked before the copy is made: a refusal must not leave a worktree behind.
+      if (session.get().status === 'running') {
+        notice('Stop the running turn before starting another chat.', 'error');
+        return 'refused';
+      }
+      const repo = await repoRoot(cwd).catch(() => null);
+      if (!repo) {
+        notice(`${cwd} is not in a git repository: a new worktree needs one.`, 'error');
+        return 'refused';
+      }
+      const dir = join(repo, '.genaicode', 'chats', `${basename(repo)}-${randomUUID().slice(0, 8)}`);
+      try {
+        await addWorktree(repo, dir, 'genaicode: start of a chat in a new worktree');
+        // The same folder inside the copy, for a chat that starts below the top of the repository.
+        cwd = join(dir, relative(repo, realpathSync(cwd)));
+        if (!statSync(cwd).isDirectory()) cwd = dir;
+        copy = { repo, dir };
+      } catch (error) {
+        await removeWorktree(repo, dir).catch(() => undefined);
+        notice(
+          `Could not make a worktree of ${repo}: ${error instanceof Error ? error.message : String(error)}`,
+          'error',
+        );
+        return 'refused';
+      }
+    }
+    // Another chat was opened while the copy was made: the copy is not needed.
+    if (copy && mine !== switchSeq) {
+      await removeWorktree(copy.repo, copy.dir).catch(() => undefined);
+      return 'superseded';
+    }
     batching++;
     let ok = false;
     try {
@@ -807,10 +858,15 @@ export function createChatController(options: ChatOptions): ChatController {
       batching--;
     }
     if (!ok) {
+      if (copy) await removeWorktree(copy.repo, copy.dir).catch(() => undefined);
       notice('Stop the running turn before starting another chat.', 'error');
       return 'refused';
     }
-    publish();
+    if (copy) {
+      notice(
+        `Working in a new worktree: ${copy.dir}, a copy of ${basename(project)} as it is now. Nothing reaches ${basename(project)} until you merge it.`,
+      );
+    } else publish();
     return 'done';
   };
 
@@ -1012,7 +1068,10 @@ export function createChatController(options: ChatOptions): ChatController {
       case 'home':
         return openHome();
       case 'project':
-        return openProject(target.cwd);
+        return openProject(target.cwd, {
+          ...(target.worktree ? { worktree: true } : {}),
+          ...(target.chosen ? { chosen: true } : {}),
+        });
       case 'topic':
         return openTopic(target.topic);
       case 'continue':
@@ -1386,7 +1445,7 @@ export function createChatController(options: ChatOptions): ChatController {
     updateAgents,
     continueSession: async (id, from) => (await openSession(id, from)) === 'done',
     startTopicChat: async (topicId) => (await openTopic(topicId)) === 'done',
-    startProjectChat: async (cwd) => (await openProject(cwd)) === 'done',
+    startProjectChat: async (cwd, start) => (await openProject(cwd, start)) === 'done',
     startHomeChat: () => openHome() === 'done',
     switchChat,
     moveProject,

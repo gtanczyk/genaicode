@@ -27,6 +27,28 @@ export function inputDeliveryText(delivery: InputDelivery | undefined, agent: st
   }
 }
 
+/** What Enter does with the message: starts a turn, goes into the running one, or waits for its end. */
+export type SubmitAction = 'send' | 'steer' | 'queue';
+
+/** The submit action for a session: an agent that takes input mid-turn is steered, another gets the prompt queued. */
+export function submitAction(state: Pick<SessionState, 'status' | 'canSteer'>): SubmitAction {
+  if (state.status !== 'running') return 'send';
+  return state.canSteer ? 'steer' : 'queue';
+}
+
+/** The submit button's label and what it says on hover, for each action. */
+export const SUBMIT: Record<SubmitAction, { label: string; title: string }> = {
+  send: { label: 'Send', title: 'Enter sends' },
+  steer: {
+    label: 'Steer',
+    title: 'Enter sends this into the running turn: the agent reads it between two tool calls',
+  },
+  queue: {
+    label: 'Queue',
+    title: 'Enter queues this: the agent cannot take input mid-turn, so it runs when the turn ends',
+  },
+};
+
 /** Who sent input to a delegated task and what became of it: "Your message: Seen by codex". */
 export function packSteerText(steer: PackSteer, agent: string): string {
   const who = steer.from === 'lead' ? 'Lead’s message' : 'Your message';
