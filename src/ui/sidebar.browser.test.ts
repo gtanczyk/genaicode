@@ -322,13 +322,14 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await castle.getByRole('button', { name: /Round table|Polish the armour/ }).waitFor();
 
     // Every request for another chat is held until the test lets it through (or refuses it).
-    const held: Array<{ type: string; answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
+    type Asked = { type: string; id?: string; source?: string; order?: { window: string; seq: number } };
+    const held: Array<Asked & { answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
     await page.route('**/api/command', async (route) => {
-      const { type } = route.request().postDataJSON() as { type: string };
-      if (type !== 'project-chat' && type !== 'continue') return route.fallback();
+      const asked = route.request().postDataJSON() as Asked;
+      if (asked.type !== 'project-chat' && asked.type !== 'continue') return route.fallback();
       let done!: () => void;
       const answered = new Promise<void>((resolve) => (done = resolve));
-      const go = await new Promise<boolean>((answer) => held.push({ type, answer, answered }));
+      const go = await new Promise<boolean>((answer) => held.push({ ...asked, answer, answered }));
       await (go ? route.fallback() : route.fulfill({ json: { ok: false } }));
       // The page has the answer a moment after the route is done with it.
       setTimeout(done, 200);
@@ -385,6 +386,55 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(ran.at(-1)).toMatchObject({ cwd: made[0]!.cwd, resume: made[0]!.id });
     expect(ran.at(-1)!.prompt).toContain('Sharpen the swords');
     expect(ran.at(-1)!.cwd).not.toBe(knights);
+
+    // With this chat (A) open, another (B) is picked and then A again before B is there: A is
+    // asked for too, as the later choice, with the store of its row and a higher number.
+    const round = castle.getByRole('button', { name: /Round table|Polish the armour/ });
+    const pickBThenA = async () => {
+      held.length = 0;
+      await round.click();
+      await vi.waitFor(() => expect(held.length).toBe(1));
+      await first.click();
+      await vi.waitFor(() => expect(held.length).toBe(2));
+      expect(held.map((one) => [one.type, one.id, one.source])).toEqual([
+        ['continue', roster.id, 'helper'],
+        ['continue', made[0]!.id, 'helper'],
+      ]);
+      expect(held[1]!.order!.window).toBe(held[0]!.order!.window);
+      expect(held[1]!.order!.seq).toBeGreaterThan(held[0]!.order!.seq);
+      expect(await disabled()).toBe('true');
+    };
+    const inA = async () => {
+      expect(await first.getAttribute('aria-current')).toBe('page');
+      expect(await topbar.locator('.crumb').count()).toBe(0);
+    };
+    await composer.fill('Count the loaves');
+    // B's request arrives first: the window is in B for a moment, still locked, and ends in A.
+    await pickBThenA();
+    held[0]!.answer(true);
+    await held[0]!.answered;
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
+    expect(await disabled()).toBe('true');
+    held[1]!.answer(true);
+    await vi.waitFor(inA);
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    // A's request arrives first and B's after it: the server drops B's by its number, so the
+    // window stays in A, where the message field was given back.
+    await pickBThenA();
+    held[1]!.answer(true);
+    await held[1]!.answered;
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    await inA();
+    const late = page.waitForResponse((response) => response.url().endsWith('/api/command'));
+    held[0]!.answer(true);
+    expect(await (await late).json()).toEqual({ ok: false, superseded: true });
+    await held[0]!.answered;
+    await inA();
+    expect(await disabled()).toBeNull();
+    // The draft goes to A.
+    await composer.press('Enter');
+    await vi.waitFor(() => expect(ran.at(-1)!.prompt).toContain('Count the loaves'));
+    expect(ran.at(-1)).toMatchObject({ cwd: made[0]!.cwd, resume: made[0]!.id });
     await page.unroute('**/api/command');
 
     // A window under 980 px starts with the rail until the person chooses.

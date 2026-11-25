@@ -1793,6 +1793,33 @@ describe('web UI server', () => {
     expect(parseCommand({ type: 'answer', id: 'q' })).toBeUndefined();
     expect(parseCommand({ type: 'continue', id: 'abcd1234' })).toEqual({ type: 'continue', id: 'abcd1234' });
     expect(parseCommand({ type: 'continue', id: '' })).toBeUndefined();
+    // A row names its store, and a page numbers its requests for another chat.
+    const order = { window: 'w1', seq: 3 };
+    expect(parseCommand({ type: 'continue', id: 'abcd1234', source: 'codex', order, extra: 1 })).toEqual({
+      type: 'continue',
+      id: 'abcd1234',
+      source: 'codex',
+      order,
+    });
+    expect(parseCommand({ type: 'continue', id: 'abcd1234', source: '' })).toBeUndefined();
+    expect(parseCommand({ type: 'continue', id: 'abcd1234', source: 7 })).toBeUndefined();
+    expect(parseCommand({ type: 'home-chat', order })).toEqual({ type: 'home-chat', order });
+    expect(parseCommand({ type: 'stay-chat', order })).toEqual({ type: 'stay-chat', order });
+    expect(parseCommand({ type: 'topic-chat', topic: 't1', order })).toEqual({
+      type: 'topic-chat',
+      topic: 't1',
+      order,
+    });
+    expect(parseCommand({ type: 'project-chat', cwd: '/w', order })).toEqual({
+      type: 'project-chat',
+      cwd: '/w',
+      order,
+    });
+    for (const bad of [null, 3, {}, { window: 'w1' }, { window: '', seq: 1 }, { window: 'w1', seq: 0 }]) {
+      expect(parseCommand({ type: 'home-chat', order: bad }), JSON.stringify(bad)).toBeUndefined();
+    }
+    expect(parseCommand({ type: 'home-chat', order: { window: 'w1', seq: 1.5 } })).toBeUndefined();
+    expect(parseCommand({ type: 'home-chat', order: { window: 'w1', seq: '2' } })).toBeUndefined();
     expect(parseCommand({ type: 'submit', text: 1 })).toBeUndefined();
     expect(parseCommand({ type: 'exec', command: 'rm' })).toBeUndefined();
     expect(parseCommand(null)).toBeUndefined();
@@ -2807,8 +2834,88 @@ describe('web UI server', () => {
       expect(chat.get().conversation?.topic).toBeUndefined();
       expect(chat.get().notices).toEqual([]);
       expect(chat.startHomeChat()).toBe(true);
+
+      // A window numbers its requests. The request made first arrives last: it is refused on
+      // arrival, before it looks anything up, and the later one, still waiting, opens its chat.
+      const w1 = (seq: number) => ({ window: 'w1', seq });
+      hold = new Promise((resolve) => (free = resolve));
+      const later = chat.switchChat({ type: 'project', cwd: knights }, w1(2));
+      expect(await chat.switchChat({ type: 'project', cwd: other }, w1(1))).toBe('superseded');
+      expect(await chat.switchChat({ type: 'home' }, w1(1))).toBe('superseded');
+      expect(await chat.switchChat({ type: 'topic', topic: 't1' }, w1(2))).toBe('superseded');
+      expect(await chat.switchChat({ type: 'continue', id: 'o1', source: 'echo' }, w1(1))).toBe('superseded');
+      expect(await chat.switchChat({ type: 'stay' }, w1(2))).toBe('superseded');
+      free();
+      expect(await later).toBe('done');
+      expect(chat.get().conversation).toMatchObject({ cwd: realpathSync(knights), origin: 'project' });
+      expect(chat.get().notices).toEqual([]);
+      // Also once the later one is done, and whatever the late one asks for.
+      expect(await chat.switchChat({ type: 'continue', id: 'o1' }, w1(1))).toBe('superseded');
+      expect(chat.get().session.sessionId).toBeUndefined();
+      expect(chat.get().conversation).toMatchObject({ cwd: realpathSync(knights) });
+      // Another window counts for itself, and between two windows the request that arrives last wins.
+      hold = new Promise((resolve) => (free = resolve));
+      const theirs = chat.switchChat({ type: 'project', cwd: other }, w1(3));
+      const ours = chat.switchChat({ type: 'continue', id: 'k1', source: 'echo' }, { window: 'w2', seq: 1 });
+      free();
+      expect(await Promise.all([theirs, ours])).toEqual(['superseded', 'done']);
+      expect(chat.get().session.sessionId).toBe('k1');
+      // The chat that is open is asked for again (A, then B, then A): it stays as it is, and B,
+      // which still waits, is dropped.
+      hold = new Promise((resolve) => (free = resolve));
+      const before = chat.get().session;
+      const away = chat.switchChat({ type: 'continue', id: 'o1', source: 'echo' }, w1(4));
+      const back = chat.switchChat({ type: 'continue', id: 'k1', source: 'echo' }, w1(5));
+      free();
+      expect(await Promise.all([away, back])).toEqual(['superseded', 'done']);
+      expect(chat.get().session).toBe(before);
+      expect(chat.get().notices.filter((one) => one.tone === 'error')).toEqual([]);
+      // "Stay" drops what waits and changes nothing.
+      hold = new Promise((resolve) => (free = resolve));
+      const dropped = chat.switchChat({ type: 'project', cwd: other }, w1(6));
+      expect(await chat.switchChat({ type: 'stay' }, w1(7))).toBe('done');
+      free();
+      expect(await dropped).toBe('superseded');
+      expect(chat.get().session.sessionId).toBe('k1');
+      // A refusal is not an overtaken request.
+      expect(await chat.switchChat({ type: 'topic', topic: 'nope' }, w1(8))).toBe('refused');
+      expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: 'No topic "nope" found.' });
+      expect(chat.startHomeChat()).toBe(true);
     } finally {
       chat.close();
+    }
+
+    // Two stores hold a session with the same id: the row's store says which one is opened.
+    const twin = (name: string, cwd: string): SessionSource => ({
+      name,
+      where: 'local',
+      list: async () => [{ source: name, agent: name, id: 'same-id-0001', where: 'local', cwd, updatedAt: 1000 }],
+      read: async () => [{ id: 1, agent: name, prompt: `From ${name}`, entries: [], startedAt: 1 }],
+    });
+    const stores = [twin('echo', knights), twin('other-store', other)];
+    const twins = createChatController({
+      agents: [{ ...echoAgent(), sessions: stores[0]! }],
+      sessionSources: stores,
+      cwd: homeDir,
+      env: homeEnv,
+      home: true,
+    });
+    try {
+      // The id alone does not say which.
+      expect(await twins.continueSession('same-id-0001')).toBe(false);
+      expect(twins.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringContaining('2 sessions') });
+      expect(await twins.switchChat({ type: 'continue', id: 'same-id-0001', source: 'other-store' })).toBe('done');
+      expect(twins.get().session.cwd).toBe(other);
+      expect(twins.get().session.turns.map((turn) => turn.prompt)).toEqual(['From other-store']);
+      expect(await twins.continueSession('same-id-0001', { source: 'echo' })).toBe(true);
+      expect(twins.get().session.cwd).toBe(knights);
+      expect(twins.get().session.sessionId).toBe('same-id-0001');
+      expect(twins.get().session.turns.map((turn) => turn.prompt)).toEqual(['From echo']);
+      // A store that is not there holds nothing.
+      expect(await twins.switchChat({ type: 'continue', id: 'same-id-0001', source: 'nowhere' })).toBe('refused');
+      expect(twins.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringContaining('No session') });
+    } finally {
+      twins.close();
     }
 
     // Host app `open-session <id>` over stdin opens that session in its directory.

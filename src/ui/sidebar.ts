@@ -94,10 +94,10 @@ export function chatProjects(chats: readonly SessionInfo[], options: { home?: st
  */
 export function withOpenChat(
   chats: readonly SessionInfo[],
-  open: { id?: string; agent: string; cwd: string; title?: string; updatedAt: number } | undefined,
+  open: { id?: string; source?: string; agent: string; cwd: string; title?: string; updatedAt: number } | undefined,
 ): SessionInfo[] {
   if (!open) return [...chats];
-  const listed = open.id ? chats.find((chat) => chat.id === open.id) : undefined;
+  const listed = open.id ? chats.find((chat) => isOpenChat(chat, open)) : undefined;
   if (listed) {
     // Its title here is the one the top bar shows; the row keeps moving to the top while it is worked in.
     return chats.map((chat) =>
@@ -122,6 +122,16 @@ export function withOpenChat(
 
 /** The `source` of the open chat's row while no store lists it. */
 export const OPEN_CHAT_SOURCE = 'genaicode:open';
+
+/**
+ * Whether `chat` is the row of the open chat: the row `withOpenChat` added, or the session with its
+ * id in its agent's store (`open.source`), as another store may hold a session with the same id.
+ * With no store known the id alone decides.
+ */
+export function isOpenChat(chat: Pick<SessionInfo, 'source' | 'id'>, open: { id?: string; source?: string }): boolean {
+  if (chat.source === OPEN_CHAT_SOURCE) return true;
+  return !!open.id && chat.id === open.id && (!open.source || chat.source === open.source);
+}
 
 /** What a row says: the title, else what was asked first or last, else the id. */
 export function chatTitle(session: SessionInfo): string {

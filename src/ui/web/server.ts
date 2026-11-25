@@ -15,7 +15,7 @@ import type { SessionInfo } from '../../agents/sessions/types.js';
 import type { SessionTurn } from '../../agents/session.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
-import type { ChatController } from '../controller.js';
+import type { ChatController, ChatSwitch, SwitchOrder } from '../controller.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
   activeChatTruncation,
@@ -208,16 +208,28 @@ export type WebCommand =
   | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
   | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
-  /** Take over the session with this id (`ChatController.continueSession`). */
-  | { type: 'continue'; id: string }
+  | WebSwitchCommand
+  | { type: 'agent'; name: string }
+  | { type: 'model'; model: string };
+
+/**
+ * A request for another conversation (`ChatController.switchChat`). `order` says where it stands
+ * among the requests of the page that sent it: one that arrives after a later one is answered
+ * `{ ok: false, superseded: true }` and changes nothing.
+ */
+export type WebSwitchCommand = WebSwitchTarget & { order?: SwitchOrder };
+
+type WebSwitchTarget =
+  /** Take over the session with this id, the one in the store `source` when given. */
+  | { type: 'continue'; id: string; source?: string }
   /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
   | { type: 'topic-chat'; topic: string }
   /** Start a new conversation in this directory, an absolute path (`--home` mode). */
   | { type: 'project-chat'; cwd: string }
-  /** Start a new conversation back in the neutral home (`--home` mode). */
+  /** Start a new conversation: back in the neutral home in `--home` mode, as `/clear` otherwise. */
   | { type: 'home-chat' }
-  | { type: 'agent'; name: string }
-  | { type: 'model'; model: string };
+  /** Stay in the open conversation: drops the requests that still wait to open another. */
+  | { type: 'stay-chat' };
 
 const MAX_BODY = 64 * 1024;
 /** Most files on one prompt. */
@@ -312,20 +324,34 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       if (id === undefined || !answers) return undefined;
       return { type: 'answer', id, answers };
     }
-    case 'continue': {
-      const id = text('id', 200);
-      return id ? { type: 'continue', id } : undefined;
-    }
-    case 'topic-chat': {
-      const topic = text('topic', 200);
-      return topic ? { type: 'topic-chat', topic } : undefined;
-    }
-    case 'project-chat': {
-      const cwd = text('cwd', 4096);
-      return cwd ? { type: 'project-chat', cwd } : undefined;
-    }
+    case 'continue':
+    case 'topic-chat':
+    case 'project-chat':
     case 'home-chat':
-      return { type: 'home-chat' };
+    case 'stay-chat': {
+      let order: { order?: SwitchOrder } = {};
+      if (command.order !== undefined) {
+        const { window, seq } = (command.order ?? {}) as Record<string, unknown>;
+        if (typeof window !== 'string' || !window || window.length > 100) return undefined;
+        if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 1) return undefined;
+        order = { order: { window, seq } };
+      }
+      if (command.type === 'continue') {
+        const id = text('id', 200);
+        const source = text('source', 200);
+        if (!id || (command.source !== undefined && !source)) return undefined;
+        return { type: 'continue', id, ...(source ? { source } : {}), ...order };
+      }
+      if (command.type === 'topic-chat') {
+        const topic = text('topic', 200);
+        return topic ? { type: 'topic-chat', topic, ...order } : undefined;
+      }
+      if (command.type === 'project-chat') {
+        const cwd = text('cwd', 4096);
+        return cwd ? { type: 'project-chat', cwd, ...order } : undefined;
+      }
+      return { type: command.type, ...order };
+    }
     case 'agent': {
       const name = text('name', 100);
       return name === undefined ? undefined : { type: 'agent', name };
@@ -1078,6 +1104,15 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }
       }
+      if (isSwitch(command)) {
+        const result = await controller.switchChat(switchTarget(command), command.order);
+        return send(
+          res,
+          200,
+          'application/json',
+          JSON.stringify({ ok: result === 'done', ...(result === 'superseded' ? { superseded: true } : {}) }),
+        );
+      }
       let files: Upload[] = [];
       if (command.type === 'submit' && command.files?.length) {
         const found = command.files.map((id) => options.uploads?.find(id));
@@ -1121,9 +1156,34 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
 }
 
+const SWITCHES: ReadonlySet<string> = new Set<WebSwitchCommand['type']>([
+  'continue',
+  'topic-chat',
+  'project-chat',
+  'home-chat',
+  'stay-chat',
+]);
+const isSwitch = (command: WebCommand): command is WebSwitchCommand => SWITCHES.has(command.type);
+
+/** The conversation a command asks for. */
+function switchTarget(command: WebSwitchCommand): ChatSwitch {
+  switch (command.type) {
+    case 'continue':
+      return { type: 'continue', id: command.id, ...(command.source ? { source: command.source } : {}) };
+    case 'topic-chat':
+      return { type: 'topic', topic: command.topic };
+    case 'project-chat':
+      return { type: 'project', cwd: command.cwd };
+    case 'home-chat':
+      return { type: 'home' };
+    case 'stay-chat':
+      return { type: 'stay' };
+  }
+}
+
 async function run(
   controller: ChatController,
-  command: Exclude<WebCommand, { type: 'pack-task' }>,
+  command: Exclude<WebCommand, { type: 'pack-task' } | WebSwitchCommand>,
   files: readonly Upload[] = [],
 ): Promise<boolean> {
   switch (command.type) {
@@ -1151,14 +1211,6 @@ async function run(
       return controller.answer(command.id, command.answers);
     case 'tower':
       return controller.decideTower(command.id, command.decision);
-    case 'continue':
-      return controller.continueSession(command.id);
-    case 'topic-chat':
-      return controller.startTopicChat(command.topic);
-    case 'project-chat':
-      return controller.startProjectChat(command.cwd);
-    case 'home-chat':
-      return controller.startHomeChat();
     case 'agent':
       return controller.selectAgent(command.name);
     case 'model':

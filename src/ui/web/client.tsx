@@ -24,7 +24,7 @@ import {
   splitAttached,
 } from '../format.js';
 import type { UiRelease } from './release.js';
-import type { WebCommand, WebSessionListing } from './server.js';
+import type { WebCommand, WebSessionListing, WebSwitchCommand } from './server.js';
 import {
   chatProjects,
   folderName,
@@ -33,6 +33,7 @@ import {
   needsYou,
   needsYouPage,
   OPEN_CHAT_SOURCE,
+  isOpenChat,
   otherSessions,
   quotaRows,
   sessionKey,
@@ -65,6 +66,12 @@ const token = (() => {
     return '';
   }
 })();
+
+/**
+ * This page among the pages the server talks to, new with every load: the requests for another
+ * chat are numbered within it (`SwitchOrder`), so the server can tell an overtaken one by its number.
+ */
+const WINDOW_ID = `${Date.now().toString(36)}-${Array.from(crypto.getRandomValues(new Uint32Array(3)), (part) => part.toString(36)).join('')}`;
 
 async function postCommand(body: WebCommand) {
   const res = await fetch('/api/command', {
@@ -904,8 +911,9 @@ function App() {
   // in the chat, and the folder, that is being left. The message field keeps what is typed.
   const [switching, setSwitching] = useState(false);
   const switchingRef = useRef(false);
-  // Counts the requests, as the controller does: each is sent, and only the last one's answer
-  // gives the message field back. The answer of an earlier one says nothing about where the window is.
+  // Numbers the requests: each is sent with its number, the server drops one that arrives after a
+  // later one, and only the answer to the last gives the message field back. The answer of an
+  // earlier one says nothing about where the window is.
   const switchSeq = useRef(0);
   const whatsNew = useRef<HTMLDialogElement>(null);
   const [seenRelease, setSeenRelease] = useState(() => {
@@ -955,7 +963,7 @@ function App() {
     wasSetupRef.current = inSetup;
   }, [inSetup, showAgents]);
   /** Asks for another chat in this window. `what` names it when no answer comes at all. */
-  const switchChat = (request: WebCommand, what: string) => {
+  const switchChat = (request: WebSwitchCommand, what: string) => {
     // What still waits here was meant for the conversation that is left.
     dropWaiting();
     setViewer(undefined);
@@ -963,7 +971,7 @@ function App() {
     const mine = ++switchSeq.current;
     switchingRef.current = true;
     setSwitching(true);
-    void command(request)
+    void command({ ...request, order: { window: WINDOW_ID, seq: mine } })
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
@@ -976,9 +984,10 @@ function App() {
   };
   const startTopicChat = (topicId: string) =>
     switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
-  const startHomeChat = () =>
-    switchChat(isHome ? { type: 'home-chat' } : { type: 'submit', text: '/clear' }, 'start a new chat');
-  const continueChat = (id: string) => switchChat({ type: 'continue', id }, 'open that chat');
+  const startHomeChat = () => switchChat({ type: 'home-chat' }, 'start a new chat');
+  // The row's store goes with its id: another store may hold a session with the same one.
+  const continueChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
+    switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat');
   const convTopic = conversation?.topic?.name;
   const convTitle =
     conversation?.title ||
@@ -1239,31 +1248,31 @@ function App() {
           ? 'Agents'
           : undefined;
   const lastTurn = session?.turns.at(-1);
+  // The store of the chat's agent: another store may hold a session with the same id.
+  const openStore = view?.agents.find((agent) => agent.name === session?.agent)?.store;
   const openChat = useMemo(
     () =>
       session && lastTurn
         ? {
             id: session.sessionId,
+            source: openStore,
             agent: session.agent,
             cwd: activeCwd,
             title: convTitle,
             updatedAt: lastTurn.endedAt ?? lastTurn.startedAt,
           }
         : undefined,
-    [session?.sessionId, session?.agent, activeCwd, convTitle, lastTurn?.endedAt, lastTurn?.startedAt],
+    [session?.sessionId, openStore, session?.agent, activeCwd, convTitle, lastTurn?.endedAt, lastTurn?.startedAt],
   );
   const ownChats = useMemo(() => withOpenChat(chats.own, openChat), [chats.own, openChat]);
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
-  const openRow = openChat
-    ? ownChats.find((chat) => (openChat.id ? chat.id === openChat.id : chat.source === OPEN_CHAT_SOURCE))
-    : undefined;
+  const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
   const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
     sessions: chats.all,
-    // The store of the chat's agent: another store may hold a session with the same id.
-    open: { id: session?.sessionId, source: view?.agents.find((agent) => agent.name === session?.agent)?.store },
+    open: { id: session?.sessionId, source: openStore },
   });
   // One row per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
   const quota = useMemo(
@@ -1417,8 +1426,16 @@ function App() {
               })
             : undefined,
           onOpenChat: (chat) => {
-            if (openRow && sessionKey(chat) === sessionKey(openRow)) return backToChat();
-            continueChat(chat.id);
+            const open = !!openRow && sessionKey(chat) === sessionKey(openRow);
+            // Already here, and no other chat is on its way.
+            if (open && !switchingRef.current) return backToChat();
+            // Another chat was asked for and has not answered: this row is the later choice, so it
+            // is asked for too and overtakes that one. The row of a chat no store lists yet has no
+            // id to ask with: the request that waits is dropped and the window stays.
+            if (chat.source === OPEN_CHAT_SOURCE) {
+              return open ? switchChat({ type: 'stay-chat' }, 'stay in this chat') : backToChat();
+            }
+            continueChat(chat);
           },
           onNewChatIn: (project) => {
             if (!isHome || project.key === HOME_FOLDER) return startHomeChat();
@@ -1470,7 +1487,7 @@ function App() {
             onStatus={showToast}
             onNewTopicChat={isHome ? startTopicChat : undefined}
             // The chat says what happened, also when it could not.
-            onContinue={(found) => continueChat(found.id)}
+            onContinue={continueChat}
           />
         ) : null}
         {panel === 'inbox' && view?.tower && (

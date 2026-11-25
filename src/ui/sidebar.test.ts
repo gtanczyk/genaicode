@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionInfo } from '../agents/sessions/group.js';
 import {
   chatProjects,
+  isOpenChat,
   chatTitle,
   escapeAction,
   HOME_FOLDER,
@@ -12,6 +13,7 @@ import {
   otherSessions,
   quotaRows,
   sessionGlyph,
+  sessionKey,
   startsCollapsed,
   withOpenChat,
 } from './sidebar.js';
@@ -74,6 +76,19 @@ describe('withOpenChat', () => {
     const rows = withOpenChat([chat('new', { title: 'old title', updatedAt: now - 90_000 }), chat('a')], open);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ source: 'claude', id: 'new', title: 'Fix the build', updatedAt: now });
+  });
+
+  it('tells the open chat from a session with the same id in another store', () => {
+    const twins = [chat('new', { source: 'codex', title: 'Mine' }), chat('new', { title: 'Not mine' })];
+    const rows = withOpenChat(twins, { ...open, source: 'codex' });
+    expect(rows.map((one) => one.title)).toEqual(['Fix the build', 'Not mine']);
+    expect(rows.filter((one) => isOpenChat(one, { id: 'new', source: 'codex' })).map(sessionKey)).toEqual([
+      'codex:new',
+    ]);
+    // Listed only in the other store: the open chat still gets its own row.
+    const added = withOpenChat([twins[1]!], { ...open, source: 'codex' });
+    expect(added.map((one) => one.source)).toEqual([OPEN_CHAT_SOURCE, 'claude']);
+    expect(added.filter((one) => isOpenChat(one, { id: 'new', source: 'codex' }))).toEqual([added[0]]);
   });
 
   it('changes nothing without an open chat', () => {
