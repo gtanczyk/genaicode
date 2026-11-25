@@ -2983,16 +2983,21 @@ body[data-resizing='true'] iframe {
   min-width: 0;
 }
 .gc-work-now b {
+  flex: none;
   font-weight: 650;
   color: var(--gc-color-run);
+  white-space: nowrap;
 }
 .gc-work-now code {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: var(--gc-type-13);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .gc-work-elapsed {
+  flex: none;
   margin-left: auto;
   font-size: var(--gc-type-12);
   color: var(--gc-color-muted);
