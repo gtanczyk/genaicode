@@ -960,6 +960,12 @@ function Turn({
     };
   };
   const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
+  const openTool = running
+    ? turn.entries.findLast(
+        (item): item is Extract<SessionEntry, { kind: 'tool' }> => item.kind === 'tool' && !item.done,
+      )
+    : undefined;
+  const openToolArgument = openTool ? toolArgument(openTool.input, cwd) : '';
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const visiblePackTasks = turn.pack ? turn.pack.tasks.filter((task) => !task.dismissed) : [];
   const packShown = !!turn.pack && (visiblePackTasks.length > 0 || pending.some((request) => request.subtaskId));
@@ -1031,6 +1037,12 @@ function Turn({
           <span className="gc-spin" /> {speaker} is working
           {/* The ticking time stays out of the transcript's live region. */}
           <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
+          {/* The step it is on, here at the bottom: the steps themselves sit above the messages sent since. */}
+          {openTool ? (
+            <span className="gc-working-now" title={openToolArgument || undefined}>
+              · <b>{toolName(openTool.name)}</b> {openToolArgument}
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
@@ -1068,8 +1080,27 @@ function Folded({
   const plan = turn.result
     ? undefined
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
+  // A message sent while the turn runs starts a new stretch: the steps after it fold below it, and
+  // the last reply of each earlier stretch stays in view (the answer to that message).
+  // A message the host hides (`renderPrompt` gives nothing) starts no stretch.
+  const splits = (item: SessionEntry) => {
+    if (item.kind !== 'input') return false;
+    const render = entryProps(item).prompt;
+    const shown = render ? render(item.text) : item.text;
+    return shown !== null && shown !== undefined && shown !== false;
+  };
+  const segment: number[] = [];
+  const replies: number[] = [];
+  let segments = 1;
+  entries.forEach((item, i) => {
+    if (splits(item)) segments++;
+    segment[i] = segments - 1;
+    if (item.kind === 'text') replies[segments - 1] = i;
+  });
+  const segmentReply = new Set(replies.slice(0, -1).filter((i) => i !== undefined));
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
+    segmentReply.has(i) ||
     // The latest reply stays out of the steps while the turn runs, also when a progress report lands
     // after it: it keeps its place in this list, and its state, until it ends as the answer.
     i === lastText ||
@@ -1078,44 +1109,57 @@ function Folded({
     item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
-  const steps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => i !== update && !inView(item, i));
-  const tools = steps.filter(([item]) => item.kind === 'tool').length;
-  const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
+  const stretchSteps: (readonly [SessionEntry, number])[][] = Array.from({ length: segments }, () => []);
+  entries.forEach((item, i) => {
+    if (i !== update && !inView(item, i)) stretchSteps[segment[i]].push([item, i]);
+  });
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
-  const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
+  const openIndex = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'tool' && !item.done);
+  const open = entries[openIndex];
   const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
-  const count = tools || steps.length;
-  // One keyed list in a fixed order, the steps first and then what is in view, oldest first: the
-  // end of the turn moves nothing (a moved artifact frame would reload and lose what was typed in it),
-  // and the latest reply keeps its element and state when it becomes the answer.
-  const fold = steps.length ? (
-    <LazyDetails
-      key="fold"
-      className="gc-fold"
-      summary={
-        <summary>
-          {turn.result ? null : <span className="gc-spin" />}
-          {count} {count === 1 ? 'step' : 'steps'}
-          {now ? <span className="gc-fold-now"> · {now}</span> : null}
-          {failed ? <span className="gc-err"> · errors</span> : null}
-        </summary>
-      }
-      data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
-      Body={FoldBody}
-    />
-  ) : null;
+  // One keyed list in a fixed order, per stretch its steps first and then what is in view, oldest
+  // first: the end of the turn moves nothing (a moved artifact frame would reload and lose what was
+  // typed in it), and the latest reply keeps its element and state when it becomes the answer.
+  const fold = (s: number) => {
+    const steps = stretchSteps[s];
+    if (!steps.length) return null;
+    const tools = steps.filter(([item]) => item.kind === 'tool').length;
+    const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
+    const count = tools || steps.length;
+    // The spinner and the step it is on go on the fold that holds the open call, else the newest.
+    const latest = openIndex >= 0 ? segment[openIndex] === s : s === segments - 1;
+    return (
+      <LazyDetails
+        key={s ? `fold-${s}` : 'fold'}
+        className="gc-fold"
+        summary={
+          <summary>
+            {turn.result || !latest ? null : <span className="gc-spin" />}
+            {count} {count === 1 ? 'step' : 'steps'}
+            {now && latest ? <span className="gc-fold-now"> · {now}</span> : null}
+            {failed ? <span className="gc-err"> · errors</span> : null}
+          </summary>
+        }
+        data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
+        Body={FoldBody}
+      />
+    );
+  };
   const planShown = plan?.kind === 'progress' && plan !== entries[update];
   return (
     <>
       {[
-        fold,
-        ...entries.flatMap((item, i) =>
-          i === update
-            ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
-            : inView(item, i)
-              ? [entry(item, i)]
-              : [],
-        ),
+        fold(0),
+        ...entries.flatMap((item, i) => {
+          const shown =
+            i === update
+              ? [entry(item, i), planShown ? <ProgressPlan key="plan" steps={plan.plan} /> : null]
+              : inView(item, i)
+                ? [entry(item, i)]
+                : [];
+          // A sent message opens its stretch: the steps taken since fold right below it.
+          return splits(item) ? [...shown, fold(segment[i])] : shown;
+        }),
       ]}
     </>
   );

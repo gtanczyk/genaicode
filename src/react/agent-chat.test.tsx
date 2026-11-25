@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionState } from '../agents/session.js';
+import type { SessionEntry, SessionState } from '../agents/session.js';
 import {
   AgentChat,
   ArtifactPanel,
@@ -318,6 +318,52 @@ describe('AgentChat', () => {
     render({ ...props, state: { ...state, turns: [state.turns[0], next, ...state.turns.slice(2)] } });
     expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t1');
     expect($<HTMLTextAreaElement>('.gc-pack-detail textarea').value).toBe('check empty input');
+  });
+  it('folds the steps taken after a message sent mid-turn below it, keeping the reply to each message', () => {
+    const state = fixture();
+    state.turns[1].entries = [
+      { kind: 'tool', id: 'a1', name: 'Bash', input: { command: 'ls' }, done: true },
+      { kind: 'text', text: 'First answer.', streaming: false },
+      { kind: 'tool', id: 'a2', name: 'Bash', input: { command: 'git status' }, done: true },
+      { kind: 'text', text: 'Answer to the first message.', streaming: false },
+      { kind: 'input', text: 'what about the docs?' },
+      { kind: 'tool', id: 'a3', name: 'Bash', input: { command: 'cat README.md' }, done: true },
+      { kind: 'text', text: 'Reading the docs.', streaming: false },
+      { kind: 'tool', id: 'a4', name: 'Bash', input: { command: 'npm test' }, done: false },
+    ];
+    render({ state, foldSteps: true });
+    const turn = $$('.gc-turn')[1];
+    const order = Array.from(turn.querySelectorAll('.gc-steps > *')).map((node) =>
+      node.matches('.gc-fold')
+        ? 'fold: ' + node.querySelector('summary')!.textContent
+        : node.matches('.gc-steer')
+          ? 'message'
+          : (node.textContent ?? '').trim(),
+    );
+    expect(order).toEqual([
+      'fold: 2 steps',
+      'Answer to the first message.',
+      'message',
+      'fold: 2 steps · Shell',
+      'Reading the docs.',
+    ]);
+    // A message the host hides starts no stretch: one fold, as before.
+    render({ state, foldSteps: true, renderPrompt: (text) => (text.includes('docs?') ? null : text) });
+    const hidden = Array.from($$('.gc-turn')[1].querySelectorAll('.gc-steps > .gc-fold'));
+    expect(hidden.map((node) => node.querySelector('summary')!.textContent)).toEqual(['4 steps · Shell']);
+  });
+  it('names the step a running turn is on beside "is working", also below messages sent since', () => {
+    const state = fixture();
+    state.turns[1].entries.push(
+      { kind: 'tool', id: 't3', name: 'Bash', input: { command: 'npm test -- cart' }, done: false },
+      { kind: 'input', text: 'also check the docs' },
+    );
+    render({ state, foldSteps: true });
+    expect($('.gc-working-now')?.textContent).toBe('· Shell npm test -- cart');
+    expect($('.gc-working-now')?.getAttribute('title')).toBe('npm test -- cart');
+    state.turns[1].entries[3] = { ...state.turns[1].entries[3], done: true } as SessionEntry;
+    render({ state, foldSteps: true });
+    expect($('.gc-working-now')).toBeNull();
   });
   it('renders a session: turns, tools, edits, markdown, errors, queue, busy state', () => {
     render();
