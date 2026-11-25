@@ -152,7 +152,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await sideWidth(page)).toBe(268);
     expect(await page.locator('header.bar').count()).toBe(0);
     expect(await topbar.locator('h1').textContent()).toBe('New chat');
-    expect(await side.getByRole('button', { name: 'Search' }).getAttribute('aria-disabled')).toBe('true');
+    expect(await side.getByRole('button', { name: 'Search' }).getAttribute('aria-disabled')).toBeNull();
     // What this app did not start sits under the other agents' sessions, tagged with its agent.
     const other = chats.getByRole('region', { name: "Other agents' sessions" });
     await other.getByRole('button', { name: /Sourdough schedule/ }).waitFor();

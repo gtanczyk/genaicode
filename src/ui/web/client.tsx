@@ -1354,6 +1354,11 @@ function App() {
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
   const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
   const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
+  // Search (⌘K) looks through all of them, not the few the sidebar shows.
+  const searchSessions = useMemo(
+    () => (hasSessions ? otherSessions(chats.all, ownChats, Infinity).shown : NO_SESSIONS),
+    [chats.all, ownChats],
+  );
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
@@ -1483,6 +1488,13 @@ function App() {
             </>
           ) : null
         }
+        search={{
+          chats: ownChats,
+          sessions: searchSessions,
+          home: isHome ? cwd : undefined,
+          // As its row in the sidebar: another agent's session is shown among all sessions.
+          onOpenSession: () => openSessions('all'),
+        }}
         side={{
           page:
             panel === 'chat'
@@ -1495,8 +1507,6 @@ function App() {
                     ? 'chats'
                     : 'sessions',
           onNewChat: startHomeChat,
-          // The palette comes with a later step; ⌘K and the button are wired to this.
-          onSearch: () => undefined,
           needs,
           onNeedsYou: openNeedsYou,
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,

@@ -165,7 +165,7 @@ export interface SidebarProps {
   /** Which entry is the page shown: a nav item, or the chat (then `selectedChat` marks its row). */
   page: 'chat' | 'sessions' | 'chats' | 'inbox' | 'settings';
   onNewChat(): void;
-  /** ⌘K. The palette comes in a later step: until then the button says so and does nothing. */
+  /** Opens Search, the ⌘K palette. Absent (a window with nothing to search): the button says so and does nothing. */
   onSearch?(): void;
   needs: NeedsYou;
   onNeedsYou(): void;
@@ -248,9 +248,10 @@ export function Sidebar(props: SidebarProps) {
         <button
           type="button"
           className="nav"
-          title="Search chats and sessions (⌘K): not here yet, it comes with a later version"
+          title={props.onSearch ? 'Search chats and sessions (⌘K)' : 'Search is not available in this window'}
           aria-label="Search"
-          aria-disabled="true"
+          aria-haspopup={props.onSearch ? 'dialog' : undefined}
+          aria-disabled={props.onSearch ? undefined : true}
           onClick={props.onSearch}
         >
           <Icon name="search" />

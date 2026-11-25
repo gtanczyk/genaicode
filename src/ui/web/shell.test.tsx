@@ -43,11 +43,15 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
     title: 'Chat a',
     store: memoryStore(),
     children: <div className="workspace">chat</div>,
+    search: {
+      chats,
+      sessions: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work', cwd: '/work/bakery' })],
+      onOpenSession: vi.fn(),
+    },
     ...patch,
     side: {
       page: 'chat',
       onNewChat: vi.fn(),
-      onSearch: vi.fn(),
       needs: needsYou({ approvals: 1, tower: [{ id: 'draft-1' }, { id: 'draft-2' }], now }),
       onNeedsYou: vi.fn(),
       onAllSessions: vi.fn(),
@@ -226,8 +230,8 @@ describe('<Shell>', () => {
     expect(value.side.onNeedsYou).toHaveBeenCalledTimes(1);
     click(button('New chat'));
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
-    // Search waits for its palette: the button says so.
-    expect(button('Search').getAttribute('aria-disabled')).toBe('true');
+    expect(button('Search').getAttribute('aria-disabled')).toBeNull();
+    expect(button('Search').getAttribute('title')).toBe('Search chats and sessions (⌘K)');
 
     expect(host.querySelector('.quota-row')?.textContent).toBe('claude91% · 5h');
     expect(host.querySelector('.quota-row')?.getAttribute('data-level')).toBe('warning');
@@ -439,14 +443,193 @@ describe('<Shell>', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it('starts a chat on ⌘N and calls Search on ⌘K', () => {
+  it('starts a chat on ⌘N, and not on a bare n', () => {
     const value = props();
     render(value);
     press('n', mod());
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
-    press('K', mod());
-    expect(value.side.onSearch).toHaveBeenCalledTimes(1);
     press('n');
     expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Search (⌘K)', () => {
+  const palette = () => host.querySelector<HTMLElement>('.palette');
+  const field = () => host.querySelector<HTMLInputElement>('.palette input')!;
+  const rows = () => Array.from(host.querySelectorAll('.palette [role=option]'));
+  const row = (item: Element) =>
+    Array.from(item.children)
+      .map((part) => part.textContent)
+      .filter(Boolean)
+      .join(' | ');
+  const selected = () => host.querySelector('.palette [aria-selected=true]')?.querySelector('.grow')?.textContent;
+  // React reads the value through the element's own setter.
+  const type = (text: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field(), text);
+      field().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  const key = (name: string, init: KeyboardEventInit = {}) => press(name, init, field());
+
+  it('opens on ⌘K and from the sidebar, with the chats, the other sessions and the commands', () => {
+    render(props({}, { onAllChats: vi.fn(), onCommands: vi.fn(), selectedGlyph: 'err' }));
+    expect(palette()).toBeNull();
+    press('k', mod());
+    expect(palette()?.getAttribute('role')).toBe('dialog');
+    expect(palette()?.getAttribute('aria-label')).toBe('Search chats and sessions');
+    expect(document.activeElement).toBe(field());
+    const key = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+    expect(rows().map(row)).toEqual([
+      'Chat a | app | claude | chat',
+      'Chat b | site | claude | chat',
+      'Chat c | site | claude | chat',
+      'Other work | bakery | codex | session',
+      `New chat | ${key}N | command`,
+      'Needs you (3) | command',
+      'All sessions | command',
+      'All chats | command',
+      'Settings: Agents | command',
+      `Collapse sidebar | ${key}B | command`,
+      'Commands and keys | command',
+    ]);
+    expect(rows().filter((one) => one.getAttribute('aria-selected') === 'true')).toHaveLength(1);
+    // The glyphs are those of the sidebar: the open chat as it is now, the others as the stores say.
+    expect(
+      rows()
+        .slice(0, 3)
+        .map((one) => one.querySelector('.sg')?.getAttribute('class')),
+    ).toEqual(['sg err', 'sg run', 'sg ok']);
+    expect(field().getAttribute('aria-activedescendant')).toBe(rows()[0]!.id);
+    // ⌘K again closes it.
+    press('k', mod());
+    expect(palette()).toBeNull();
+    click(button('Search'));
+    expect(palette()).not.toBeNull();
+  });
+
+  it('moves with the arrows, around the ends, and starts again from the top when the words change', () => {
+    render(props());
+    press('k', mod());
+    expect(selected()).toBe('Chat a');
+    key('ArrowDown');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat c');
+    expect(field().getAttribute('aria-activedescendant')).toBe(rows()[2]!.id);
+    key('ArrowUp');
+    expect(selected()).toBe('Chat b');
+    key('Home');
+    key('ArrowUp');
+    expect(selected()).toBe('Collapse sidebar');
+    key('ArrowDown');
+    expect(selected()).toBe('Chat a');
+    key('ArrowDown');
+    type('site');
+    expect(rows().map(row)).toEqual(['Chat b | site | claude | chat', 'Chat c | site | claude | chat']);
+    expect(selected()).toBe('Chat b');
+    type('nothing like it');
+    expect(rows()).toHaveLength(0);
+    expect(host.querySelector('.palette-none')?.textContent).toBe('No chat, session or command matches.');
+    expect(field().hasAttribute('aria-activedescendant')).toBe(false);
+    // Enter with nothing to open leaves it as it is.
+    key('Enter');
+    expect(palette()).not.toBeNull();
+  });
+
+  it('opens the chat under the selection on Enter, as its row in the sidebar does', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('site');
+    key('ArrowDown');
+    key('Enter');
+    expect(palette()).toBeNull();
+    expect(value.side.onOpenChat).toHaveBeenCalledTimes(1);
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[2]);
+    expect(value.search!.onOpenSession).not.toHaveBeenCalled();
+  });
+
+  it('goes to another agent’s session, and opens a row on a click', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('codex');
+    key('Enter');
+    expect(value.search!.onOpenSession).toHaveBeenCalledWith(value.search!.sessions[0]);
+    expect(value.side.onOpenChat).not.toHaveBeenCalled();
+    press('k', mod());
+    click(rows()[1]!);
+    expect(palette()).toBeNull();
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[1]);
+  });
+
+  it('runs a command: a page of the sidebar, or the sidebar’s own switch', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    type('all sessions');
+    key('Enter');
+    expect(value.side.onAllSessions).toHaveBeenCalledTimes(1);
+    press('k', mod());
+    type('settings');
+    key('Enter');
+    expect(value.side.settings[0]!.onSelect).toHaveBeenCalledTimes(1);
+    press('k', mod());
+    type('sidebar');
+    key('Enter');
+    expect(shell().classList.contains('side-collapsed')).toBe(true);
+    press('k', mod());
+    type('sidebar');
+    expect(rows().map(row)[0]).toMatch(/^Show sidebar/);
+    // ⌘N starts the chat and takes the palette away.
+    press('n', mod(), field());
+    expect(palette()).toBeNull();
+    expect(value.side.onNewChat).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Escape and puts the focus back where it was, without leaving the page under it', () => {
+    const onBack = vi.fn();
+    render(props({ onBack, children: <textarea className="draft" defaultValue="" /> }));
+    const draft = host.querySelector<HTMLTextAreaElement>('.draft')!;
+    draft.focus();
+    press('k', mod(), draft);
+    expect(document.activeElement).toBe(field());
+    type('chat');
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(draft);
+    // One press closed one thing: the page is still there.
+    expect(onBack).not.toHaveBeenCalled();
+    expect(escape.defaultPrevented).toBe(true);
+    press('Escape', {}, draft);
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on a press beside it, back to the button that opened it, and keeps Tab in the field', () => {
+    render(props());
+    button('Search').focus();
+    click(button('Search'));
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(tab));
+    expect(tab.defaultPrevented).toBe(true);
+    act(() => {
+      host.querySelector('.palette-bg')!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    });
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Search'));
+  });
+
+  it('is not there in a window with nothing to search: the button says so', () => {
+    render(props({ search: undefined }));
+    expect(button('Search').getAttribute('aria-disabled')).toBe('true');
+    press('k', mod());
+    click(button('Search'));
+    expect(palette()).toBeNull();
+  });
+
+  it('stays closed under an open dialog', () => {
+    render(props({ children: <dialog open>notes</dialog> }));
+    press('k', mod());
+    expect(palette()).toBeNull();
   });
 });

@@ -159,6 +159,19 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .menu button:hover, .menu a:hover { background: var(--gc-color-sunken); }
 .menu button:focus-visible, .menu a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+.palette-bg { position: fixed; inset: 0; z-index: 55; background: rgba(0, 0, 0, .32); display: grid; place-items: start center; padding: 12vh 24px 24px; }
+.palette { width: min(600px, 100%); border-radius: 14px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--gc-elevation-2); overflow: hidden; color: var(--text); }
+.palette input { display: block; width: 100%; height: 46px; border: 0; outline: 0; background: transparent; padding: 0 16px; font: inherit; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--line); }
+.palette input::placeholder { color: var(--muted); }
+.palette-res { max-height: 320px; overflow-y: auto; padding: 5px; }
+.pres { display: flex; align-items: center; gap: 9px; width: 100%; height: 34px; padding: 0 10px; border-radius: 6px; font-size: 13px; text-align: left; cursor: pointer; }
+.pres[aria-selected='true'] { background: var(--gc-color-accent-soft); }
+.pres .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pres .i { width: 12px; height: 12px; color: var(--muted); }
+.pres small, .pres kbd { font: 12px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--muted); white-space: nowrap; }
+.pres .tag { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.palette-none { margin: 0; padding: 10px; font-size: 13px; color: var(--muted); }
+.pfoot { padding: 7px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
 .side-popover { position: absolute; left: 10px; bottom: 100%; }
 .side-popover .popover { top: auto; bottom: 6px; left: 0; right: auto; }
 .side-collapsed .side .label, .side-collapsed .side .group-h, .side-collapsed .side .proj, .side-collapsed .side kbd, .side-collapsed .side .quota-row, .side-collapsed .side .conn span, .side-collapsed .side .other, .side-collapsed .side-toggle, .side-collapsed .brand { display: none; }
