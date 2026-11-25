@@ -104,7 +104,7 @@ export function Sessions({
   /** Take the session over in the chat. */
   onContinue(session: SessionInfo): void;
   /** A question a session held open was answered here (or already elsewhere): the window's other lists drop it. */
-  onAnswered?(ask: string): void;
+  onAnswered?(ask: string, of?: { agent: string; session: string }): void;
   /** A reply went to a session from here: the window's other lists stop offering one. */
   onReplied?(session: SessionInfo): void;
   /** Start a new conversation in the resolved directory of a topic (`--home` mode). */
@@ -248,7 +248,7 @@ export function Sessions({
       body: JSON.stringify({ behavior, ...(message ? { message } : {}) }),
     })
       .then((res) => {
-        if (res.ok || res.status === 409) onAnswered?.(ask.id);
+        if (res.ok || res.status === 409) onAnswered?.(ask.id, { agent: ask.agent, session: ask.session });
         setAnswerFailed(
           res.ok
             ? undefined

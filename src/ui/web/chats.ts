@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
+import type { PendingAsk } from '../../agents/sessions/answer.js';
 import { chatsWithoutAnswered, withoutAnswered } from '../needs-you.js';
 import type { WebSessionListing } from './server.js';
 
@@ -20,14 +21,29 @@ export interface Chats {
   /**
    * A hook's question was answered from here (or already elsewhere): it no longer waits, nor does
    * its session while no other question of it does, whatever the listing says until it is read again.
+   * `of` names that session (its agent and id), so it settles even before a listing of the questions
+   * has arrived.
    */
-  answered(ask: string): void;
+  answered(ask: string, of?: AskedBy): void;
   /** A reply went to this session: it works again, whatever the stores still say until they are read. */
   replied(session: SessionInfo): void;
 }
 
+/** The session a hook's question was asked for. */
+export type AskedBy = Pick<PendingAsk, 'agent' | 'session'>;
+
 const NO_LISTING: WebSessionListing = { sessions: NO_SESSIONS, errors: [] };
-const NO_ASKS_GONE: ReadonlySet<string> = new Set();
+const NO_ASKS_GONE: ReadonlyMap<string, AskedBy | undefined> = new Map();
+
+/**
+ * The questions a listing holds, and those answered from here it does not (yet) hold whose session
+ * is known: a session settles once its last question is answered, listed or not.
+ */
+function knownAsks(asks: PendingAsk[], gone: ReadonlyMap<string, AskedBy | undefined>): PendingAsk[] {
+  const listed = new Set(asks.map((ask) => ask.id));
+  const more = [...gone].flatMap(([id, by]) => (by && !listed.has(id) ? [{ id, ...by, at: 0, pid: 0 }] : []));
+  return more.length ? [...asks, ...more] : asks;
+}
 
 /**
  * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
@@ -39,14 +55,15 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
   const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
   const [listing, setListing] = useState<WebSessionListing>(NO_LISTING);
   const [round, setRound] = useState(0);
-  // The questions answered from here that a listing may still hold: forgotten once one does not.
-  const [gone, setGone] = useState<ReadonlySet<string>>(NO_ASKS_GONE);
+  // The questions answered from here that a listing may still hold, with the session each was asked
+  // for where known: forgotten once a listing does not hold it.
+  const [gone, setGone] = useState<ReadonlyMap<string, AskedBy | undefined>>(NO_ASKS_GONE);
   const keepListing = useCallback((found: WebSessionListing) => {
     setListing(found);
     setGone((ids) => {
       const still = new Set((found.asks ?? []).map((ask) => ask.id));
-      const kept = [...ids].filter((id) => still.has(id));
-      return kept.length === ids.size ? ids : new Set(kept);
+      const kept = [...ids].filter(([id]) => still.has(id));
+      return kept.length === ids.size ? ids : new Map(kept);
     });
   }, []);
   useEffect(() => {
@@ -76,18 +93,27 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
     };
   }, [token, enabled, stamp, round]);
   return useMemo(() => {
-    const shown = chatsWithoutAnswered(own, listing.sessions ?? NO_SESSIONS, listing.asks ?? [], gone);
+    const shown = chatsWithoutAnswered(
+      own,
+      listing.sessions ?? NO_SESSIONS,
+      knownAsks(listing.asks ?? [], gone),
+      new Set(gone.keys()),
+    );
     return {
       own: shown.own,
       all: shown.sessions,
       asks: shown.asks,
       senders: listing.senders ?? [],
       refresh: () => setRound((value) => value + 1),
-      answered: (ask) => {
+      answered: (ask, of) => {
         // The own chats are settled now too: every agent's listing may be read again first and no
-        // longer hold the question, while this one still says the chat waits on it.
-        setOwn((sessions) => withoutAnswered(sessions, listing.asks ?? [], new Set([...gone, ask])).sessions);
-        setGone((ids) => new Set([...ids, ask]));
+        // longer hold the question, while this one still says the chat waits on it. The session the
+        // question was asked for settles even where no listing of the questions has arrived yet.
+        const now = new Map(gone).set(ask, of ?? gone.get(ask));
+        setOwn(
+          (sessions) => withoutAnswered(sessions, knownAsks(listing.asks ?? [], now), new Set(now.keys())).sessions,
+        );
+        setGone((ids) => new Map(ids).set(ask, of ?? ids.get(ask)));
         setRound((value) => value + 1);
       },
       replied: (session) => {

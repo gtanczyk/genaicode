@@ -1284,7 +1284,13 @@ function App() {
       const done = await command({ type: 'tower', id: decision.id, decision: decision.decision });
       // A hook's question the tower answered: the listing still has it, and the session waiting,
       // until it is read again.
-      if (done && decision.id.startsWith('hook:')) chats.answered(decision.id.slice('hook:'.length));
+      // The tower's card names the session, so it settles even before the listing has the questions.
+      const card = view?.tower?.items.find((item) => item.id === decision.id);
+      if (done && decision.id.startsWith('hook:'))
+        chats.answered(
+          decision.id.slice('hook:'.length),
+          card?.sessionId ? { agent: card.agent, session: card.sessionId } : undefined,
+        );
       else chats.refresh();
       return done;
     }
@@ -1294,7 +1300,9 @@ function App() {
       body: JSON.stringify({ behavior: decision.behavior }),
     });
     // Answered now, or meanwhile elsewhere (409): either way it no longer waits.
-    if (res.ok || res.status === 409) chats.answered(decision.id);
+    const asked = chats.asks.find((ask) => ask.id === decision.id);
+    if (res.ok || res.status === 409)
+      chats.answered(decision.id, asked ? { agent: asked.agent, session: asked.session } : undefined);
     else chats.refresh();
     // 409: answered meanwhile, elsewhere.
     if (!res.ok && res.status !== 409) throw new Error(`The server answered ${res.status}.`);
