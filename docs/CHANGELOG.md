@@ -23,7 +23,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Internal
 
-- Refresh the macOS visual test baselines for task details and the file viewer in both themes (#373)
+- **Refresh the macOS task and file viewer screenshots in both themes.** (#373)
 
 ## 3.4.0 — 2026-11-25
 
