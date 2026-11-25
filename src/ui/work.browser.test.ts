@@ -342,6 +342,8 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     await expect.poll(() => live.locator('.gc-work-now .gc-work-elapsed').textContent()).not.toBe(before);
     // The call returns and the next one starts: the card and the timeline follow, live.
     const t1 = () => tasks.find((item) => item.id === 't1')!;
+    // A second after it returned is after the task's message (its steps are timed from the start).
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, started + 1_500 - Date.now())));
     patch('t1', {
       text: 'tool edit: src/cart.test.ts',
       steps: [
