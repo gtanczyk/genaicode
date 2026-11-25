@@ -41,8 +41,11 @@ export interface NeedsItem {
   /** What is asked for, in a few words: "Run a command", "Answer a question". */
   action: string;
   agent: string;
-  /** The directory it works in: the folder's name, and the path for the tooltip. */
-  project?: { name: string; path: string };
+  /**
+   * The directory it works in: the folder's name and the path for the tooltip, both as they can be
+   * shown (`towerText`), and the path as it is, which says which project it is.
+   */
+  project?: { name: string; path: string; dir: string };
   /** The chat, session or pack task that asks: `chat “Fix the tests”`. */
   origin: string;
   /** The command, or the question. */
@@ -73,6 +76,14 @@ export interface NeedsInput {
     id?: string;
     /** The store of the chat's agent. */
     source?: string;
+    /**
+     * The running turn's pack (`--delegate`): an approval that names a task (`subtaskId`) comes
+     * from that task's worker, in its worktree.
+     */
+    pack?: {
+      lead?: string;
+      tasks: ReadonlyArray<{ id: string; agent: string; cwd?: string }>;
+    };
   };
   tower?: readonly TowerItem[];
   /** Every agent's sessions, and the ones this app started. */
@@ -99,7 +110,8 @@ const ENDING_ACTION: Record<string, string> = {
   command: 'Run a command yourself',
 };
 
-const projectOf = (cwd: string | undefined) => (cwd ? { name: folderName(cwd), path: cwd } : undefined);
+const projectOf = (cwd: string | undefined) =>
+  cwd ? { name: towerText(folderName(cwd)), path: towerText(cwd), dir: cwd } : undefined;
 
 /** The end of a message: what it asks is there. */
 function lastWords(text: string | undefined, limit = 400): string {
@@ -111,6 +123,56 @@ function lastWords(text: string | undefined, limit = 400): string {
 const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slice('hook:'.length) : undefined);
 
 /**
+ * The sessions the queue reads: every agent's (`sessions`), and this app's own chats that list
+ * leaves out (an automated one, for instance), each once by store and id; where both have a row,
+ * the one of every agent's sessions wins. The count on "Needs you" reads the same.
+ */
+export function needsSessions(sessions: readonly SessionInfo[] = [], own: readonly SessionInfo[] = []): SessionInfo[] {
+  const listed = new Set(sessions.map(sessionKey));
+  return [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
+}
+
+/**
+ * A listing of sessions read before the questions in `answered` were answered from here: without
+ * them, and with the sessions that waited only on them working again. What it says is so until the
+ * listing is read again.
+ */
+export function withoutAnswered(
+  sessions: SessionInfo[],
+  asks: PendingAsk[],
+  answered: ReadonlySet<string>,
+): { sessions: SessionInfo[]; asks: PendingAsk[] } {
+  if (!answered.size) return { sessions, asks };
+  const open = asks.filter((ask) => !answered.has(ask.id));
+  const of = (session: SessionInfo) => (ask: PendingAsk) => ask.agent === session.agent && ask.session === session.id;
+  const settled = (session: SessionInfo) =>
+    session.waitingFor === 'approval' &&
+    session.where === 'local' &&
+    asks.some((ask) => answered.has(ask.id) && of(session)(ask)) &&
+    !open.some(of(session));
+  return {
+    sessions: sessions.map((session) =>
+      settled(session) ? { ...session, state: 'active', waitingFor: undefined, waitingTool: undefined } : session,
+    ),
+    asks: open,
+  };
+}
+
+/**
+ * The question a hook holds open for this session, where no tower answers it: hooks run beside
+ * local sessions, so a cloud row is never the one that asks. Nothing when another local row has
+ * the same agent and id: an answer could reach the wrong one.
+ */
+function askOf(session: SessionInfo, sessions: readonly SessionInfo[], asks: readonly PendingAsk[]) {
+  if (session.where !== 'local') return undefined;
+  const twins = sessions.filter(
+    (one) => one.where === 'local' && one.agent === session.agent && one.id === session.id,
+  ).length;
+  if (twins > 1) return undefined;
+  return asks.filter((one) => one.agent === session.agent && one.session === session.id).sort((a, b) => a.at - b.at)[0];
+}
+
+/**
  * The queue of the Needs you page: everything that waits for the person, across projects and
  * agents. The open chat's approvals first, then what the tower holds, then the sessions that ask
  * now (those that wait on a tool before those that ask in words); what waits longest comes first
@@ -119,7 +181,7 @@ const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slic
 export function needsItems(input: NeedsInput): NeedsItem[] {
   const now = input.now ?? Date.now();
   const chat = input.chat;
-  const sessions = input.sessions ?? [];
+  const sessions = needsSessions(input.sessions, input.own);
   const own = new Set((input.own ?? []).map(sessionKey));
   const asks = input.asks ?? [];
   const elsewhere = waitingElsewhere({
@@ -139,16 +201,22 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
     const key = `chat:${request.id}`;
     // The tower knows which agent of the pack asks, and for which task.
     const told = input.tower?.find((item) => item.id === `${TOWER_TURN_ITEM}${chat!.turnId}:${request.id}`);
+    // Without a tower, the running turn's pack says the same.
+    const task = told ? undefined : chat!.pack?.tasks.find((one) => one.id === request.subtaskId);
+    const from = told ? told.origin : task ? `Pack task ${task.id}` : chat!.pack ? 'Pack lead' : 'Chat';
     const asked = request.kind === 'question';
-    const decide = (decision: ApprovalDecision): NeedsDecision => ({ via: 'chat', id: request.id, decision });
+    // Under the tower's id the answer reaches the request only while the turn that asked runs: a
+    // click that comes late cannot answer a request of a later turn that reuses its id.
+    const decide = (decision: ApprovalDecision): NeedsDecision =>
+      told ? { via: 'tower', id: told.id, decision } : { via: 'chat', id: request.id, decision };
     return {
       key,
       source: 'here',
       kind: asked ? 'question' : 'approval',
       action: request.scope === 'turn' ? 'Permission for this turn' : APPROVAL_ACTION[request.kind],
-      agent: told?.agent ?? chat!.agent,
-      project: projectOf(told?.cwd ?? chat!.cwd),
-      origin: `this chat${chat!.title ? ` “${chat!.title}”` : ''}${told && told.origin !== 'Chat' ? ` · ${towerText(told.origin)}` : ''}`,
+      agent: towerText(told?.agent ?? task?.agent ?? chat!.pack?.lead ?? chat!.agent),
+      project: projectOf(told?.cwd ?? task?.cwd ?? chat!.cwd),
+      origin: `this chat${chat!.title ? ` “${chat!.title}”` : ''}${from !== 'Chat' ? ` · ${towerText(from)}` : ''}`,
       text: asked
         ? (request.questions ?? []).map((question) => question.question).join('\n') || (request.summary ?? '')
         : towerText(request.summary ?? request.kind, true),
@@ -202,16 +270,15 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
   const asking = elsewhere.sessions.map((session): NeedsItem => {
     const approval = session.waitingFor === 'approval';
     // Without a tower the hook's question is answered from here.
-    const ask = approval
-      ? asks.filter((one) => one.agent === session.agent && one.session === session.id).sort((a, b) => a.at - b.at)[0]
-      : undefined;
+    const ask = approval ? askOf(session, sessions, asks) : undefined;
     const sender =
       !approval && acceptsSessionPrompt(session)
         ? input.senders?.find((one) => one.agent === session.agent && one.source === session.source)
         : undefined;
     const commands = session.waitingCommands?.map((one) => `${one.tool}  ${one.command}`).join('\n');
     return {
-      key: `session:${sessionKey(session)}`,
+      // The question is part of it: once one is answered and the next waits, the card is another.
+      key: `session:${sessionKey(session)}${ask ? `:${ask.id}` : ''}`,
       source: sourceOf(session),
       kind: approval ? 'approval' : 'question',
       action: approval ? 'Permission request' : (ENDING_ACTION[session.ending ?? ''] ?? 'Answer a question'),

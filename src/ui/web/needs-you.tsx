@@ -76,7 +76,9 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   };
 
   const shown = items.filter((item) => underFilter(item, filter));
-  const status = feedback || towerText(props.tower?.status ?? '');
+  // What was done here, and what the tower last did (a delivery that failed after a reply was
+  // sent says so too): each on its own.
+  const towerStatus = towerText(props.tower?.status ?? '');
   return (
     <main className="needs-page" aria-label="Needs you">
       <div className="needs-in">
@@ -92,7 +94,9 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
           <p className="errors">Unavailable stores · {props.tower.unavailable.map((s) => towerText(s)).join(', ')}</p>
         ) : null}
         <p role="status" className="needs-status">
-          {status}
+          {feedback ? <span>{feedback}</span> : null}
+          {feedback && towerStatus ? ' · ' : null}
+          {towerStatus ? <span data-from="tower">{towerStatus}</span> : null}
         </p>
         {items.length ? (
           <div className="needs-filters" role="group" aria-label="Filter">
@@ -175,9 +179,10 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                   session={item.reply!.session}
                   token={props.token}
                   sandboxes={item.reply!.sandboxes}
-                  onClose={() => setReplyTo(undefined)}
+                  onClose={() => setReplyTo((current) => (current === item.key ? undefined : current))}
                   onSent={(reply) => {
-                    setReplyTo(undefined);
+                    // Another card's editor may be open by now: its draft stays.
+                    setReplyTo((current) => (current === item.key ? undefined : current));
                     setFeedback(`Sent to ${item.agent}, ${item.origin}.`);
                     props.onReplied(item.reply!.session, reply);
                   }}

@@ -211,3 +211,86 @@ it('says so when nothing needs the person, and keeps what the tower last did', (
   expect(host.querySelector('[role="status"]')?.textContent).toBe('Message sent to codex / flaky.');
   expect(host.querySelector('.errors')?.textContent).toBe('Unavailable stores · gemini');
 });
+
+it('gives the next question of a session a card of its own: a button of the last one does not answer it', async () => {
+  const hooked: SessionInfo = { ...gate, id: 'hooked', title: 'Ship it', ending: undefined, waitingFor: 'approval' };
+  const ask = { id: 'abc', agent: 'claude', session: 'hooked', tool: 'Bash', preview: 'npm publish', at: now, pid: 1 };
+  const queue = (pending: (typeof ask)[]) =>
+    needsItems({ sessions: [hooked], asks: pending, now }).filter((one) => one.key.startsWith('session:'));
+  const decide = vi.fn(async () => true);
+  render(props({ items: queue([ask]), decide }));
+  const first = button(card('Ship it'), 'Approve');
+  first.focus();
+  // The question expired, and the session asks the next one.
+  render(props({ items: queue([{ ...ask, id: 'def', preview: 'npm version patch' }]), decide }));
+  const next = button(card('Ship it'), 'Approve');
+  expect(next).not.toBe(first);
+  expect(first.isConnected).toBe(false);
+  expect(document.activeElement).not.toBe(next);
+  await click(next);
+  expect(decide).toHaveBeenCalledWith({ via: 'ask', id: 'def', behavior: 'allow' });
+});
+
+it('keeps the reply being written to one session when a reply to another lands', async () => {
+  const other: SessionInfo = { ...gate, id: 'bakery', title: 'Sourdough schedule', lastReply: 'Bake today?' };
+  const two = needsItems({
+    sessions: [gate, other],
+    own: [gate, other],
+    senders: [{ agent: 'claude', source: 'claude', sandboxes: [] }],
+    now,
+  });
+  let land!: (res: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>((resolve) => (land = resolve))),
+  );
+  const onReplied = vi.fn();
+  render(props({ items: two, onReplied }));
+  const type = async (within: Element, text: string) => {
+    const field = within.querySelector('textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, text);
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  // A reply to the first session goes out, and does not land yet.
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  await type(card('Gate verdict retries'), 'On 502 too.');
+  await act(async () => {
+    card('Gate verdict retries')
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  // Meanwhile a reply to the other is being written.
+  await click(button(card('Sourdough schedule'), 'Reply'));
+  await type(card('Sourdough schedule'), 'Wait until Friday.');
+  await act(async () => land(new Response(JSON.stringify({ ok: true, text: 'On it.' }))));
+  expect(onReplied).toHaveBeenCalledWith(gate, 'On it.');
+  expect(card('Sourdough schedule').querySelector('textarea')?.value).toBe('Wait until Friday.');
+});
+
+it('says what the tower last did also after a reply was sent from here', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify({ ok: true, text: 'On it.' }))),
+  );
+  const tower = { status: 'Message sent to codex / flaky.', unavailable: [] };
+  render(props({ tower }));
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  const field = card('Gate verdict retries').querySelector('textarea')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'On 502 too.');
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    card('Gate verdict retries')
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  const status = () => host.querySelector('[role="status"]')?.textContent;
+  expect(status()).toBe('Sent to claude, chat “Gate verdict retries”. · Message sent to codex / flaky.');
+  // A delivery of the tower fails later: that is read too, beside the reply's word.
+  render(props({ tower: { status: 'Could not send the message to codex / flaky.', unavailable: [] } }));
+  expect(status()).toContain('Sent to claude');
+  expect(host.querySelector('[data-from="tower"]')?.textContent).toBe('Could not send the message to codex / flaky.');
+});

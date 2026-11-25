@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { personText } from '../../agents/host-text.js';
@@ -43,7 +43,7 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
-import { needsItems, type NeedsDecision } from '../needs-you.js';
+import { needsItems, needsSessions, withoutAnswered, type NeedsDecision } from '../needs-you.js';
 import { NeedsYouPage, useFirstSeen } from './needs-you.js';
 import { chatLimits, SettingsPage, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
@@ -198,11 +198,17 @@ interface Chats {
   senders: NonNullable<WebSessionListing['senders']>;
   /** Asks again now: something was answered from here. */
   refresh(): void;
+  /**
+   * A hook's question was answered from here (or already elsewhere): it no longer waits, nor does
+   * its session while no other question of it does, whatever the listing says until it is read again.
+   */
+  answered(ask: string): void;
   /** A reply went to this session: it works again, whatever the stores still say until they are read. */
   replied(session: SessionInfo): void;
 }
 
 const NO_LISTING: WebSessionListing = { sessions: NO_SESSIONS, errors: [] };
+const NO_ASKS_GONE: ReadonlySet<string> = new Set();
 
 /**
  * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
@@ -213,6 +219,16 @@ function useChats(enabled: boolean, stamp: string): Chats {
   const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
   const [listing, setListing] = useState<WebSessionListing>(NO_LISTING);
   const [round, setRound] = useState(0);
+  // The questions answered from here that a listing may still hold: forgotten once one does not.
+  const [gone, setGone] = useState<ReadonlySet<string>>(NO_ASKS_GONE);
+  const keepListing = useCallback((found: WebSessionListing) => {
+    setListing(found);
+    setGone((ids) => {
+      const still = new Set((found.asks ?? []).map((ask) => ask.id));
+      const kept = [...ids].filter((id) => still.has(id));
+      return kept.length === ids.size ? ids : new Set(kept);
+    });
+  }, []);
   useEffect(() => {
     if (!enabled || !token) return;
     let current = true;
@@ -228,7 +244,7 @@ function useChats(enabled: boolean, stamp: string): Chats {
     const ask = () => {
       if (document.visibilityState !== 'visible') return;
       void list('days=30&own=1', (found) => setOwn(found.sessions ?? []));
-      void list('days=7', setListing);
+      void list('days=7', keepListing);
     };
     ask();
     const timer = window.setInterval(ask, LIMITS_EVERY_MS);
@@ -239,13 +255,18 @@ function useChats(enabled: boolean, stamp: string): Chats {
       document.removeEventListener('visibilitychange', ask);
     };
   }, [enabled, stamp, round]);
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const { sessions: all, asks } = withoutAnswered(listing.sessions ?? NO_SESSIONS, listing.asks ?? [], gone);
+    return {
       own,
-      all: listing.sessions ?? NO_SESSIONS,
-      asks: listing.asks ?? [],
+      all,
+      asks,
       senders: listing.senders ?? [],
       refresh: () => setRound((value) => value + 1),
+      answered: (ask) => {
+        setGone((ids) => new Set([...ids, ask]));
+        setRound((value) => value + 1);
+      },
       replied: (session) => {
         const same = (one: SessionInfo) => one.source === session.source && one.id === session.id;
         const working = (one: SessionInfo): SessionInfo =>
@@ -254,9 +275,8 @@ function useChats(enabled: boolean, stamp: string): Chats {
         setListing((found) => ({ ...found, sessions: (found.sessions ?? []).map(working) }));
         setRound((value) => value + 1);
       },
-    }),
-    [own, listing],
-  );
+    };
+  }, [own, listing, gone]);
 }
 
 interface PageConfig {
@@ -1316,10 +1336,12 @@ function App() {
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
   const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
   const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
+  // This app's chats that every agent's list leaves out (an automated one) ask too.
+  const needsRows = useMemo(() => needsSessions(chats.all, ownChats), [chats.all, ownChats]);
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
-    sessions: chats.all,
+    sessions: needsRows,
     open: { id: session?.sessionId, source: openStore },
   });
   // What has no time of its own waits since this window first saw it.
@@ -1338,10 +1360,12 @@ function App() {
           title: convTitle,
           id: session.sessionId,
           source: openStore,
+          pack:
+            lastTurn?.pack && !lastTurn.result ? { lead: lastTurn.pack.lead, tasks: lastTurn.pack.tasks } : undefined,
         }
       : undefined,
     tower: view?.tower?.items,
-    sessions: chats.all,
+    sessions: needsRows,
     own: ownChats,
     asks: chats.asks,
     senders: chats.senders,
@@ -1349,13 +1373,22 @@ function App() {
   });
   const decideNeed = async (decision: NeedsDecision): Promise<boolean> => {
     if (decision.via === 'chat') return command({ type: 'approve', id: decision.id, decision: decision.decision });
-    if (decision.via === 'tower') return command({ type: 'tower', id: decision.id, decision: decision.decision });
+    if (decision.via === 'tower') {
+      const done = await command({ type: 'tower', id: decision.id, decision: decision.decision });
+      // A hook's question the tower answered: the listing still has it, and the session waiting,
+      // until it is read again.
+      if (done && decision.id.startsWith('hook:')) chats.answered(decision.id.slice('hook:'.length));
+      else chats.refresh();
+      return done;
+    }
     const res = await fetch(`/api/asks/${decision.id}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ behavior: decision.behavior }),
     });
-    chats.refresh();
+    // Answered now, or meanwhile elsewhere (409): either way it no longer waits.
+    if (res.ok || res.status === 409) chats.answered(decision.id);
+    else chats.refresh();
     // 409: answered meanwhile, elsewhere.
     if (!res.ok && res.status !== 409) throw new Error(`The server answered ${res.status}.`);
     return res.ok;
@@ -1540,6 +1573,7 @@ function App() {
             onNewTopicChat={isHome ? startTopicChat : undefined}
             // The chat says what happened, also when it could not.
             onContinue={takeOverChat}
+            onAnswered={chats.answered}
           />
         ) : null}
         {panel === 'needs' ? (

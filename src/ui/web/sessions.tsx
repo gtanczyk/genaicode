@@ -93,6 +93,7 @@ export function Sessions({
   initialDays,
   nativeSave,
   onStatus,
+  onAnswered,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
@@ -101,6 +102,8 @@ export function Sessions({
   home?: boolean;
   /** Take the session over in the chat. */
   onContinue(session: SessionInfo): void;
+  /** A question a session held open was answered here (or already elsewhere): the window's other lists drop it. */
+  onAnswered?(ask: string): void;
   /** Start a new conversation in the resolved directory of a topic (`--home` mode). */
   onNewTopicChat?(topicId: string): void;
   /** Show only this topic (its id), as picked on the start screen. */
@@ -241,15 +244,16 @@ export function Sessions({
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ behavior, ...(message ? { message } : {}) }),
     })
-      .then((res) =>
+      .then((res) => {
+        if (res.ok || res.status === 409) onAnswered?.(ask.id);
         setAnswerFailed(
           res.ok
             ? undefined
             : res.status === 409
               ? 'That question was answered already.'
               : `The server answered ${res.status}.`,
-        ),
-      )
+        );
+      })
       .catch((error: unknown) => setAnswerFailed(error instanceof Error ? error.message : String(error)))
       .finally(() => {
         setAnswering(undefined);

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { PendingAsk } from '../agents/sessions/answer.js';
 import type { TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
-import { needsFilters, needsItems, underFilter, waited, type NeedsInput } from './needs-you.js';
+import {
+  needsFilters,
+  needsItems,
+  needsSessions,
+  underFilter,
+  waited,
+  withoutAnswered,
+  type NeedsInput,
+} from './needs-you.js';
 import { needsYou } from './sidebar.js';
 
 const now = Date.parse('2026-11-25T10:00:00Z');
@@ -98,7 +106,7 @@ const count = (from: NeedsInput) =>
   needsYou({
     approvals: from.chat?.approvals.length ?? 0,
     tower: from.tower,
-    sessions: from.sessions,
+    sessions: needsSessions(from.sessions, from.own),
     open: { id: from.chat?.id, source: from.chat?.source },
     now,
   }).total;
@@ -126,7 +134,7 @@ describe('needsItems', () => {
       'chat:req-1',
       'chat:req-2',
       'session:gemini:native',
-      'session:codex:hooked',
+      'session:codex:hooked:abc',
       'session:codex:flaky',
       'session:claude:gate',
     ]);
@@ -173,10 +181,15 @@ describe('needsItems', () => {
 
   it('offers the answers each source takes', () => {
     const labels = (key: string, from = input) => item(key, from).choices.map((choice) => choice.label);
-    // The open chat's approval, by the chat's own command.
+    // The open chat's approval: under the tower's id where the tower lists it (the tower checks the
+    // turn), else by the chat's own command.
     expect(item('chat:req-1').choices).toEqual([
-      { label: 'Approve', primary: true, decision: { via: 'chat', id: 'req-1', decision: 'approve' } },
-      { label: 'Deny', decision: { via: 'chat', id: 'req-1', decision: 'deny' } },
+      { label: 'Approve', primary: true, decision: { via: 'tower', id: 'turn:4:req-1', decision: 'approve' } },
+      { label: 'Deny', decision: { via: 'tower', id: 'turn:4:req-1', decision: 'deny' } },
+    ]);
+    expect(item('chat:req-1', { ...input, tower: undefined }).choices.map((choice) => choice.decision)).toEqual([
+      { via: 'chat', id: 'req-1', decision: 'approve' },
+      { via: 'chat', id: 'req-1', decision: 'deny' },
     ]);
     expect(item('chat:req-1').open).toEqual({ to: 'chat' });
     // A question with choices is answered in the chat.
@@ -200,11 +213,11 @@ describe('needsItems', () => {
     expect(item('session:codex:flaky', { ...input, senders: [] }).reply).toBeUndefined();
     // Without a tower a hook's question is answered at its own endpoint, and one no hook holds is not.
     const bare = { ...input, tower: undefined };
-    expect(item('session:codex:hooked', bare).choices.map((choice) => choice.decision)).toEqual([
+    expect(item('session:codex:hooked:abc', bare).choices.map((choice) => choice.decision)).toEqual([
       { via: 'ask', id: 'abc', behavior: 'allow' },
       { via: 'ask', id: 'abc', behavior: 'deny' },
     ]);
-    expect(item('session:codex:hooked', bare).reply).toBeUndefined();
+    expect(item('session:codex:hooked:abc', bare).reply).toBeUndefined();
     expect(labels('session:gemini:native', bare)).toEqual([]);
     expect(item('session:gemini:native', bare).note).toContain('Answer it in gemini');
   });
@@ -217,6 +230,96 @@ describe('needsItems', () => {
     expect(since('tower:native:["gemini","native"]')).toBe(now - 40 * MIN);
     expect(since('tower:draft-1')).toBe(now - 10_000);
     expect(since('session:codex:flaky')).toBe(now - 3 * 60 * MIN);
+  });
+});
+
+describe('needsItems, where answers could reach the wrong request', () => {
+  const bare = { ...input, tower: undefined };
+
+  it('keys a hook card by its question: the next question of the session is another card', () => {
+    const first = needsItems(bare).find((one) => one.key.startsWith('session:codex:hooked'))!;
+    const next: PendingAsk = { ...asks[0]!, id: 'def', preview: 'npm version patch', at: now - MIN };
+    const after = needsItems({ ...bare, asks: [next] }).find((one) => one.key.startsWith('session:codex:hooked'))!;
+    expect(first.key).toBe('session:codex:hooked:abc');
+    expect(after.key).toBe('session:codex:hooked:def');
+    expect(after.choices[0]!.decision).toEqual({ via: 'ask', id: 'def', behavior: 'allow' });
+    // A session that waits on no hook keeps its key.
+    expect(needsItems({ ...bare, asks: [] }).map((one) => one.key)).toContain('session:codex:hooked');
+  });
+
+  it('answers a hook only for the local session of its agent, and not when two rows could be it', () => {
+    const cloud = session('hooked', { source: 'codexCloud', agent: 'codex', where: 'cloud', waitingFor: 'approval' });
+    const both = needsItems({ ...bare, sessions: [...sessions, cloud] });
+    const choices = (source: string) =>
+      both.find((one) => one.key.startsWith(`session:${source}:hooked`))!.choices.map((c) => c.decision);
+    expect(choices('codex')).toEqual([
+      { via: 'ask', id: 'abc', behavior: 'allow' },
+      { via: 'ask', id: 'abc', behavior: 'deny' },
+    ]);
+    // The cloud row with the same agent and id is not the one the hook runs beside.
+    expect(choices('codexCloud')).toEqual([]);
+    expect(both.find((one) => one.key === 'session:codexCloud:hooked')!.note).toContain('Answer it in codex');
+    // Two local rows with the same agent and id: which one asks is not known, so neither answers.
+    const twin = session('hooked', { source: 'codexLive', agent: 'codex', waitingFor: 'approval' });
+    const twins = needsItems({ ...bare, sessions: [...sessions, twin] }).filter((one) => one.key.includes(':hooked'));
+    expect(twins.map((one) => one.key)).toEqual(['session:codex:hooked', 'session:codexLive:hooked']);
+    expect(twins.flatMap((one) => one.choices)).toEqual([]);
+  });
+
+  it('answers an approval of the open chat under the turn that asked, when the tower names it', () => {
+    // The tower lists the request of turn 4: the answer goes under that id, which the tower
+    // checks against the running turn, so a late click cannot answer turn 5's request of the same id.
+    expect(item('chat:req-1').choices[0]!.decision).toEqual({ via: 'tower', id: 'turn:4:req-1', decision: 'approve' });
+    // A tower item of another turn is not this request's.
+    const stale = needsItems({ ...input, chat: { ...input.chat!, turnId: 5 } }).find(
+      (one) => one.key === 'chat:req-1',
+    )!;
+    expect(stale.choices[0]!.decision).toEqual({ via: 'chat', id: 'req-1', decision: 'approve' });
+  });
+
+  it('lists and counts this app’s chats that every agent’s sessions leave out, each once', () => {
+    // An automated chat of this app: not among every agent's sessions.
+    const cron = asking('cron', { title: 'Nightly triage', automated: true });
+    const withCron = { ...input, own: [...own, cron] };
+    expect(needsItems(withCron).map((one) => one.key)).toContain('session:claude:cron');
+    expect(needsItems(withCron)).toHaveLength(count(withCron));
+    expect(count(withCron)).toBe(count(input) + 1);
+    // Where both have a row, every agent's sessions' wins: the own row that says otherwise is not read.
+    const stale = { ...input, own: [session('open'), session('gate', { title: 'Gate verdict retries' })] };
+    expect(needsItems(stale).map((one) => one.key)).toContain('session:claude:gate');
+    expect(needsSessions(sessions, [session('gate')]).filter((one) => one.id === 'gate')).toEqual([own[1]]);
+  });
+
+  it('shows the worker that asks in --delegate without a tower, in its worktree', () => {
+    const pack = {
+      lead: 'claude',
+      tasks: [{ id: 't3', agent: 'codex', cwd: '/work/app/.genaicode/worktrees/t3' }],
+    };
+    const delegated = { ...bare, chat: { ...bare.chat!, agent: 'claude', pack } };
+    expect(item('chat:req-1', delegated)).toMatchObject({
+      agent: 'codex',
+      project: { name: 't3', path: '/work/app/.genaicode/worktrees/t3' },
+      origin: 'this chat “Ship the layout” · Pack task t3',
+    });
+    // An approval that names no task is the lead's.
+    expect(item('chat:req-2', delegated)).toMatchObject({
+      agent: 'claude',
+      project: { name: 'app', path: '/work/app' },
+      origin: 'this chat “Ship the layout” · Pack lead',
+    });
+    // Outside --delegate, the chat's own.
+    expect(item('chat:req-1', bare)).toMatchObject({ agent: 'claude', origin: 'this chat “Ship the layout”' });
+  });
+
+  it('escapes the folder for display and keeps the path as it is', () => {
+    // A right-to-left override and a bell in the folder's name.
+    const odd = '/work/\u202eppa\u0007';
+    const from = { ...bare, chat: { ...bare.chat!, cwd: odd } };
+    expect(item('chat:req-2', from).project).toEqual({
+      name: '\\u202eppa\\u0007',
+      path: '/work/\\u202eppa\\u0007',
+      dir: odd,
+    });
   });
 });
 
@@ -240,4 +343,25 @@ it('groups the queue under filters, each with its count', () => {
   ]);
   expect(needsFilters([])[1]).toEqual({ filter: 'here', label: 'This chat', count: 0 });
   expect(items.filter((one) => underFilter(one, 'app')).map((one) => one.key)).toEqual(['session:claude:gate']);
+});
+
+it('drops what was answered from here from a listing read before, until it is read again', () => {
+  const hooked = sessions.find((one) => one.id === 'hooked')!;
+  const next: PendingAsk = { ...asks[0]!, id: 'def', at: now - MIN };
+  // The tower answered `abc`: the card does not come back from the listing read before.
+  const after = withoutAnswered(sessions, asks, new Set(['abc']));
+  expect(after.asks).toEqual([]);
+  expect(after.sessions.find((one) => one.id === 'hooked')).toMatchObject({ state: 'active', waitingFor: undefined });
+  const bare = { ...input, tower: undefined, sessions: after.sessions, asks: after.asks };
+  expect(needsItems(bare).some((one) => one.key.includes(':hooked'))).toBe(false);
+  expect(count(bare)).toBe(count({ ...input, tower: undefined }) - 1);
+  // Another question of the same session still waits: so does the session.
+  const more = withoutAnswered(sessions, [...asks, next], new Set(['abc']));
+  expect(more.asks).toEqual([next]);
+  expect(more.sessions.find((one) => one.id === 'hooked')).toBe(hooked);
+  // A cloud row with the same agent and id is not the session the hook ran beside.
+  const cloud = session('hooked', { source: 'codexCloud', agent: 'codex', where: 'cloud', waitingFor: 'approval' });
+  expect(withoutAnswered([cloud], asks, new Set(['abc'])).sessions[0]).toBe(cloud);
+  // Nothing answered: the listing as it is.
+  expect(withoutAnswered(sessions, asks, new Set()).sessions).toBe(sessions);
 });
