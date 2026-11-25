@@ -178,6 +178,11 @@ export function WorkPanel(props: WorkPanelProps) {
   const back = useRef<string>(undefined);
   // The detail was opened from a row here (not from the chat): its back button takes the focus.
   const fromRow = useRef(false);
+  // Per chat and task, the revision whose diff the person opened. Kept here, not in the detail: Merge
+  // locally after leaving the task and opening it again still sends what was looked at, so a
+  // newer revision there is refused and its diff shown first.
+  const inspected = useRef(new Map<string, string>());
+  const chat = props.chatId ?? props.state?.sessionId ?? '';
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const act = props.disabled ? undefined : props.onPackAction;
   const approve = props.disabled ? undefined : props.onApprove;
@@ -226,8 +231,16 @@ export function WorkPanel(props: WorkPanelProps) {
         {open ? (
           <TaskDetail
             // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
-            key={`${props.chatId ?? props.state?.sessionId ?? ''}\n${open.key}`}
+            key={`${chat}\n${open.key}`}
             item={open}
+            inspected={{
+              get: () => inspected.current.get(`${chat}\n${open.key}`),
+              set: (revision) => {
+                const key = `${chat}\n${open.key}`;
+                if (revision) inspected.current.set(key, revision);
+                else inspected.current.delete(key);
+              },
+            }}
             now={now}
             cwd={props.state?.cwd ?? ''}
             focusBack={fromRow.current}
@@ -242,6 +255,8 @@ export function WorkPanel(props: WorkPanelProps) {
           />
         ) : (
           <TaskList
+            // Another chat's list starts where that chat's list was, not where this one is scrolled.
+            key={chat}
             tasks={tasks}
             now={now}
             view={view}
@@ -511,6 +526,7 @@ const CHANGE_WORD: Record<string, string> = { A: 'added', M: 'modified', D: 'del
 
 function TaskDetail({
   item,
+  inspected,
   now,
   cwd,
   focusBack,
@@ -520,6 +536,8 @@ function TaskDetail({
   onBack,
 }: {
   item: WorkTask;
+  /** The revision whose diff the person opened: Merge locally sends it, through reviews and tests. */
+  inspected: { get(): string | undefined; set(revision: string | undefined): void };
   now: number;
   cwd: string;
   focusBack: boolean;
@@ -533,11 +551,11 @@ function TaskDetail({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ text: string; revision?: string }>();
-  // The revision whose diff the person opened: Merge locally sends it, through reviews and tests.
-  const inspected = useRef<string>(undefined);
   // A merge refused because the worktree moved on from this revision: the diff reloads once the
   // newer revision is known, and the next merge takes another click.
   const [stale, setStale] = useState<string>();
+  // A diff read before the revision was known: it is read again once the revision is.
+  const [unresolved, setUnresolved] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const backButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -558,8 +576,14 @@ function TaskDetail({
     try {
       const text = await act(item.turnId, task.id, action);
       if (action.type === 'diff') {
-        inspected.current = action.revision;
-        setDiff({ text, revision: action.revision });
+        if (action.revision) {
+          inspected.set(action.revision);
+          setDiff({ text, revision: action.revision });
+        } else {
+          // The revision was not known: the server worked it out and reports it with the task. Read
+          // the diff again for that revision, so what shows is what Merge locally then sends.
+          setUnresolved(true);
+        }
       } else {
         if (action.type !== 'steer' && action.type !== 'review' && action.type !== 'verify') setFeedback({ text });
         setConfirm(undefined);
@@ -570,7 +594,7 @@ function TaskDetail({
       // The worktree moved on since the diff that was looked at: show what is there now first.
       // (`PackActionError` and the page's own errors carry the refusal's reason.)
       if (action.type === 'merge' && action.revision && (error as { reason?: unknown })?.reason === 'stale') {
-        inspected.current = undefined;
+        inspected.set(undefined);
         setDiff(undefined);
         setStale(action.revision);
       }
@@ -583,6 +607,11 @@ function TaskDetail({
     setStale(undefined);
     void perform({ type: 'diff', revision: checks.revision });
   }, [stale, busy, checks?.revision]);
+  useEffect(() => {
+    if (!unresolved || busy || !checks?.revision) return;
+    setUnresolved(false);
+    void perform({ type: 'diff', revision: checks.revision });
+  }, [unresolved, busy, checks?.revision]);
   const status = workStatus(item);
   const stopped = packTaskStopped(task);
   const error = packTaskError(task);
@@ -860,7 +889,7 @@ function TaskDetail({
                       type="button"
                       className={`gc-work-btn gc-work-sm${blocker || outdated ? '' : ' gc-work-primary'}`}
                       disabled={checking || !!stale}
-                      onClick={() => void perform({ type: 'merge', revision: inspected.current ?? checks?.revision })}
+                      onClick={() => void perform({ type: 'merge', revision: inspected.get() ?? checks?.revision })}
                     >
                       Merge locally
                     </button>

@@ -391,6 +391,77 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-feedback')).toBe('Merged t6');
   });
 
+  it('leaving the detail keeps the revision that was read: Merge after reopening reloads a newer one first', async () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) => {
+      if (action.type === 'diff') return `diff of ${action.revision}`;
+      if (action.type === 'merge' && action.revision !== B)
+        throw Object.assign(new Error('The worktree changed.'), { reason: 'stale' });
+      return 'Merged t6';
+    });
+    const task: PackTask = {
+      ...base,
+      id: 't6',
+      prompt: 'Change it.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta.ts'],
+      checks: { reviewer: 'claude', revision: A },
+    };
+    show([task], { props: { onPackAction: onAction, chatId: 'chat-a' } });
+    await actAsync(() => button('Show diff')!.click());
+    expect(text('.gc-work-diff')).toBe(`diff of ${A}`);
+    click(button('Tasks'));
+    // A review moved the worktree on to B while the person was on the list.
+    state.turns[0]!.pack!.tasks[0] = {
+      ...task,
+      checks: { reviewer: 'claude', revision: B, review: { revision: B, status: 'completed', detail: 'LGTM' } },
+    };
+    draw();
+    click($('[data-task="7:t6"] .gc-work-row'));
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenCalledWith(7, 't6', { type: 'merge', revision: A });
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff', revision: B });
+    expect(text('.gc-work-diff')).toBe(`diff of ${B}`);
+    expect(onAction.mock.calls.filter((call) => call[2].type === 'merge')).toHaveLength(1);
+    // Another chat's task with the same key has its own: nothing read there yet.
+    props = { ...props, chatId: 'chat-b' };
+    draw();
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: B });
+  });
+
+  it('a diff read before the revision was known is read again for the revision the server reports', async () => {
+    const R = 'c'.repeat(40);
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) =>
+      action.type === 'diff' ? `diff of ${action.revision ?? 'the worktree'}` : 'Merged t6',
+    );
+    // The first snapshot of the files failed: no revision yet.
+    const task: PackTask = {
+      ...base,
+      id: 't6',
+      prompt: 'Change it.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta.ts'],
+      checks: {},
+    };
+    show([task], { props: { onPackAction: onAction } });
+    await actAsync(() => button('Show diff')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff' });
+    // Reading the diff took a snapshot: the task now has the revision the server read.
+    state.turns[0]!.pack!.tasks[0] = { ...task, checks: { revision: R } };
+    draw();
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff', revision: R });
+    expect(text('.gc-work-diff')).toBe(`diff of ${R}`);
+    expect(button('Hide diff')).toBeDefined();
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: R });
+  });
+
   it("a task's detail belongs to its conversation: what was typed for one chat's 7:t1 is not in another's", () => {
     const running: PackTask = { ...base, id: 't1', prompt: 'Go.', status: 'running', canSteer: true };
     show([running], { props: { onPackAction: vi.fn(async () => ''), chatId: 'chat-a' } });
@@ -599,6 +670,25 @@ describe('<WorkPanel> task list', () => {
   const approvals: SessionState['approvals'] = [
     { id: 't5:ap-1', kind: 'command', subtaskId: 't5', summary: '[codex t5] npm install left-pad' },
   ];
+
+  it("another chat's list starts where that chat's list was scrolled", () => {
+    show(tasks, { list: true, props: { chatId: 'chat-a' } });
+    view = { ...view, scroll: 120 };
+    draw();
+    const scroller = () => $('.gc-work-scroll');
+    act(() => {
+      scroller().scrollTop = 120;
+    });
+    // The host keeps a view per chat: chat B was left at 300.
+    props = { ...props, chatId: 'chat-b' };
+    view = { tab: 'tasks', scroll: 300 };
+    draw();
+    expect(scroller().scrollTop).toBe(300);
+    props = { ...props, chatId: 'chat-a' };
+    view = { tab: 'tasks', scroll: 120 };
+    draw();
+    expect(scroller().scrollTop).toBe(120);
+  });
 
   it('groups rows by what to do next, with Done folded, and opens a task', () => {
     const onApprove = vi.fn();

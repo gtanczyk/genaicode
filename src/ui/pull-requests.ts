@@ -26,7 +26,9 @@ type Run = (command: string, args: readonly string[]) => Promise<string>;
 /**
  * Asks GitHub's own CLI (`gh pr view`) whether a pull request is open, merged or closed, with the
  * person's sign-in there, and git whether the task's worktree has the pull request's head branch
- * checked out: only then did the task open it (`ours`), and the work is in it. A reply that merely
+ * checked out at its head commit, with no uncommitted changes: only then did the task open it
+ * (`ours`), and all its work is in it. A commit not pushed yet, or an edit not committed, leaves the
+ * worktree to merge or discard, and the pull request a link. A reply that merely
  * links some pull request leaves the worktree to merge or discard as any other. No state when `gh`
  * is not installed or signed in, or does not answer in 10 seconds: the page then shows the pull
  * request without one.
@@ -50,6 +52,17 @@ export function pullRequestLookup(
           (error, stdout) => (error ? reject(error) : resolve(stdout)),
         );
       }));
+  const git = (worktree: string, ...args: string[]) =>
+    run('git', ['-C', worktree, ...args]).then(
+      (output) => output,
+      () => undefined,
+    );
+  /** The worktree is the pull request: its branch, at its head commit, with nothing else in it. */
+  const holds = async (worktree: string, branch: string, commit: string): Promise<boolean> => {
+    if ((await git(worktree, 'symbolic-ref', '--short', '-q', 'HEAD'))?.trim() !== branch) return false;
+    if ((await git(worktree, 'rev-parse', 'HEAD'))?.trim() !== commit) return false;
+    return (await git(worktree, 'status', '--porcelain'))?.trim() === '';
+  };
   let running = 0;
   const waiting: Array<() => void> = [];
   const release = () => {
@@ -61,22 +74,17 @@ export function pullRequestLookup(
     if (running < PULL_REQUEST_LOOKUPS_RUNNING) running += 1;
     else await new Promise<void>((resolve) => waiting.push(resolve));
     try {
-      const view = await run('gh', ['pr', 'view', url, '--json', 'state,headRefName']).then(
-        (output) => JSON.parse(output) as { state?: unknown; headRefName?: unknown },
+      const view = await run('gh', ['pr', 'view', url, '--json', 'state,headRefName,headRefOid']).then(
+        (output) => JSON.parse(output) as { state?: unknown; headRefName?: unknown; headRefOid?: unknown },
         () => undefined,
       );
       if (!view) return undefined;
       const raw = String(view.state ?? '').toLowerCase();
       const state = raw === 'open' || raw === 'merged' || raw === 'closed' ? raw : undefined;
       const head = typeof view.headRefName === 'string' ? view.headRefName : '';
-      const branch =
-        worktree && head
-          ? await run('git', ['-C', worktree, 'symbolic-ref', '--short', '-q', 'HEAD']).then(
-              (output) => output.trim(),
-              () => '',
-            )
-          : '';
-      return { ...(state ? { state } : {}), ours: !!branch && branch === head };
+      const commit = typeof view.headRefOid === 'string' ? view.headRefOid : '';
+      const ours = worktree && head && commit ? await holds(worktree, head, commit) : false;
+      return { ...(state ? { state } : {}), ours };
     } catch {
       return undefined;
     } finally {

@@ -9,10 +9,17 @@ import {
 const URL = 'https://github.com/acme/app/pull/351';
 const WORKTREE = '/w/.genaicode/worktrees/t1';
 
-/** `gh` answers `view`; git says the worktree has `branch` checked out (none: detached). */
-function tools(view: string, branch?: string) {
-  return vi.fn(async (...[command]: [command: string, args: readonly string[]]) => {
+const HEAD = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+
+/**
+ * `gh` answers `view`; git says the worktree has `branch` checked out (none: detached), at `commit`,
+ * with `status` from `git status --porcelain`.
+ */
+function tools(view: string, branch?: string, commit = HEAD, status = '') {
+  return vi.fn(async (...[command, args]: [command: string, args: readonly string[]]) => {
     if (command === 'gh') return view;
+    if (args[2] === 'rev-parse') return `${commit}\n`;
+    if (args[2] === 'status') return status;
     if (branch === undefined) throw new Error('fatal: ref HEAD is not a symbolic ref');
     return `${branch}\n`;
   });
@@ -25,7 +32,7 @@ describe('pullRequestLookup', () => {
     expect(await lookup(URL)).toEqual({ state: 'merged', ours: false });
     expect(await lookup(URL)).toEqual({ state: 'merged', ours: false });
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith('gh', ['pr', 'view', URL, '--json', 'state,headRefName']);
+    expect(run).toHaveBeenCalledWith('gh', ['pr', 'view', URL, '--json', 'state,headRefName,headRefOid']);
     expect(await pullRequestLookup({ run: tools('{"state":"OPEN"}') })(URL)).toEqual({ state: 'open', ours: false });
     expect(await pullRequestLookup({ run: tools('{"state":"CLOSED"}') })(URL)).toEqual({
       state: 'closed',
@@ -33,17 +40,40 @@ describe('pullRequestLookup', () => {
     });
   });
 
-  it("is the task's own only when its worktree has the pull request's head branch checked out", async () => {
-    const view = '{"state":"OPEN","headRefName":"work-panel"}';
+  it("is the task's own only when its worktree is the pull request's head branch at its head commit", async () => {
+    const view = `{"state":"OPEN","headRefName":"work-panel","headRefOid":"${HEAD}"}`;
     const run = tools(view, 'work-panel');
     expect(await pullRequestLookup({ run })(URL, WORKTREE)).toEqual({ state: 'open', ours: true });
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'symbolic-ref', '--short', '-q', 'HEAD']);
+    expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'rev-parse', 'HEAD']);
+    expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'status', '--porcelain']);
     // "Fixed locally, see PR #351 for the original bug": another branch, or none (a detached worktree).
     expect(await pullRequestLookup({ run: tools(view, 'fix-import') })(URL, WORKTREE)).toEqual({
       state: 'open',
       ours: false,
     });
     expect(await pullRequestLookup({ run: tools(view) })(URL, WORKTREE)).toEqual({ state: 'open', ours: false });
+    // The worker pushed the pull request, then committed once more without pushing: that commit is
+    // only in the worktree, which stays to merge or discard.
+    expect(await pullRequestLookup({ run: tools(view, 'work-panel', 'f'.repeat(40)) })(URL, WORKTREE)).toEqual({
+      state: 'open',
+      ours: false,
+    });
+    // ...or edited a file and did not commit it.
+    expect(await pullRequestLookup({ run: tools(view, 'work-panel', HEAD, ' M src/app.ts\n') })(URL, WORKTREE)).toEqual(
+      { state: 'open', ours: false },
+    );
+    expect(await pullRequestLookup({ run: tools(view, 'work-panel', HEAD, '?? notes.md\n') })(URL, WORKTREE)).toEqual({
+      state: 'open',
+      ours: false,
+    });
+    // gh did not say which commit the pull request is at.
+    expect(
+      await pullRequestLookup({ run: tools('{"state":"OPEN","headRefName":"work-panel"}', 'work-panel') })(
+        URL,
+        WORKTREE,
+      ),
+    ).toEqual({ state: 'open', ours: false });
   });
 
   it('has no answer when gh fails or says something else', async () => {
