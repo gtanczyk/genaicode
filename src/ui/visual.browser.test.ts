@@ -576,6 +576,12 @@ describe('the genaicode ui page looks as its baseline', () => {
       }
       // How long the turn took differs between runs.
       const mask = (page: Page) => [page.locator('.gc-turn-footer')];
+      // All four are drawn before the test fails, so one CI run's artifact holds every new baseline.
+      const differing: string[] = [];
+      const shot = (page: Page, name: string) =>
+        expectScreenshot(page, name, { mask: mask(page) }).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
       for (const [index, page] of pages.entries()) {
         // The sidebar's last piece: Help, where What's new is.
         await page.getByRole('button', { name: 'Help', exact: true }).waitFor();
@@ -589,7 +595,7 @@ describe('the genaicode ui page looks as its baseline', () => {
         );
         await steady(page);
         await settle(page);
-        await expectScreenshot(page, `page-start-${THEMES[index]}`, { mask: mask(page) });
+        await shot(page, `page-start-${THEMES[index]}`);
       }
       await pages[0]!.locator('.gc-chat textarea').fill('Why is the cart total wrong?');
       await pages[0]!.keyboard.press('Enter');
@@ -598,8 +604,9 @@ describe('the genaicode ui page looks as its baseline', () => {
         await page.locator('.gc-chat[data-status="idle"]').waitFor();
         await steady(page);
         await settle(page);
-        await expectScreenshot(page, `page-turn-${THEMES[index]}`, { mask: mask(page) });
+        await shot(page, `page-turn-${THEMES[index]}`);
       }
+      expect(differing).toEqual([]);
     } finally {
       await Promise.all(pages.map((page) => page.context().close()));
     }
