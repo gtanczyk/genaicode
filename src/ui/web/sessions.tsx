@@ -174,14 +174,14 @@ export function Sessions({
     const rows = [];
     const rank = (row: SessionInfo) =>
       Number(listing?.readable?.includes(row.source) ?? false) * 2 +
-      Number(listing?.senders?.some(sender => sender.agent === row.agent && sender.source === row.source) ?? false);
+      Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
     for (const group of sessionStores(listing?.sessions ?? [])) {
       // Display the readable source first, preferring one which can also resume the session.
-      group.sort((a,b) => rank(b) - rank(a) || b.updatedAt - a.updatedAt);
+      group.sort((a, b) => rank(b) - rank(a) || b.updatedAt - a.updatedAt);
       rows.push(group[0]!);
       for (const row of group) byStore.set(sessionKey(row), group);
     }
-    return {rows, byStore};
+    return { rows, byStore };
   }, [listing]);
   const all = useMemo(() => {
     if (!own) return index.rows;
@@ -191,7 +191,7 @@ export function Sessions({
     return sessions.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
   }, [index, own, home, cwd, listing]);
 
-  const storesOf = (row: SessionInfo) => own ? [row] : index.byStore.get(sessionKey(row)) ?? [row];
+  const storesOf = (row: SessionInfo) => (own ? [row] : (index.byStore.get(sessionKey(row)) ?? [row]));
   const topicNames = useMemo(
     () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
     [listing?.topics],
