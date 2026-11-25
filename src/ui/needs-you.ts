@@ -66,8 +66,11 @@ export interface NeedsItem {
   choices: NeedsChoice[];
   /** The session a reply can be sent to in place, and the sandboxes its agent offers. */
   reply?: { session: SessionInfo; sandboxes: readonly SandboxPolicy[] };
-  /** Where the item is at home: the open chat, another chat of this app, or the list of sessions. */
-  open: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions' };
+  /**
+   * Where the item is at home: the open chat, another chat of this app, or the list of sessions.
+   * Absent while this app's chats are not read yet (`ownKnown: false`) and the session could be one.
+   */
+  open?: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions' };
   /** Why nothing can be done here, when so. */
   note?: string;
 }
@@ -97,6 +100,12 @@ export interface NeedsInput {
   /** Every agent's sessions, and the ones this app started. */
   sessions?: readonly SessionInfo[];
   own?: readonly SessionInfo[];
+  /**
+   * Whether `own` has been read. Until it is, a session of every agent's list may be one of this
+   * app's chats: its item has no `open`, so it offers neither "Open chat" nor "Open session".
+   * Absent: known.
+   */
+  ownKnown?: boolean;
   /** The questions hooks hold open, and who can take a reply (`/api/sessions`). */
   asks?: readonly PendingAsk[];
   senders?: ReadonlyArray<{ agent: string; source: string; sandboxes: readonly SandboxPolicy[] }>;
@@ -132,12 +141,13 @@ const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slic
 
 /**
  * The sessions the queue reads: every agent's (`sessions`), and this app's own chats that list
- * leaves out (an automated one, for instance), each once by store and id, or by agent and id; where
- * both have a row, the one of every agent's sessions wins. The count on "Needs you" reads the same.
+ * leaves out (an automated one, for instance), each once by store and id; where both have a row,
+ * the one of every agent's sessions wins. Two stores may hold a session with the same agent and
+ * id: both rows stay, so `askOf()` sees they are two. The count on "Needs you" reads the same.
  */
 export function needsSessions(sessions: readonly SessionInfo[] = [], own: readonly SessionInfo[] = []): SessionInfo[] {
-  const listed = ownSession(sessions);
-  return [...sessions, ...own.filter((session) => !listed(session))];
+  const listed = new Set(sessions.map(sessionKey));
+  return [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
 }
 
 /**
@@ -214,7 +224,11 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
   });
   const sourceOf = (session: SessionInfo | undefined): NeedsSource => (session && isOwn(session) ? 'app' : 'tower');
   const openOf = (session: SessionInfo | undefined): NeedsItem['open'] =>
-    session && isOwn(session) ? { to: 'own', session } : { to: 'sessions' };
+    session && isOwn(session)
+      ? { to: 'own', session }
+      : session && input.ownKnown === false
+        ? undefined
+        : { to: 'sessions' };
   const named = (session: SessionInfo) => `${sourceOf(session) === 'app' ? 'chat' : 'session'} “${chatTitle(session)}”`;
   const oldestFirst = (a: NeedsItem, b: NeedsItem) => (a.since ?? now) - (b.since ?? now);
 

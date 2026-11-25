@@ -1285,6 +1285,8 @@ function App() {
     tower: view?.tower?.items,
     sessions: needsRows,
     own: ownChats,
+    // Until this app's chats are read, a session of the general index may be one: no Open action.
+    ownKnown: chats.ownKnown,
     asks: chats.asks,
     senders: chats.senders,
     seen,
@@ -1524,9 +1526,9 @@ function App() {
             tower={view?.tower}
             decide={decideNeed}
             onOpen={(item) => {
-              if (item.open.to === 'chat') backToChat();
-              else if (item.open.to === 'own') continueChat(item.open.session);
-              else openSessions('needs');
+              if (item.open?.to === 'chat') backToChat();
+              else if (item.open?.to === 'own') continueChat(item.open.session);
+              else if (item.open) openSessions('needs');
             }}
             sessionsPage={hasSessions}
             onReplied={chats.replied}

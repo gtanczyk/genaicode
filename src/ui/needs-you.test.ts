@@ -267,6 +267,38 @@ describe('needsItems, where answers could reach the wrong request', () => {
     expect(twins.flatMap((one) => one.choices)).toEqual([]);
   });
 
+  it('keeps an own chat of another store with the same agent and id, and answers neither', () => {
+    // Every agent's list has chat A; this app's own list has automated chat B in another store.
+    const a = session('hooked', { source: 'codex', agent: 'codex', title: 'Chat A', cwd: '/work/a' });
+    const b = session('hooked', {
+      source: 'codexLive',
+      agent: 'codex',
+      title: 'Chat B',
+      cwd: '/work/b',
+      automated: true,
+      waitingFor: 'approval',
+    });
+    expect(needsSessions([a], [b])).toEqual([a, b]);
+    const items = needsItems({ ...bare, sessions: [a], own: [b] }).filter((one) => one.key.includes(':hooked'));
+    // B asks under its own title and project, and the hook's question is not answered from here.
+    expect(items.map((one) => [one.key, one.origin, one.project?.dir])).toEqual([
+      ['session:codexLive:hooked', 'chat “Chat B”', '/work/b'],
+    ]);
+    expect(items[0]!.choices).toEqual([]);
+  });
+
+  it('offers no Open action for a session of every agent’s list until this app’s chats are read', () => {
+    const early = needsItems({ ...input, own: [], ownKnown: false });
+    // It may be one of this app's chats: neither "Open session" nor "Open chat" yet.
+    expect(early.find((one) => one.key === 'session:claude:gate')!.open).toBeUndefined();
+    expect(early.find((one) => one.key === 'tower:hook:abc')!.open).toBeUndefined();
+    // A tower item no listed session is for still opens All sessions; the open chat's own still open it.
+    expect(early.find((one) => one.key === 'tower:draft-1')!.open).toEqual({ to: 'sessions' });
+    expect(early.find((one) => one.key === 'chat:req-1')!.open).toEqual({ to: 'chat' });
+    // Once they are read, it opens as the chat it is.
+    expect(item('session:claude:gate').open).toEqual({ to: 'own', session: own[1] });
+  });
+
   it('answers an approval of the open chat under the turn that asked, when the tower names it', () => {
     // The tower lists the request of turn 4: the answer goes under that id, which the tower
     // checks against the running turn, so a late click cannot answer turn 5's request of the same id.
