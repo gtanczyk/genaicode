@@ -321,8 +321,10 @@ export function workList(
       }));
   const present = keyed.filter((entry) => entry.tasks.length);
   const sections = present.map((entry): WorkSection => {
-    // Done is out of the way while anything else is there to look at.
-    const folded = !filtering && (view.folded?.[entry.key] ?? (entry.group === 'done' && present.length > 1));
+    // Done is out of the way while anything else is there to look at, but not from under a held
+    // row: a new task does not fold the group the pointer or the keyboard focus is in.
+    const auto = entry.group === 'done' && present.length > 1 && !entry.tasks.some((item) => held?.[item.key]);
+    const folded = !filtering && (view.folded?.[entry.key] ?? auto);
     // The newest 8 in every view: a chip or a filter opens a group, it does not unroll it.
     const limit = dense ? WORK_GROUP_SHOWN + Math.max(0, view.more?.[entry.key] ?? 0) : Infinity;
     // Holding one row back saves nothing.
@@ -453,7 +455,10 @@ export interface WorkPanelView {
   query?: string;
   /** Grouped by agent instead of status. */
   by?: 'agent';
-  /** Rows shown past a long group's first ones, by `WorkSection.key`. */
+  /**
+   * Rows shown past a long group's first ones, by `WorkSection.key`. Another chip or text filter
+   * starts again from the newest rows.
+   */
   more?: Partial<Record<string, number>>;
   /** Finished tasks cleared from the list (`WorkTask.key`). The conversation keeps them. */
   dismissed?: string[];

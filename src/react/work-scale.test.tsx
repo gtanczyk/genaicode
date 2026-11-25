@@ -319,10 +319,11 @@ describe('<WorkPanel> with 150 tasks', () => {
     expect(text('.gc-work-tab')).toBe('Tasks 150');
     expect(text('.gc-work-foot span')).toBe('108 cleared from this list. Show them');
 
-    // One row: its own button, and the group's header takes the keyboard.
+    // One row: its own button, and the next row takes the keyboard.
+    act(() => $('[aria-label="Clear t103 from the list"]').focus());
     click($('[aria-label="Clear t103 from the list"]'));
     expect(ids('failed')).toEqual(['t104', 't102', 't101']);
-    expect(document.activeElement?.textContent).toBe('Failed 3');
+    expect(document.activeElement).toBe($('[data-task="7:t102"] .gc-work-row'));
     expect(text('.gc-work-foot span')).toBe('109 cleared from this list. Show them');
 
     // A cleared task that runs again is back by itself.
@@ -405,6 +406,90 @@ describe('<WorkPanel> with 150 tasks', () => {
     act(() => row().blur());
     expect($('[data-task="7:t143"]')).toBeNull();
     expect(ids('running')).toEqual([...range(145, 144), ...range(142, 137)]);
+  });
+
+  it('does not fold Done from under the focused row when a new task starts', () => {
+    const done = manyTasks().slice(0, 20);
+    show(done, { state: { approvals: [] } });
+    expect(heads()).toEqual([['Done 20', 'true']]);
+    const row = () => $('[data-task="7:t20"] .gc-work-row');
+    act(() => row().focus());
+    const kept = row();
+    state = session([...done, { ...manyTasks()[120]!, id: 't21' }], { approvals: [] });
+    draw();
+    expect(heads()).toEqual([
+      ['Running 1', 'true'],
+      ['Done 20', 'true'],
+    ]);
+    expect(row()).toBe(kept);
+    expect(document.activeElement).toBe(kept);
+    // The focus leaves: Done folds as it would have.
+    act(() => row().blur());
+    expect(heads()[1]).toEqual(['Done 20', 'false']);
+  });
+
+  it('clearing a row from the keyboard lets go of that row only, not the one under the pointer', () => {
+    show(manyTasks(), { state: { approvals: [] } });
+    act(() => void $('[data-task="7:t140"]').dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
+    const finished = manyTasks().map((task) =>
+      task.id === 't140'
+        ? {
+            ...task,
+            cwd: '/work/app',
+            mode: 'shared' as const,
+            state: undefined,
+            status: 'completed' as const,
+            endedAt: t0,
+          }
+        : task,
+    );
+    state = session(finished, { approvals: [] });
+    draw();
+    expect(ids('running')).toContain('t140');
+    const x = $('[aria-label="Clear t103 from the list"]');
+    act(() => x.focus());
+    click(x);
+    expect(view.dismissed).toEqual(['7:t103']);
+    // Still under the pointer: in Running, not in the folded Done.
+    expect(ids('running')).toContain('t140');
+    act(() => void $('[data-task="7:t140"]').dispatchEvent(new MouseEvent('mouseout', { bubbles: true })));
+    expect(ids('running')).not.toContain('t140');
+  });
+
+  it('opens a group on its newest 8 rows under a new chip or filter, however far All showed it', () => {
+    show(manyTasks(), { state: { approvals: [] } });
+    click($('[data-section="done"] .gc-work-group-head button'));
+    click($('[data-section="done"] .gc-work-more'));
+    expect(ids('done')).toHaveLength(58);
+    // Show 50 earlier gave the focus to the first row it added: the press on the chip takes it.
+    const chip = $$('.gc-work-chip').find((item) => item.textContent?.startsWith('Done'));
+    act(() => chip!.focus());
+    click(chip);
+    expect(ids('done')).toHaveLength(8);
+    click($('[data-section="done"] .gc-work-more'));
+    expect(ids('done')).toHaveLength(58);
+    act(() => $('.gc-work-filter').focus());
+    type('.gc-work-filter', 'review');
+    expect(ids('done')).toHaveLength(8);
+  });
+
+  it('under a chip, clearing a row from the keyboard gives the focus to a row beside it, then to the chip', () => {
+    show(manyTasks(), { state: { approvals: [] } });
+    click($$('.gc-work-chip').find((chip) => chip.textContent?.startsWith('Failed')));
+    const clearOne = (id: string) => {
+      const x = $(`[aria-label="Clear ${id} from the list"]`);
+      act(() => x.focus());
+      click(x);
+    };
+    clearOne('t104');
+    expect(document.activeElement).toBe($('[data-task="7:t103"] .gc-work-row'));
+    clearOne('t101');
+    expect(document.activeElement).toBe($('[data-task="7:t102"] .gc-work-row'));
+    clearOne('t102');
+    clearOne('t103');
+    // The last failed task went, and its chip with it: All is pressed and has the keyboard.
+    expect(document.activeElement).toBe($$('.gc-work-chip')[0]);
+    expect(document.activeElement?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('lets no row go while a button is pressed, so Approve on the next row is not moved away', async () => {

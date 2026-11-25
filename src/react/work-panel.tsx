@@ -344,6 +344,11 @@ function TaskList({
     over.current[how] = item;
     settle();
   };
+  /** Lets go of one row only: the pointer may be on another row, which stays where it is. */
+  const release = (key: string) => {
+    for (const how of ['hover', 'focus'] as const) if (over.current[how]?.key === key) over.current[how] = undefined;
+    settle();
+  };
   useEffect(() => {
     let later: ReturnType<typeof setTimeout> | undefined;
     // After the click the release makes, so it lands where the press did.
@@ -375,6 +380,32 @@ function TaskList({
     }
     setHeld((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !gone.includes(key))));
   });
+  // A cleared row that left no row beside it: its group's header takes the keyboard if it is still
+  // there and open to it, or else the chip that is pressed now.
+  const refocus = useRef<string>(undefined);
+  useLayoutEffect(() => {
+    const key = refocus.current;
+    refocus.current = undefined;
+    if (key === undefined) return;
+    const head = scroller.current?.querySelector<HTMLButtonElement>(
+      `[data-section="${CSS.escape(key)}"] .gc-work-group-head button`,
+    );
+    const chip = scroller.current?.parentElement?.querySelector<HTMLElement>('.gc-work-chip[aria-pressed="true"]');
+    const first = scroller.current?.querySelector<HTMLButtonElement>('.gc-work-group-head button:enabled');
+    (head && !head.disabled ? head : (chip ?? first))?.focus({ preventScroll: true });
+  });
+  /** Clears one row from its × (`button`): the next row takes the keyboard, or the one before. */
+  const clearRow = (item: WorkTask, button: HTMLElement, section: string) => {
+    const box = button.closest('.gc-work-task');
+    const beside = [box?.nextElementSibling, box?.previousElementSibling].find((el) =>
+      el?.classList.contains('gc-work-task'),
+    );
+    const row = beside?.querySelector<HTMLElement>('.gc-work-row');
+    if (row) row.focus({ preventScroll: true });
+    else if (box?.contains(document.activeElement)) refocus.current = section;
+    release(item.key);
+    clear([item]);
+  };
   // The first of the rows Show N more added takes the focus its button had.
   const reveal = useRef<{ key: string; index: number }>(undefined);
   useLayoutEffect(() => {
@@ -423,7 +454,10 @@ function TaskList({
                   type="button"
                   className="gc-work-chip"
                   aria-pressed={group ? view.filter === group : !view.filter || !list.counts[view.filter]}
-                  onClick={() => onView({ ...view, filter: group && view.filter !== group ? group : undefined })}
+                  onClick={() =>
+                    // Another chip opens its groups on their newest rows, not as far as the last one was shown.
+                    onView({ ...view, filter: group && view.filter !== group ? group : undefined, more: undefined })
+                  }
                 >
                   {group ? CHIP_LABEL[group] : 'All'} <i>{group ? list.counts[group] : list.total}</i>
                 </button>
@@ -438,13 +472,13 @@ function TaskList({
               maxLength={200}
               placeholder="Filter by title, agent, id or status"
               aria-label="Filter tasks"
-              onChange={(event) => onView({ ...view, query: event.target.value || undefined })}
+              onChange={(event) => onView({ ...view, query: event.target.value || undefined, more: undefined })}
               onKeyDown={(event) => {
                 // The first Escape clears the filter; the next one reaches the host (back to the chat).
                 if (event.key === 'Escape' && view.query && !event.nativeEvent.isComposing) {
                   event.preventDefault();
                   event.stopPropagation();
-                  onView({ ...view, query: undefined });
+                  onView({ ...view, query: undefined, more: undefined });
                 }
               }}
             />
@@ -521,7 +555,7 @@ function TaskList({
                       onOpen={onOpen}
                       onApprove={onApprove}
                       onHold={hold}
-                      onClear={workClearable(item) ? () => clear([item]) : undefined}
+                      onClear={workClearable(item) ? (button) => clearRow(item, button, key) : undefined}
                     />
                   ))}
                   {section.next ? (
@@ -550,7 +584,7 @@ function TaskList({
             <button
               type="button"
               className="gc-work-link"
-              onClick={() => onView({ ...view, filter: undefined, query: undefined })}
+              onClick={() => onView({ ...view, filter: undefined, query: undefined, more: undefined })}
             >
               Show all tasks
             </button>
@@ -590,8 +624,8 @@ function TaskRow({
   onApprove?: WorkPanelProps['onApprove'];
   /** The pointer or the keyboard focus came to the row (`item`), or left it. */
   onHold?(how: 'hover' | 'focus', item: WorkTask | undefined): void;
-  /** Clears the task from the list. Set for a finished task that left nothing to do. */
-  onClear?(): void;
+  /** Clears the task from the list, from its × (`button`). Set for a finished task that left nothing to do. */
+  onClear?(button: HTMLElement): void;
 }) {
   const { task } = item;
   const status = workStatus(item);
@@ -686,13 +720,7 @@ function TaskRow({
             className="gc-work-btn gc-work-xs gc-work-ghost gc-work-icon"
             title="Clear from this list. The conversation keeps the task."
             aria-label={`Clear ${task.id} from the list`}
-            onClick={(event) => {
-              // The row goes: the group's header takes the keyboard.
-              event.currentTarget.closest('section')?.querySelector<HTMLElement>('.gc-work-group-head button')?.focus();
-              onHold?.('focus', undefined);
-              onHold?.('hover', undefined);
-              onClear();
-            }}
+            onClick={(event) => onClear(event.currentTarget)}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path d="m4 4 8 8M12 4l-8 8" />
