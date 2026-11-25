@@ -50,7 +50,12 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     state: 'waiting',
     updatedAt: Date.now() - 60_000,
   };
+  // A second one, in another folder and listed later: taking it over gives the list a second project.
+  const roster: SessionInfo = { ...foreign, id: 'knights-1', cwd: knights, title: 'Round table' };
+  const theirs: SessionInfo[] = [foreign];
   const made: SessionInfo[] = [];
+  // Every prompt that reached the agent, with the folder and the session it ran in.
+  const ran: Array<{ prompt: string; cwd?: string; resume?: string }> = [];
   let seq = 0;
   const helper: CodingAgent = {
     name: 'helper',
@@ -59,7 +64,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     sessions: {
       name: 'helper',
       where: 'local',
-      list: async () => [foreign, ...made],
+      list: async () => [...theirs, ...made],
       read: async (session) => [
         {
           id: 1,
@@ -75,8 +80,9 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       const events: AgentEvent[] = [];
       const done = (async (): Promise<AgentResult> => {
         const id = task.resume ?? `sess-${++seq}`;
+        ran.push({ prompt: task.prompt, cwd: task.cwd, resume: task.resume });
         events.push({ type: 'session', sessionId: id });
-        if (![foreign, ...made].some((session) => session.id === id)) {
+        if (![...theirs, ...made].some((session) => session.id === id)) {
           made.push({
             source: 'helper',
             agent: 'helper',
@@ -300,6 +306,85 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await composer.press('Enter');
     await project.getByRole('button', { name: /Feed the starter/ }).waitFor();
     expect(made.at(-1)).toMatchObject({ title: 'Feed the starter', cwd: bakery });
+    await page.unroute('**/api/command');
+
+    // A second project, to move between two.
+    theirs.push(roster);
+    await side.getByRole('button', { name: 'All sessions', exact: true }).click();
+    await page
+      .locator('.session-row', { hasText: 'Round table' })
+      .getByRole('button', { name: 'Continue here' })
+      .click();
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
+    await composer.fill('Polish the armour');
+    await composer.press('Enter');
+    const castle = chats.locator('details.proj', { hasText: 'knights' });
+    await castle.getByRole('button', { name: /Round table|Polish the armour/ }).waitFor();
+
+    // Every request for another chat is held until the test lets it through (or refuses it).
+    const held: Array<{ type: string; answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
+    await page.route('**/api/command', async (route) => {
+      const { type } = route.request().postDataJSON() as { type: string };
+      if (type !== 'project-chat' && type !== 'continue') return route.fallback();
+      let done!: () => void;
+      const answered = new Promise<void>((resolve) => (done = resolve));
+      const go = await new Promise<boolean>((answer) => held.push({ type, answer, answered }));
+      await (go ? route.fallback() : route.fulfill({ json: { ok: false } }));
+      // The page has the answer a moment after the route is done with it.
+      setTimeout(done, 200);
+    });
+    const disabled = () => composer.getAttribute('aria-disabled');
+
+    // "New chat here" for one project, then for another while the first is still looked up: both
+    // are asked for, the first answer does not give the message field back, and the window ends in
+    // the project asked for last.
+    await composer.fill('Sharpen the swords');
+    await project.locator('summary').hover();
+    await project.getByRole('button', { name: 'New chat here, bakery' }).click();
+    await vi.waitFor(() => expect(held.length).toBe(1));
+    await castle.locator('summary').hover();
+    await castle.getByRole('button', { name: 'New chat here, knights' }).click();
+    await vi.waitFor(() => expect(held.length).toBe(2));
+    expect(held.map((one) => one.type)).toEqual(['project-chat', 'project-chat']);
+    held[0]!.answer(true);
+    await held[0]!.answered;
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('bakery'));
+    expect(await disabled()).toBe('true');
+    await composer.press('Enter');
+    held[1]!.answer(true);
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    expect(await topbar.locator('h1').textContent()).toBe('New chat');
+    expect(await composer.inputValue()).toBe('Sharpen the swords');
+
+    // A chat picked in the sidebar is looked up first: nothing is sent meanwhile, so the draft
+    // cannot start in the chat that is left. When the lookup fails the draft is still there.
+    const sent = ran.length;
+    held.length = 0;
+    await first.click();
+    await vi.waitFor(() => expect(held.length).toBe(1));
+    expect(held[0]!.type).toBe('continue');
+    expect(await disabled()).toBe('true');
+    await composer.press('Enter');
+    expect(await composer.inputValue()).toBe('Sharpen the swords');
+    held[0]!.answer(false);
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    expect(await composer.inputValue()).toBe('Sharpen the swords');
+    expect(await topbar.locator('.crumb').textContent()).toBe('knights');
+    expect(ran.length).toBe(sent);
+    // Once that chat is the open one, the draft goes to it.
+    await first.click();
+    await vi.waitFor(() => expect(held.length).toBe(2));
+    await composer.press('Enter');
+    held[1]!.answer(true);
+    await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
+    await vi.waitFor(async () => expect(await disabled()).toBeNull());
+    expect(ran.length).toBe(sent);
+    await composer.press('Enter');
+    await vi.waitFor(() => expect(ran.length).toBe(sent + 1));
+    expect(ran.at(-1)).toMatchObject({ cwd: made[0]!.cwd, resume: made[0]!.id });
+    expect(ran.at(-1)!.prompt).toContain('Sharpen the swords');
+    expect(ran.at(-1)!.cwd).not.toBe(knights);
     await page.unroute('**/api/command');
 
     // A window under 980 px starts with the rail until the person chooses.

@@ -899,10 +899,14 @@ function App() {
   // you), or this app's own chats of all time, the archived too (from "All chats").
   const [listed, setListed] = useState<'all' | 'needs' | 'own'>('all');
   const needsOnly = listed === 'needs';
-  // A chat is being started in another folder. Until the server says it runs there, nothing is
-  // sent: a prompt would start in the folder that is being left.
+  // The window is moving to another chat (a new one in a folder or a topic, or one picked from a
+  // list). Until the server answers the request made last, nothing is sent: a prompt would start
+  // in the chat, and the folder, that is being left. The message field keeps what is typed.
   const [switching, setSwitching] = useState(false);
   const switchingRef = useRef(false);
+  // Counts the requests, as the controller does: each is sent, and only the last one's answer
+  // gives the message field back. The answer of an earlier one says nothing about where the window is.
+  const switchSeq = useRef(0);
   const whatsNew = useRef<HTMLDialogElement>(null);
   const [seenRelease, setSeenRelease] = useState(() => {
     try {
@@ -950,18 +954,31 @@ function App() {
     if (wasSetupRef.current && !inSetup && showAgents) setPanel('chat');
     wasSetupRef.current = inSetup;
   }, [inSetup, showAgents]);
-  const startTopicChat = (topicId: string) => {
+  /** Asks for another chat in this window. `what` names it when no answer comes at all. */
+  const switchChat = (request: WebCommand, what: string) => {
+    // What still waits here was meant for the conversation that is left.
     dropWaiting();
     setViewer(undefined);
-    void command({ type: 'topic-chat', topic: topicId });
     setPanel('chat');
+    const mine = ++switchSeq.current;
+    switchingRef.current = true;
+    setSwitching(true);
+    void command(request)
+      .catch(() => undefined)
+      .then((done) => {
+        // Another chat was asked for meanwhile: its answer decides.
+        if (mine !== switchSeq.current) return;
+        switchingRef.current = false;
+        setSwitching(false);
+        // The chat says why when the server refused; no answer at all is said here.
+        if (done === undefined) showToast(`Could not ${what}.`, true);
+      });
   };
-  const startHomeChat = () => {
-    dropWaiting();
-    setViewer(undefined);
-    void command(isHome ? { type: 'home-chat' } : { type: 'submit', text: '/clear' });
-    setPanel('chat');
-  };
+  const startTopicChat = (topicId: string) =>
+    switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
+  const startHomeChat = () =>
+    switchChat(isHome ? { type: 'home-chat' } : { type: 'submit', text: '/clear' }, 'start a new chat');
+  const continueChat = (id: string) => switchChat({ type: 'continue', id }, 'open that chat');
   const convTopic = conversation?.topic?.name;
   const convTitle =
     conversation?.title ||
@@ -1053,7 +1070,7 @@ function App() {
     setPanel('chat');
   };
   const submit = (text: string, files?: File[]): Promise<boolean> => {
-    // Not sent, and the message field keeps it: the chat is moving to another folder.
+    // Not sent, and the message field keeps it: the window is moving to another chat.
     if (switchingRef.current) return Promise.resolve(false);
     // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
     const own = parseSlash(text);
@@ -1401,28 +1418,11 @@ function App() {
             : undefined,
           onOpenChat: (chat) => {
             if (openRow && sessionKey(chat) === sessionKey(openRow)) return backToChat();
-            // What still waits here was meant for the conversation that is left.
-            dropWaiting();
-            setViewer(undefined);
-            void command({ type: 'continue', id: chat.id });
-            setPanel('chat');
+            continueChat(chat.id);
           },
           onNewChatIn: (project) => {
             if (!isHome || project.key === HOME_FOLDER) return startHomeChat();
-            if (switchingRef.current) return;
-            dropWaiting();
-            setViewer(undefined);
-            setPanel('chat');
-            switchingRef.current = true;
-            setSwitching(true);
-            void command({ type: 'project-chat', cwd: project.key })
-              .catch(() => undefined)
-              .then((started) => {
-                switchingRef.current = false;
-                setSwitching(false);
-                // The chat says why when the server refused; no answer at all is said here.
-                if (started === undefined) showToast(`Could not start a chat in ${project.name}.`, true);
-              });
+            switchChat({ type: 'project-chat', cwd: project.key }, `start a chat in ${project.name}`);
           },
           // Outside --home the chat has one folder: a new chat starts there and nowhere else.
           canNewChatIn: (project) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
@@ -1469,14 +1469,8 @@ function App() {
             nativeSave={config?.nativeSave}
             onStatus={showToast}
             onNewTopicChat={isHome ? startTopicChat : undefined}
-            onContinue={(found) => {
-              // The chat says what happened, also when it could not.
-              // What still waits here was meant for the conversation that is left.
-              dropWaiting();
-              setViewer(undefined);
-              void command({ type: 'continue', id: found.id });
-              setPanel('chat');
-            }}
+            // The chat says what happened, also when it could not.
+            onContinue={(found) => continueChat(found.id)}
           />
         ) : null}
         {panel === 'inbox' && view?.tower && (
