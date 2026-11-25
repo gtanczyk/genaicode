@@ -45,7 +45,7 @@ scripts in `package.json`.
   the PR number, for example `- **Resume a session from All sessions.** (#149)`. The Changelog
   guard checks this format. Put optional behaviour and API details in indented Markdown bullets.
 - Prefix an entire library-only entry with `- lib: **Title.** (#149)`, or an individual detail
-  with `  - lib: `. What's new shows the highlights, app titles and their expandable app details.
+  with ` - lib:`. What's new shows the highlights, app titles and their expandable app details.
   GitHub Release notes include all public entries and details. Older one-line entries remain readable.
 - The category decides the bump: `### Breaking` major, `### Added` minor, `### Fixed` patch,
   `### Internal` (refactors, tooling, nothing a user notices) no release. The highest one present wins.

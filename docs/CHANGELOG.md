@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- **Read release highlights and expand changes for details.** (#368)
+
 ## 3.4.0 — 2026-11-25
 
 The new window layout puts your chats in the sidebar and delegated tasks in the work panel. Press ⌘K (Ctrl+K) to search chats, sessions and commands. Open Needs you to answer agents across projects, or Settings to manage agents, teams and usage.
@@ -29,11 +33,11 @@ The new window layout puts your chats in the sidebar and delegated tasks in the 
   - The desktop and browser app show delegated tasks in a **work panel** on the right (the **Work** button, ⌘⌥B) instead of a card in the chat, which keeps one line per turn ("3 delegated tasks · 1 running · Open").
   - The panel sits beside the chat while the chat keeps 600 px and is a full-width view with a back arrow otherwise; its width is remembered per window, and open/closed and the open task per chat.
   - Tasks are grouped as Needs you, Failed, Review blockers, Running, Unmerged and Done; a row opens the task with what it was asked, agent and model, start time and duration, what it does now, messages sent to it with their receipts, result, changed files, diff, review, tests, and steer, stop, merge or discard.
-  - lib: `PackTask.pullRequest`.
+  - lib: `PackTask.pullRequest` records the task’s pull request.
   - A task that opened a pull request (its worktree is on the pull request's head branch at its head commit with nothing uncommitted, asked of `gh` and git) shows "PR #12 · merged" (or open, closed) with a link instead of **Merge locally**; a pull request its reply only mentions is a link beside Merge locally and Discard.
   - Merge locally says what it does and merges the revision whose diff you read, also after a review or tests; if the worktree changed since, nothing merges until the new diff is shown.
   - The worktree is checked again every minute while it is there, also after its pull request merged: an edit made since brings Merge locally back, and Discard is refused if the worktree no longer matches the pull request.
-  - lib: `PackAction` `{ type: 'discard', empty: true }`, refusal reason `changed`.
+  - lib: Discard an empty worktree with `PackAction` `{ type: 'discard', empty: true }`, refusal reason `changed`.
   - A task that changed no files offers **Show diff**, which also lists an edit made in its worktree since, and **Discard worktree**, which is refused if the worktree has changes by now, also a commit, a staged file its diff no longer shows or an edit `git status` does not list (`--assume-unchanged`); Merge locally merges nothing and keeps the worktree while it holds a commit, staged work, work inside a submodule or a repository cloned into it that its diff does not carry.
   - Task actions and the panel's Stop are refused once the window has moved to another chat.
   - "Requires another agent that can review without tools" and "Choose the test command with --verify" now say what you can do.
@@ -43,16 +47,16 @@ The new window layout puts your chats in the sidebar and delegated tasks in the 
   - Above 8 tasks it has status chips with counts (All, Needs you, Failed, Blockers, Running, Unmerged, Done), a text filter over title, agent, id and status, and a switch to group by agent; above 15 a row is one line, a group shows its newest 8 rows and **Show N more** (50 at a time), also under a chip, a text filter or by agent (another chip or text filter starts again from the newest 8), and the folded Done group says what it holds ("100 done · 5 stopped · 3 merged locally").
   - Finished tasks that left no worktree to merge or discard, such as reviews that ran in your folder, can be cleared from the list: **Clear N** on Done and Failed, or the × on a row, which gives the keyboard to the row beside it; the conversation keeps them, the list says how many it hides and **Show them** brings them back.
   - A row under the pointer or the keyboard focus stays in its group and in the text filter it matched, with its new state, until they leave, a new task does not fold Done from under it, and Approve on a row leaves the focus on that row.
-  - lib: `WorkPanelView` `filter`, `query`, `by`, `more`, `dismissed`.
+  - lib: `WorkPanelView` stores the list state in `filter`, `query`, `by`, `more`, `dismissed`.
   - Filters, grouping, opened rows and cleared tasks are remembered per chat.
-  - The inline card of `<AgentChat>` shows one-line rows, the first 12, a filter and **Clear N finished** above 15 tasks, and is unchanged up to 15; what it remembers is kept per conversation and turn (`<AgentChat chatId>`).
+  - lib: The inline card of `<AgentChat>` shows one-line rows, the first 12, a filter and **Clear N finished** above 15 tasks, and is unchanged up to 15; what it remembers is kept per conversation and turn (`<AgentChat chatId>`).
   - Escape in a panel field with text in it clears the field first.
 - **Track live work and answer approvals above the message box.** (#363)
   - The desktop and browser app show a **mission strip** above the message box while delegated work runs: one count per state (Needs you, Failed, Review blockers, Running, Unmerged, Done; a click opens Tasks on that group; tasks cleared from Tasks are not counted), what the lead does now, and the next approval a task waits for with **Approve** and **Deny** and "1 of 3 in this chat", at every width and with the work panel closed.
   - A request that just moved up ignores clicks for 400 ms, so a double click does not answer the next one.
   - An approval of a delegated task is answered there, on its row or in its detail and no longer shows in the transcript; the lead's own approvals and every question stay in the chat.
   - The work panel gets a **Live** tab beside Tasks: what waits for you in this chat ("all N ›" opens Needs you), the lead's plan and what it does now, up to three running tasks as cards (pinned ones first, then the ones you messaged, then the newest) with what each does, its latest message and the receipt of your last message, and a team feed over all tasks, newest first, where routine reads and edits are one line per task until **Everything** is chosen.
-  - lib: `WorkPanelView` `tab`, `pinned`, `feed`.
+  - lib: `WorkPanelView` remembers `tab`, `pinned`, `feed`.
   - A task id opens that task, and Back returns to the tab it was opened from; the tab, the pins and the feed's choice are remembered per chat.
   - lib: `genaicode/react` exports `<MissionStrip>` (`dismissed` takes the panel's cleared tasks), `<AgentChat missionStrip>` and `<WorkPanel needsYou>`; without `missionStrip` the chat is unchanged, and without its `onOpenGroup` the transcript keeps every approval.
 - **Find chats, sessions and settings in the new sidebar.** (#350)
@@ -60,7 +64,7 @@ The new window layout puts your chats in the sidebar and delegated tasks in the 
   - The header is now a slim top bar with the chat's title, its folder and a `⋯` menu for the session id and transcript; the pills it held (What's new, Sessions, Chats, Tower inbox, Project team, Settings, the update button, the support links) moved into the sidebar.
   - Escape goes back from a page to the chat or closes the open menu, and stops a running turn only from the message field.
 - **Choose how to send a message and where to start a chat.** (#352)
-  - lib: `SessionState.sendAction` says which.
+  - lib: `SessionState.sendAction` identifies the available submit action.
   - The desktop and browser composer is one card. **Stop** is a button of its own (also ⌘. / Ctrl+.) beside the submit button, which says what Enter does: **Send**, **Steer** for an agent that takes input mid-turn, **Queue** for one that does not or while a review of delegated work holds the budget.
   - One agent chip opens a popover with the agent, model, effort and fallback agents (they were separate controls, and fallback was `/fallback` only); **Plan** is a toggle and the permission switch reads **Ask first / Auto-approve all** and, like `/auto`, holds for the chat it was set in (a new chat starts from `--yes` or asking).
   - A new chat says where it starts: **Starts in** offers the recent project folders, a path, the home folder, and **Choose…** with the system's folder dialog in the desktop app.
@@ -89,12 +93,12 @@ The new window layout puts your chats in the sidebar and delegated tasks in the 
   - The page lists exactly what the sidebar counts, a session whose hook asks for approval included even where its row was read before the question or still says it is at work, says so when nothing waits (also under a filter) or, in its place, that the queue could not be read and which stores failed in either listing, and Escape goes back to the chat.
   - It replaces the Tower inbox view.
 - **See which model the agent is using.** (#335)
-  - lib: `SessionState.reportedModel`.
+  - lib: `SessionState.reportedModel` carries the model reported by the agent.
   - The chat composer and terminal status line show the model the agent reports when none is set.
 - **See delivery receipts for messages sent while an agent works.** (#347)
-  - lib: `SessionEntry` input `delivery`.
+  - lib: The `delivery` field on a `SessionEntry` input records its receipt.
   - A message sent while the agent works says whether it reached the agent: "Sending…", then "Seen by claude" (the agent confirmed it took it), "Sent to …" (handed over, no confirmation), "Queued for the next turn" or "Not delivered", in the desktop, browser and terminal chat.
-  - lib: `PackTask.steers`.
+  - lib: `PackTask.steers` holds the delegated task’s receipts.
   - Messages steered into a delegated task, by the lead or by you, show the same in the task's detail and the latest one on its row.
   - lib: `AgentRun.steer` may resolve with `'taken'` (Claude, Codex, Muse, Antigravity) or `'sent'` (`SteerReceipt`).
 

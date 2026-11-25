@@ -86,10 +86,12 @@ export function entryParts(raw) {
 
 export function titleErrors(parsed) {
   const section = parsed.sections.find((one) => one.version === UNRELEASED);
-  return Object.values(section?.categories ?? {}).flat().flatMap((raw) => {
-    const { title, legacy } = entryParts(raw);
-    if (!title?.trim() || legacy !== raw.split('\n')[0] || [...title].length > 100)
-      return [`Unreleased needs a bold title of 1–100 characters and a PR number: ${raw.split('\n')[0]}`];
-    return [];
-  });
+  return Object.values(section?.categories ?? {})
+    .flat()
+    .flatMap((raw) => {
+      const { title, legacy } = entryParts(raw);
+      if (!title?.trim() || legacy !== raw.split('\n')[0] || [...title].length > 100)
+        return [`Unreleased needs a bold title of 1–100 characters and a PR number: ${raw.split('\n')[0]}`];
+      return [];
+    });
 }

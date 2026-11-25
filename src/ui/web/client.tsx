@@ -26,12 +26,7 @@ import {
   type WorkTask,
 } from '../../react/work.js';
 import { submitAction } from '../../react/format.js';
-import {
-  extractLocalImagePaths,
-  isPathWithin,
-  resolveFilePath,
-  type FilePosition,
-} from '../../react/markdown.js';
+import { extractLocalImagePaths, isPathWithin, resolveFilePath, type FilePosition } from '../../react/markdown.js';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';

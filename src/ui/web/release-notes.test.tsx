@@ -29,7 +29,8 @@ it('preserves nested Markdown in release notes and reads wrapped details and old
 });
 
 it('requires a short bold title and PR number in Unreleased while accepting published legacy notes', () => {
-  const validate = (line: string) => titleErrors(parse('## Unreleased\n### Fixed\n' + line + '\n## 3.0.0 — 2026-11-25\n' + body));
+  const validate = (line: string) =>
+    titleErrors(parse('## Unreleased\n### Fixed\n' + line + '\n## 3.0.0 — 2026-11-25\n' + body));
   expect(validate('- lib: **Export a helper.** (#43)\n  - API details')).toEqual([]);
   for (const line of ['- Old style (#1)', '- **Missing number.**', '- **' + 'x'.repeat(101) + '** (#1)'])
     expect(validate(line)).toHaveLength(1);
@@ -39,7 +40,7 @@ it('puts highlights first, groups user titles and keeps only app details in a cl
   const host = document.createElement('div');
   host.innerHTML = renderToStaticMarkup(<ReleaseNotes notes={'## 3.4.0 — 2026-11-25\n' + body} />);
   expect(host.querySelector('p')?.textContent).toBe('Window highlights.');
-  expect([...host.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['New', 'Fixed']);
+  expect(Array.from(host.querySelectorAll('h3')).map((h) => h.textContent)).toEqual(['New', 'Fixed']);
   expect(host.querySelector('details')?.open).toBe(false);
   expect(host.querySelector('summary')?.textContent).toBe('More');
   expect(host.querySelector('details li')?.textContent).toContain('Read files inside the panel.');
