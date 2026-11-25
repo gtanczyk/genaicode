@@ -8,10 +8,16 @@ import {
   readWorkView,
   reviewBlocker,
   WORK_VIEW_KEY,
+  workClearable,
+  workDismiss,
+  workFootnote,
   workGroups,
+  workList,
+  workMergeable,
   workNeedsYou,
   workPanelLayout,
   workStatus,
+  workSummary,
   workTasks,
   writeWorkView,
   type PullRequestStatus,
@@ -41,6 +47,106 @@ function session(tasks: PackTask[], approvals: SessionState['approvals'] = []): 
     ],
   } as SessionState;
 }
+
+describe('workList', () => {
+  const many = (count: number, patch: (n: number) => Partial<PackTask>) =>
+    workTasks(session(Array.from({ length: count }, (_, i) => task(`t${i + 1}`, { mode: 'shared', ...patch(i + 1) }))));
+
+  it('is whole up to 15 tasks, and cuts a group to 8 rows above; one row is never held back alone', () => {
+    const short = workList(
+      many(15, () => ({ status: 'running' })),
+      {},
+    );
+    expect(short).toMatchObject({ total: 15, dense: false, tools: true, filtering: false, cleared: 0 });
+    expect(short.sections.map((section) => [section.key, section.shown.length, section.next])).toEqual([
+      ['running', 15, 0],
+    ]);
+    const long = workList(
+      many(70, (n) => ({ status: n <= 9 ? 'failed' : 'running' })),
+      {},
+    );
+    expect(long.dense).toBe(true);
+    expect(long.sections.map((section) => [section.key, section.shown.length, section.next, section.folded])).toEqual([
+      ['failed', 9, 0, false],
+      ['running', 8, 50, false],
+    ]);
+    expect(long.sections[1]!.shown[0]!.task.id).toBe('t70');
+    const more = workList(
+      many(70, () => ({ status: 'running' })),
+      { more: { running: 50 } },
+    );
+    expect(more.sections.map((section) => [section.shown.length, section.next])).toEqual([[58, 12]]);
+  });
+
+  it('a short list ignores a remembered filter: it has no chips to take it off with', () => {
+    const tasks = many(6, (n) => ({ status: n === 1 ? 'failed' : 'completed' }));
+    const list = workList(tasks, { filter: 'failed', query: 'nothing', by: 'agent' });
+    expect(list).toMatchObject({ tools: false, filtering: false });
+    expect(list.sections.map((section) => [section.key, section.tasks.length])).toEqual([
+      ['failed', 1],
+      ['done', 5],
+    ]);
+    // A chip whose group emptied is off too.
+    expect(
+      workList(
+        many(20, () => ({})),
+        { filter: 'failed' },
+      ).filtering,
+    ).toBe(false);
+  });
+
+  it('only a finished task with no worktree left to merge or discard can be cleared', () => {
+    const tasks = workTasks(
+      session([
+        task('t1', { mode: 'shared' }),
+        task('t2', { mode: 'shared', status: 'failed' }),
+        task('t3', { state: 'merged' }),
+        task('t4', { state: 'discarded' }),
+        task('t5', { state: 'unmerged', changes: ['M\ta'] }),
+        task('t6', { state: 'unmerged', changes: [] }),
+        task('t7', { mode: 'shared', status: 'running' }),
+        task('t8', { state: 'unmerged', status: 'failed' }),
+      ]),
+    );
+    expect(tasks.filter(workClearable).map((item) => item.task.id)).toEqual(['t1', 't2', 't3', 't4']);
+    // Clearing the others does nothing: they stay in the list.
+    const list = workList(tasks, {
+      dismissed: workDismiss(
+        ['1:t1'],
+        tasks.map((item) => item.key),
+      ),
+    });
+    expect(list).toMatchObject({ total: 4, cleared: 4 });
+    expect(workDismiss(['a', 'b'], ['b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('says what a folded group holds, and which unmerged tasks can be merged together', () => {
+    const tasks = many(12, (n) => ({
+      agent: n % 2 ? 'codex' : 'claude',
+      status: n <= 2 ? 'aborted' : 'completed',
+    }));
+    expect(workSummary(tasks)).toBe('10 done · 2 stopped');
+    expect(workSummary(tasks.slice(2))).toBe('5 codex · 5 claude');
+    expect(workSummary(tasks.slice(2, 3))).toBe('1 done');
+    expect(workFootnote(tasks)).toBe('claude leads · 12 tasks · 2 agents · newest first in each group');
+    const revision = 'a'.repeat(40);
+    const ok = { revision, status: 'completed' as const };
+    const worktree = { state: 'unmerged' as const, changes: ['M\ta'] };
+    const merge = workMergeable(
+      workTasks(
+        session([
+          task('t1', { ...worktree, checks: { revision, review: ok, verify: ok } }),
+          task('t2', { ...worktree, checks: { revision, review: ok } }),
+          task('t3', { ...worktree, checks: { revision, review: { ...ok, revision: 'b'.repeat(40) }, verify: ok } }),
+          task('t4', { ...worktree, checks: { revision, review: { ...ok, detail: 'BLOCKER: no' }, verify: ok } }),
+          task('t5', { ...worktree, checks: { revision, review: ok, verify: { ...ok, status: 'failed' } } }),
+        ]),
+      ),
+    );
+    expect(merge.ready.map((item) => item.task.id)).toEqual(['t1']);
+    expect(merge.skipped.map((item) => item.task.id)).toEqual(['t2', 't3', 't4', 't5']);
+  });
+});
 
 describe('workPanelLayout', () => {
   // The Widths table of docs/design/desktop-layout.md: sidebar 268 px, rail 56 px.
@@ -208,6 +314,28 @@ describe('what is remembered per chat', () => {
       seen: 3,
     });
     expect(readWorkView(kept, 'b')).toEqual({ tab: 'tasks', open: true });
+  });
+
+  it('keeps the filters, the grouping, the rows shown and the cleared tasks, and drops what it cannot read', () => {
+    const kept = store();
+    const view = {
+      tab: 'tasks' as const,
+      folded: { done: false, 'agent:codex': true },
+      filter: 'failed' as const,
+      query: 'codex',
+      by: 'agent' as const,
+      more: { done: 50 },
+      dismissed: ['1:t1', '1:t2'],
+    };
+    writeWorkView(kept, 'a', view);
+    expect(readWorkView(kept, 'a')).toEqual(view);
+    kept.setItem(
+      WORK_VIEW_KEY,
+      JSON.stringify([
+        ['a', { filter: 'nope', query: 7, by: 'size', more: { done: 'all', failed: 50 }, dismissed: ['1:t1', 2] }],
+      ]),
+    );
+    expect(readWorkView(kept, 'a')).toEqual({ tab: 'tasks', more: { failed: 50 }, dismissed: ['1:t1'] });
   });
 
   it('drops the chats looked at longest ago, and survives a damaged or blocked store', () => {

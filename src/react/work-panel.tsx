@@ -28,8 +28,15 @@ import {
   reviewHelp,
   taskPullRequest,
   testsHelp,
+  WORK_DENSE_ABOVE,
   WORK_GROUP_LABEL,
-  workGroups,
+  WORK_GROUPS,
+  WORK_PAGE,
+  workClearable,
+  workDismiss,
+  workFootnote,
+  workList,
+  workMergeable,
   workStatus,
   workTasks,
   workTimes,
@@ -267,6 +274,7 @@ export function WorkPanel(props: WorkPanelProps) {
             onView={onView}
             focus={back}
             onApprove={approve}
+            act={act}
             onOpen={(key) => {
               fromRow.current = true;
               onView({ ...view, task: key });
@@ -278,6 +286,13 @@ export function WorkPanel(props: WorkPanelProps) {
   );
 }
 
+/** What a group's bulk action asks before it runs, or says after it ran. */
+type Bulk =
+  | { kind: 'approve' | 'merge'; key: string; busy?: boolean }
+  | { kind: 'note'; key: string; text: string; error?: boolean };
+
+const CHIP_LABEL: Record<WorkGroup, string> = { ...WORK_GROUP_LABEL, blocked: 'Blockers' };
+
 function TaskList({
   tasks,
   now,
@@ -285,6 +300,7 @@ function TaskList({
   onView,
   focus,
   onApprove,
+  act,
   onOpen,
 }: {
   tasks: WorkTask[];
@@ -294,6 +310,7 @@ function TaskList({
   /** The row to focus once, after its detail closed. */
   focus: { current: string | undefined };
   onApprove?: WorkPanelProps['onApprove'];
+  act?: WorkActionHandler;
   onOpen(key: string): void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -318,6 +335,47 @@ function TaskList({
       if (top !== (latest.current.view.scroll ?? 0)) latest.current.onView({ ...latest.current.view, scroll: top });
     }, 200);
   };
+  // The group each row under the pointer or the keyboard focus had when they came to it: the row
+  // stays there, and moves to its new group once both have left.
+  const [held, setHeld] = useState<Record<string, WorkGroup>>({});
+  const over = useRef<{ hover?: string; focus?: string }>({});
+  const hold = (how: 'hover' | 'focus', item: WorkTask | undefined) => {
+    over.current[how] = item?.key;
+    setHeld((current) => {
+      const next: Record<string, WorkGroup> = {};
+      for (const key of [over.current.hover, over.current.focus]) {
+        if (key === undefined) continue;
+        const group = current[key] ?? (key === item?.key ? item.group : undefined);
+        if (group) next[key] = group;
+      }
+      const keys = Object.keys(next);
+      return keys.length === Object.keys(current).length && keys.every((key) => current[key]) ? current : next;
+    });
+  };
+  // A held row that is no longer drawn (a filter took it away under the pointer) sends no leave
+  // event: it is let go here, so its task is not kept in an old group.
+  useEffect(() => {
+    const drawn = (key: string) => !!scroller.current?.querySelector(`[data-task="${CSS.escape(key)}"]`);
+    const gone = Object.keys(held).filter((key) => !drawn(key));
+    if (!gone.length) return;
+    for (const how of ['hover', 'focus'] as const) {
+      const key = over.current[how];
+      if (key !== undefined && gone.includes(key)) over.current[how] = undefined;
+    }
+    setHeld((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !gone.includes(key))));
+  });
+  const [bulk, setBulk] = useState<Bulk>();
+  // The first of the rows Show N more added takes the focus its button had.
+  const reveal = useRef<{ key: string; index: number }>(undefined);
+  useLayoutEffect(() => {
+    const target = reveal.current;
+    reveal.current = undefined;
+    if (!target) return;
+    const rows = scroller.current?.querySelectorAll<HTMLElement>(
+      `[data-section="${CSS.escape(target.key)}"] .gc-work-row`,
+    );
+    rows?.[target.index]?.focus();
+  });
   if (!tasks.length) {
     return (
       <div className="gc-work-scroll">
@@ -328,36 +386,299 @@ function TaskList({
       </div>
     );
   }
-  const groups = workGroups(tasks);
+  const list = workList(tasks, view, held);
+  const restore = (
+    <button type="button" className="gc-work-link" onClick={() => onView({ ...view, dismissed: undefined })}>
+      Show them
+    </button>
+  );
+  const clear = (items: WorkTask[]) =>
+    onView({
+      ...view,
+      dismissed: workDismiss(
+        view.dismissed,
+        items.map((item) => item.key),
+      ),
+    });
+  const mergeAll = async (key: string, ready: WorkTask[]) => {
+    if (!act) return;
+    setBulk({ kind: 'merge', key, busy: true });
+    const merged: string[] = [];
+    const refused: string[] = [];
+    for (const item of ready) {
+      try {
+        await act(item.turnId, item.task.id, { type: 'merge', revision: item.task.checks?.revision });
+        merged.push(item.task.id);
+      } catch (error) {
+        refused.push(`${item.task.id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    setBulk({
+      kind: 'note',
+      key,
+      text: [
+        merged.length ? `Merged ${merged.join(', ')}.` : '',
+        refused.length ? `Not merged: ${refused.join(' ')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      error: refused.length > 0,
+    });
+  };
   return (
-    <div className="gc-work-scroll" ref={scroller} onScroll={onScroll}>
-      {groups.map(({ group, tasks: rows }) => {
-        // Done is out of the way while anything else is there to look at.
-        const folded = view.folded?.[group] ?? (group === 'done' && groups.length > 1);
-        return (
-          <section key={group} className="gc-work-group" aria-label={WORK_GROUP_LABEL[group]}>
-            <div className="gc-work-group-head">
+    <>
+      {list.tools ? (
+        <div className="gc-work-tools">
+          <div className="gc-work-chips" role="group" aria-label="Show tasks by status">
+            {([undefined, ...WORK_GROUPS] as const).map((group) =>
+              group && !list.counts[group] ? null : (
+                <button
+                  key={group ?? 'all'}
+                  type="button"
+                  className="gc-work-chip"
+                  aria-pressed={group ? view.filter === group : !view.filter || !list.counts[view.filter]}
+                  onClick={() => onView({ ...view, filter: group && view.filter !== group ? group : undefined })}
+                >
+                  {group ? CHIP_LABEL[group] : 'All'} <i>{group ? list.counts[group] : list.total}</i>
+                </button>
+              ),
+            )}
+          </div>
+          <div className="gc-work-acts">
+            <input
+              className="gc-work-field gc-work-filter"
+              type="search"
+              value={view.query ?? ''}
+              maxLength={200}
+              placeholder="Filter by title, agent, id or status"
+              aria-label="Filter tasks"
+              onChange={(event) => onView({ ...view, query: event.target.value || undefined })}
+              onKeyDown={(event) => {
+                // The first Escape clears the filter; the next one reaches the host (back to the chat).
+                if (event.key === 'Escape' && view.query && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onView({ ...view, query: undefined });
+                }
+              }}
+            />
+            <span className="gc-work-seg" role="group" aria-label="Group tasks by">
               <button
                 type="button"
-                aria-expanded={!folded}
-                onClick={() => onView({ ...view, folded: { ...view.folded, [group]: !folded } })}
+                aria-pressed={view.by !== 'agent'}
+                onClick={() => onView({ ...view, by: undefined })}
               >
-                <svg className="gc-work-chevron" viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m6 4 4 4-4 4" />
-                </svg>
-                <Glyph tone={GROUP_TONE[group]} />
-                {WORK_GROUP_LABEL[group]} <span className="gc-work-count">{rows.length}</span>
+                Status
               </button>
-            </div>
-            {folded
-              ? null
-              : rows.map((item) => (
-                  <TaskRow key={item.key} item={item} now={now} onOpen={onOpen} onApprove={onApprove} />
-                ))}
-          </section>
-        );
-      })}
-    </div>
+              <button type="button" aria-pressed={view.by === 'agent'} onClick={() => onView({ ...view, by: 'agent' })}>
+                Agent
+              </button>
+            </span>
+          </div>
+        </div>
+      ) : null}
+      <div className="gc-work-scroll" data-dense={list.dense ? 'true' : undefined} ref={scroller} onScroll={onScroll}>
+        {list.sections.map((section) => {
+          const { key, group, tasks: all } = section;
+          const requests =
+            group === 'ask' ? all.flatMap((item) => item.asks.filter((ask) => ask.kind !== 'question')) : [];
+          // In a short list a row's own clear button is enough.
+          const clearable = list.tools && (group === 'done' || group === 'failed') ? all.filter(workClearable) : [];
+          const mergeable = group === 'unmerged' && act && all.length > 1 ? workMergeable(all) : undefined;
+          const mine = bulk?.key === key ? bulk : undefined;
+          const earlier = group === 'done' || group === 'failed' ? 'earlier' : 'more';
+          return (
+            <section key={key} className="gc-work-group" aria-label={section.label} data-section={key}>
+              <div className="gc-work-group-head">
+                <button
+                  type="button"
+                  aria-expanded={!section.folded}
+                  // With a filter on, every group that matches is open.
+                  disabled={list.filtering}
+                  onClick={() => onView({ ...view, folded: { ...view.folded, [key]: !section.folded } })}
+                >
+                  <svg className="gc-work-chevron" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m6 4 4 4-4 4" />
+                  </svg>
+                  {group ? <Glyph tone={GROUP_TONE[group]} /> : null}
+                  {section.label} <span className="gc-work-count">{all.length}</span>
+                </button>
+                {section.folded && list.dense ? <span className="gc-work-summary">{section.summary}</span> : null}
+                <span className="gc-work-grow" />
+                {requests.length > 1 && onApprove && !section.folded ? (
+                  <button
+                    type="button"
+                    className="gc-work-btn gc-work-xs gc-work-ghost"
+                    title={`Shows the ${requests.length} requests, then approves them together.`}
+                    aria-expanded={mine?.kind === 'approve'}
+                    onClick={() => setBulk(mine?.kind === 'approve' ? undefined : { kind: 'approve', key })}
+                  >
+                    Approve all
+                  </button>
+                ) : null}
+                {mergeable && !section.folded ? (
+                  <button
+                    type="button"
+                    className="gc-work-btn gc-work-xs gc-work-ghost"
+                    title="Merges the tasks whose review and tests passed on the revision they have now. Shows the list first."
+                    aria-expanded={mine?.kind === 'merge'}
+                    onClick={() => setBulk(mine?.kind === 'merge' ? undefined : { kind: 'merge', key })}
+                  >
+                    Merge all
+                  </button>
+                ) : null}
+                {clearable.length ? (
+                  <button
+                    type="button"
+                    className="gc-work-btn gc-work-xs gc-work-ghost"
+                    title={`Hides the ${clearable.length} finished ${clearable.length === 1 ? 'task' : 'tasks'} that left no worktree to merge or discard. The conversation keeps them, and Show them brings them back.`}
+                    aria-label={`Clear ${clearable.length} finished from ${section.label}`}
+                    onClick={(event) => {
+                      // The button may go with its rows: the group's header keeps the keyboard.
+                      event.currentTarget.parentElement?.querySelector('button')?.focus();
+                      clear(clearable);
+                    }}
+                  >
+                    Clear {clearable.length}
+                  </button>
+                ) : null}
+              </div>
+              {mine?.kind === 'approve' && requests.length > 1 && onApprove ? (
+                <div className="gc-work-card gc-work-bulk" data-tone="ask" role="group" aria-label="Approve all">
+                  <b>Approve these {requests.length} requests?</b>
+                  <ul>
+                    {all.flatMap((item) =>
+                      item.asks
+                        .filter((ask) => ask.kind !== 'question')
+                        .map((ask) => (
+                          <li key={ask.id}>
+                            <span className="gc-work-id">{item.task.id}</span> <code>{askSubject(ask)}</code>
+                          </li>
+                        )),
+                    )}
+                  </ul>
+                  <div className="gc-work-acts">
+                    <button
+                      type="button"
+                      className="gc-work-btn gc-work-sm gc-work-primary"
+                      onClick={() => {
+                        setBulk(undefined);
+                        for (const request of requests) onApprove(request.id, 'approve');
+                      }}
+                    >
+                      Approve {requests.length}
+                    </button>
+                    <button type="button" className="gc-work-btn gc-work-sm" onClick={() => setBulk(undefined)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {mine?.kind === 'merge' && mergeable ? (
+                <div className="gc-work-card gc-work-bulk" data-tone="merge" role="group" aria-label="Merge all">
+                  {mergeable.ready.length ? (
+                    <b>
+                      Merge {mergeable.ready.map((item) => item.task.id).join(', ')} locally? Review and tests passed on
+                      the revision each has now.
+                    </b>
+                  ) : (
+                    <b>No task here has a review and tests that passed on its current revision.</b>
+                  )}
+                  {mergeable.skipped.length ? (
+                    <p className="gc-work-note">
+                      {mergeable.ready.length ? 'Left as they are: ' : 'Open a task to read its diff and merge it: '}
+                      {mergeable.skipped.map((item) => item.task.id).join(', ')}.
+                    </p>
+                  ) : null}
+                  <div className="gc-work-acts">
+                    {mergeable.ready.length ? (
+                      <button
+                        type="button"
+                        className="gc-work-btn gc-work-sm gc-work-primary"
+                        disabled={mine.busy}
+                        onClick={() => void mergeAll(key, mergeable.ready)}
+                      >
+                        Merge {mergeable.ready.length}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="gc-work-btn gc-work-sm"
+                      disabled={mine.busy}
+                      onClick={() => setBulk(undefined)}
+                    >
+                      {mergeable.ready.length ? 'Cancel' : 'Close'}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {mine?.kind === 'note' ? (
+                <p role="status" className={mine.error ? 'gc-work-feedback gc-work-bad' : 'gc-work-feedback'}>
+                  {mine.text}
+                </p>
+              ) : null}
+              {section.folded ? null : (
+                <>
+                  {section.shown.map((item) => (
+                    <TaskRow
+                      key={item.key}
+                      item={item}
+                      now={now}
+                      onOpen={onOpen}
+                      onApprove={onApprove}
+                      onHold={hold}
+                      onClear={workClearable(item) ? () => clear([item]) : undefined}
+                    />
+                  ))}
+                  {section.next ? (
+                    <button
+                      type="button"
+                      className="gc-work-more"
+                      onClick={() => {
+                        reveal.current = { key, index: section.shown.length };
+                        onView({ ...view, more: { ...view.more, [key]: (view.more?.[key] ?? 0) + WORK_PAGE } });
+                      }}
+                    >
+                      Show {section.next} {earlier}
+                      {all.length - section.shown.length > section.next
+                        ? ` of ${all.length - section.shown.length}`
+                        : ''}
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </section>
+          );
+        })}
+        {list.sections.length ? null : list.filtering ? (
+          <p className="gc-work-empty">
+            No task matches.{' '}
+            <button
+              type="button"
+              className="gc-work-link"
+              onClick={() => onView({ ...view, filter: undefined, query: undefined })}
+            >
+              Show all tasks
+            </button>
+          </p>
+        ) : null}
+        {list.tools || list.cleared ? (
+          <p className="gc-work-foot">
+            {list.tools ? (
+              <>
+                {workFootnote(tasks)}
+                {list.dense ? ` · one-line rows above ${WORK_DENSE_ABOVE} tasks` : ''}
+              </>
+            ) : null}
+            {list.cleared ? (
+              <span>
+                {list.cleared} cleared from this list. {restore}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -366,11 +687,17 @@ function TaskRow({
   now,
   onOpen,
   onApprove,
+  onHold,
+  onClear,
 }: {
   item: WorkTask;
   now: number;
   onOpen(key: string): void;
   onApprove?: WorkPanelProps['onApprove'];
+  /** The pointer or the keyboard focus came to the row (`item`), or left it. */
+  onHold?(how: 'hover' | 'focus', item: WorkTask | undefined): void;
+  /** Clears the task from the list. Set for a finished task that left nothing to do. */
+  onClear?(): void;
 }) {
   const { task } = item;
   const status = workStatus(item);
@@ -393,7 +720,7 @@ function TaskRow({
         activity.text || 'Starting…'
       )}
     </span>
-  ) : error && item.group === 'failed' ? (
+  ) : error && (task.status === 'failed' || task.status === 'timeout') ? (
     <span className="gc-work-line" data-tone="err">
       {error}
     </span>
@@ -403,8 +730,20 @@ function TaskRow({
       {packTaskOutcome(task)}
     </span>
   );
+  /** The row keeps the keyboard when one of its buttons goes away with what it did. */
+  const toRow = (button: HTMLElement) =>
+    button.closest('.gc-work-task')?.querySelector<HTMLElement>('.gc-work-row')?.focus({ preventScroll: true });
   return (
-    <div className="gc-work-task" data-task={item.key}>
+    <div
+      className="gc-work-task"
+      data-task={item.key}
+      onMouseEnter={() => onHold?.('hover', item)}
+      onMouseLeave={() => onHold?.('hover', undefined)}
+      onFocus={() => onHold?.('focus', item)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onHold?.('focus', undefined);
+      }}
+    >
       <button
         type="button"
         className="gc-work-row"
@@ -427,7 +766,10 @@ function TaskRow({
             type="button"
             className="gc-work-btn gc-work-xs gc-work-primary"
             aria-label={`Approve for ${task.id}`}
-            onClick={() => onApprove(ask.id, 'approve')}
+            onClick={(event) => {
+              toRow(event.currentTarget);
+              onApprove(ask.id, 'approve');
+            }}
           >
             Approve
           </button>
@@ -435,9 +777,32 @@ function TaskRow({
             type="button"
             className="gc-work-btn gc-work-xs"
             aria-label={`Deny for ${task.id}`}
-            onClick={() => onApprove(ask.id, 'deny')}
+            onClick={(event) => {
+              toRow(event.currentTarget);
+              onApprove(ask.id, 'deny');
+            }}
           >
             Deny
+          </button>
+        </span>
+      ) : onClear ? (
+        <span className="gc-work-row-acts gc-work-row-clear">
+          <button
+            type="button"
+            className="gc-work-btn gc-work-xs gc-work-ghost gc-work-icon"
+            title="Clear from this list. The conversation keeps the task."
+            aria-label={`Clear ${task.id} from the list`}
+            onClick={(event) => {
+              // The row goes: the group's header takes the keyboard.
+              event.currentTarget.closest('section')?.querySelector<HTMLElement>('.gc-work-group-head button')?.focus();
+              onHold?.('focus', undefined);
+              onHold?.('hover', undefined);
+              onClear();
+            }}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m4 4 8 8M12 4l-8 8" />
+            </svg>
           </button>
         </span>
       ) : null}

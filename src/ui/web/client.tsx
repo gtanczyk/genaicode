@@ -54,7 +54,7 @@ import {
   sessionKey,
   withOpenChat,
 } from '../sidebar.js';
-import { Shell } from './shell.js';
+import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
 import { Sessions } from './sessions.js';
@@ -1249,6 +1249,8 @@ function App() {
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
     if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
+    // A field with text in it (the task filter, a message to a task) is cleared by its own Escape first.
+    if (holdsTypedText(event.target)) return false;
     focusComposer();
   });
   const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);

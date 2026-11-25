@@ -7,7 +7,7 @@ import type { PackTaskChecks } from '../agents/pack-checks.js';
 import type { PackPullRequest, PackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
-import { formatDuration, relativePath } from './format.js';
+import { formatDuration, packTaskTitle, relativePath } from './format.js';
 
 /** The panel's narrowest width, its width until someone drags it, and what the chat keeps beside it. */
 export const WORK_PANEL_MIN = 380;
@@ -173,6 +173,198 @@ export function workGroups(tasks: readonly WorkTask[]): Array<{ group: WorkGroup
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// The list at scale
+
+/** Above this many tasks a row is one line and a group shows its first rows only. */
+export const WORK_DENSE_ABOVE = 15;
+/** Rows a group shows in a long list before **Show N more**. */
+export const WORK_GROUP_SHOWN = 8;
+/** Rows **Show N more** adds, and rows a group shows while a filter narrows a long list. */
+export const WORK_PAGE = 50;
+/** Above this many tasks the list has filter chips, a text filter and the grouping switch. */
+export const WORK_TOOLS_ABOVE = 8;
+/** Cleared tasks remembered per chat; the oldest are forgotten (and show again) past it. */
+const WORK_DISMISSED_KEPT = 2000;
+
+/**
+ * A finished task that leaves nothing to do: it is not running or asking, and has no worktree to
+ * merge or discard (it worked in the person's folder, or its worktree is merged or discarded).
+ * Such a task can be cleared from the list; the conversation keeps it.
+ */
+export function workClearable(item: WorkTask): boolean {
+  return (item.group === 'done' || item.group === 'failed') && item.task.state !== 'unmerged';
+}
+
+/** `dismissed` with `keys` added, as `WorkPanelView.dismissed` keeps it. */
+export function workDismiss(dismissed: readonly string[] | undefined, keys: readonly string[]): string[] {
+  return [...new Set([...(dismissed ?? []), ...keys])].slice(-WORK_DISMISSED_KEPT);
+}
+
+/** Whether every word of `query` is in the task's title, agent, id or status ("failed", "needs you", "PR #12"). */
+export function workMatches(item: WorkTask, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const { task } = item;
+  const text = [packTaskTitle(task), task.agent, task.id, workStatus(item).text, WORK_GROUP_LABEL[item.group]]
+    .join('\n')
+    .toLowerCase();
+  return words.every((word) => text.includes(word));
+}
+
+/** One group of the list: a status group, or an agent when the list is grouped by agent. */
+export interface WorkSection {
+  /** `WorkGroup`, or `agent:<name>`: the key of `WorkPanelView.folded` and `.more`. */
+  key: string;
+  /** Set when the list is grouped by status. */
+  group?: WorkGroup;
+  label: string;
+  /** Every task of the group that passes the filters, newest first. */
+  tasks: WorkTask[];
+  /** The rows to render: all of them, or the first ones of a long list. */
+  shown: WorkTask[];
+  /** What **Show N more** would add next; 0 when every row shows. */
+  next: number;
+  folded: boolean;
+  /** A folded group in one line: "88 done · 5 merged locally", or its agents when all ended alike. */
+  summary: string;
+}
+
+/** What the task list renders for `tasks` under `view`. */
+export interface WorkList {
+  /** Tasks that are not cleared from the list. */
+  total: number;
+  /** One-line rows: the list is long. */
+  dense: boolean;
+  /** The filter chips, the text filter and the grouping switch show. */
+  tools: boolean;
+  /** Tasks per status group, before the filters: the counts on the chips. */
+  counts: Record<WorkGroup, number>;
+  /** A chip or a text filter narrows the list: every group is open. */
+  filtering: boolean;
+  sections: WorkSection[];
+  /** Tasks cleared from the list that the conversation still has. */
+  cleared: number;
+}
+
+function countBy<T>(items: readonly T[], name: (item: T) => string): Array<[string, number]> {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(name(item), (counts.get(name(item)) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1]);
+}
+
+/** A group's tasks in one line: by how they ended, or by agent when they all ended alike. */
+export function workSummary(tasks: readonly WorkTask[]): string {
+  // A pull request's number says nothing of a group: those tasks count as one kind.
+  const kinds = countBy(tasks, (item) => {
+    const text = workStatus(item).text;
+    return text.startsWith('PR #') ? 'in a pull request' : text.toLowerCase();
+  });
+  const agents = countBy(tasks, (item) => item.task.agent);
+  const counted = kinds.length > 1 || agents.length < 2 ? kinds : agents;
+  const parts = counted.slice(0, 3).map(([name, count]) => `${count} ${name}`);
+  const rest = counted.slice(3).reduce((sum, [, count]) => sum + count, 0);
+  return parts.join(' · ') + (rest ? ` · ${rest} other` : '');
+}
+
+/**
+ * The task list for `tasks` as `view` asks for it: without the cleared tasks, narrowed by the chip
+ * and the text filter, grouped by status or agent, with long groups cut to their first rows.
+ * `held` keeps a task in the group it had when the pointer or the keyboard focus came to its row,
+ * so a row does not move from under them.
+ */
+export function workList(
+  tasks: readonly WorkTask[],
+  view: Pick<WorkPanelView, 'folded' | 'filter' | 'query' | 'by' | 'more' | 'dismissed'>,
+  held?: Readonly<Record<string, WorkGroup | undefined>>,
+): WorkList {
+  const dismissed = new Set(view.dismissed ?? []);
+  const cleared = tasks.filter((item) => dismissed.has(item.key) && workClearable(item)).length;
+  // A cleared task that runs again, or asks, is back in the list.
+  const listed = tasks.filter((item) => !(dismissed.has(item.key) && workClearable(item)));
+  // Where a row shows; the task itself keeps its own group, so its glyph and status are current.
+  const groupOf = (item: WorkTask) => held?.[item.key] ?? item.group;
+  const dense = listed.length > WORK_DENSE_ABOVE;
+  const tools = listed.length > WORK_TOOLS_ABOVE;
+  const counts = Object.fromEntries(WORK_GROUPS.map((group) => [group, 0])) as Record<WorkGroup, number>;
+  for (const item of listed) counts[groupOf(item)] += 1;
+  // The filters belong to the tools: a list too short for them shows everything.
+  const filter = tools && view.filter && counts[view.filter] ? view.filter : undefined;
+  const query = tools ? (view.query ?? '').trim() : '';
+  const filtering = !!filter || !!query;
+  const matching = listed.filter((item) => (!filter || groupOf(item) === filter) && workMatches(item, query)).reverse();
+  const byAgent = tools && view.by === 'agent';
+  const order = (item: WorkTask) => WORK_GROUPS.indexOf(groupOf(item));
+  const keyed: Array<{ key: string; group?: WorkGroup; label: string; tasks: WorkTask[] }> = byAgent
+    ? [...new Set(matching.map((item) => item.task.agent))].sort().map((agent) => ({
+        key: `agent:${agent}`,
+        label: agent,
+        // What needs the person first, as in the groups by status; the sort is stable.
+        tasks: matching.filter((item) => item.task.agent === agent).sort((a, b) => order(a) - order(b)),
+      }))
+    : WORK_GROUPS.map((group) => ({
+        key: group,
+        group,
+        label: WORK_GROUP_LABEL[group],
+        tasks: matching.filter((item) => groupOf(item) === group),
+      }));
+  const present = keyed.filter((entry) => entry.tasks.length);
+  const sections = present.map((entry): WorkSection => {
+    // Done is out of the way while anything else is there to look at.
+    const folded = !filtering && (view.folded?.[entry.key] ?? (entry.group === 'done' && present.length > 1));
+    const limit = dense
+      ? (filtering ? WORK_PAGE : WORK_GROUP_SHOWN) + Math.max(0, view.more?.[entry.key] ?? 0)
+      : Infinity;
+    // Holding one row back saves nothing.
+    const count = entry.tasks.length - limit <= 1 ? entry.tasks.length : limit;
+    // A row under the pointer or the keyboard focus stays, also when newer tasks push it past the cut.
+    const shown = entry.tasks.filter((item, index) => index < count || !!held?.[item.key]);
+    return {
+      ...entry,
+      shown,
+      next: Math.min(entry.tasks.length - shown.length, WORK_PAGE),
+      folded,
+      summary: workSummary(entry.tasks),
+    };
+  });
+  return { total: listed.length, dense, tools, counts, filtering, sections, cleared };
+}
+
+/** "claude leads · 150 tasks · 3 agents": the line under the list. */
+export function workFootnote(tasks: readonly WorkTask[]): string {
+  const leads = [...new Set(tasks.map((item) => item.lead))];
+  const agents = new Set(tasks.map((item) => item.task.agent)).size;
+  return [
+    leads.length === 1 ? `${leads[0]} leads` : '',
+    `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`,
+    `${agents} ${agents === 1 ? 'agent' : 'agents'}`,
+    'newest first in each group',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * The tasks of a group that **Merge all** merges, and the ones it leaves: only a task whose review
+ * and tests both passed on the revision its worktree has now is merged without its diff being read.
+ */
+export function workMergeable(tasks: readonly WorkTask[]): { ready: WorkTask[]; skipped: WorkTask[] } {
+  const passed = (item: WorkTask) => {
+    const checks = item.task.checks;
+    const on = (result?: { revision: string; status: string }) =>
+      !!result && result.status === 'completed' && result.revision === checks?.revision;
+    return (
+      item.interactive &&
+      mergesLocally(item.task, item.pullRequest) &&
+      !!checks?.revision &&
+      on(checks.review) &&
+      on(checks.verify) &&
+      !reviewBlocker(checks)
+    );
+  };
+  return { ready: tasks.filter(passed), skipped: tasks.filter((item) => !passed(item)) };
+}
+
 /** How many tasks wait for the person: the count on the Work button. */
 export function workNeedsYou(tasks: readonly WorkTask[]): number {
   return tasks.filter((item) => item.group === 'ask').length;
@@ -261,8 +453,21 @@ export interface WorkPanelView {
   tab: WorkTab;
   /** The task whose detail is open (`WorkTask.key`). */
   task?: string;
-  /** Groups folded by hand. Done is folded by itself while another group has tasks. */
-  folded?: Partial<Record<WorkGroup, boolean>>;
+  /**
+   * Groups folded by hand, by `WorkSection.key` (a `WorkGroup`, or `agent:<name>`). Done is folded
+   * by itself while another group has tasks.
+   */
+  folded?: Partial<Record<string, boolean>>;
+  /** The status chip that narrows the list. */
+  filter?: WorkGroup;
+  /** The text filter over title, agent, id and status. */
+  query?: string;
+  /** Grouped by agent instead of status. */
+  by?: 'agent';
+  /** Rows shown past a long group's first ones, by `WorkSection.key`. */
+  more?: Partial<Record<string, number>>;
+  /** Finished tasks cleared from the list (`WorkTask.key`). The conversation keeps them. */
+  dismissed?: string[];
   /** How far the task list is scrolled. */
   scroll?: number;
   /** How many tasks the chat had when the panel was last looked at: more than that is news. */
@@ -301,6 +506,19 @@ export function readWorkView(store: Store, chat: string): WorkPanelView {
     ...(typeof found?.open === 'boolean' ? { open: found.open } : {}),
     ...(typeof found?.task === 'string' ? { task: found.task } : {}),
     ...(found?.folded && typeof found.folded === 'object' ? { folded: found.folded } : {}),
+    ...((WORK_GROUPS as readonly unknown[]).includes(found?.filter) ? { filter: found!.filter } : {}),
+    ...(typeof found?.query === 'string' && found.query ? { query: found.query.slice(0, 200) } : {}),
+    ...(found?.by === 'agent' ? { by: 'agent' as const } : {}),
+    ...(found?.more && typeof found.more === 'object' && !Array.isArray(found.more)
+      ? {
+          more: Object.fromEntries(
+            Object.entries(found.more).filter(([, count]) => typeof count === 'number' && count > 0),
+          ),
+        }
+      : {}),
+    ...(Array.isArray(found?.dismissed)
+      ? { dismissed: found.dismissed.filter((key): key is string => typeof key === 'string') }
+      : {}),
     ...(typeof found?.scroll === 'number' ? { scroll: found.scroll } : {}),
     ...(typeof found?.seen === 'number' ? { seen: found.seen } : {}),
   };
