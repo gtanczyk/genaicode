@@ -89,7 +89,8 @@ export function reviewBlocker(checks: PackTaskChecks | undefined): boolean {
   const own = (review.detail ?? '').split('\n').filter((line) => !/^\s*>/.test(line));
   if (own.some((line) => /^[\s*_#\-\d.)]*BLOCKER\b/.test(line))) return true;
   const verdict = [...own].reverse().find((line) => /^[\s*_#]*VERDICT\s*:/i.test(line));
-  return !!verdict && /VERDICT\s*:\s*[*_]*\s*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/i.test(verdict);
+  // One class between the colon and the words: no two runs that could match the same spaces.
+  return !!verdict && /VERDICT\s*:[\s*_]*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/i.test(verdict);
 }
 
 /**
