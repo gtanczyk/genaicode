@@ -328,6 +328,11 @@ export interface AgentFailure {
 export interface AgentCapabilities {
   /** Effort values the agent CLI accepts. Empty or absent: effort is not configurable. */
   effort?: readonly string[];
+  /**
+   * Model names the CLI takes, for a picker to suggest (aliases that stay valid across releases).
+   * The CLI may take others; absent: none known.
+   */
+  models?: readonly string[];
   /** A session keeps the effort it started with: a resumed one refuses another. */
   effortAtStart?: boolean;
   /** Honors `AgentTask.maxTurns`. */

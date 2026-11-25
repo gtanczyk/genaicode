@@ -7,6 +7,7 @@ import type { ApprovalRequest } from '../types.js';
 import type { TopicStore } from './topics.js';
 import type { SessionInfo } from './types.js';
 import {
+  conversationsFile,
   displayPath,
   ensureNeutralHome,
   neutralHomeDir,
@@ -417,6 +418,26 @@ describe('open_project tool', () => {
 });
 
 describe('neutral home and conversation store', () => {
+  it('titles a stored taken-over conversation from what the person wrote', async () => {
+    const root = makeTemp('genaicode-conv-');
+    const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    const recap =
+      "You are taking over a conversation that the user had with another coding agent (codex) in this workspace. Recap of what was said (latest last): User: Fix it codex: Done. The user's new message follows. --- Add tests";
+    mkdirSync(join(root, '.genaicode'), { recursive: true });
+    writeFileSync(
+      conversationsFile(env),
+      JSON.stringify([
+        { id: 'old', cwd: root, origin: 'home', title: recap, updatedAt: 2 },
+        { id: 'cut', cwd: root, origin: 'home', title: recap.slice(0, 90), updatedAt: 1 },
+      ]),
+    );
+    const loaded = await readConversations(env);
+    expect(loaded.map((item) => [item.id, item.title])).toEqual([
+      ['old', 'Add tests'],
+      ['cut', undefined],
+    ]);
+  });
+
   it('creates ~/.genaicode/home without git and persists conversation records', async () => {
     const root = makeTemp('genaicode-conv-');
     const env = { HOME: root, GENAICODE_HOME: join(root, '.genaicode') };

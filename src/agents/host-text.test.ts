@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { hasLeadingBriefing, personText, withBriefing } from './host-text.js';
 import { delegationBrief } from './pack.js';
+import { handoffPreamble } from './handoff.js';
+import type { SessionTurn } from './session.js';
+
+const turn = (id: number, agent: string, prompt: string): SessionTurn => ({
+  id,
+  agent,
+  prompt,
+  entries: [],
+  startedAt: 0,
+  result: { ok: true, status: 'completed', text: 'Done.', exitCode: 0, signal: null },
+});
 
 const members: Parameters<typeof delegationBrief>[0] = [{ name: 'codex', installed: true, running: 0, steer: false }];
 
@@ -58,5 +69,27 @@ describe('personText', () => {
     personText(cut);
     personText(delegationBrief([]));
     expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it('drops the recap an agent taking over a conversation gets, also on one line', () => {
+    const preamble = handoffPreamble([turn(1, 'claude', 'Add CSV export')], '.genaicode/handoff/x.handoff.md');
+    const taken = `${preamble}Now add a header row`;
+    expect(hasLeadingBriefing(taken)).toBe(true);
+    expect(personText(taken)).toBe('Now add a header row');
+    expect(personText(taken.replace(/\s+/g, ' '))).toBe('Now add a header row');
+    // Cut short inside the recap: nothing the person wrote.
+    expect(personText(preamble.slice(0, 120))).toBe('');
+  });
+
+  it('takes the last recap end when the recap quotes an earlier takeover', () => {
+    const earlier = `${handoffPreamble([turn(1, 'codex', 'Fix it')], undefined)}Then test it`;
+    const taken = `${handoffPreamble([turn(1, 'codex', earlier)], undefined)}Ship it`;
+    expect(personText(taken)).toBe('Ship it');
+  });
+
+  it("keeps a person's message that merely mentions taking over", () => {
+    const own = 'You are taking over a conversation, so read the notes first.';
+    expect(hasLeadingBriefing(own)).toBe(false);
+    expect(personText(own)).toBe(own);
   });
 });

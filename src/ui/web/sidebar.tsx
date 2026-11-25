@@ -207,6 +207,12 @@ export interface SidebarProps {
   /** The open chat's state as it is now; other rows show what the stores say. */
   selectedGlyph?: ChatGlyph;
   onOpenChat(chat: SessionInfo): void;
+  /**
+   * The title of the open chat while its turn runs: the window has one session, so other chats and
+   * new ones only open when it finishes. Their rows, New chat and the projects' + look unavailable
+   * and say so; a click still reaches the handlers, which say why and offer to stop the turn.
+   */
+  busyWith?: string;
   /** Start a chat in a project's directory. Absent: the headings have no button. */
   onNewChatIn?(project: ChatProject): void;
   /** Whether a chat can start in that project. Default: in every one. */
@@ -242,6 +248,7 @@ export function Sidebar(props: SidebarProps) {
   const { needs, update } = props;
   const worst = props.quota.find((row) => row.percent !== undefined);
   const quotaTitle = props.quota.map((row) => row.title).join('\n');
+  const held = props.busyWith !== undefined ? `Opens when ${props.busyWith} finishes` : undefined;
   return (
     <aside className="side" aria-label="Sidebar">
       <div className="side-top" data-tauri-drag-region="deep">
@@ -262,7 +269,14 @@ export function Sidebar(props: SidebarProps) {
         </button>
       </div>
       <div className="side-actions">
-        <button type="button" className="nav new" title="New chat (⌘N)" aria-label="New chat" onClick={props.onNewChat}>
+        <button
+          type="button"
+          className={`nav new${held ? ' unavailable' : ''}`}
+          title={held ?? 'New chat (⌘N)'}
+          aria-label="New chat"
+          aria-disabled={held ? true : undefined}
+          onClick={props.onNewChat}
+        >
           <Icon name="plus" />
           <span className="label grow">New chat</span>
           <kbd>⌘N</kbd>
@@ -320,8 +334,9 @@ export function Sidebar(props: SidebarProps) {
               {props.onNewChatIn && (props.canNewChatIn?.(project) ?? true) ? (
                 <button
                   type="button"
-                  className="btn ghost icon sm add"
-                  title={`New chat here: ${project.path ?? project.name}`}
+                  className={`btn ghost icon sm add${held ? ' unavailable' : ''}`}
+                  title={held ?? `New chat here: ${project.path ?? project.name}`}
+                  aria-disabled={held ? true : undefined}
                   aria-label={`New chat here, ${project.name}`}
                   onClick={(event) => {
                     // The heading folds on a click; the button on it does not.
@@ -338,13 +353,15 @@ export function Sidebar(props: SidebarProps) {
               const key = sessionKey(chat);
               const selected = props.page === 'chat' && key === props.selectedChat;
               const glyph = (key === props.selectedChat && props.selectedGlyph) || sessionGlyph(chat, now);
+              const unavailable = held && key !== props.selectedChat ? held : undefined;
               return (
                 <button
                   type="button"
                   key={key}
-                  className="nav chat"
+                  className={`nav chat${unavailable ? ' unavailable' : ''}`}
                   aria-current={selected ? 'page' : undefined}
-                  title={`${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`}
+                  aria-disabled={unavailable ? true : undefined}
+                  title={unavailable ?? `${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`}
                   onClick={() => props.onOpenChat(chat)}
                 >
                   <StateGlyph state={glyph} />

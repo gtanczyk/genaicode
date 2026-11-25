@@ -5,6 +5,7 @@ import { SUBMIT, type SubmitAction } from '../../react/format.js';
 import { folderName, HOME_FOLDER, type ChatProject, type QuotaRow } from '../sidebar.js';
 import { AgentList } from './agent-picker.js';
 import type { WebFolder } from './server.js';
+import type { ModelSuggestion } from '../models.js';
 
 /**
  * The controls of the composer's row (docs/design/desktop-layout.md, "Composer"): the agent chip
@@ -98,6 +99,8 @@ function CommitField({
   title?: string;
   className?: string;
   'aria-label'?: string;
+  /** The id of a `<datalist>` of suggestions: the field is a combobox that still takes any text. */
+  list?: string;
 }) {
   const [draft, setDraft] = useState<string>();
   return (
@@ -128,6 +131,8 @@ export interface AgentChipProps {
   model?: string;
   /** The model the agent last ran, shown while none is set. */
   reportedModel?: string;
+  /** What the Model field suggests (`modelSuggestions`): it still takes any name. */
+  models?: readonly ModelSuggestion[];
   effort?: string;
   /** The effort levels the agent takes, in its own words. Empty: no effort control. */
   efforts: readonly string[];
@@ -200,10 +205,18 @@ export function AgentChip(props: AgentChipProps) {
               placeholder={
                 props.reportedModel ? `default (last ran ${props.reportedModel})` : "empty for the agent's default"
               }
-              title="The model id, from the next prompt"
+              title="The model id, from the next prompt: pick one the agent ran or type another"
+              list={props.models?.length ? 'agent-models' : undefined}
               onCommit={props.onModel}
             />
           </label>
+          {props.models?.length ? (
+            <datalist id="agent-models">
+              {props.models.map((item) => (
+                <option key={item.model} value={item.model} label={item.note} />
+              ))}
+            </datalist>
+          ) : null}
           {props.efforts.length ? (
             <div className="pop-field">
               <span id="composer-effort">Effort</span>
@@ -559,5 +572,34 @@ export function ComposerHint({
         </span>
       ))}
     </>
+  );
+}
+
+export interface ModelRejectedProps {
+  agent: string;
+  model: string;
+  /** Clears the model: the agent's default runs from the next prompt, and the prompt again. */
+  onDefault(): void;
+}
+
+/** Shown in place of a failed turn's raw error when the agent did not take the model it was given. */
+export function ModelRejected({ agent, model, onDefault }: ModelRejectedProps) {
+  return (
+    <div className="signin-card" role="region" aria-label="Model not accepted">
+      <div className="signin-head">
+        <strong>
+          {agent} did not accept the model “{model}”
+        </strong>
+      </div>
+      <div className="step-note">
+        The name may be misspelled, or not one this agent or your plan can use. Pick another in the agent chip below, or
+        go back to {agent}'s default.
+      </div>
+      <div className="signin-actions">
+        <button type="button" className="btn-primary" onClick={onDefault}>
+          Use {agent}'s default and retry
+        </button>
+      </div>
+    </div>
   );
 }

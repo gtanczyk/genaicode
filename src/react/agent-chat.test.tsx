@@ -1112,6 +1112,8 @@ describe('AgentChat', () => {
     expect(active().querySelector('.gc-fold-body .gc-progress')?.textContent).toContain('Check the link');
     turn.entries.push({ kind: 'text', text: 'The page opened.', streaming: false });
     render({ state, foldSteps: true });
+    // It arrived whole, so it is being revealed: a click shows all of it at once.
+    act(() => window.dispatchEvent(new Event('pointerdown')));
     // A reply after the status leaves the status and its plan in view.
     expect(shown().slice(0, 2)).toEqual(['Running the browser check', 'Open the page in progress']);
     expect(shown()[2]).toBe('The page opened.');

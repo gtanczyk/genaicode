@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- Chat fixes in the desktop and browser app. A chat started by **Continue here** (or `run --from`) is titled from what you wrote, not the takeover recap ("You are taking over a conversation…"), in the sidebar, the Needs you filter and the top bar, also for older sessions and chats. While a turn runs, other chats, **+** and **New chat** (⌘N) look unavailable and say "Opens when ‹chat› finishes"; choosing one no longer moves the focus to the message field but asks to **Stop and open** or **Wait** (it opens when the turn ends). The agent chip's Model field suggests the models the agent ran (with how often and when), the names its driver knows (`AgentCapabilities.models`: Claude Code's and Gemini CLI's aliases) and your recent picks, and still takes any name; a model the agent rejects shows which model and agent, with a button back to its default. Claude replies stream as they are written (`--include-partial-messages`, when `claude --help` lists it; `claude({ partialMessages })` decides), and in `<AgentChat>` a reply that arrives whole (codex exec, vibe, opencode) is revealed in 300–600 ms, at once under `prefers-reduced-motion` or on a scroll, click or key (#PR)
+
 ## 3.4.0 — 2026-11-25
 
 ### Added

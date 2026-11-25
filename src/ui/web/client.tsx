@@ -33,6 +33,7 @@ import {
   type FilePosition,
 } from '../../react/markdown.js';
 import type { SessionInfo } from '../../agents/sessions/group.js';
+import type { SessionTurn } from '../../agents/session.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
 import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
@@ -52,6 +53,7 @@ import {
   chatKey as chatKeyOf,
   chatProjects,
   folderName,
+  chatTitle,
   HOME_FOLDER,
   liveGlyph,
   needsYou,
@@ -64,7 +66,8 @@ import {
 } from '../sidebar.js';
 import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
-import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import { AgentChip, ComposerHint, ModelRejected, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import { forgetModel, modelSuggestions, readRecentModels, rememberModel, rejectsModel } from '../models.js';
 import { Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
@@ -700,6 +703,50 @@ function useLocalImages(
 }
 
 /** The message field, for the focus: a new chat and the way back from a page start there. */
+/** A chat asked for while the open chat's turn runs, and what was chosen about it. */
+interface HeldSwitch {
+  request: WebSwitchCommand;
+  what: string;
+  /** The chat asked for, as the message names it. */
+  label: string;
+  /** Asked: the message offers Stop and open, and Wait. Stopping or waiting: it opens when the turn is over. */
+  step: 'ask' | 'stopping' | 'waiting';
+}
+
+const SHORT_TITLE = 48;
+
+/** A chat's title in quotes, short enough for a sentence; "that chat" without one. */
+function quotedTitle(chat: Partial<SessionInfo> | undefined): string {
+  if (!chat) return 'that chat';
+  const title = chatTitle({ ...chat, id: chat.id ?? '' } as SessionInfo);
+  if (!title || title === 'New chat') return 'that chat';
+  return `“${title.length > SHORT_TITLE ? `${title.slice(0, SHORT_TITLE - 1)}…` : title}”`;
+}
+
+/** What a failed turn said went wrong: its result's error and the errors it reported on the way. */
+function turnErrorText(turn: SessionTurn): string {
+  return [turn.result?.error ?? '', ...turn.entries.map((entry) => (entry.kind === 'error' ? entry.message : ''))]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function heldLabel(request: WebSwitchCommand): string {
+  switch (request.type) {
+    case 'home-chat':
+      return 'a new chat';
+    case 'project-chat':
+      return `a new chat in ${folderName(request.cwd)}`;
+    case 'topic-chat':
+      return 'a new chat for that topic';
+    default:
+      return 'that chat';
+  }
+}
+
 function focusComposer() {
   window.requestAnimationFrame(() =>
     document.querySelector<HTMLTextAreaElement>('.workspace .gc-composer textarea')?.focus(),
@@ -970,6 +1017,8 @@ function App() {
   const activeCwd = conversation?.cwd || session?.cwd || cwd;
   const teamFolder = hasProject || (isHome && activeCwd !== cwd) ? activeCwd : undefined;
   const running = session?.status === 'running';
+  const runningRef = useRef(running);
+  runningRef.current = running;
   const inSetup = view?.setup === true;
   const {
     agents: agentList,
@@ -1012,7 +1061,16 @@ function App() {
    * whether that chat is the one open now: false when the server refused or did not answer,
    * undefined when another chat was asked for meanwhile.
    */
-  const switchChat = (request: WebSwitchCommand, what: string): Promise<boolean | undefined> => {
+  const switchChat = (request: WebSwitchCommand, what: string, label?: string): Promise<boolean | undefined> => {
+    // The window has one session: another chat opens only when this one's turn is over. Said here,
+    // with a way to stop the turn or wait for it, rather than refused by the server after the fact;
+    // the focus stays where it is.
+    if (request.type !== 'stay-chat' && runningRef.current) {
+      setPanel('chat');
+      setHeld({ request, what, label: label ?? heldLabel(request), step: 'ask' });
+      return Promise.resolve(false);
+    }
+    setHeld(undefined);
     // What still waits here was meant for the conversation that is left.
     dropWaiting();
     closeViewer();
@@ -1035,17 +1093,29 @@ function App() {
         return done === true;
       });
   };
+  const [held, setHeld] = useState<HeldSwitch>();
+  // The turn is over (stopped, or finished while waited for): the chat asked for opens now. Asked
+  // only, the question is moot: every chat can open again.
+  useEffect(() => {
+    if (running || !held) return;
+    setHeld(undefined);
+    if (held.step !== 'ask') void switchChat(held.request, held.what, held.label);
+  }, [running, held]);
   const startTopicChat = (topicId: string) =>
     void switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
   const startHomeChat = () => void switchChat({ type: 'home-chat' }, 'start a new chat');
   // The row's store goes with its id: another store may hold a session with the same one.
-  const continueChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
-    void switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat');
+  const continueChat = (chat: Pick<SessionInfo, 'id' | 'source'> & Partial<SessionInfo>) =>
+    void switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat', quotedTitle(chat));
   // "Continue here" brings a session into the chat: in a project its turns join the conversation.
-  const takeOverChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
-    void switchChat({ type: 'continue', id: chat.id, source: chat.source, takeover: true }, 'open that chat');
+  const takeOverChat = (chat: Pick<SessionInfo, 'id' | 'source'> & Partial<SessionInfo>) =>
+    void switchChat(
+      { type: 'continue', id: chat.id, source: chat.source, takeover: true },
+      'open that chat',
+      quotedTitle(chat),
+    );
   const startProjectChat = (path: string, name = folderName(path)) =>
-    switchChat({ type: 'project-chat', cwd: path }, `start a chat in ${name}`);
+    switchChat({ type: 'project-chat', cwd: path }, `start a chat in ${name}`, `a new chat in ${name}`);
   /**
    * The project line's choice of a folder, made at `mark` (`chatMark()`) and found only now (a typed
    * path looked up, the host's dialog answered): dropped, resolving undefined, when another chat was
@@ -1082,9 +1152,11 @@ function App() {
   }, [newChat, activeCwd, conversation?.id]);
   const convTopic = conversation?.topic?.name;
   const convTitle =
-    conversation?.title ||
+    (conversation?.title && personText(conversation.title)) ||
     (session?.turns.length ? firstLine(personText(session.turns[0]!.prompt)) : undefined) ||
     convTopic;
+  // The chat whose turn keeps the others from opening, as messages and tooltips name it.
+  const runningName = convTitle ? quotedTitle({ title: convTitle }) : 'this chat';
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
@@ -1372,6 +1444,33 @@ function App() {
 
   const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
   const efforts = currentAgent?.effort ?? [];
+  // The Model field's list: picked here lately, run by this agent (the index, this chat), known to it.
+  const [recentModels, setRecentModels] = useState<string[]>([]);
+  useEffect(() => {
+    setRecentModels(session?.agent ? readRecentModels(workStore(), session.agent) : []);
+  }, [session?.agent]);
+  const models = useMemo(() => {
+    if (!session?.agent) return [];
+    const seen = new Set<string>();
+    const sessions = [...chats.own, ...chats.all].filter((one) => {
+      const key = `${one.source}\u0000${one.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return modelSuggestions({
+      agent: session.agent,
+      ...(currentAgent?.store ? { store: currentAgent.store } : {}),
+      sessions,
+      reported: session.reportedModel,
+      known: currentAgent?.models,
+      recent: recentModels,
+    });
+  }, [session?.agent, session?.reportedModel, currentAgent, chats.own, chats.all, recentModels]);
+  const pickModel = (model: string) => {
+    if (session?.agent) setRecentModels(rememberModel(workStore(), session.agent, model));
+    return command({ type: 'model', model });
+  };
   const canPlan = !!currentAgent?.canPlan;
   const planOn = session?.mode === 'plan';
   // What the next prompt runs with sits where it is typed: one chip for the agent, then the modes.
@@ -1382,6 +1481,7 @@ function App() {
           agent={session.agent}
           model={session.model}
           reportedModel={session.reportedModel}
+          models={models}
           effort={session.effort}
           efforts={efforts}
           fallback={session.fallback ?? []}
@@ -1393,7 +1493,7 @@ function App() {
             dropWaiting();
             void command({ type: 'agent', name });
           }}
-          onModel={(model) => void command({ type: 'model', model })}
+          onModel={(model) => void pickModel(model)}
           onEffort={(level) => control(`/effort ${level}`)}
           onFallback={(names) => control(`/fallback ${names.length ? names.join(',') : 'off'}`)}
           onOpenSetup={hasAgentsApi ? openSetup : undefined}
@@ -1758,6 +1858,7 @@ function App() {
                     ? 'chats'
                     : 'sessions',
           onNewChat: startHomeChat,
+          busyWith: running ? runningName : undefined,
           needs,
           onNeedsYou: openNeedsYou,
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
@@ -1971,7 +2072,23 @@ function App() {
               onRevealFile={config?.reveal ? revealFile : undefined}
               renderPrompt={promptBubble}
               renderFailure={(turn) =>
-                turn.result?.failure?.kind === 'auth' ? (
+                // The agent did not take the model set for it: said with the model and the agent.
+                session?.model &&
+                turn === session.turns.at(-1) &&
+                turn.agent === session.agent &&
+                rejectsModel(turnErrorText(turn), session.model) ? (
+                  <ModelRejected
+                    agent={turn.agent}
+                    model={session.model}
+                    onDefault={() => {
+                      // Not offered again among the picks.
+                      setRecentModels(forgetModel(workStore(), turn.agent, session.model!));
+                      void pickModel('').then(() => {
+                        if (turn.prompt) void submit(turn.prompt);
+                      });
+                    }}
+                  />
+                ) : turn.result?.failure?.kind === 'auth' ? (
                   <SignInCard
                     agent={turn.agent}
                     inspection={agentList.find((item) => item.name === turn.agent)}
@@ -2024,10 +2141,49 @@ function App() {
                     {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
                   </div>
                 ) : null;
-                if (!setupBanner && !unsentBox) return null;
+                const heldBox = held ? (
+                  <div className="switch-held" role="status" aria-label="Another chat waits">
+                    <span className="switch-held-copy">
+                      {held.step === 'ask'
+                        ? `A turn is running in ${runningName}. Stop it to open ${held.label} now, or wait: it opens when the turn finishes.`
+                        : held.step === 'stopping'
+                          ? `Stopping the turn in ${runningName}, then opening ${held.label}…`
+                          : `${capitalized(held.label)} opens when ${runningName} finishes.`}
+                    </span>
+                    <span className="switch-held-actions">
+                      {held.step === 'ask' ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={() => {
+                              setHeld({ ...held, step: 'stopping' });
+                              stopTurn();
+                            }}
+                          >
+                            Stop and open
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-use"
+                            onClick={() => setHeld({ ...held, step: 'waiting' })}
+                          >
+                            Wait
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" className="btn-use" onClick={() => setHeld(undefined)}>
+                          {held.step === 'waiting' ? 'Don’t open' : 'Stay here'}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ) : null;
+                if (!setupBanner && !unsentBox && !heldBox) return null;
                 return (
                   <>
                     {setupBanner}
+                    {heldBox}
                     {unsentBox}
                   </>
                 );

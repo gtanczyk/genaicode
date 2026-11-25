@@ -120,6 +120,14 @@ it('titles a row with the title, else a prompt, on one line', () => {
   expect(chatTitle(chat('', { title: undefined }))).toBe('New chat');
 });
 
+it('titles a taken-over chat from what the person wrote, not the recap in front of it', () => {
+  const recap =
+    "You are taking over a conversation that the user had with another coding agent (claude) in this workspace. Recap of what was said (latest last): User: Add CSV export claude: Done. The user's new message follows. --- Add a header row";
+  expect(chatTitle(chat('a', { title: recap }))).toBe('Add a header row');
+  const cut = recap.slice(0, 100);
+  expect(chatTitle(chat('a', { title: cut, firstPrompt: cut, lastPrompt: 'Make it bold' }))).toBe('Make it bold');
+});
+
 it('lists the other agents’ sessions: not this app’s, asking first, then the latest, capped', () => {
   const own = [chat('mine')];
   const all = [

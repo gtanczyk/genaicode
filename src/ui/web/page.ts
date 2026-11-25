@@ -142,6 +142,8 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .nav.chat { padding-left: 14px; height: 30px; }
 .nav.chat small { color: var(--muted); font-size: 12px; }
 .nav.chat.all { color: var(--muted); padding-left: 35px; }
+.nav.unavailable { opacity: .6; }
+.nav.new.unavailable, .proj > summary .add.unavailable { cursor: not-allowed; }
 .tag { font-size: 11px; font-weight: 600; color: var(--muted); border: 1px solid var(--gc-color-line-strong); border-radius: 4px; padding: 0 4px; line-height: 16px; white-space: nowrap; }
 .side-foot { border-top: 1px solid var(--line); padding: 8px 10px; display: grid; gap: 2px; flex: none; position: relative; }
 .quota { display: grid; gap: 4px; padding: 6px 9px 8px; border: 0; background: transparent; width: 100%; text-align: left; border-radius: 8px; cursor: pointer; }
@@ -544,6 +546,9 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .setup-banner-copy strong { font-size: 13.5px; color: var(--text); }
 .setup-banner-copy span { font-size: 12.5px; color: var(--muted); }
 .setup-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.switch-held { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin-top: 8px; font-size: 13px; }
+.switch-held-copy { min-width: 0; color: var(--text); }
+.switch-held-actions { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 640px) {
   .session-row { grid-template-columns: 16px 70px 34px 1fr; }
   .session-row .act { grid-column: 2 / -1; flex-wrap: wrap; }

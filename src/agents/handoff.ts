@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { HANDOFF_CLOSE, HANDOFF_OPEN } from './host-text.js';
 import type { SessionTurn } from './session.js';
 import type { Artifact } from './types.js';
 
@@ -16,7 +17,7 @@ const RECAP_MAX = 4_000;
 export function handoffPreamble(turns: readonly SessionTurn[], file: string | undefined): string {
   const agents = [...new Set(turns.map((turn) => turn.agent))].join(', ');
   const lines = [
-    `You are taking over a conversation that the user had with another coding agent (${agents}) in this workspace.`,
+    `${HANDOFF_OPEN}${agents}) in this workspace.`,
     'Recap of what was said (latest last):',
     '',
     recap(turns, file ? RECAP_MAX : RECAP_MAX * 2),
@@ -36,7 +37,7 @@ export function handoffPreamble(turns: readonly SessionTurn[], file: string | un
       '',
     );
   }
-  lines.push("The user's new message follows.", '', '---', '');
+  lines.push(HANDOFF_CLOSE, '', '---', '');
   return lines.join('\n');
 }
 
