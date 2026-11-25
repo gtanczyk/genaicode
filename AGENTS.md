@@ -40,9 +40,13 @@ scripts in `package.json`.
 
 `docs/CHANGELOG.md` is the release source of truth; nobody runs `npm version` by hand.
 
-- A PR that changes `src/` (tests excluded) adds one line under `## Unreleased`, or the
-  Changelog guard in `lint.yaml` fails. Write it for someone upgrading `genaicode`, present tense,
-  ending with the PR number: `- \`genaicode run\` resumes a Muse Code session (#149)`.
+- A PR that changes `src/` (tests excluded) adds an entry under `## Unreleased`. Write a bold
+  title in present tense for someone using the app, up to 100 characters, ending the line with
+  the PR number, for example `- **Resume a session from All sessions.** (#149)`. The Changelog
+  guard checks this format. Put optional behaviour and API details in indented Markdown bullets.
+- Prefix an entire library-only entry with `- lib: **Title.** (#149)`, or an individual detail
+  with `  - lib: `. What's new shows the highlights, app titles and their expandable app details.
+  GitHub Release notes include all public entries and details. Older one-line entries remain readable.
 - The category decides the bump: `### Breaking` major, `### Added` minor, `### Fixed` patch,
   `### Internal` (refactors, tooling, nothing a user notices) no release. The highest one present wins.
 - A paragraph between `## Unreleased` and its first category opens that release's notes (the

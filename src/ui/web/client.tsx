@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { ReleaseNotes } from './release-notes.js';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { personText } from '../../agents/host-text.js';
@@ -28,7 +29,6 @@ import { submitAction } from '../../react/format.js';
 import {
   extractLocalImagePaths,
   isPathWithin,
-  Markdown,
   resolveFilePath,
   type FilePosition,
 } from '../../react/markdown.js';
@@ -782,7 +782,7 @@ function WhatsNewDialog({ release, ref, onSeen }: { release: UiRelease; ref: Ref
           Updated from {release.previous} to <strong>{release.version}</strong>.
         </p>
       )}
-      {release.notes ? <Markdown text={release.notes} /> : <p>No release notes bundled for this version.</p>}
+      {release.notes ? <ReleaseNotes notes={release.notes} /> : <p>No release notes bundled for this version.</p>}
       <a
         href={`https://github.com/gtanczyk/genaicode/releases/tag/v${encodeURIComponent(release.version)}`}
         target="_blank"

@@ -16,12 +16,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CHANGELOG = 'docs/CHANGELOG.md';
 // Paths that ship in the package: a change there must add a changelog line (tests excluded).
 const SHIPPED = ['src/'];
-const CATEGORIES = ['Breaking', 'Added', 'Fixed', 'Internal'];
-const UNRELEASED = 'Unreleased';
-
-const SECTION_RE = /^## (Unreleased|(\d+)\.(\d+)\.(\d+))(?:\s+[—-]\s+(\d{4}-\d{2}-\d{2}))?\s*$/;
-const CATEGORY_RE = /^### (\w+)\s*$/;
-const ENTRY_RE = /^- (.+)$/;
+import { CATEGORIES, parse, titleErrors, UNRELEASED } from './changelog.mjs';
+export { parse } from './changelog.mjs';
 
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const write = (file, text) => fs.writeFileSync(path.join(ROOT, file), text);
@@ -182,6 +178,7 @@ function taken() {
 
 function check(files, base) {
   const parsed = parse(read(CHANGELOG));
+  parsed.errors.push(...titleErrors(parsed));
   if (parsed.errors.length) {
     console.error(`${CHANGELOG} is malformed:\n${parsed.errors.map((e) => `  ${e}`).join('\n')}`);
     return 1;
@@ -203,7 +200,7 @@ function check(files, base) {
   }
   // A line this change added under Unreleased: compared with the base branch's changelog when given,
   // so editing old notes or the intro does not count.
-  const entries = (section) => (section ? CATEGORIES.flatMap((c) => section.categories[c]) : []);
+  const entries = (section) => (section ? CATEGORIES.flatMap((c) => section.categories[c].map((raw) => raw.split('\n')[0])) : []);
   const before = new Set(base === null ? [] : entries(unreleased(parse(base))));
   const added = entries(unreleased(parsed)).filter((e) => !before.has(e));
   if (files.includes(CHANGELOG) && added.length) {
