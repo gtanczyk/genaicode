@@ -63,7 +63,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
           agent: 'helper',
           startedAt: 0,
           prompt: 'Read the recipe for ' + session.id,
-          entries: [{ kind: 'text', text: 'The recipe uses rye flour.' }],
+          entries: [{ kind: 'text', streaming: false, text: 'The recipe uses rye flour.' }],
         },
       ],
     },
@@ -72,6 +72,8 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
       const done = (async (): Promise<AgentResult> => {
         const id = task.resume ?? 'sess-1';
         ran.push({ prompt: task.prompt, cwd: task.cwd, resume: task.resume });
+        if (task.prompt === 'Bake now?')
+          return { ok: false, status: 'failed', signal: null, exitCode: 1, error: 'Could not resume ' + id + '.' };
         events.push({ type: 'session', sessionId: id });
         // The session took the reply: its last message asks nothing.
         const session = theirs.find((one) => one.id === id);
@@ -195,9 +197,16 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await topbar.getByRole('button', { name: 'Needs you' }).click();
     expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
 
+    // A second store indexes the same session but cannot read its turns.
+    await page.route('**/api/sessions?days=7', async (route) => {
+      const response = await route.fetch();
+      const listing = await response.json();
+      await route.fulfill({ json: { ...listing, sessions: [{ ...question, source: 'index' }, ...listing.sessions] } });
+    });
     await side.getByRole('button', { name: 'All sessions', exact: true }).click();
     const list = page.locator('main.sessions:visible');
     const search = list.getByRole('searchbox');
+    await list.locator('.session-row').first().waitFor();
     await search.fill('sourdough');
     const row = list.locator('.session-row');
     expect(await row.getByRole('button').allTextContents()).toEqual(['Open', '⋯']);
@@ -205,19 +214,16 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByText('Read the recipe for bakery-1').waitFor();
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Bake now?');
-    await page.route('**/api/sessions/helper/bakery-1/send', (route) =>
-      route.fulfill({ status: 422, json: { error: 'Could not resume bakery-1.', delivery: 'unknown' } }),
-    );
     await detail.getByRole('button', { name: 'Send', exact: true }).click();
     await detail
       .getByRole('alert')
       .getByText('Could not resume bakery-1. Delivery to this session is unconfirmed.')
       .waitFor();
-    await page.unroute('**/api/sessions/helper/bakery-1/send');
     await detail.getByRole('button', { name: 'Cancel' }).click();
     await page.keyboard.press('Escape');
     expect(await search.inputValue()).toBe('sourdough');
     expect(await row.count()).toBe(1);
+    await page.unroute('**/api/sessions?days=7');
     await needsYou.click();
 
     // The filters count what they hold.
@@ -241,7 +247,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await queue.waitFor();
     await asked.getByRole('button', { name: 'Send' }).click();
     await asked.waitFor({ state: 'detached' });
-    expect(ran).toEqual([{ prompt: 'Bake today.', cwd: bakery, resume: 'bakery-1' }]);
+    expect(ran).toEqual(['Bake now?', 'Bake today.'].map((prompt) => ({ prompt, cwd: bakery, resume: 'bakery-1' })));
 
     // Nothing waits: the page says so, and the sidebar agrees.
     await queue.getByText('Nothing needs you now').waitFor();

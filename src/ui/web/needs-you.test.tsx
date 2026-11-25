@@ -119,8 +119,8 @@ it('has the actions of each source, and sends each answer where it belongs', asy
   render(props({ decide, onOpen }));
   const names = (within: Element) => Array.from(within.querySelectorAll('button'), (one) => one.textContent?.trim());
   expect(names(card('rm -rf dist'))).toEqual(['Approve', 'Deny', 'Open chat']);
-  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'All sessions']);
-  expect(names(card('npm test'))).toEqual(['Approve once', 'Deny', 'Open session']);
+  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'Browse waiting sessions']);
+  expect(names(card('npm test'))).toEqual(['Approve once', 'Deny', 'Browse waiting sessions']);
   expect(names(card('Gate verdict retries'))).toEqual(['Reply', 'Open chat']);
   expect(button(card('rm -rf dist'), 'Approve').className).toContain('primary');
   expect(button(card('rm -rf dist'), 'Deny').className).not.toContain('primary');
@@ -400,5 +400,7 @@ it('gives the draft back, open to edits and with the error, when a reply hidden 
   await click(chips()[0]!);
   expect(field().value).toBe('On 502 too.');
   expect(field().disabled).toBe(false);
-  expect(card('Gate verdict retries').querySelector('[role="alert"]')?.textContent).toBe('Busy.');
+  expect(card('Gate verdict retries').querySelector('[role="alert"]')?.textContent).toBe(
+    'Busy. Delivery to this session is unconfirmed.',
+  );
 });

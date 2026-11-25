@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- **Open session transcripts directly and see why a reply failed.** (#369)
+
 ## 3.4.0 — 2026-11-25
 
 ### Added

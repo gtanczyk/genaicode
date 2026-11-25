@@ -814,7 +814,7 @@ function webLink(
         if (!store) return undefined;
         const query = { ...(options.env ? { env: options.env } : {}), automated: true, live: false };
         const found = await findSession([store], id, query);
-        if (!found) return undefined;
+        if (!found || found.session.id !== id) return undefined;
         const readable = typeof store.read === 'function';
         if (!readable) return { session: found.session, turns: [], readable: false };
         const maxTurns = 200;

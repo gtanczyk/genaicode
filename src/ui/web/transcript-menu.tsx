@@ -271,6 +271,7 @@ export function TranscriptMenu({
           aria-label="Conversation transcript and developer actions"
           onMouseDown={(event) => event.stopPropagation()}
         >
+          {storedSession && extra?.(() => setOpen(false))}
           {effectiveId || effectivePath ? (
             <div className="tm-head">
               {effectiveId ? (
@@ -311,7 +312,7 @@ export function TranscriptMenu({
           <button type="button" role="menuitem" onClick={() => saveTranscript('json')}>
             {nativeSave ? 'Save JSON…' : 'Download JSON (.json)'}
           </button>
-          {extra?.(() => setOpen(false))}
+          {!storedSession && extra?.(() => setOpen(false))}
         </div>
       ) : null}
     </div>

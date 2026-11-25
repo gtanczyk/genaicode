@@ -75,7 +75,7 @@ it('tells the window when a reply went to a session, so its other lists stop off
 });
 
 it('opens the readable store once per session and shows the sources of distinct rows', async () => {
-  const alias = { ...asking, source: 'index' };
+  const alias = { ...asking, source: 'index', cwd: undefined };
   const other = { ...asking, source: 'second', id: 'another-id' };
   vi.stubGlobal(
     'fetch',
@@ -84,7 +84,10 @@ it('opens the readable store once per session and shows the sources of distinct 
   const onOpen = vi.fn();
   await act(async () => root.render(<Sessions token="t" cwd="/work" onOpen={onOpen} onContinue={vi.fn()} />));
   const rows = Array.from(host.querySelectorAll('.session-row'));
-  expect(rows.map((row) => row.querySelector('.label small')?.textContent)).toEqual(['helper', 'second']);
+  expect(rows.map((row) => (row.querySelector('.label small') ?? row.querySelector('.agent'))?.textContent)).toEqual([
+    'helper',
+    'second',
+  ]);
   await act(async () => rows[0]!.querySelector('button')!.click());
   expect(onOpen).toHaveBeenCalledWith(asking);
 });

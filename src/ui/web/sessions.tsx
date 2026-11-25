@@ -170,13 +170,13 @@ export function Sessions({
   const everyones = listing?.sessions ?? [];
   const all = useMemo(() => {
     if (!own) {
-      // Keep distinct local projects and cloud repositories when stores reuse the same id.
+      // The agent owns the id. Prefer the store that can read and resume it.
       const rows = new Map<string, SessionInfo>();
       const rank = (row: SessionInfo) =>
         Number(listing?.readable?.includes(row.source) ?? false) * 2 +
         Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
       for (const row of everyones) {
-        const key = JSON.stringify([row.agent, row.id, row.where, row.cwd ?? row.repository]);
+        const key = JSON.stringify([row.agent, row.id]);
         const other = rows.get(key);
         if (!other || rank(row) > rank(other) || (rank(row) === rank(other) && row.updatedAt > other.updatedAt))
           rows.set(key, row);
@@ -365,6 +365,263 @@ export function Sessions({
     ) : null;
   };
   const detail = selected && (all.find((row) => row.source === selected.source && row.id === selected.id) ?? selected);
+  const list = (
+    <main hidden={!!detail} className="sessions">
+      <div className="tools">
+        {own ? (
+          <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
+            Chats of this app ×
+          </button>
+        ) : null}
+        {topic ? (
+          <>
+            <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
+              {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
+            </button>
+            {onNewTopicChat ? (
+              <button className="chip off" onClick={() => onNewTopicChat(topic)}>
+                New chat
+              </button>
+            ) : null}
+          </>
+        ) : null}
+        <input
+          type="search"
+          placeholder="Search titles, prompts, directories, branches…"
+          value={text}
+          autoFocus
+          onChange={(event) => setText(event.target.value)}
+        />
+        <select aria-label="Agent" value={agent} onChange={(event) => setAgent(event.target.value)}>
+          <option value="">All agents</option>
+          {agents.map((name) => (
+            <option key={name}>{name}</option>
+          ))}
+        </select>
+        <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)}>
+          <option value="">Any state</option>
+          <option value="active">● Active</option>
+          <option value="approval">◆ Asks for approval</option>
+          <option value="now">◉ Needs you now</option>
+          <option value="stalled">◇ Stalled</option>
+          <option value="waiting">○ Waiting for you</option>
+          <option value="unfinished">◌ Unfinished</option>
+          <option value="archived">Archived</option>
+        </select>
+        {sorted && !own ? (
+          <select
+            aria-label="Group by"
+            value={by}
+            onChange={(event) => setChosen(event.target.value === 'project' ? 'project' : 'topic')}
+          >
+            <option value="topic">By topic</option>
+            <option value="project">By directory</option>
+          </select>
+        ) : null}
+        <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+          {RANGES.map((range) => (
+            <option key={range.days} value={range.days}>
+              {range.label}
+            </option>
+          ))}
+        </select>
+        {needs.length ? (
+          <button
+            className={`chip waits${state === 'now' ? ' on' : ''}`}
+            title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
+            aria-pressed={state === 'now'}
+            onClick={() => setState(state === 'now' ? '' : 'now')}
+          >
+            {needs.length} need{needs.length === 1 ? 's' : ''} you now
+            {needs.some((session) => session.waitingFor === 'approval')
+              ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
+              : ''}
+          </button>
+        ) : null}
+        {stalled.length ? (
+          <button
+            className={`chip${state === 'stalled' ? ' on' : ''}`}
+            title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
+            aria-pressed={state === 'stalled'}
+            onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
+          >
+            {stalled.length} stalled
+          </button>
+        ) : null}
+        {stale.length && state !== 'archived' ? (
+          <button
+            className="chip"
+            title="Put away every session waiting for you or left half way for 2 days or more. Their files stay; any news brings one back."
+            onClick={() => archive(stale, true)}
+          >
+            Archive {stale.length} stale
+          </button>
+        ) : null}
+        <button className="chip" onClick={() => setRound(round + 1)}>
+          Refresh
+        </button>
+        <span className="count">
+          {listing
+            ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
+            : 'Reading…'}
+        </span>
+      </div>
+      {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
+      {receipt ? (
+        <div className="session-receipt" role="status">
+          <b>
+            {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
+          </b>
+          <p>{receipt.text || 'Turn completed.'}</p>
+        </div>
+      ) : null}
+      {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
+      {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
+      {listing?.errors.map((error) => (
+        <div key={error.source} className="errors">
+          {error.source}: {error.message}
+        </div>
+      ))}
+      {projects.map((project) => {
+        // Stalled sessions fold under their topic unless asked for: they block nobody.
+        const unfold = inbox || open.has(`stalled:${project.key}`);
+        const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
+        const listed = folded.length
+          ? project.sessions.filter((session) => !folded.includes(session))
+          : project.sessions;
+        const whole = open.has(project.key) || listed.length <= FOLD;
+        const rows = whole ? listed : listed.slice(0, FOLD);
+        const topicId =
+          by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
+            ? project.key.slice('topic:'.length)
+            : undefined;
+        return (
+          <details key={project.key} className="project" open>
+            <summary>
+              <b>{project.name}</b>
+              <span className="path">
+                {own && home
+                  ? ''
+                  : by === 'topic'
+                    ? asksOf(project)
+                    : project.key.startsWith('cloud:')
+                      ? 'cloud'
+                      : project.key}
+              </span>
+              <span className="counts">
+                {Object.entries(project.agents)
+                  .map(([name, count]) => `${name} ${count}`)
+                  .join(' · ')}
+              </span>
+              {topicId && onNewTopicChat ? (
+                <button
+                  type="button"
+                  className="topic-new"
+                  aria-label={`New chat in ${project.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNewTopicChat(topicId);
+                  }}
+                >
+                  New chat
+                </button>
+              ) : null}
+            </summary>
+            {rows.map((session) => {
+              const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
+              return [
+                <div key={`${session.source}:${session.id}`} className="session-row">
+                  <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
+                    {MARK[shownState(session)] ?? '·'}
+                  </span>
+                  <span className="agent">{session.agent}</span>
+                  <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
+                    {ago(now - session.updatedAt)}
+                  </span>
+                  <span className="label" title={session.lastPrompt ?? session.title}>
+                    {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {!own && session.source !== session.agent && <small title="Session source">{session.source}</small>}
+                    {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
+                    {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
+                    {session.branch ? <small>{session.branch}</small> : null}
+                  </span>
+                  <span className="act">
+                    {own ? (
+                      actions(session)
+                    ) : (
+                      <button className="open-session" onClick={() => onOpen(session)}>
+                        Open
+                      </button>
+                    )}
+                    <TranscriptMenu
+                      extra={own ? undefined : (close) => actions(session, close)}
+                      token={token}
+                      endpoint={transcriptUrl(session)}
+                      sessionId={session.id}
+                      sessionPath={session.path}
+                      storedSession={{ source: session.source, id: session.id }}
+                      nativeSave={nativeSave}
+                      label="⋯"
+                      ariaLabel={`Session actions for ${session.title ?? session.id}`}
+                      title="Session actions"
+                      onStatus={onStatus}
+                    />
+                  </span>
+                </div>,
+                !selected && replyEditor(session),
+                ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
+                  <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
+                    <span className="what">
+                      <b>{tool}</b>
+                      <code>{command}</code>
+                    </span>
+                  </div>
+                )),
+                ...questionsOf(session).map((ask) => (
+                  <div key={`ask:${ask.id}`} className="question-row">
+                    <span className="what" title={ask.preview}>
+                      <b>{ask.tool ?? 'A tool'}</b>
+                      {ask.preview ? <code>{ask.preview}</code> : null}
+                    </span>
+                    <span className="act">
+                      <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
+                        Approve
+                      </button>
+                      <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
+                        Deny
+                      </button>
+                    </span>
+                  </div>
+                )),
+              ];
+            })}
+            {whole && !folded.length ? null : (
+              <div className="more">
+                {whole ? null : (
+                  <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
+                )}
+                {folded.length ? (
+                  <button
+                    title="Left on an offer, a report that could not be sent, or an old question"
+                    // Every row, so the five-row fold does not hide what was asked for.
+                    onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
+                  >
+                    Show {folded.length} stalled
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </details>
+        );
+      })}
+      {listing && !shown.length ? (
+        <div className="count">
+          {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}
+        </div>
+      ) : null}
+    </main>
+  );
   return (
     <>
       {detail && (
@@ -384,261 +641,7 @@ export function Sessions({
           <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
         </main>
       )}
-      <main hidden={!!detail} className="sessions">
-        <div className="tools">
-          {own ? (
-            <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
-              Chats of this app ×
-            </button>
-          ) : null}
-          {topic ? (
-            <>
-              <button className="chip waits" title="Show every topic" onClick={onAllTopics}>
-                {listing?.topics?.find((one) => one.id === topic)?.name ?? 'Topic'} ×
-              </button>
-              {onNewTopicChat ? (
-                <button className="chip off" onClick={() => onNewTopicChat(topic)}>
-                  New chat
-                </button>
-              ) : null}
-            </>
-          ) : null}
-          <input
-            type="search"
-            placeholder="Search titles, prompts, directories, branches…"
-            value={text}
-            autoFocus
-            onChange={(event) => setText(event.target.value)}
-          />
-          <select aria-label="Agent" value={agent} onChange={(event) => setAgent(event.target.value)}>
-            <option value="">All agents</option>
-            {agents.map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-          <select aria-label="State" value={state} onChange={(event) => setState(event.target.value)}>
-            <option value="">Any state</option>
-            <option value="active">● Active</option>
-            <option value="approval">◆ Asks for approval</option>
-            <option value="now">◉ Needs you now</option>
-            <option value="stalled">◇ Stalled</option>
-            <option value="waiting">○ Waiting for you</option>
-            <option value="unfinished">◌ Unfinished</option>
-            <option value="archived">Archived</option>
-          </select>
-          {sorted && !own ? (
-            <select
-              aria-label="Group by"
-              value={by}
-              onChange={(event) => setChosen(event.target.value === 'project' ? 'project' : 'topic')}
-            >
-              <option value="topic">By topic</option>
-              <option value="project">By directory</option>
-            </select>
-          ) : null}
-          <select aria-label="Period" value={days} onChange={(event) => setDays(Number(event.target.value))}>
-            {RANGES.map((range) => (
-              <option key={range.days} value={range.days}>
-                {range.label}
-              </option>
-            ))}
-          </select>
-          {needs.length ? (
-            <button
-              className={`chip waits${state === 'now' ? ' on' : ''}`}
-              title="Approvals, and questions or commands to run from the last 3 days: someone waits on your answer"
-              aria-pressed={state === 'now'}
-              onClick={() => setState(state === 'now' ? '' : 'now')}
-            >
-              {needs.length} need{needs.length === 1 ? 's' : ''} you now
-              {needs.some((session) => session.waitingFor === 'approval')
-                ? ` · ${needs.filter((session) => session.waitingFor === 'approval').length} ◆`
-                : ''}
-            </button>
-          ) : null}
-          {stalled.length ? (
-            <button
-              className={`chip${state === 'stalled' ? ' on' : ''}`}
-              title="Left on an offer to go on, a report that could not be sent, or a question older than 3 days: nobody is blocked"
-              aria-pressed={state === 'stalled'}
-              onClick={() => setState(state === 'stalled' ? '' : 'stalled')}
-            >
-              {stalled.length} stalled
-            </button>
-          ) : null}
-          {stale.length && state !== 'archived' ? (
-            <button
-              className="chip"
-              title="Put away every session waiting for you or left half way for 2 days or more. Their files stay; any news brings one back."
-              onClick={() => archive(stale, true)}
-            >
-              Archive {stale.length} stale
-            </button>
-          ) : null}
-          <button className="chip" onClick={() => setRound(round + 1)}>
-            Refresh
-          </button>
-          <span className="count">
-            {listing
-              ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
-              : 'Reading…'}
-          </span>
-        </div>
-        {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
-        {receipt ? (
-          <div className="session-receipt" role="status">
-            <b>
-              {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
-            </b>
-            <p>{receipt.text || 'Turn completed.'}</p>
-          </div>
-        ) : null}
-        {answerFailed ? <div className="errors">Could not answer: {answerFailed}</div> : null}
-        {archiveFailed ? <div className="errors">Could not archive: {archiveFailed}</div> : null}
-        {listing?.errors.map((error) => (
-          <div key={error.source} className="errors">
-            {error.source}: {error.message}
-          </div>
-        ))}
-        {projects.map((project) => {
-          // Stalled sessions fold under their topic unless asked for: they block nobody.
-          const unfold = inbox || open.has(`stalled:${project.key}`);
-          const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
-          const listed = folded.length
-            ? project.sessions.filter((session) => !folded.includes(session))
-            : project.sessions;
-          const whole = open.has(project.key) || listed.length <= FOLD;
-          const rows = whole ? listed : listed.slice(0, FOLD);
-          const topicId =
-            by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
-              ? project.key.slice('topic:'.length)
-              : undefined;
-          return (
-            <details key={project.key} className="project" open>
-              <summary>
-                <b>{project.name}</b>
-                <span className="path">
-                  {own && home
-                    ? ''
-                    : by === 'topic'
-                      ? asksOf(project)
-                      : project.key.startsWith('cloud:')
-                        ? 'cloud'
-                        : project.key}
-                </span>
-                <span className="counts">
-                  {Object.entries(project.agents)
-                    .map(([name, count]) => `${name} ${count}`)
-                    .join(' · ')}
-                </span>
-                {topicId && onNewTopicChat ? (
-                  <button
-                    type="button"
-                    className="topic-new"
-                    aria-label={`New chat in ${project.name}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onNewTopicChat(topicId);
-                    }}
-                  >
-                    New chat
-                  </button>
-                ) : null}
-              </summary>
-              {rows.map((session) => {
-                const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
-                return [
-                  <div key={`${session.source}:${session.id}`} className="session-row">
-                    <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
-                      {MARK[shownState(session)] ?? '·'}
-                    </span>
-                    <span className="agent">{session.agent}</span>
-                    <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
-                      {ago(now - session.updatedAt)}
-                    </span>
-                    <span className="label" title={session.lastPrompt ?? session.title}>
-                      {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
-                      {!own && <small>{session.source}</small>}
-                      {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
-                      {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
-                      {session.branch ? <small>{session.branch}</small> : null}
-                    </span>
-                    <span className="act">
-                      {own ? (
-                        actions(session)
-                      ) : (
-                        <button className="open-session" onClick={() => onOpen(session)}>
-                          Open
-                        </button>
-                      )}
-                      <TranscriptMenu
-                        extra={own ? undefined : (close) => actions(session, close)}
-                        token={token}
-                        endpoint={transcriptUrl(session)}
-                        sessionId={session.id}
-                        sessionPath={session.path}
-                        storedSession={{ source: session.source, id: session.id }}
-                        nativeSave={nativeSave}
-                        label="⋯"
-                        ariaLabel={`Session actions for ${session.title ?? session.id}`}
-                        title="Session actions"
-                        onStatus={onStatus}
-                      />
-                    </span>
-                  </div>,
-                  !selected && replyEditor(session),
-                  ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
-                    <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
-                      <span className="what">
-                        <b>{tool}</b>
-                        <code>{command}</code>
-                      </span>
-                    </div>
-                  )),
-                  ...questionsOf(session).map((ask) => (
-                    <div key={`ask:${ask.id}`} className="question-row">
-                      <span className="what" title={ask.preview}>
-                        <b>{ask.tool ?? 'A tool'}</b>
-                        {ask.preview ? <code>{ask.preview}</code> : null}
-                      </span>
-                      <span className="act">
-                        <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
-                          Approve
-                        </button>
-                        <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
-                          Deny
-                        </button>
-                      </span>
-                    </div>
-                  )),
-                ];
-              })}
-              {whole && !folded.length ? null : (
-                <div className="more">
-                  {whole ? null : (
-                    <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
-                  )}
-                  {folded.length ? (
-                    <button
-                      title="Left on an offer, a report that could not be sent, or an old question"
-                      // Every row, so the five-row fold does not hide what was asked for.
-                      onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
-                    >
-                      Show {folded.length} stalled
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </details>
-          );
-        })}
-        {listing && !shown.length ? (
-          <div className="count">
-            {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}
-          </div>
-        ) : null}
-      </main>
+      {list}
     </>
   );
 }

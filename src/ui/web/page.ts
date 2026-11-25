@@ -431,6 +431,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 .tm-wrap { position: relative; display: inline-flex; }
 .tm-popover { position: absolute; right: 0; top: calc(100% + 5px); z-index: 30; min-width: 240px; max-width: min(360px, calc(100vw - 24px)); padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .16); display: flex; flex-direction: column; gap: 1px; user-select: text; -webkit-user-select: text; }
+.session-row .tm-popover { max-height: min(50vh, 380px); overflow: auto; }
 .tm-popover.tm-up { top: auto; bottom: calc(100% + 5px); }
 .tm-head { padding: 5px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 3px; display: flex; flex-direction: column; gap: 3px; }
 .tm-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); min-width: 0; }

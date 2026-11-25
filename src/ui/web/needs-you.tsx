@@ -198,7 +198,9 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                 ) : null}
                 {item.open && (item.open.to !== 'sessions' || props.sessionsPage !== false) ? (
                   <button type="button" className="btn sm ghost" onClick={() => props.onOpen(item)}>
-                    {item.open.to === 'sessions' && !item.open.session ? 'All sessions' : OPEN_LABEL[item.open.to]}
+                    {item.open.to === 'sessions' && !item.open.session
+                      ? 'Browse waiting sessions'
+                      : OPEN_LABEL[item.open.to]}
                   </button>
                 ) : null}
               </div>

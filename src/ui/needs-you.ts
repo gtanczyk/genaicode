@@ -290,7 +290,10 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
 
   const held = elsewhere.tower.map((item): NeedsItem => {
     const key = `tower:${item.id}`;
-    const session = sessions.find((one) => itemIsFor(item, one));
+    const target = item.recipient ? { ...item, ...item.recipient } : item;
+    const matches = sessions.filter((one) => itemIsFor(target, one));
+    const local = matches.length > 1 ? matches.filter((one) => one.cwd === item.cwd) : matches;
+    const session = local.length === 1 ? local[0] : undefined;
     const ask = asks.find((one) => one.id === hookAsk(item));
     return {
       key,
@@ -299,7 +302,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       action: towerAction(item),
       agent: towerText(item.agent),
       project: projectOf(item.cwd),
-      origin: session ? named(session) : towerText(item.origin),
+      origin: session && !item.recipient ? named(session) : towerText(item.origin),
       text: towerText(item.text, true),
       verbatim: true,
       since: ask?.at ?? (item.kind === 'native' ? session?.updatedAt : undefined) ?? input.seen?.get(key),

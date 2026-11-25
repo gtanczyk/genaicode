@@ -1230,8 +1230,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           '{"delivery":"not-sent","error":"invalid session prompt or sandbox"}',
         );
       }
+      let responded = false;
       try {
-        let responded = false;
         const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal, () => {
           responded = true;
         });
@@ -1244,7 +1244,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
             crash: 'The agent crashed.',
             budget: 'The turn exceeded its budget.',
           };
-          const error = result.error?.trim() || (kind && reasons[kind]) || `The turn ${result.status}.`;
+          const error =
+            [kind && reasons[kind], result.error?.trim()].filter(Boolean).join(' ') || `The turn ${result.status}.`;
           const delivery = responded ? 'reached' : kind === 'unavailable' ? 'not-sent' : 'unknown';
           return send(res, 422, 'application/json', JSON.stringify({ error, kind, delivery }));
         }
@@ -1261,7 +1262,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           res,
           500,
           'application/json',
-          '{"delivery":"unknown","error":"Could not send the session prompt."}',
+          JSON.stringify({ delivery: responded ? 'reached' : 'unknown', error: 'Could not send the session prompt.' }),
         );
       }
     }
