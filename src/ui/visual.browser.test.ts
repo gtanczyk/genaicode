@@ -17,6 +17,7 @@
  * A pixel counts as different when a channel is off by more than CHANNEL_TOLERANCE; a screenshot
  * fails when more than MAX_DIFFERENT of its pixels are, or when its size changed.
  */
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -509,6 +510,9 @@ describe('the genaicode ui page looks as its baseline', () => {
     root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'visual-'));
     project = join(root, 'app');
     mkdirSync(project);
+    // A repository of its own on a fixed branch: the new chat's project line names the branch, and
+    // without this it would be the branch of whatever checkout runs the test (none in a CI merge).
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: project });
     const reply = 'The cart total now counts **every item**:\n\n- `cart.ts` multiplies the price by the count';
     const helper: CodingAgent = {
       name: 'helper',
@@ -585,6 +589,8 @@ describe('the genaicode ui page looks as its baseline', () => {
       for (const [index, page] of pages.entries()) {
         // The sidebar's last piece: Help, where What's new is.
         await page.getByRole('button', { name: 'Help', exact: true }).waitFor();
+        // The project line gets the folder's branch from the server after the page is up.
+        await page.locator('.gc-composer-header', { hasText: 'main' }).waitFor();
         // The mascot is a background image: drawn only once it has loaded.
         await page.evaluate(() =>
           Promise.all(
