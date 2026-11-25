@@ -1,5 +1,5 @@
 import { attentionOf, type SessionInfo } from '../agents/sessions/group.js';
-import { sessionStores } from './sessions.js';
+import { askingStore, sessionStores } from './sessions.js';
 import type { RateLimit } from '../agents/types.js';
 
 /**
@@ -237,9 +237,7 @@ export function waitingElsewhere<Item extends NeedsYouItem>(
     !!open?.id && session.id === open.id && (open.source === undefined || session.source === open.source);
   const sessions = sessionStores(input.sessions ?? []).flatMap((stores) => {
     if (stores.some((row) => isOpen(row) || tower.some((item) => itemIsFor(item, row)))) return [];
-    // Listings are newest first. A tool approval takes precedence over a question in words.
-    const asking = stores.filter((row) => attentionOf(row, input.now) === 'now');
-    const row = asking.find((one) => one.waitingFor === 'approval') ?? asking[0];
+    const row = askingStore(stores, input.now);
     return row ? [row] : [];
   });
   return { tower, sessions };

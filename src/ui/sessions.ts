@@ -25,6 +25,12 @@ export function sessionStores(rows: readonly SessionInfo[]): SessionInfo[][] {
   return [...groups.values()];
 }
 
+/** The most recent pending approval or other immediate request across stores, if any. */
+export function askingStore(stores: readonly SessionInfo[], now = Date.now()): SessionInfo | undefined {
+  const asking = stores.filter((row) => attentionOf(row, now) === 'now').sort((a, b) => b.updatedAt - a.updatedAt);
+  return asking.find((row) => row.waitingFor === 'approval') ?? asking[0];
+}
+
 /** What the Sessions view narrows the list by. */
 export interface SessionFilter {
   /** Words that must all appear in the title, prompts, directory, branch, agent or id. */

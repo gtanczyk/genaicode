@@ -15,6 +15,18 @@ export interface SessionReplyDraft {
 }
 const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
 
+export function useSessionReplyDrafts() {
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, SessionReplyDraft>>(new Map());
+  const keepDraft = (key: string, draft: SessionReplyDraft | undefined) =>
+    setDrafts((all) => {
+      const next = new Map(all);
+      if (draft) next.set(key, draft);
+      else next.delete(key);
+      return next;
+    });
+  return { drafts, keepDraft };
+}
+
 export function SessionReply({
   session,
   token,

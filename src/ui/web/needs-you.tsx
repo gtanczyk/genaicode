@@ -9,7 +9,7 @@ import {
   type NeedsItem,
 } from '../needs-you.js';
 import { towerText } from '../tower-format.js';
-import { SessionReply, type SessionReplyDraft } from './session-reply.js';
+import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { StateGlyph } from './sidebar.js';
 
 /**
@@ -64,14 +64,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   const [busy, setBusy] = useState<string>();
   const [replyTo, setReplyTo] = useState<string>();
   // What is typed to each card, by its key: a filter that hides the card keeps it.
-  const [drafts, setDrafts] = useState<ReadonlyMap<string, SessionReplyDraft>>(new Map());
-  const keepDraft = (key: string, draft: SessionReplyDraft | undefined) =>
-    setDrafts((all) => {
-      const next = new Map(all);
-      if (draft) next.set(key, draft);
-      else next.delete(key);
-      return next;
-    });
+  const { drafts, keepDraft } = useSessionReplyDrafts();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);

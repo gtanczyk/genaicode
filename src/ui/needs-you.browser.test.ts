@@ -52,7 +52,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
   const helper: CodingAgent = {
     name: 'helper',
     command: process.execPath,
-    capabilities: { mcp: true, resume: true, approvals: true },
+    capabilities: { mcp: true, resume: true, approvals: true, permissions: { sandbox: ['read-only'] } },
     sessions: {
       name: 'helper',
       where: 'local',
@@ -214,11 +214,19 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByText('Read the recipe for bakery-1').waitFor();
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Bake now?');
+    await detail.getByLabel('Sandbox').selectOption('read-only');
     await detail.getByRole('button', { name: 'Send', exact: true }).click();
     await detail
       .getByRole('alert')
       .getByText('Could not resume bakery-1. Delivery to this session is unconfirmed.')
       .waitFor();
+    await topbar.getByRole('button', { name: 'All sessions' }).click();
+    expect(await list.getByRole('textbox').inputValue()).toBe('Bake now?');
+    expect(await list.getByLabel('Sandbox').inputValue()).toBe('read-only');
+    expect(await list.getByRole('alert').textContent()).toContain('Could not resume bakery-1.');
+    await list.getByRole('textbox').fill('A revised reply');
+    await row.getByRole('button', { name: 'Open', exact: true }).click();
+    expect(await detail.getByRole('textbox').inputValue()).toBe('A revised reply');
     await detail.getByRole('button', { name: 'Cancel' }).click();
     await page.keyboard.press('Escape');
     expect(await search.inputValue()).toBe('sourdough');

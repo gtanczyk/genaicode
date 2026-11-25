@@ -93,6 +93,42 @@ it('opens the readable store once per session and shows the sources of distinct 
   expect(onOpen).toHaveBeenCalledWith(asking);
 });
 
+it('uses the readable transcript and keeps approvals and their commands from another store', async () => {
+  const reader: SessionInfo = { ...asking, state: 'unfinished', ending: undefined };
+  const approval: SessionInfo = {
+    ...asking,
+    source: 'index',
+    waitingFor: 'approval',
+    waitingTool: 'Bash',
+    waitingCommands: [{ tool: 'Bash', command: 'npm test' }],
+    updatedAt: reader.updatedAt + 1000,
+  };
+  vi.stubGlobal(
+    'fetch',
+    async () =>
+      new Response(
+        JSON.stringify({
+          ...listing,
+          sessions: [reader, approval],
+          readable: [reader.source],
+        }),
+      ),
+  );
+  const onOpen = vi.fn();
+  await act(async () =>
+    root.render(<Sessions token="t" cwd="/work" initialState="approval" onOpen={onOpen} onContinue={vi.fn()} />),
+  );
+  expect(host.querySelectorAll('.session-row')).toHaveLength(1);
+  expect(host.querySelector('.command-preview code')?.textContent).toBe('npm test');
+  expect(button('1 needs you now · 1 ◆')).toBeTruthy();
+  await act(async () => button('⋯').click());
+  expect(button('Reply')).toBeUndefined();
+  await act(async () => button('Open').click());
+  expect(onOpen).toHaveBeenCalledWith(
+    expect.objectContaining({ source: reader.source, waitingFor: 'approval', updatedAt: approval.updatedAt }),
+  );
+});
+
 it('archives all store entries for the selected session and leaves a different project alone', async () => {
   const alias = { ...asking, source: 'index' };
   const separate = { ...asking, source: 'other', cwd: '/other/project' };

@@ -11,10 +11,11 @@ import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
 import { sessionKey } from '../sidebar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
-import { SessionReply } from './session-reply.js';
+import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
 import {
   ago,
+  askingStore,
   canContinueHere,
   filterSessions,
   groupByTopic,
@@ -138,6 +139,7 @@ export function Sessions({
   const [days, setDays] = useState(initialDays ?? 7);
   const [listing, setListing] = useState<WebSessionListing>();
   const [replyTo, setReplyTo] = useState<SessionInfo>();
+  const { drafts, keepDraft } = useSessionReplyDrafts();
   const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
@@ -170,7 +172,7 @@ export function Sessions({
   }, [days, token, round, own]);
 
   const index = useMemo(() => {
-    const byStore = new Map<string, SessionInfo[]>();
+    const byStore = new Map<string, { display: SessionInfo; stores: SessionInfo[] }>();
     const rows = [];
     const rank = (row: SessionInfo) =>
       Number(listing?.readable?.includes(row.source) ?? false) * 2 +
@@ -178,8 +180,26 @@ export function Sessions({
     for (const group of sessionStores(listing?.sessions ?? [])) {
       // Display the readable source first, preferring one which can also resume the session.
       group.sort((a, b) => rank(b) - rank(a) || b.updatedAt - a.updatedAt);
-      rows.push(group[0]!);
-      for (const row of group) byStore.set(sessionKey(row), group);
+      const reader = group[0]!;
+      const activity =
+        askingStore(group) ?? group.reduce((latest, row) => (row.updatedAt > latest.updatedAt ? row : latest));
+      const display =
+        activity === reader
+          ? reader
+          : {
+              ...reader,
+              state: activity.state,
+              updatedAt: activity.updatedAt,
+              ending: activity.ending,
+              lastReply: activity.lastReply,
+              waitingFor: activity.waitingFor,
+              waitingTool: activity.waitingTool,
+              waitingCommands: activity.waitingCommands,
+              turnInProgress: activity.turnInProgress,
+              archived: activity.archived,
+            };
+      rows.push(display);
+      for (const row of group) byStore.set(sessionKey(row), { display, stores: group });
     }
     return { rows, byStore };
   }, [listing]);
@@ -191,7 +211,7 @@ export function Sessions({
     return sessions.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
   }, [index, own, home, cwd, listing]);
 
-  const storesOf = (row: SessionInfo) => (own ? [row] : (index.byStore.get(sessionKey(row)) ?? [row]));
+  const storesOf = (row: SessionInfo) => (own ? [row] : (index.byStore.get(sessionKey(row))?.stores ?? [row]));
   const topicNames = useMemo(
     () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
     [listing?.topics],
@@ -364,14 +384,21 @@ export function Sessions({
   const replyEditor = (session: SessionInfo) => {
     if (!isReplying(session)) return null;
     const sender = senderOf(session);
+    const key = sessionKey(session);
     return sender ? (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
         session={sender.target}
         token={token}
         sandboxes={sender.sandboxes}
-        onClose={() => setReplyTo(undefined)}
+        draft={drafts.get(key)}
+        onDraft={(draft) => keepDraft(key, draft)}
+        onClose={() => {
+          keepDraft(key, undefined);
+          setReplyTo(undefined);
+        }}
         onSent={(text) => {
+          keepDraft(key, undefined);
           setReceipt({ session, text });
           setReplyTo((current) =>
             current?.source === session.source && current.id === session.id ? undefined : current,
@@ -382,7 +409,7 @@ export function Sessions({
       />
     ) : null;
   };
-  const detail = selected && (index.byStore.get(sessionKey(selected))?.[0] ?? selected);
+  const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
   const list = (
     <main hidden={!!detail} className="sessions">
       <div className="tools">
