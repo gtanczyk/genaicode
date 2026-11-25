@@ -374,7 +374,7 @@ describe('Live tab', () => {
     const onApprove = vi.fn();
     const onOpen = vi.fn();
     show(busy(), { onApprove, needsYou: { total: 4, onOpen } });
-    expect(texts('[role="tab"]')).toEqual(['Live', 'Tasks 7']);
+    expect(texts('[role="tab"]')).toEqual(['Tasks 7', 'Live', 'Changes 2', 'Artifacts']);
     expect($('[role="tab"][aria-selected="true"]').textContent).toBe('Live');
     expect($('[role="tabpanel"]').getAttribute('aria-label')).toBe('Live');
     expect(sections()).toEqual(['Needs you', 'Lead', 'Watching', 'Team feed']);

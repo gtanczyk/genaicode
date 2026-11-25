@@ -413,7 +413,7 @@ describe('<Shell>', () => {
                 target={{ kind: 'artifact', id: 'a1' }}
                 token="t"
                 artifacts={[{ id: 'a1', latest: artifact, versions: [artifact] }]}
-                onClose={onClose}
+                back={{ label: 'Close', onBack: onClose }}
               />
             ) : null}
           </div>
@@ -469,7 +469,7 @@ describe('<Shell>', () => {
                 target={{ kind: 'artifact', id: 'a1' }}
                 token="t"
                 artifacts={[{ id: 'a1', latest: artifact, versions: [artifact] }]}
-                onClose={onClose}
+                back={{ label: 'Close', onBack: onClose }}
               />
             </EscapeActive.Provider>
           </div>

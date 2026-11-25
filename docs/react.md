@@ -165,7 +165,7 @@ Done and Failed); the session keeps it, and **Show them** brings it back. All of
 `view`. The inline card of `<AgentChat>` does the same above 15 tasks: one-line rows, the first 12,
 a filter and **Clear N finished**; pass it `chatId` so what it remembers stays with its conversation.
 
-The panel has two tabs, **Live** and **Tasks** (`view.tab`; a chat starts on Tasks). Live answers
+The panel has four tabs, **Tasks**, **Live**, **Changes** and **Artifacts** (`view.tab`; a chat starts on Tasks). Live answers
 "what is everybody doing": the approvals this chat's tasks wait for (`needsYou={{ total, onOpen }}`
 adds "all N ›" to your own queue across chats), the lead's plan from `report_progress` and what it
 does now, up to three running tasks as cards (the ones pinned with the card's pin, then the ones

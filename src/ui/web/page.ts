@@ -285,12 +285,16 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sent-files:first-child { margin-top: 0; }
 .sent-files img { max-width: 160px; max-height: 120px; border-radius: 8px; border: 1px solid var(--line); display: block; }
-.viewer-panel { position: relative; flex: none; width: min(var(--viewer-width, 620px), calc(100vw - 200px)); min-width: 320px; z-index: 20; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08); }
-.viewer-panel.full-size { position: fixed; inset: 0; width: 100vw; min-width: 0; z-index: 50; border-left: 0; box-shadow: none; }
-.mac-app .viewer-panel.full-size header { padding-left: 88px; }
-.viewer-resize { position: absolute; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; z-index: 5; }
-.viewer-resize:hover::after, .viewer-resize:focus-visible::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: var(--accent); }
-.viewer-panel header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+/* The viewer: a drill-in of the work panel. It fills the panel's pane; the panel has the width and the resize handle. */
+.viewer-panel { position: relative; min-width: 0; display: flex; flex-direction: column; background: var(--panel); font-size: 14px; }
+.viewer-panel header { display: flex; align-items: center; gap: 6px 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+/* Inside the work panel a button takes the panel's font: the viewer's chips keep their own size. */
+.viewer-panel button.chip { font-size: 12px; cursor: pointer; }
+.viewer-panel header button.chip:hover { border-color: var(--accent); }
+.viewer-panel header .chip[aria-pressed='true'] { color: var(--text); border-color: var(--accent); }
+.viewer-back { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; }
+.viewer-diff { padding: 0 12px; }
+.viewer-diff .gc-work-diff { max-height: none; margin: 10px 0; }
 .viewer-icon { color: var(--accent); }
 .viewer-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 38ch; }
 .viewer-panel header small { color: var(--muted); font-size: 12px; white-space: nowrap; }
@@ -321,16 +325,6 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .file-problem { margin: 0; padding: 12px 14px; color: var(--muted); font-size: 13px; }
 .popover-anchor { position: relative; }
 .popover { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); min-width: 280px; max-width: min(380px, calc(100vw - 24px)); }
-.artifacts-popover { padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow: auto; }
-.artifact-list-item { display: grid; grid-template-columns: 16px 1fr; gap: 2px 8px; align-items: baseline; text-align: left; background: transparent; border: 0; border-radius: 7px; padding: 7px 9px; cursor: pointer; width: 100%; }
-.artifact-list-item:hover, .artifact-list-item.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.artifact-list-icon { color: var(--accent); grid-row: span 2; }
-.artifact-list-title { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.artifact-list-meta { font-size: 11.5px; color: var(--muted); }
-@media (max-width: 860px) {
-  .viewer-panel { position: fixed; inset: 0; width: 100vw; min-width: 0; border-left: 0; }
-  .viewer-resize { display: none; }
-}
 .spacer { flex: 1; }
 .chip { font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .chip[data-level='warning'] { color: #e8590c; border-color: currentColor; }

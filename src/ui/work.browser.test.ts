@@ -278,6 +278,12 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     expect(Math.round(stripBox.width)).toBe(Math.round(cardBox.width));
     expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true);
 
+    // From Changes, the strip's task opens that task's detail (on Tasks).
+    await work.getByRole('tab', { name: /^Changes/ }).click();
+    await strip.getByRole('button', { name: 'Open task t4' }).click();
+    await work.getByRole('region', { name: 'Task t4' }).waitFor();
+    expect(await work.getByRole('tab', { name: /^Tasks/ }).getAttribute('aria-selected')).toBe('true');
+
     // Live: what waits for the person, the lead, the running task as a card, and one feed over all tasks.
     await work.getByRole('tab', { name: 'Live' }).click();
     const liveTab = work.getByRole('tabpanel', { name: 'Live' });

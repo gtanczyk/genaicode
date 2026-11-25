@@ -53,18 +53,30 @@ export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
 export type { InputDelivery, SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
 export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
 export { WorkPanel } from './react/work-panel.js';
-export type { WorkActionHandler, WorkPanelProps } from './react/work-panel.js';
+export type { WorkActionHandler, WorkPanelProps, WorkViewerControls } from './react/work-panel.js';
 export {
   readWorkView,
   WORK_CHAT_MIN,
   WORK_PANEL_DEFAULT,
   WORK_PANEL_MIN,
+  WORK_PANEL_VIEWER,
+  workArtifacts,
+  workChanges,
   workNeedsYou,
   workPanelLayout,
   workTasks,
   writeWorkView,
 } from './react/work.js';
-export type { PullRequestState, WorkGroup, WorkPanelView, WorkTask } from './react/work.js';
+export type {
+  PullRequestState,
+  WorkArtifact,
+  WorkChanges,
+  WorkGroup,
+  WorkPanelView,
+  WorkTab,
+  WorkTask,
+  WorkViewing,
+} from './react/work.js';
 export { MissionStrip } from './react/mission-strip.js';
 export type { MissionStripProps } from './react/mission-strip.js';
 export type { PackActionHandler } from './react/pack-tasks.js';
