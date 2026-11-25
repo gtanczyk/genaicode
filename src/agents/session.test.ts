@@ -646,6 +646,50 @@ describe('createAgentSession', () => {
     }
   });
 
+  it('does not take the end of a reply that streamed when input was sent for its answer', async () => {
+    const gate = deferred();
+    let emit: (event: AgentEvent) => void = () => {};
+    let take: (receipt: 'taken') => void = () => {};
+    const fake = fakeAgent(
+      [
+        async (_task, send) => {
+          emit = send;
+          await gate.promise;
+        },
+      ],
+      { steer: true },
+    );
+    const agent: CodingAgent = {
+      ...fake.agent,
+      run: (task) => ({ ...fake.agent.run(task), steer: () => new Promise((resolve) => (take = resolve)) }),
+    };
+    const session = createAgentSession({ agent, cwd: '.' });
+    const entries = () => session.get().turns[0]!.entries;
+    const input = () => entries().find((entry) => entry.kind === 'input');
+    try {
+      session.send('start');
+      await vi.waitFor(() => expect(session.get().canSteer).toBe(true));
+      // The reply is streaming when the input is sent; adding the input closes its entry.
+      emit({ type: 'text-delta', text: 'Running npm' });
+      await vi.waitFor(() => expect(entries().at(-1)).toMatchObject({ kind: 'text', streaming: true }));
+      session.send('use pnpm');
+      await vi.waitFor(() => expect(input()).toMatchObject({ delivery: 'sending' }));
+      take('taken');
+      await vi.waitFor(() => expect(input()).toMatchObject({ delivery: 'delivered' }));
+      // The same reply ends: no answer.
+      emit({ type: 'message', text: 'Running npm install' });
+      await vi.waitFor(() => expect(entries().at(-1)).toMatchObject({ kind: 'text', streaming: false }));
+      expect(input()).not.toHaveProperty('answeredAt');
+      // The next reply is.
+      emit({ type: 'message', text: 'Switching to pnpm.' });
+      await vi.waitFor(() => expect(input()).toMatchObject({ answeredAt: expect.any(Number) }));
+    } finally {
+      gate.resolve();
+      await session.idle();
+      session.close();
+    }
+  });
+
   it('tracks whether steered input reached the agent: sending, then delivered, sent or queued', async () => {
     const gate = deferred();
     const steers: { text: string; resolve(receipt?: 'taken'): void; reject(error: Error): void }[] = [];

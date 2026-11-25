@@ -1,6 +1,10 @@
 /** What a hidden credential is replaced with. */
 const HIDDEN = '***';
 
+/** Headers whose value is a credential (`Cookie` also matches `Set-Cookie`). */
+const AUTH_HEADERS =
+  '(?:(?:proxy-)?authorization|x-api-key|api-key|x-auth-token|x-access-token|private-token|set-cookie|cookie)';
+
 /**
  * Credentials a tool call's argument may carry, each with what it becomes. They are hidden before an
  * argument is kept as a step of a task, shown in its timeline or sent to the lead.
@@ -8,9 +12,16 @@ const HIDDEN = '***';
 const SECRETS: Array<[RegExp, string]> = [
   // A URL with a password in it: https://user:pass@host.
   [/\b([a-z][a-z0-9+.-]*:\/\/[^\s/:@'"]+):[^\s/@'"]+@/gi, `$1:${HIDDEN}@`],
-  // Auth headers, whatever their scheme: `Authorization: Bearer …`, `X-Api-Key: …`, `Cookie: …`.
+  // An auth header given as one quoted argument (`-H 'Cookie: a=1; sid=…'`): its whole value, to the
+  // end of the quotes, however many cookies or words it holds.
+  [new RegExp(`(')(\\s*${AUTH_HEADERS}\\s*:\\s*)[^']*'`, 'gi'), `$1$2${HIDDEN}'`],
+  [new RegExp(`(")(\\s*${AUTH_HEADERS}\\s*:\\s*)(?:[^"\\\\]|\\\\.)*"`, 'gi'), `$1$2${HIDDEN}"`],
+  // Auth headers anywhere else, whatever their scheme: `Authorization: Bearer …`, `"Cookie": "…"`.
   [
-    /\b((?:proxy-)?authorization|x-api-key|api-key|x-auth-token|x-access-token|private-token|cookie)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|(?:(?:bearer|basic|token|digest)\s+)?[^\s'",;]+)/gi,
+    new RegExp(
+      `\\b(${AUTH_HEADERS})(["']?\\s*[:=]\\s*)(?:"(?:[^"\\\\]|\\\\.)*"|'[^']*'|(?:(?:bearer|basic|token|digest)\\s+)?[^\\s'",;]+)`,
+      'gi',
+    ),
     `$1$2${HIDDEN}`,
   ],
   // A token given with its scheme anywhere else.
@@ -20,8 +31,10 @@ const SECRETS: Array<[RegExp, string]> = [
     /(^|\s)(--?(?:password|passwd|pass|token|access-token|auth-token|api-key|apikey|secret|client-secret|private-key))(=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi,
     `$1$2$3${HIDDEN}`,
   ],
-  // `-u user:pass` (curl and the like).
-  [/(^|\s)(-u|--user)(=|\s+)(["']?)([^\s:'"]+):[^\s'"]+\4/g, `$1$2$3$4$5:${HIDDEN}$4`],
+  // `-u user:pass` (curl and the like): the password to the end of the argument, quoted or not.
+  [/(^|\s)(-u|--user)(=|\s+)'([^':]*):[^']*'/g, `$1$2$3'$4:${HIDDEN}'`],
+  [/(^|\s)(-u|--user)(=|\s+)"((?:[^"\\:]|\\.)*):(?:[^"\\]|\\.)*"/g, `$1$2$3"$4:${HIDDEN}"`],
+  [/(^|\s)(-u|--user)(=|\s+)((?:[^\s:'"\\]|\\.)+):(?:[^\s\\]|\\.)+/g, `$1$2$3$4:${HIDDEN}`],
   // `-p` with the password attached (`mysql -psecret`), and `sshpass -p secret`.
   [/(\b(?:mysql\w*|mariadb\w*)\b[^|;&\n]*?\s-p)(?!\s)(?:"[^"]*"|'[^']*'|\S+)/gi, `$1${HIDDEN}`],
   [/(\bsshpass\b[^|;&\n]*?\s-p\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, `$1${HIDDEN}`],

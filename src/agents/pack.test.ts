@@ -976,6 +976,113 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('takes back the live line of an edit whose call failed', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'message', text: 'Looking.' });
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      await step();
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      await step();
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e2' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.text).toBe('edited src/a.ts'));
+      next();
+      await vi.waitFor(() => expect(task()?.steps?.at(-1)).toMatchObject({ kind: 'tool', failed: true }));
+      expect(task()!.text).toBe('Looking.');
+      expect(task()!.steps!.some((item) => item.kind === 'edit')).toBe(false);
+      next();
+      // A call that succeeded keeps its edit.
+      await vi.waitFor(() =>
+        expect(task()?.steps?.find((item) => item.kind === 'tool' && item.text === 'src/b.ts')?.endedAt).toBeTypeOf(
+          'number',
+        ),
+      );
+      expect(task()!.text).toBe('edited src/b.ts');
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('does not take the end of a reply that streamed when a steer was taken for its answer', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'text-delta', text: 'Running npm' });
+      await step();
+      emit({ type: 'message', text: 'Running npm install' });
+      await step();
+      emit({ type: 'message', text: 'Switching to pnpm.' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    // The pack asks for the event after the delta once it has followed the delta.
+    let streamed = () => {};
+    const deltaFollowed = new Promise<void>((resolve) => (streamed = resolve));
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => {
+        const inner = base.run(task);
+        return {
+          ...inner,
+          [Symbol.asyncIterator]: () => {
+            const events = inner[Symbol.asyncIterator]();
+            let asked = 0;
+            return {
+              next: () => {
+                if (++asked === 2) streamed();
+                return events.next();
+              },
+            };
+          },
+          steer: async () => 'taken' as const,
+        };
+      },
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await deltaFollowed;
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Use pnpm.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered' });
+      next();
+      await vi.waitFor(() => expect(task()!.steps?.at(-1)?.text).toBe('Running npm install'));
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
   it('hides credentials in tool arguments, drops edits of failed calls and keeps a long call that just ended', async () => {
     let next = () => {};
     const step = () => new Promise<void>((resolve) => (next = resolve));

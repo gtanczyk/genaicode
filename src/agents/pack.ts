@@ -337,8 +337,13 @@ interface Sub {
   last?: string;
   steers?: PackSteer[];
   steps?: Step[];
-  /** The tool call `last` is about, and the line shown before it started. */
-  tool?: { id?: string; name: string; before?: string };
+  /**
+   * The tool call `last` is about, and the line shown before it started. `edit`: `last` is an edit
+   * that call announced, which stays when the call succeeds and is taken back when it fails.
+   */
+  tool?: { id?: string; name: string; before?: string; edit?: boolean };
+  /** The worker's replies so far (`seq`), and whether the latest still streams (`open`). */
+  reply?: { seq: number; open: boolean };
   usage?: TokenUsage;
   costUsd?: number;
   changes?: string[];
@@ -599,8 +604,27 @@ function stepOf(event: AgentEvent, at: number): Step | undefined {
   }
 }
 
+/** What ends a reply that streams: its message, or the worker doing something else. */
+const REPLY_ENDS = new Set<AgentEvent['type']>([
+  'message',
+  'tool-start',
+  'tool-end',
+  'file-change',
+  'approval-request',
+  'error',
+]);
+
+/** The reply (`Sub.reply.seq`) that was the latest when a steer was taken. */
+const steerTakenIn = new WeakMap<PackSteer, number>();
+
 /** Keeps `PackTask.steps`: adds the event's step, or closes the tool call a `tool-end` names. */
 function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
+  // A reply begins with its first delta, or with its message when it streamed none, and ends with
+  // its message or with the next thing the worker does.
+  const reply = (sub.reply ??= { seq: 0, open: false });
+  if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
+  if (event.type === 'text-delta') reply.open = true;
+  else if (REPLY_ENDS.has(event.type)) reply.open = false;
   if (event.type === 'tool-end') {
     const open = (sub.steps ?? []).filter((step) => step.kind === 'tool' && step.endedAt === undefined);
     // By id when both have one; else the latest open call of that name (any, when the end names none).
@@ -620,9 +644,12 @@ function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
     return;
   }
   if (event.type === 'message') {
-    // The first message after a delivered steer is its answer.
-    for (const steer of sub.steers ?? [])
-      if (steer.answeredAt === undefined && steer.delivery === 'delivered') steer.answeredAt = at;
+    // The first message of a reply begun after a steer was taken is its answer; the reply that
+    // streamed when it was taken began before it.
+    for (const steer of sub.steers ?? []) {
+      const takenIn = steerTakenIn.get(steer);
+      if (steer.answeredAt === undefined && takenIn !== undefined && reply.seq > takenIn) steer.answeredAt = at;
+    }
   }
   const step = stepOf(event, at);
   if (!step) return;
@@ -659,13 +686,26 @@ function track(sub: Sub, event: AgentEvent): void {
         ? event.id === tool.id
         : event.name === undefined || event.name === tool?.name;
     if (tool && same) {
-      sub.last = tool.before;
+      // An edit the call announced happened only when the call succeeded.
+      if (!tool.edit || event.isError) sub.last = tool.before;
       sub.tool = undefined;
     }
     return;
   }
   const line = activity(event);
   if (line === undefined) return;
+  if (event.type === 'file-change' && event.toolId !== undefined) {
+    // Announced as its call started: tied to that call, so its failure takes the line back.
+    const call = sub.tool?.id === event.toolId ? sub.tool : undefined;
+    sub.tool = {
+      id: event.toolId,
+      name: call?.name ?? 'edit',
+      before: call ? call.before : sub.tool ? sub.tool.before : sub.last,
+      edit: true,
+    };
+    sub.last = line;
+    return;
+  }
   sub.tool =
     event.type === 'tool-start'
       ? {
@@ -1460,6 +1500,7 @@ export function pack(options: PackOptions): Pack {
         notify(sub);
         const settle = (delivery: PackSteer['delivery']) => {
           record.delivery = delivery;
+          if (delivery === 'delivered') steerTakenIn.set(record, sub.reply?.seq ?? 0);
           record.settledAt = Date.now();
           notify(sub);
         };

@@ -503,17 +503,36 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
   };
 
-  // Input the agent took and has not answered yet: `openAt` is the reply that was streaming when it
-  // took it, which began before and so is no answer.
-  let unanswered: Array<{ turnId: number; openAt: number; answer(at: number): void }> = [];
-  // A text event lands in a reply begun after the input was taken: that is its answer.
+  // The agent's replies in each turn so far (`seq`), and whether the latest still streams (`open`).
+  // An input entry closes the streaming text entry before it, but not the reply: its next deltas
+  // and its final message still belong to the reply that began before the input.
+  const replies = new Map<number, { seq: number; open: boolean }>();
+  const REPLY_ENDS = new Set<AgentEvent['type']>([
+    'message',
+    'tool-start',
+    'tool-end',
+    'file-change',
+    'approval-request',
+    'error',
+  ]);
+  const noteReply = (turnId: number, event: AgentEvent) => {
+    let reply = replies.get(turnId);
+    if (!reply) {
+      for (const id of replies.keys()) if (!state.turns.some((turn) => turn.id === id)) replies.delete(id);
+      replies.set(turnId, (reply = { seq: 0, open: false }));
+    }
+    if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
+    if (event.type === 'text-delta') reply.open = true;
+    else if (REPLY_ENDS.has(event.type)) reply.open = false;
+  };
+  // Input the agent took and has not answered yet, with the reply that was the latest when it took
+  // it: that reply began before and so is no answer.
+  let unanswered: Array<{ turnId: number; takenIn: number; answer(at: number): void }> = [];
+  // A text event in a reply begun after the input was taken: that is its answer.
   const noteAnswer = (turnId: number) => {
     if (!unanswered.length) return;
-    const entries = state.turns.find((turn) => turn.id === turnId)?.entries;
-    if (!entries) return;
-    const open = openText(entries);
-    const into = open >= 0 ? open : entries.length;
-    const answered = unanswered.filter((wait) => wait.turnId === turnId && wait.openAt !== into);
+    const seq = replies.get(turnId)?.seq ?? 0;
+    const answered = unanswered.filter((wait) => wait.turnId === turnId && seq > wait.takenIn);
     if (!answered.length) return;
     unanswered = unanswered.filter((wait) => !answered.includes(wait));
     const at = Date.now();
@@ -532,6 +551,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
   const onEvent = (turnId: number, event: AgentEvent, own: () => boolean) => {
+    noteReply(turnId, event);
     switch (event.type) {
       case 'subtask-start':
         syncPackTask(turnId, event.id);
@@ -1206,10 +1226,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         const deliver = (delivery: InputDelivery) => {
           change({ delivery, settledAt: Date.now() });
           if (delivery !== 'delivered') return;
-          const entries = state.turns.find((turn) => turn.id === turnId)?.entries;
           unanswered = [
             ...unanswered.filter((wait) => state.turns.some((turn) => turn.id === wait.turnId)),
-            { turnId, openAt: entries ? openText(entries) : -1, answer: (at) => change({ answeredAt: at }) },
+            { turnId, takenIn: replies.get(turnId)?.seq ?? 0, answer: (at) => change({ answeredAt: at }) },
           ];
         };
         current.steer(steerText).then(
