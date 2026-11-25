@@ -324,7 +324,12 @@ const MOST_RECENT = 6;
 export function StartsIn(props: StartsInProps) {
   const [typed, setTyped] = useState('');
   const [problem, setProblem] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  // The choice under way (a typed path looked up, the dialog open), by the mark it was made at: a
+  // later choice (a folder picked again, `/clear`, another chat) leaves it behind, and the buttons
+  // work again at once.
+  const [busyMark, setBusyMark] = useState<number>();
+  const busy = busyMark !== undefined && busyMark === props.mark();
+  const settle = (mark: number) => setBusyMark((current) => (current === mark ? undefined : current));
   const name = props.atHome ? 'Home folder' : folderName(props.cwd);
   const branch = props.folder?.branch;
   const recent = props.projects.filter((project) => project.key !== HOME_FOLDER && project.path).slice(0, MOST_RECENT);
@@ -340,16 +345,16 @@ export function StartsIn(props: StartsInProps) {
     const path = typed.trim();
     if (!path || busy) return;
     const mark = props.mark();
-    setBusy(true);
+    setBusyMark(mark);
     const found = await props.inspect(path).catch(() => undefined);
     // Another folder or chat was picked while this one was looked up: that choice stands.
-    if (mark !== props.mark()) return setBusy(false);
+    if (mark !== props.mark()) return settle(mark);
     if (!found?.exists) {
-      setBusy(false);
+      settle(mark);
       return setProblem(found ? `No folder ${found.path}.` : 'Give the full path of a folder, or one from ~.');
     }
     const started = await props.onProject(found.path, mark).catch(() => false);
-    setBusy(false);
+    settle(mark);
     if (started === undefined) return;
     // The chat says why. A folder nobody worked in yet is opened with the host's dialog, where there is one.
     if (!started) {
@@ -463,9 +468,9 @@ export function StartsIn(props: StartsInProps) {
                       disabled={busy}
                       onClick={async () => {
                         const mark = props.mark();
-                        setBusy(true);
+                        setBusyMark(mark);
                         const found = await props.choose!().catch(() => undefined);
-                        setBusy(false);
+                        settle(mark);
                         // Another folder or chat was picked while the dialog was open: that choice stands.
                         if (!found?.exists || mark !== props.mark()) return;
                         close();

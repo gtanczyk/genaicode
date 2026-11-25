@@ -402,6 +402,30 @@ describe('StartsIn', () => {
     expect($('[role="alert"]')).toBeNull();
   });
 
+  it('gives Open and Choose… back at once when the folder it starts in is picked again', async () => {
+    let found!: (folder: { path: string; exists: boolean }) => void;
+    const props = line({
+      inspect: vi.fn(() => new Promise<{ path: string; exists: boolean }>((resolve) => (found = resolve))),
+      choose: vi.fn(async () => undefined),
+    });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    fill(path(), '/work/slow');
+    click(button('Open'));
+    expect(button('Open').disabled).toBe(true);
+    expect(button('Choose…').disabled).toBe(true);
+    // The person picks the folder it starts in again, then opens the popover for another path:
+    // the old lookup, still under way, no longer holds the buttons.
+    click(named('radio', 'app/work/app'));
+    click(trigger());
+    fill(path(), '/work/next');
+    expect(button('Open').disabled).toBe(false);
+    expect(button('Choose…').disabled).toBe(false);
+    found({ path: '/work/slow', exists: true });
+    await settle();
+    expect(props.onProject).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['the folder it starts in, from the recent ones', {}, 'app/work/app'],
     ['a folder in no list', { cwd: '/work/other' }, 'other/work/other'],
