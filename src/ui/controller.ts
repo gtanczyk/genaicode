@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { realpathSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { supportHelp } from '../support.js';
 import { detectAgents } from '../agents/discovery.js';
@@ -17,6 +19,7 @@ import {
   archiveKey,
   codexProjects,
   findSession,
+  isDisallowedWorkspace,
   isNeutralHome,
   isSameDir,
   listSessions,
@@ -58,6 +61,8 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** The store its sessions are listed from (`SessionInfo.source`), when it has one. */
+  store?: string;
   /** Whether the agent can ask the person to choose (own tool, or `ask_user` over MCP). */
   canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
@@ -190,6 +195,30 @@ export interface ChatOptions {
   onRoot?(dir: string): void;
 }
 
+/** The conversation a window asks for (`ChatController.switchChat`). */
+export type ChatSwitch =
+  | { type: 'home' }
+  | { type: 'project'; cwd: string }
+  | { type: 'topic'; topic: string }
+  /**
+   * `source`: the store that holds the session, as two stores may hold the same id.
+   * `takeover`: an explicit takeover (`/continue <id>`), as `continueSession`: in `--cwd` mode the
+   * turns join the open conversation. Without it the session replaces what is shown: a chat picked
+   * in the sidebar.
+   */
+  | { type: 'continue'; id: string; source?: string; takeover?: boolean }
+  /** Keep the open conversation: only drops the requests still waiting to open another. */
+  | { type: 'stay' };
+
+/** Where a request stands among those of one window: `seq` grows with every request it makes. */
+export interface SwitchOrder {
+  window: string;
+  seq: number;
+}
+
+/** `'refused'` comes with a notice in the chat; `'superseded'` says nothing, a later request decides. */
+export type SwitchResult = 'done' | 'refused' | 'superseded';
+
 export interface ChatController {
   get(): ChatView;
   subscribe(listener: (view: ChatView) => void): () => void;
@@ -209,15 +238,27 @@ export interface ChatController {
   updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
   /**
-   * Take over the session with this id (any agent's, in this directory or below it, or anywhere
-   * in `--home` mode): its turns join the chat and the current agent continues it, resuming when
+   * Take over the session with this id (any agent's, or the one in the store `from.source`; in
+   * this directory or below it, or anywhere in `--home` mode): its turns join the chat and the current agent continues it, resuming when
    * the session is its own and getting a handoff otherwise. Resolves false, with a notice, when it cannot.
    */
-  continueSession(id: string): Promise<boolean>;
+  continueSession(id: string, from?: { source?: string }): Promise<boolean>;
   /** Start a new conversation in the resolved directory of `topicId` (`--home` mode). */
   startTopicChat(topicId: string): Promise<boolean>;
+  /**
+   * Start a new conversation in `cwd`, an existing directory given by its absolute path (`--home`
+   * mode): the sidebar's "new chat here" on a project. Resolves false, with a notice, when it cannot.
+   */
+  startProjectChat(cwd: string): Promise<boolean>;
   /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
   startHomeChat(): boolean;
+  /**
+   * Open another conversation for a window (the browser page): what the four methods above do, with
+   * `order` saying where the request stands among that window's. A request older than one already
+   * received from the same window changes nothing and resolves `'superseded'`, however late it
+   * arrives; so does one that another request overtook while it waited.
+   */
+  switchChat(target: ChatSwitch, order?: SwitchOrder): Promise<SwitchResult>;
   /** Move the active conversation into `target.cwd` (used by `open_project` after user confirmation). */
   moveProject(target: { cwd: string; topic?: { id: string; name: string } }): boolean;
   close(): void;
@@ -244,6 +285,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(path ? { path } : {}),
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
     canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
     ...(agent.capabilities.plan ? { canPlan: true } : {}),
@@ -542,6 +584,7 @@ export function createChatController(options: ChatOptions): ChatController {
         installed: info ? info.installed : (prev?.installed ?? false),
         resume: !!agent.capabilities.resume,
         steer: !!agent.capabilities.steer,
+        ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
         canAsk: canAgentAsk(agent),
         ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
         ...(agent.capabilities.plan ? { canPlan: true } : {}),
@@ -575,7 +618,15 @@ export function createChatController(options: ChatOptions): ChatController {
     publish();
   };
 
-  const startHomeChat = (): boolean => {
+  /**
+   * Counts the requests to open another conversation. One that waited (for the stores, a saved
+   * team) acts only while it is still the last asked for: a slow "new chat here" must not take the
+   * window back from the chat that was opened after it.
+   */
+  let switchSeq = 0;
+
+  const openHome = (): SwitchResult => {
+    switchSeq += 1;
     batching++;
     let ok = false;
     try {
@@ -595,10 +646,10 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     if (!ok) {
       notice('A turn is running. /stop it first, then /clear.', 'error');
-      return false;
+      return 'refused';
     }
     publish();
-    return true;
+    return 'done';
   };
 
   const moveProject = (target: { cwd: string; topic?: { id: string; name: string } }): boolean => {
@@ -622,27 +673,30 @@ export function createChatController(options: ChatOptions): ChatController {
     return true;
   };
 
-  const startTopicChat = async (topicId: string): Promise<boolean> => {
-    if (!homeMode) return false;
+  const openTopic = async (topicId: string): Promise<SwitchResult> => {
+    if (!homeMode) return 'refused';
     if (session.get().status === 'running') {
       notice('Stop the running turn before starting another chat.', 'error');
-      return false;
+      return 'refused';
     }
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const mine = ++switchSeq;
     try {
       const [store, listing, codex] = await Promise.all([
         readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
         listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
         codexProjects({ env }).catch(() => []),
       ]);
+      if (mine !== switchSeq) return 'superseded';
       const topic = store.topics.find((candidate) => candidate.id === topicId);
       if (!topic) {
         notice(`No topic "${topicId}" found.`, 'error');
-        return false;
+        return 'refused';
       }
       const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
       const savedLead = resolved.status === 'resolved' ? await options.projectLead?.(resolved.cwd) : undefined;
       const lead = savedLead ? byName.get(savedLead) : undefined;
+      if (mine !== switchSeq) return 'superseded';
       batching++;
       let ok = false;
       try {
@@ -666,7 +720,7 @@ export function createChatController(options: ChatOptions): ChatController {
       }
       if (!ok) {
         notice('Stop the running turn before starting another chat.', 'error');
-        return false;
+        return 'refused';
       }
       publish();
       if (resolved.status === 'unresolved') {
@@ -674,22 +728,120 @@ export function createChatController(options: ChatOptions): ChatController {
           `No local folder found for "${topic.name}". Mention a directory (e.g. ~/src/…) to move this conversation there.`,
         );
       }
-      return true;
+      return 'done';
     } catch (error) {
       notice(`Could not start a chat for that topic: ${errorText(error)}`, 'error');
-      return false;
+      return 'refused';
     }
   };
 
-  const continueSession = async (id: string): Promise<boolean> => {
+  /**
+   * Whether `dir` (a real path) is a folder a chat may be started in by naming it: one a session of
+   * any agent, a saved conversation or a Codex project already works in, under the rules that pick a
+   * folder when a session is continued (never the filesystem root, the person's home directory or a
+   * temporary one). The chat's folder is a root of the file viewer and of the artifacts, so a
+   * request must not be able to make any directory of the machine one.
+   */
+  const isProjectDir = async (dir: string): Promise<boolean> => {
+    if (isDisallowedWorkspace(dir, { env })) return false;
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const [listing, saved, codex] = await Promise.all([
+      // Also the chats nobody typed much into: the sidebar lists their folders too.
+      listSessions(sources, { env, readOnly: true, live: false, automated: true }).catch(() => ({ sessions: [] })),
+      readConversations(env).catch(() => []),
+      codexProjects({ env }).catch(() => []),
+    ]);
+    const known = [
+      ...listing.sessions.map((one) => one.cwd),
+      ...saved.map((one) => one.cwd),
+      ...codex.flatMap((project) => project.roots),
+    ];
+    return known.some(
+      (one) => !!one && !isNeutralHome(one, { env }) && !isDisallowedWorkspace(one, { env }) && isSameDir(one, dir),
+    );
+  };
+
+  const openProject = async (requested: string): Promise<SwitchResult> => {
+    if (!homeMode) return 'refused';
+    if (isSameDir(requested, homeDir)) return openHome();
+    const mine = ++switchSeq;
+    // The real path: what a symlink names is checked, and is where the chat then runs.
+    let cwd: string | undefined;
     try {
-      const found = await findSession(sources, id, { env });
+      const real = isAbsolute(requested) ? realpathSync(requested) : undefined;
+      if (real && statSync(real).isDirectory()) cwd = real;
+    } catch {
+      cwd = undefined;
+    }
+    if (!cwd) {
+      notice(`No folder ${requested} to start a chat in.`, 'error');
+      return 'refused';
+    }
+    const known = await isProjectDir(cwd);
+    // Another chat was opened meanwhile: this request is dropped, and says nothing in that chat.
+    if (mine !== switchSeq) return 'superseded';
+    if (!known) {
+      notice(
+        `${requested} is not a project folder: a chat starts in a folder one of your sessions worked in. Mention another directory in a chat to move there.`,
+        'error',
+      );
+      return 'refused';
+    }
+    const savedLead = await options.projectLead?.(cwd)?.catch(() => undefined);
+    const lead = savedLead ? byName.get(savedLead) : undefined;
+    if (mine !== switchSeq) return 'superseded';
+    batching++;
+    let ok = false;
+    try {
+      ok = session.clear({ cwd });
+      if (ok) {
+        conversationEpoch += 1;
+        contextEpoch += 1;
+        relayNotices.clear();
+        if (lead) session.setAgent(lead, { handoff: false });
+        notices = [];
+        conversation = { id: randomUUID(), cwd, origin: 'project' };
+        lastSavedKey = '';
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) {
+      notice('Stop the running turn before starting another chat.', 'error');
+      return 'refused';
+    }
+    publish();
+    return 'done';
+  };
+
+  /**
+   * `from.source`: the store the session is in, so an id two stores hold names one session.
+   * `from.keepOpen`: asked for the session that is open here already, nothing changes.
+   * `from.replace`: the session replaces the conversation shown, also in `--cwd` mode, where a
+   * takeover adds its turns to it (`--home` mode always replaces).
+   */
+  const openSession = async (
+    id: string,
+    from: { source?: string; keepOpen?: boolean; replace?: boolean } = {},
+  ): Promise<SwitchResult> => {
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const stores = from.source ? sources.filter((source) => source.name === from.source) : sources;
+    const mine = ++switchSeq;
+    try {
+      const found = await findSession(stores, id, { env });
+      if (mine !== switchSeq) return 'superseded';
       if (!found) {
         notice(`No session "${id}" found. \`genaicode sessions\` lists them.`, 'error');
-        return false;
+        return 'refused';
       }
       const { session: theirs } = found;
+      if (
+        from.keepOpen &&
+        session.get().sessionId === theirs.id &&
+        byName.get(session.get().agent)?.sessions?.name === theirs.source
+      ) {
+        return 'done';
+      }
       const readForAdopt = async () => {
         const maxTurns = 100;
         const reasons = new Set<'max-turns' | 'tail-bytes'>();
@@ -709,27 +861,43 @@ export function createChatController(options: ChatOptions): ChatController {
             ? ` It belongs to ${theirs.cwd}: start genaicode there with --from ${theirs.id}.`
             : '';
           notice(`That ${theirs.agent} session is not from this directory.${where}`, 'error');
-          return false;
+          return 'refused';
         }
         const { turns, truncatedReason } = await readForAdopt();
+        if (mine !== switchSeq) return 'superseded';
         const agent = byName.get(session.get().agent);
         // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
         const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
         if (!turns.length && !own) {
           notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
-          return false;
+          return 'refused';
         }
-        if (
-          !session.adopt(turns, {
+        batching++;
+        let ok = false;
+        try {
+          ok = session.adopt(turns, {
             ...(own ? { sessionId: theirs.id, mode: theirs.mode } : {}),
             ...(truncatedReason ? { truncatedReason } : {}),
-          })
-        ) {
-          notice('Stop the running turn before taking over another session.', 'error');
-          return false;
+            ...(from.replace ? { replace: true } : {}),
+          });
+          if (ok) {
+            // Keep visible live relay cards updating in a retained transcript, but suppress context delivery.
+            contextEpoch += 1;
+            if (from.replace) {
+              // Another chat, not more of this one: nothing of the chat that is left stays on screen.
+              conversationEpoch += 1;
+              relayNotices.clear();
+              notices = [];
+            }
+          }
+        } finally {
+          batching--;
         }
-        // Keep visible live relay cards updating in the retained transcript, but suppress context delivery.
-        contextEpoch += 1;
+        if (!ok) {
+          notice('Stop the running turn before taking over another session.', 'error');
+          return 'refused';
+        }
+        publish();
         const name = theirs.title ?? theirs.firstPrompt ?? theirs.id;
         const count = turns.length ? ` (${turns.length} turns)` : '';
         notice(
@@ -739,7 +907,7 @@ export function createChatController(options: ChatOptions): ChatController {
               ? `Continuing "${name}". Your next prompt resumes that ${theirs.agent} session.`
               : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
         );
-        return true;
+        return 'done';
       }
 
       // `--home` mode: resolve working directory per conversation (A.1) across any project.
@@ -756,13 +924,14 @@ export function createChatController(options: ChatOptions): ChatController {
         readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
         readConversations(env).catch(() => []),
       ]);
+      if (mine !== switchSeq) return 'superseded';
       const agent = byName.get(session.get().agent);
       const sameDir = resolved.status === 'resolved' && !!theirs.cwd && isSameDir(resolved.cwd, theirs.cwd);
       // Never treat an uninstalled setup placeholder as own.
       const own = !setup && sameDir && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
       if (!turns.length && !own) {
         notice(`Nothing to read in that ${theirs.agent} session.`, 'error');
-        return false;
+        return 'refused';
       }
       const saved = savedList.find(
         (candidate) => candidate.sessionId === theirs.id && (!candidate.source || candidate.source === theirs.source),
@@ -800,7 +969,7 @@ export function createChatController(options: ChatOptions): ChatController {
       }
       if (!ok) {
         notice('Stop the running turn before taking over another session.', 'error');
-        return false;
+        return 'refused';
       }
       if (resolved.cwd) options.onRoot?.(resolved.cwd);
       if (theirs.cwd) options.onRoot?.(theirs.cwd);
@@ -819,10 +988,44 @@ export function createChatController(options: ChatOptions): ChatController {
             : `Took over "${name}" from ${theirs.agent} (${turns.length} turns). ${session.get().agent} hears it with your next prompt.`,
         );
       }
-      return true;
+      return 'done';
     } catch (error) {
       notice(`Could not take over the session: ${errorText(error)}`, 'error');
-      return false;
+      return 'refused';
+    }
+  };
+
+  /** The highest `SwitchOrder.seq` each window sent, the window heard from last at the end. */
+  const lastOrder = new Map<string, number>();
+  const MAX_WINDOWS = 256;
+
+  const switchChat = async (target: ChatSwitch, order?: SwitchOrder): Promise<SwitchResult> => {
+    // Decided on arrival, before anything waits or changes: a request the window made before one
+    // that is already here must neither open its chat nor take the window from the later one.
+    if (order) {
+      if (order.seq <= (lastOrder.get(order.window) ?? 0)) return 'superseded';
+      lastOrder.delete(order.window);
+      lastOrder.set(order.window, order.seq);
+      if (lastOrder.size > MAX_WINDOWS) lastOrder.delete(lastOrder.keys().next().value!);
+    }
+    switch (target.type) {
+      case 'home':
+        return openHome();
+      case 'project':
+        return openProject(target.cwd);
+      case 'topic':
+        return openTopic(target.topic);
+      case 'continue':
+        return openSession(target.id, {
+          ...(target.source ? { source: target.source } : {}),
+          // A takeover of the open session reads it again, as `/continue` always did.
+          keepOpen: !!order && !target.takeover,
+          replace: !target.takeover,
+        });
+      case 'stay':
+        // Whatever still waits to open a chat is dropped; the chat that is open stays.
+        switchSeq += 1;
+        return 'done';
     }
   };
 
@@ -1084,7 +1287,7 @@ export function createChatController(options: ChatOptions): ChatController {
           return 'ok';
         }
         case 'continue':
-          if (command.id) void continueSession(command.id);
+          if (command.id) void openSession(command.id);
           else notice('Use /continue <session id>. `genaicode sessions` lists them.', 'error');
           return 'ok';
         case 'waiting':
@@ -1104,7 +1307,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Next prompt starts a new agent session.');
           return 'ok';
         case 'clear':
-          startHomeChat();
+          openHome();
           return 'ok';
         case 'where': {
           const dir = session.get().cwd;
@@ -1181,9 +1384,11 @@ export function createChatController(options: ChatOptions): ChatController {
     },
     selectAgent,
     updateAgents,
-    continueSession,
-    startTopicChat,
-    startHomeChat,
+    continueSession: async (id, from) => (await openSession(id, from)) === 'done',
+    startTopicChat: async (topicId) => (await openTopic(topicId)) === 'done',
+    startProjectChat: async (cwd) => (await openProject(cwd)) === 'done',
+    startHomeChat: () => openHome() === 'done',
+    switchChat,
     moveProject,
     setModel(model) {
       session.setModel(model || undefined);

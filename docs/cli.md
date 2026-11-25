@@ -258,7 +258,7 @@ These commands also work in `chat --sessions` and `ui --sessions`. Their results
 in the chat. To ask the agent for a summary, type your own question with the session ID.
 
 Run `npx genaicode tower --pack claude:codex --web` to work with a pack and other local sessions
-in one place. Open **Tower inbox** in the browser or press Ctrl+G in the terminal. The inbox
+in one place. Open **Needs you** in the browser's sidebar or press Ctrl+G in the terminal. The inbox
 shows each permission request with its agent, project and action. Select a row and press Enter
 in the terminal to review it. Questions marked **Answer in** use the agent's own dialog.
 
@@ -279,7 +279,7 @@ npx genaicode ui --pack            # saved project team, or all installed agents
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
-In the browser, **Sessions** in the header shows what every agent on this machine has going on:
+In the browser, **All sessions** in the sidebar shows what every agent on this machine has going on:
 the same list as `genaicode sessions`, by project, with search over titles, prompts, directories
 and branches, and filters by agent, state and period. A local session gives the command that
 continues it in a terminal, and **Continue here** when it is from this directory; a cloud session
@@ -287,7 +287,8 @@ links to its page. Once [`genaicode topics refresh`](#your-work-as-topics-topics
 your sessions, the view groups them by topic instead (those that ask for you first), and
 **By directory** brings the projects back.
 
-The header shows how much of the chosen agent's plan is used (`7d 19%`): what the session's runs
+The composer shows how much of the chosen agent's plan is used (`7d 19%`), and the bottom of the
+sidebar each agent's worst window (`claude 62% · 5h`): what the session's runs
 report, and before that what `genaicode limits` last saw. With a plan limit known, the price of
 the session's tokens is left out: on a plan it would be an estimate nobody pays.
 
@@ -296,7 +297,7 @@ the browser (`/web off` stops the server), and Enter in the terminal that runs
 `genaicode ui` brings it into that terminal. A prompt, an approval or a stop from either
 side shows up in both.
 
-In the desktop app or `genaicode ui --pack`, open **Project team**, choose a lead and workers,
+In the desktop app or `genaicode ui --pack`, open **Settings › Project team** in the sidebar, choose a lead and workers,
 and click **Remember this team for the project**. In the desktop home view, first choose or enter
 the project's folder. Opening a new chat from a project’s topic also selects its saved lead. The next `genaicode ui --pack`, `chat --pack` or `tower` in that project
 reads the same `.genaicode/pack.json`, at the Git worktree root or the working directory outside Git.
@@ -452,9 +453,10 @@ version of itself and `update-ready <version>` once that waits: the page shows *
 update…** and then **Relaunch to update**, and a click prints the line `Relaunch to update` on
 stderr for the app to act on. `update-installing <version>` shows **Relaunching…** and
 `update-none` takes the notice away.
-**New chat** in the page's header (or `/clear`) starts a new conversation: a fresh agent session and an
-empty screen; the old one stays in the agent's own store. With `--no-project`, **Chats** lists the
-conversations that ran in the chat's own directory, apart from every agent's sessions.
+**New chat** in the page's sidebar (or `/clear`) starts a new conversation: a fresh agent session and an
+empty screen; the old one stays in the agent's own store. The sidebar lists this app's chats by
+project (the directory they ran in), each with its state, apart from every agent's sessions; the
+**+** on a project starts a chat in that folder. ⌘B (Ctrl+B) folds the sidebar to a rail of icons.
 With `--restore` the page opens on the conversation the chat in this directory had last, with
 its agent and its history, so stopping and starting the server loses nothing; `--from` or
 `--resume` name another one.
@@ -476,7 +478,7 @@ chat** on a topic card uses that topic's most recent non-automated directory, an
 the home screen runs in the neutral home `~/.genaicode/home`). In the neutral home or when a
 directory cannot be resolved, the agent gets an `open_project` tool that asks for confirmation via a
 question card before moving the conversation into a project directory (or creating a missing one).
-The header shows the conversation's title and topic without a path; hover the header or type
+The top bar shows the conversation's title, its topic and the folder's name; hover the folder or type
 `/where` to see the directory, and the file panel follows the active conversation's directory. When
 Codex works in a directory for the first time, it asks to trust it through a question card instead
 of failing. `genaicode ui --cwd <dir>` keeps single-folder behaviour unchanged. With `--sessions

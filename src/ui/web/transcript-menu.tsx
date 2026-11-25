@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEscape } from '../../react/escape.js';
 import type { TranscriptFormat, TranscriptMeta } from '../transcript.js';
 
 export interface TranscriptMenuProps {
@@ -16,6 +17,8 @@ export interface TranscriptMenuProps {
   title?: string;
   buttonClassName?: string;
   onStatus?(message: string, isError?: boolean): void;
+  /** More items at the end of the menu; called with a function that closes it. */
+  extra?(close: () => void): ReactNode;
 }
 
 /** Synchronous clipboard write with a hidden-textarea fallback when the Clipboard API is unavailable. */
@@ -101,6 +104,7 @@ export function TranscriptMenu({
   title,
   buttonClassName,
   onStatus,
+  extra,
 }: TranscriptMenuProps) {
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
@@ -137,19 +141,13 @@ export function TranscriptMenu({
     const onPointerDown = (event: MouseEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
     document.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown, true);
-    };
+    return () => document.removeEventListener('mousedown', onPointerDown);
   }, [open]);
+  useEscape(open, () => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  });
 
   const fetchTranscript = async (format: TranscriptFormat): Promise<{ text: string; filename: string }> => {
     const res = await fetch(`${endpoint}?format=${format}`, {
@@ -312,6 +310,7 @@ export function TranscriptMenu({
           <button type="button" role="menuitem" onClick={() => saveTranscript('json')}>
             {nativeSave ? 'Save JSON…' : 'Download JSON (.json)'}
           </button>
+          {extra?.(() => setOpen(false))}
         </div>
       ) : null}
     </div>

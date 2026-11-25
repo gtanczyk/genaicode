@@ -51,6 +51,8 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
   const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'tower-'));
   const project = join(root, 'catalog');
   mkdirSync(project);
+  // A folder outside the chat's own: a session there is one of "Other agents' sessions" in the sidebar.
+  const elsewhere = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'tower-elsewhere-'));
   const env = { GENAICODE_HOME: root, HOME: root };
   const stop = new AbortController();
   const row: SessionInfo = {
@@ -78,12 +80,22 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     );
     decisions.push(`${task.resume ? 'session' : 'worker'} ${decision}`);
   });
+  // A session that waits on a tool in its agent's own dialog, until it is answered there.
+  let nativeWaits = true;
   const worker: CodingAgent = {
     ...workerDriver,
     sessions: {
       name: row.source,
       where: 'local',
-      list: async () => [row, { ...row, id: 'native-approval', waitingFor: 'approval', waitingTool: 'Read report' }],
+      // As the agents' stores do, it lists the sessions of one folder when asked for that folder's.
+      list: async (query) =>
+        [
+          row,
+          { ...row, id: 'ledger-audit', cwd: elsewhere },
+          nativeWaits
+            ? { ...row, id: 'native-approval', waitingFor: 'approval' as const, waitingTool: 'Read report' }
+            : { ...row, id: 'native-approval' },
+        ].filter((one) => !query?.cwd || one.cwd!.startsWith(query.cwd)),
     },
   };
   const message = 'Review the catalog.\nKeep all empty entries.';
@@ -150,7 +162,17 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
       expect(page.url()).toBe(new URL('/', opened!).href);
       await page.reload();
       expect(page.url()).toBe(new URL('/', opened!).href);
-      await page.getByRole('button', { name: 'Tower inbox · 5' }).click();
+      // Needs you counts the tower's five items, each once: the pack task's approval is also this
+      // chat's own, and the session that waits on a tool is also in the list of sessions.
+      const needsYou = page.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
+      const side = page.getByRole('complementary', { name: 'Sidebar' });
+      await side.getByRole('button', { name: 'All sessions' }).waitFor();
+      // The count is final only with the list of every agent's sessions: before it arrives the
+      // tower's items alone also come to five. A row of that list says it is here (hidden in the
+      // narrow window's rail, but in the page).
+      await side.locator('section.other').getByText('ledger-audit').waitFor({ state: 'attached' });
+      expect(await needsYou.locator('.count').textContent()).toBe('5');
+      await needsYou.click();
       await page.getByText('Pack task t1').waitFor();
     }
     const draft = desktop.getByRole('article').filter({ hasText: message.split('\n')[0] });
@@ -159,6 +181,8 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(await draft.textContent()).toContain('worker-store / catalog-release');
     const native = desktop.getByRole('article').filter({ hasText: 'Answer in worker' });
     expect(await native.getByRole('button').count()).toBe(0);
+    // It is answered in the worker's own dialog: the tower's next reading of the stores drops it.
+    nativeWaits = false;
     await mobile
       .getByRole('article')
       .filter({ hasText: 'Discard this alternative.' })
@@ -185,8 +209,24 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(await hook).toEqual({ behavior: 'allow' });
     expect(received.map((t) => [t.resume, t.cwd, t.prompt])).toEqual([[row.id, project, message]]);
     expect(decisions).toEqual(['session approve', 'worker deny']);
-    await desktop.getByRole('button', { name: 'Sessions' }).click();
+    await desktop.getByRole('button', { name: 'All sessions', exact: true }).click();
     await desktop.locator('main.sessions').getByText('catalog', { exact: true }).waitFor();
+    // Everything is answered: nothing needs the person, in the tower or in any session.
+    const badge = desktop.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
+    await vi.waitFor(async () => expect(await badge.locator('.count').count()).toBe(0), { timeout: 10_000 });
+    expect(await badge.getAttribute('title')).toBe('Nothing needs you now');
+    // Needs you is the tower's inbox also when it is empty: what the last delivery came to is read there.
+    await badge.click();
+    await desktop.getByRole('heading', { name: 'Tower inbox' }).waitFor();
+    await desktop.locator('main.tower-inbox').getByText('No pending items.').waitFor();
+    expect(await desktop.locator('main.tower-inbox').getByRole('article').count()).toBe(0);
+    await desktop.locator('main.tower-inbox [role="status"]').getByText('worker-store / catalog-release').waitFor();
+    await desktop
+      .locator('main.tower-inbox')
+      .getByRole('button', { name: /ask for you$/ })
+      .click();
+    await vi.waitFor(async () => expect(await desktop.locator('header.topbar h1').textContent()).toBe('Needs you'));
+    await desktop.locator('main.sessions').waitFor();
     expect(apiUrls.some((url) => url.endsWith('/api/events'))).toBe(true);
     expect(apiUrls.some((url) => url.includes('/api/sessions'))).toBe(true);
     expect(apiUrls.every((url) => !url.includes('token='))).toBe(true);
@@ -197,8 +237,9 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     await hook;
     await running;
     rmSync(root, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
   }
-}, 30_000);
+}, 45_000);
 
 it('turns on auto-approve from a permission prompt and approves pending and follow-up requests', async () => {
   const browser = await chromium.launch();
@@ -365,8 +406,8 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     await page.goto(opened!);
     await page.getByText('Observed answer for: Something weird happened here').waitFor();
 
-    // Header session chip opens the developer/transcript menu.
-    const chip = page.getByRole('button', { name: /session …ve123456/ });
+    // The top bar's ⋯ opens the session and transcript menu.
+    const chip = page.getByRole('button', { name: 'Session menu' });
     await chip.click();
     await page.getByText(activeSessionPath).waitFor();
 
@@ -410,7 +451,7 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     expect(mdDownload.suggestedFilename()).toBe('genaicode-reporter-ve123456.md');
 
     // Sessions view row menu copies ID & downloads stored session transcript.
-    await page.getByRole('button', { name: 'Sessions' }).click();
+    await page.getByRole('button', { name: 'All sessions', exact: true }).click();
     const row = page.locator('.session-row').filter({ hasText: 'Observed conversation' });
     await row.waitFor();
     await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
@@ -523,7 +564,8 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
   };
   try {
     const home = await start(root, ['ui', '--sessions', '--delegate', '--home', '--no-artifacts']);
-    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByRole('button', { name: 'Settings', exact: true }).click();
+    await home.getByRole('menuitem', { name: 'Project team' }).click();
     await home.getByLabel('Project folder').fill(project);
     await home.getByRole('button', { name: 'Open', exact: true }).click();
     await home.getByLabel('Lead', { exact: true }).selectOption('backup');
@@ -541,10 +583,14 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
     expect(ran).toEqual(['worker']);
     expect(rosters).toEqual([['worker', 'backup']]);
-    await home.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await home
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('button', { name: 'New chat', exact: true })
+      .click();
     await home.getByRole('button', { name: 'New chat in Catalog' }).click();
     await home.getByText('What should backup work on in Catalog?').waitFor();
-    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByRole('button', { name: 'Settings', exact: true }).click();
+    await home.getByRole('menuitem', { name: 'Project team' }).click();
     expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup');
     expect(await home.getByLabel('Project folder').count()).toBe(0);
     await home.close();
@@ -552,7 +598,8 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await running;
     const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
     await scoped.getByText('Project pack: backup leads · members: worker, backup.').waitFor();
-    await scoped.getByRole('button', { name: 'Project team' }).click();
+    await scoped.getByRole('button', { name: 'Settings', exact: true }).click();
+    await scoped.getByRole('menuitem', { name: 'Project team' }).click();
     expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
     expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);
   } finally {

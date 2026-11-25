@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Artifact } from '../agents/types.js';
+import { useEscape } from './escape.js';
 import { formatBytes } from './format.js';
 import { installResizeHandle, storedSize } from './resize-handle.js';
 
@@ -186,18 +187,11 @@ export function ArtifactPanel({
 
   useEffect(() => setActualSize(false), [artifact.id, artifact.version]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (document.body.dataset.resizing === 'true') return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (fullSize) setFullSize(false);
-      else onClose();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [fullSize, onClose]);
+  useEscape(true, () => {
+    if (document.body.dataset.resizing === 'true') return false;
+    if (fullSize) setFullSize(false);
+    else onClose();
+  });
 
   useEffect(() => {
     if (!resizable || fullSize || !handleRef.current || !panelRef.current) return;

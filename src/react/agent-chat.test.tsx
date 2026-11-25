@@ -1762,4 +1762,41 @@ describe('AgentChat', () => {
     expect(onRevealFile).toHaveBeenCalledWith('/w/notes.md');
     expect($('[role="menu"]')).toBeNull();
   });
+
+  it('closes that menu on Escape and still lets the host page hear the key on window', () => {
+    const state = fixture({
+      turns: [
+        {
+          id: 1,
+          agent: 'claude',
+          prompt: 'p',
+          startedAt: 1,
+          entries: [{ kind: 'text', text: 'Check [notes.md](/w/notes.md).', streaming: false }],
+        },
+      ],
+    });
+    render({ state, onOpenFile: vi.fn(), onRevealFile: vi.fn() });
+    act(() => {
+      $('.gc-file-link').dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 40, clientY: 50 }),
+      );
+    });
+    expect($('[role="menu"]')).not.toBeNull();
+    // The host's own shortcut handling: on `window`, in the capture phase, set up after the menu opened.
+    const host = vi.fn();
+    const below = vi.fn();
+    window.addEventListener('keydown', host, true);
+    document.addEventListener('keydown', below);
+    try {
+      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      act(() => void document.body.dispatchEvent(event));
+      expect($('[role="menu"]')).toBeNull();
+      expect(event.defaultPrevented).toBe(true);
+      expect(host).toHaveBeenCalledTimes(1);
+      expect(below).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', host, true);
+      document.removeEventListener('keydown', below);
+    }
+  });
 });

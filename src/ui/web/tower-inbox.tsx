@@ -6,10 +6,13 @@ export function TowerInboxPanel({
   view,
   connected,
   decide,
+  asking,
 }: {
   view: TowerView;
   connected: boolean;
   decide(id: string, decision: TowerDecision): Promise<boolean>;
+  /** The sessions that ask now and are not items here, and the way to their list. Absent: no session index. */
+  asking?: { count: number; onOpen(): void };
 }) {
   const [feedback, setFeedback] = useState('');
   const act = async (id: string, decision: TowerDecision) => {
@@ -27,6 +30,20 @@ export function TowerInboxPanel({
       )}
       <p role="status">{feedback || towerText(view.status ?? '')}</p>
       {!view.items.length && <p>No pending items.</p>}
+      {asking ? (
+        <p>
+          <button
+            type="button"
+            className="chip waits"
+            title="Sessions of every agent that ask a question or wait on an answer now"
+            onClick={asking.onOpen}
+          >
+            {asking.count
+              ? `${asking.count} more ${asking.count === 1 ? 'session asks' : 'sessions ask'} for you`
+              : 'Sessions that ask for you'}
+          </button>
+        </p>
+      ) : null}
       {view.items.map((item) => (
         <article className="project" key={item.id}>
           <h2>{towerAction(item)}</h2>

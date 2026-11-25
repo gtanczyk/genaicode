@@ -24,6 +24,10 @@ export interface TowerItem {
   origin: string;
   text: string;
   scope?: ApprovalRequest['scope'];
+  /** The session of another agent that asks, so a count of what waits takes it once. */
+  sessionId?: string;
+  /** The store that lists that session, when the item comes from one: ids repeat across stores. */
+  source?: string;
 }
 
 export interface TowerView {
@@ -149,6 +153,7 @@ export class TowerInbox {
       agent: ask.agent,
       cwd: ask.cwd,
       origin: `Session ${ask.session}`,
+      sessionId: ask.session,
       text: [ask.tool ?? 'Tool permission', ask.preview].filter(Boolean).join('\n'),
     }));
     for (const s of listing.sessions) {
@@ -159,6 +164,8 @@ export class TowerInbox {
         agent: s.agent,
         cwd: s.cwd,
         origin: `Session ${s.id}`,
+        sessionId: s.id,
+        source: s.source,
         text: s.waitingCommands?.map((c) => `${c.tool}  ${c.command}`).join('\n') || s.waitingTool || 'Tool permission',
       });
     }

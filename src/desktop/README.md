@@ -47,7 +47,7 @@ on, recent topics, and each agent's plan limits; a topic opens its sessions or s
 that topic's directory. The page gets no Tauri commands; it is the page a browser would load.
 Quitting the app stops the server.
 
-Open **File → Session** to copy the current session ID, file path, Markdown transcript or raw JSON state, or to save the transcript as Markdown or JSON. The chat header’s session chip and the `⋯` menu on each row in **Chats** / **Sessions** also offer these actions.
+Open **File → Session** to copy the current session ID, file path, Markdown transcript or raw JSON state, or to save the transcript as Markdown or JSON. The `⋯` menu in the chat’s top bar and on each row in **All sessions** also offer these actions.
 
 The **Help** menu includes **Get Help**, **Report a Bug…** and **Terms and Privacy** ([docs/legal.md](../../docs/legal.md)). On macOS, use the **Search** field in that menu to find commands such as **Copy Session ID**.
 
@@ -106,13 +106,13 @@ The same run writes the Homebrew cask (`scripts/cask.mjs`) to `Casks/genaicode.r
 ## Updates
 
 After an update, **What’s new** shows the running version and the release notes bundled with the app.
-When the previous version is known, it includes the changes across skipped releases. Open **What’s new**
-in the window header to read the notes again. In a terminal, `genaicode whats-new` shows the notes for
+When the previous version is known, it includes the changes across skipped releases. Open **Help › What’s new**
+in the sidebar to read the notes again. In a terminal, `genaicode whats-new` shows the notes for
 the version of the command you are running.
 
 The app looks for a newer version at start, every half hour while it runs and on **Check for
-Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Install 3.x.y and relaunch** in the
-window header and **Relaunch to Update (3.x.y)** in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
+Updates…** in its menu. It downloads one quietly, saying **Downloading update…** meanwhile, and then offers **Install 3.x.y and relaunch** at the bottom of the
+sidebar and **Relaunch to Update (3.x.y)** in the menu bar (**Relaunching…** once chosen): it never installs unasked, because that restarts the app and
 stops the agents it runs. The shell tells the page through the server it started: it writes
 `update-downloading <version>`, `update-ready <version>` and `update-installing <version>` to the server's stdin, and the page's button makes the server print
 `Relaunch to update` on stderr, which the shell reads. It reads `latest.json` of the newest GitHub Release, which
