@@ -200,17 +200,79 @@ button.chip:hover { border-color: var(--accent); }
 .release-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .release-heading h2 { margin: 0; font-size: 20px; }
 .release-dialog a { color: var(--accent); }
-.run-with { display: flex; align-items: center; gap: 2px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
-.gc-under .run-with :is(select, input, button) { background: transparent; border: 0; border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 13px; color: var(--muted); height: 28px; }
-.run-with select, .run-with button { cursor: pointer; }
-.gc-under .run-with select { color: var(--text); max-width: 14em; field-sizing: content; }
-.run-with .chip { margin-right: 4px; padding: 2px 9px; }
-.run-with input { max-width: 16em; text-overflow: ellipsis; field-sizing: content; min-width: 4em; }
-.run-with input::placeholder { color: var(--faint); }
-.run-with :is(select, input, button):hover:not(:disabled), .run-with input:focus { background: var(--panel); color: var(--text); outline: none; }
-.gc-under .run-with button.plan-on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.gc-under .run-with button.plan-on:hover:not(:disabled) { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.run-with :is(select, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The composer (docs/design/desktop-layout.md, "Composer"): the card of <AgentChat composerLayout="card"> with the page's controls in its row. */
+.workspace .gc-card { background: var(--panel); }
+.gc-card[data-disabled='1'] { opacity: .65; }
+.gc-card-row .btn.sm, .gc-composer-header .btn.sm { flex: none; }
+.gc-card-row .btn.ghost[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.agent-chip { color: var(--text); max-width: 100%; min-width: 0; }
+.agent-chip .av { width: 16px; height: 16px; border-radius: 5px; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); flex: none; }
+.agent-chip .chip-long { color: var(--muted); overflow: hidden; text-overflow: ellipsis; max-width: 22em; }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--gc-color-sunken); border: 1px solid var(--line); flex: none; }
+.shell .seg button { border: 0; background: transparent; height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.shell .seg button[aria-pressed='true'] { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.shell .seg button:disabled { opacity: .55; cursor: default; }
+.shell .seg button:focus-visible, .shell .agent-opt:focus-visible, .shell .field:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.field { height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--gc-color-line-strong); background: var(--panel); color: var(--text); font-size: 13px; min-width: 0; }
+.field.mono { font-family: var(--mono); font-size: 12px; }
+.field::placeholder { color: var(--faint); }
+.pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 320px; max-width: calc(100vw - 32px); max-height: min(70vh, 520px); overflow: auto; padding: 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--gc-elevation-2); display: grid; gap: 10px; text-align: left; color: var(--text); }
+.pop.starts-pop { width: 380px; }
+/* Long content (a path, the complaint about it) wraps: the popover's column never grows past it. */
+.pop { grid-template-columns: minmax(0, 1fr); }
+.pop > *, .pop label, .pop .pop-field { min-width: 0; }
+.pop .note { overflow-wrap: anywhere; }
+/* In the composer a popover opens from a control near the card's left edge: it is no wider than the card, so its buttons stay in a narrow window. */
+.workspace .gc-card { container-type: inline-size; }
+.gc-card .pop { max-width: calc(100cqw - 16px); }
+/* "Starts in" sits after its label: its popover opens from the card's edge, not the button's. */
+.gc-composer-header .menu-anchor:has(> .starts-pop) { position: static; }
+.starts-path .btn { flex: none; }
+.pop label, .pop .pop-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.pop .seg { width: fit-content; max-width: 100%; flex-wrap: wrap; }
+.pop .note { font-size: 12px; color: var(--muted); }
+.pop .note.err { color: var(--gc-color-err); }
+.agent-list, .starts-list { display: grid; gap: 2px; }
+.shell .agent-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; border: 0; background: transparent; width: 100%; text-align: left; font-size: 13px; color: var(--text); cursor: pointer; min-width: 0; }
+.shell .agent-opt:hover:not(:disabled) { background: var(--gc-color-sunken); }
+.shell .agent-opt:disabled { opacity: .55; cursor: default; }
+.shell .agent-opt[aria-checked='true'] { background: var(--gc-color-accent-soft); }
+.shell .agent-opt small, .shell .picker-row small { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.opt-name { font-weight: 500; white-space: nowrap; }
+.shell .agent-opt.picker-connect { color: var(--accent); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; padding-top: 8px; }
+.picker-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--faint); }
+.picker-dot[data-state='ready'] { background: var(--gc-color-ok); }
+.picker-dot[data-state='signed-out'], .picker-dot[data-state='broken'] { background: var(--gc-color-warn); }
+.picker-dot[data-state='installed'] { background: var(--accent); }
+.picker-section { display: grid; gap: 2px; }
+.picker-heading { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
+.picker-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; font-size: 13px; }
+.picker-row.muted .opt-name { color: var(--muted); }
+.picker-row .btn.sm { flex: none; }
+.picker-row small + .btn { margin-left: 0; }
+.picker-row .opt-name + .btn { margin-left: auto; }
+.starts-path { display: flex; gap: 6px; min-width: 0; }
+.starts-path .field { flex: 1; }
+.starts-fixed { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--text); }
+.starts-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 6em; flex: 1 1 0; }
+.gc-composer-header .btn.sm svg.i, .starts-fixed svg.i, .agent-opt svg.i { width: 14px; height: 14px; }
+.workspace .gc-hint { font-size: 12px; color: var(--faint); padding: 0 6px; }
+.workspace .gc-hint .hot { color: var(--gc-color-err); font-weight: 600; white-space: nowrap; }
+/* A message sent while the agent works keeps its receipt: one quiet line, the state in its hue. */
+.workspace .gc-prompt.gc-steer small { font-size: 12px; font-weight: 600; }
+.workspace .gc-prompt.gc-steer[data-delivery='delivered'] small { color: var(--gc-color-run); }
+.workspace .gc-prompt.gc-steer[data-delivery='queued'] small { color: var(--gc-color-warn); }
+.workspace .gc-prompt.gc-steer[data-delivery='dropped'] small { color: var(--gc-color-err); }
+/* A narrow composer keeps Stop and the submit button on the row: the switch shows its one state, the chip its agent. */
+@container (max-width: 800px) {
+  .shell .seg.perm button:first-child { display: none; }
+  .seg.perm { padding: 0; border-color: var(--gc-color-line-strong); background: var(--panel); }
+  .shell .seg.perm button { height: 24px; box-shadow: none; }
+  .shell .seg.perm button[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); box-shadow: none; }
+}
+@container (max-width: 640px) {
+  .chip-long { display: none; }
+}
 blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 8em; overflow: auto; color: var(--text); }
 .sent-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .sent-files:first-child { margin-top: 0; }
@@ -374,7 +436,6 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .tm-popover hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
 .gc-toast { position: fixed; right: 18px; bottom: 18px; z-index: 60; padding: 8px 13px; border-radius: 9px; background: var(--panel); color: var(--text); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, .16); font-size: 13px; max-width: min(380px, calc(100vw - 36px)); }
 .gc-toast.err { color: var(--err); border-color: currentColor; }
-.gc-box[data-disabled='1'] { opacity: .65; }
 .agents-panel { flex: 1; overflow: auto; padding: 20px 20px 48px; position: relative; z-index: 1; }
 .onboarding { max-width: 700px; margin: 0 auto; text-align: left; }
 .onboarding-hero { text-align: center; margin-bottom: 18px; }
@@ -434,33 +495,8 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .setup-banner-copy strong { font-size: 13.5px; color: var(--text); }
 .setup-banner-copy span { font-size: 12.5px; color: var(--muted); }
 .setup-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.agent-picker { position: relative; }
-.gc-under .run-with .agent-trigger { display: inline-flex; align-items: center; gap: 6px; color: var(--text); padding: 4px 8px; }
-.picker-caret { font-size: 10px; color: var(--muted); }
-.picker-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--faint); }
-.picker-dot[data-state='ready'] { background: var(--ok); }
-.picker-dot[data-state='signed-out'], .picker-dot[data-state='broken'] { background: #e8590c; }
-.picker-dot[data-state='installed'] { background: var(--accent); }
-.picker-menu { position: absolute; bottom: calc(100% + 6px); right: 0; min-width: 260px; max-width: min(340px, 90vw); max-height: 60vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: 5px; z-index: 30; display: flex; flex-direction: column; gap: 4px; }
-.picker-section { display: flex; flex-direction: column; gap: 2px; }
-.picker-heading { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 2px; }
-.gc-under .run-with .picker-item { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; padding: 6px 8px; text-align: left; color: var(--text); border-radius: 7px; }
-.gc-under .run-with .picker-item:hover { background: var(--bg); }
-.gc-under .run-with .picker-item.selected { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
-.picker-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; font-size: 13px; }
-.picker-row.muted .picker-name { color: var(--muted); }
-.picker-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.picker-sub { font-size: 11.5px; color: var(--faint); margin-left: auto; white-space: nowrap; }
-.picker-check { color: var(--accent); font-size: 12px; font-weight: 600; }
-.gc-under .run-with .picker-action { margin-left: auto; height: auto; padding: 2px 8px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--accent); }
-.picker-row .picker-sub + .picker-action { margin-left: 4px; }
-.gc-under .run-with .picker-action:hover { border-color: var(--accent); background: var(--panel); color: var(--accent); }
-.picker-footer { border-top: 1px solid var(--line); padding-top: 4px; margin-top: 2px; }
-.gc-under .run-with .picker-connect { width: 100%; height: auto; padding: 6px 8px; text-align: left; color: var(--accent); font-size: 13px; border-radius: 7px; }
-.gc-under .run-with .picker-connect:hover { background: var(--bg); color: var(--accent); }
 @media (max-width: 640px) {
   .session-row { grid-template-columns: 16px 70px 34px 1fr; }
   .session-row .act { grid-column: 2 / -1; flex-wrap: wrap; }
-  .picker-menu { right: auto; left: 0; }
 }
 `;

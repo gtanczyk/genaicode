@@ -110,6 +110,11 @@ export interface ChatView {
   bark: boolean;
   /** Every permission request is approved without asking (`--yes`, `/auto`). */
   autoApprove: boolean;
+  /**
+   * Counts the conversations shown: a new one (`/clear`, another chat opened) adds one. A setting
+   * meant for one conversation (`setAutoApprove`) names it by this number.
+   */
+  generation?: number;
   tower?: TowerView;
   /** `!commands` still running; stop() ends them. */
   shells: number;
@@ -198,7 +203,8 @@ export interface ChatOptions {
 /** The conversation a window asks for (`ChatController.switchChat`). */
 export type ChatSwitch =
   | { type: 'home' }
-  | { type: 'project'; cwd: string }
+  /** `chosen`: the person picked the folder in the host's own dialog (`ChatController.startProjectChat`). */
+  | { type: 'project'; cwd: string; chosen?: boolean }
   | { type: 'topic'; topic: string }
   /**
    * `source`: the store that holds the session, as two stores may hold the same id.
@@ -238,6 +244,11 @@ export interface ChatController {
   updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
   /**
+   * `/auto on|off` for the conversation numbered `generation` (`ChatView.generation`): false, and
+   * nothing changes, when another conversation is shown now.
+   */
+  setAutoApprove(on: boolean, generation: number): boolean;
+  /**
    * Take over the session with this id (any agent's, or the one in the store `from.source`; in
    * this directory or below it, or anywhere in `--home` mode): its turns join the chat and the current agent continues it, resuming when
    * the session is its own and getting a handoff otherwise. Resolves false, with a notice, when it cannot.
@@ -248,8 +259,10 @@ export interface ChatController {
   /**
    * Start a new conversation in `cwd`, an existing directory given by its absolute path (`--home`
    * mode): the sidebar's "new chat here" on a project. Resolves false, with a notice, when it cannot.
+   * `chosen`: the person picked the folder in the host's own dialog, so it need not be one a
+   * session already worked in.
    */
-  startProjectChat(cwd: string): Promise<boolean>;
+  startProjectChat(cwd: string, options?: { chosen?: boolean }): Promise<boolean>;
   /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
   startHomeChat(): boolean;
   /**
@@ -319,6 +332,7 @@ export function createChatController(options: ChatOptions): ChatController {
       throw new NoAgentError(`Unknown agent "${unknown[0]}". Known agents: ${[...byName.keys()].join(', ')}.`);
     return [...new Set(names)].map((name) => byName.get(name)!);
   };
+  /** `/auto` and the page's "Auto-approve all": for this conversation, each new one starts from `approveAll`. */
   let autoApprove = options.approveAll === true;
   let notices: Notice[] = [];
   let conversationEpoch = 0;
@@ -396,6 +410,7 @@ export function createChatController(options: ChatOptions): ChatController {
       agents,
       bark,
       autoApprove,
+      generation: conversationEpoch,
       shells: shells.size,
       ...(setup ? { setup: true } : {}),
       ...(inbox ? { tower: inbox.view(state) } : {}),
@@ -625,6 +640,20 @@ export function createChatController(options: ChatOptions): ChatController {
    */
   let switchSeq = 0;
 
+  /** `/auto`: for the conversation shown now. */
+  const applyAutoApprove = (on: boolean) => {
+    autoApprove = on;
+    // What is waiting now gets the same answer as what comes next.
+    if (autoApprove)
+      for (const approval of session.get().approvals)
+        if (approval.kind !== 'question') session.approve(approval.id, 'approve');
+    notice(
+      autoApprove
+        ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
+        : 'Auto-approve off: the agent asks again.',
+    );
+  };
+
   const openHome = (): SwitchResult => {
     switchSeq += 1;
     batching++;
@@ -633,6 +662,7 @@ export function createChatController(options: ChatOptions): ChatController {
       ok = session.clear(homeMode ? { cwd: homeDir } : undefined);
       if (ok) {
         conversationEpoch += 1;
+        autoApprove = options.approveAll === true;
         contextEpoch += 1;
         relayNotices.clear();
         notices = [];
@@ -703,6 +733,7 @@ export function createChatController(options: ChatOptions): ChatController {
         ok = session.clear({ cwd: resolved.cwd });
         if (ok) {
           conversationEpoch += 1;
+          autoApprove = options.approveAll === true;
           contextEpoch += 1;
           relayNotices.clear();
           if (lead) session.setAgent(lead, { handoff: false });
@@ -761,7 +792,7 @@ export function createChatController(options: ChatOptions): ChatController {
     );
   };
 
-  const openProject = async (requested: string): Promise<SwitchResult> => {
+  const openProject = async (requested: string, start: { chosen?: boolean } = {}): Promise<SwitchResult> => {
     if (!homeMode) return 'refused';
     if (isSameDir(requested, homeDir)) return openHome();
     const mine = ++switchSeq;
@@ -777,7 +808,14 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(`No folder ${requested} to start a chat in.`, 'error');
       return 'refused';
     }
-    const known = await isProjectDir(cwd);
+    // A chosen folder comes as the real path that was checked: one that resolves elsewhere now was
+    // moved under a link since, and is not what the person picked.
+    if (start.chosen && cwd !== requested) {
+      notice(`${requested} changed since it was chosen: choose it again.`, 'error');
+      return 'refused';
+    }
+    // A folder the person picked in the host's own dialog is theirs to open; the unsafe ones stay closed.
+    const known = start.chosen ? !isDisallowedWorkspace(cwd, { env }) : await isProjectDir(cwd);
     // Another chat was opened meanwhile: this request is dropped, and says nothing in that chat.
     if (mine !== switchSeq) return 'superseded';
     if (!known) {
@@ -796,6 +834,7 @@ export function createChatController(options: ChatOptions): ChatController {
       ok = session.clear({ cwd });
       if (ok) {
         conversationEpoch += 1;
+        autoApprove = options.approveAll === true;
         contextEpoch += 1;
         relayNotices.clear();
         if (lead) session.setAgent(lead, { handoff: false });
@@ -886,6 +925,7 @@ export function createChatController(options: ChatOptions): ChatController {
             if (from.replace) {
               // Another chat, not more of this one: nothing of the chat that is left stays on screen.
               conversationEpoch += 1;
+              autoApprove = options.approveAll === true;
               relayNotices.clear();
               notices = [];
             }
@@ -952,6 +992,7 @@ export function createChatController(options: ChatOptions): ChatController {
         });
         if (ok) {
           conversationEpoch += 1;
+          autoApprove = options.approveAll === true;
           contextEpoch += 1;
           relayNotices.clear();
           notices = [];
@@ -1012,7 +1053,7 @@ export function createChatController(options: ChatOptions): ChatController {
       case 'home':
         return openHome();
       case 'project':
-        return openProject(target.cwd);
+        return openProject(target.cwd, target.chosen ? { chosen: true } : {});
       case 'topic':
         return openTopic(target.topic);
       case 'continue':
@@ -1332,16 +1373,7 @@ export function createChatController(options: ChatOptions): ChatController {
             notice(`Use /auto, /auto on or /auto off (not "${command.invalid}").`, 'error');
             return 'ok';
           }
-          autoApprove = command.on ?? !autoApprove;
-          // What is waiting now gets the same answer as what comes next.
-          if (autoApprove)
-            for (const approval of session.get().approvals)
-              if (approval.kind !== 'question') session.approve(approval.id, 'approve');
-          notice(
-            autoApprove
-              ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
-              : 'Auto-approve off: the agent asks again.',
-          );
+          applyAutoApprove(command.on ?? !autoApprove);
           return 'ok';
         case 'plan': {
           if (command.invalid !== undefined) {
@@ -1386,12 +1418,17 @@ export function createChatController(options: ChatOptions): ChatController {
     updateAgents,
     continueSession: async (id, from) => (await openSession(id, from)) === 'done',
     startTopicChat: async (topicId) => (await openTopic(topicId)) === 'done',
-    startProjectChat: async (cwd) => (await openProject(cwd)) === 'done',
+    startProjectChat: async (cwd, start) => (await openProject(cwd, start)) === 'done',
     startHomeChat: () => openHome() === 'done',
     switchChat,
     moveProject,
     setModel(model) {
       session.setModel(model || undefined);
+    },
+    setAutoApprove(on, generation) {
+      if (generation !== conversationEpoch) return false;
+      applyAutoApprove(on);
+      return true;
     },
     artifacts: options.artifactChannel?.store,
     close() {
