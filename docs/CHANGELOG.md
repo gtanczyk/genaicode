@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 3.4.0 — 2026-11-25
+
 ### Added
 
 - The work panel of the desktop and browser app gets **Changes** and **Artifacts** tabs after Tasks and Live. Changes lists the files changed in the chat: the lead agent's own edits (newest first, with +/− counts where the agent reports a patch), then the files of the delegated tasks with the task's id and merged or unmerged; a task's file opens that task, where its diff, review and merge are. Artifacts replaces the "Artifacts · N" menu of the top bar and lists what the chat published with kind, size and versions. A file or an artifact now opens **inside the panel** instead of in a side panel of its own: with a back button to where it was opened from (Changes, Artifacts, the task, or Close for a link in the chat), the panel widening to 600 px where the chat keeps its own 600, **Diff / File** for a file the lead edited with a patch, and **Expand / Dock** in place of Full size (over the chat area, not the whole window). Escape docks, then goes back. A task's changed files open from its detail, read from its worktree while that is there, else from the chat's folder, also when the chat runs in a folder of the repository (a file outside that folder is not a link); back from a file finds the detail as it was left, with its diff open and what was typed. The Work button shows for a chat with changed files or artifacts too, and the panel still opens by itself only on delegated tasks. In `genaicode/react`, `<WorkPanel>` has the two tabs and takes `renderViewer`, `viewsFiles` and `artifactUrl`; `workArtifacts`, `workChanges` and `WORK_PANEL_VIEWER` are new exports, and `WorkPanelView.tab` can be `changes` or `artifacts` (#364)
