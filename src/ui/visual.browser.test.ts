@@ -267,7 +267,7 @@ const runningTurn: SessionTurn = {
       ],
     },
     { kind: 'tool', id: 't4', name: 'Bash', input: { command: 'git status --short' }, output: '', done: true },
-    { kind: 'input', text: 'Keep the changelog line short.', delivery: 'delivered' },
+    { kind: 'input', text: 'Keep the changelog line short.', delivery: 'delivered', answeredAt: 1 },
     { kind: 'tool', id: 't5', name: 'Bash', input: { command: 'npm test -- cart' }, done: false },
     { kind: 'text', text: 'Three tasks are out; one is still running', streaming: true },
   ],

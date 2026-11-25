@@ -333,7 +333,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
         );
     expect(await rows()).toEqual([
       'The total skips discounts.',
-      'Read src/cart.ts',
+      expect.stringMatching(/^Read src\/cart\.ts (<1s|\d+s)$/),
       'Started by helper in .genaicode/worktrees/t1',
     ]);
     // The time of the running call goes on by itself.
@@ -346,7 +346,8 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       text: 'tool edit: src/cart.test.ts',
       steps: [
         ...t1().steps!.slice(0, 2),
-        { ...t1().steps![2]!, endedAt: t1().steps![2]!.at + 14_000, failed: true },
+        // It returned a second ago, after 14 seconds.
+        { ...t1().steps![2]!, at: Date.now() - 15_000, endedAt: Date.now() - 1_000, failed: true },
         { kind: 'tool', name: 'edit', text: 'src/cart.test.ts', at: Date.now() },
       ],
     });
