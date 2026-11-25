@@ -421,6 +421,40 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-feedback')).toBe('Merged t6');
   });
 
+  it('a diff refused as stale reads the newer revision by itself, with the files the pack now lists', async () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    const task: PackTask = {
+      ...base,
+      id: 't7',
+      prompt: 'Look.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: [],
+      checks: { revision: A },
+    };
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) => {
+      if (action.type !== 'diff') return '';
+      if (action.revision === B) return '+late';
+      // Someone added a file: the pack refreshed the task (revision B, its files) before refusing.
+      state.turns[0]!.pack!.tasks[0] = { ...task, changes: ['A\tlate.txt'], checks: { revision: B } };
+      draw();
+      throw Object.assign(new Error('The worktree changed.'), { reason: 'stale' });
+    });
+    show([task], { props: { onPackAction: onAction } });
+    expect(text('.gc-work-detail')).toContain('It changed no files.');
+    await actAsync(() => button('Show diff')!.click());
+    await actAsync(async () => undefined);
+    expect(onAction.mock.calls.map((call) => call[2])).toEqual([
+      { type: 'diff', revision: A },
+      { type: 'diff', revision: B },
+    ]);
+    expect(text('.gc-work-diff')).toBe('+late');
+    expect(text('.gc-work-detail')).not.toContain('It changed no files.');
+    expect(text('.gc-work-detail')).toContain('late.txt');
+    expect($('.gc-work-feedback')).toBeNull();
+  });
+
   it('leaving the detail keeps the revision that was read: Merge after reopening reloads a newer one first', async () => {
     const A = 'a'.repeat(40);
     const B = 'b'.repeat(40);

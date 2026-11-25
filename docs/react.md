@@ -127,7 +127,12 @@ const layout = workPanelLayout({ room, window: innerWidth, saved }); // room: th
       width={layout.width}
       bounds={() => [380, layout.max]}
       onWidth={(width, commit) => setSaved(width)}
-      onPackAction={(turnId, id, action) => session.actOnPackTask!(turnId, id, action)}
+      onPackAction={async (turnId, id, action, intent) => {
+        // A discard confirmed while the pull request held the work: re-check it (your own lookup).
+        if (intent?.pullRequest && !(await worktreeMatchesPullRequest(turnId, id)))
+          throw new Error('The worktree has work its pull request does not. Nothing was discarded.');
+        return session.actOnPackTask!(turnId, id, action);
+      }}
       onApprove={session.approve}
       pullRequests={{ '7:t1': { state: 'merged', ours: true } }} // by WorkTask.key ("turn:id")
       onClose={() => setView({ ...view, open: false })}

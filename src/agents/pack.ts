@@ -18,6 +18,7 @@ import {
   removeWorktree,
   repoRoot,
   snapshotTree,
+  stagedChanges,
   withSnapshot,
   worktreeChanges,
   worktreeDiff,
@@ -1284,11 +1285,12 @@ export function pack(options: PackOptions): Pack {
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           const tree = await snapshotTree(sub.dir);
           updateRevision(sub, tree);
+          // What the diff shows is what the task's files say: an edit made after the task ended shows
+          // up, also when the diff asked for is stale (the detail then reads the newer one).
+          setChanges(sub, await worktreeChanges(sub.dir, sub.start, tree));
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
-          // What the diff shows is what the task's files say: an edit made after the task ended shows up.
-          setChanges(sub, await worktreeChanges(sub.dir, sub.start, tree));
           return clip(patch.toString('utf8'), MAX_DIFF) || 'No changes.';
         });
 
@@ -1311,9 +1313,15 @@ export function pack(options: PackOptions): Pack {
           if (empty && sub.dir && sub.start) {
             const tree = await snapshotTree(sub.dir);
             const changes = await worktreeChanges(sub.dir, sub.start, tree);
-            if (changes.length) {
+            // Work staged in the worktree's own index counts too, also once the file is gone from disk.
+            const staged = await stagedChanges(sub.dir);
+            if (changes.length || staged.length) {
               updateRevision(sub, tree);
-              setChanges(sub, changes);
+              const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
+              setChanges(sub, [
+                ...changes,
+                ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t'))),
+              ]);
               throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
             }
           }

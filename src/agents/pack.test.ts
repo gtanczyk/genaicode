@@ -1049,6 +1049,52 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('refuses to discard as unchanged a worktree with staged work, and a stale diff still lists the files', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      const revision = task()!.checks?.revision;
+      expect(revision).toBeTruthy();
+      // A file added after the task ended: a diff asked for the old revision is stale, and the task
+      // lists the file already, so the detail does not keep saying it changed nothing.
+      writeFileSync(join(dir, 'late.txt'), 'late\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'diff', revision })).rejects.toMatchObject({
+        reason: 'stale',
+      });
+      expect(task()?.changes).toEqual(['A\tlate.txt']);
+      expect(task()?.checks?.revision).not.toBe(revision);
+      // Staged in the worktree's own index, then deleted from the working copy: still work.
+      execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+      rmSync(join(dir, 'late.txt'));
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      expect(existsSync(dir)).toBe(true);
+      execFileSync('git', ['reset', '-q'], { cwd: dir });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
     const cwd = repo();
     const seenWorkerModes: Array<string | undefined> = [];

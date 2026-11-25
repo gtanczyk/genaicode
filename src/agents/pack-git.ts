@@ -155,6 +155,14 @@ export async function worktreeChanges(dir: string, start: string, tree?: string)
   return (await must(dir, ['diff', '--name-status', '--no-renames', start, tree])).split('\n').filter(Boolean);
 }
 
+/**
+ * Files staged in the worktree's own index that differ from its HEAD, as `git diff --name-status`
+ * lines. A snapshot misses them once the working copy no longer has them (staged, then deleted).
+ */
+export async function stagedChanges(dir: string): Promise<string[]> {
+  return (await must(dir, ['diff', '--cached', '--name-status', '--no-renames', 'HEAD'])).split('\n').filter(Boolean);
+}
+
 /** The worktree's changes since `start` as a patch `git apply` takes. */
 export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
   return mustBytes(dir, [

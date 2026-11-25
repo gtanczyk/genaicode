@@ -581,6 +581,8 @@ function TaskDetail({
   const [reloadFailed, setReloadFailed] = useState(false);
   // A diff read before the revision was known: it is read again once the revision is.
   const [unresolved, setUnresolved] = useState(false);
+  // A diff refused because the worktree moved on from this revision: read again for the newer one.
+  const [reread, setReread] = useState<string>();
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const backButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -620,11 +622,16 @@ function TaskDetail({
       setFeedback({ text: error instanceof Error ? error.message : String(error), error: true });
       // The worktree moved on since the diff that was looked at: show what is there now first.
       // (`PackActionError` and the page's own errors carry the refusal's reason.)
-      if (action.type === 'merge' && action.revision && (error as { reason?: unknown })?.reason === 'stale') {
+      const refusedStale = (error as { reason?: unknown })?.reason === 'stale';
+      if (action.type === 'merge' && action.revision && refusedStale) {
         inspected.set({ revision: action.revision, stale: true });
         setDiff(undefined);
         setStale(action.revision);
         setReloadFailed(false);
+      } else if (action.type === 'diff' && action.revision && refusedStale && !stale) {
+        // The worktree moved on before its diff was read: read it again once the newer revision is known.
+        setFeedback(undefined);
+        setReread(action.revision);
       } else if (action.type === 'diff' && stale) {
         setReloadFailed(true);
       }
@@ -640,6 +647,11 @@ function TaskDetail({
     if (!stale || busy || reloadFailed || !checks?.revision || checks.revision === stale) return;
     void perform({ type: 'diff', revision: checks.revision });
   }, [stale, busy, reloadFailed, checks?.revision]);
+  useEffect(() => {
+    if (!reread || busy || !checks?.revision || checks.revision === reread) return;
+    setReread(undefined);
+    void perform({ type: 'diff', revision: checks.revision });
+  }, [reread, busy, checks?.revision]);
   useEffect(() => {
     if (!unresolved || busy || !checks?.revision) return;
     setUnresolved(false);
