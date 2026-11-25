@@ -1230,6 +1230,50 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('keeps a worktree whose submodule holds an edit the patch cannot carry', async () => {
+    const cwd = repo();
+    const dep = repo();
+    const file = ['-c', 'protocol.file.allow=always'];
+    execFileSync('git', [...file, 'submodule', 'add', '-q', dep, 'dep'], { cwd });
+    git(cwd, 'commit', '-q', '-m', 'dep');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['M\ta.txt'] });
+      const dir = task()!.cwd;
+      execFileSync('git', [...file, 'submodule', 'update', '-q', '--init'], { cwd: dir });
+      writeFileSync(join(dir, 'dep', 'a.txt'), 'edited in the submodule\n');
+      // The parent's patch carries a.txt only: merging it would remove the worktree and the edit.
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(readFileSync(join(dir, 'dep', 'a.txt'), 'utf8')).toBe('edited in the submodule\n');
+      // Back to the parent's edit alone: it merges.
+      execFileSync('git', ['checkout', '-q', '--', 'a.txt'], { cwd: join(dir, 'dep') });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
     const cwd = repo();
     const seenWorkerModes: Array<string | undefined> = [];

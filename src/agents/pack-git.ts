@@ -182,7 +182,24 @@ export async function patchCoversWorktree(
   const startTree = (await must(dir, ['rev-parse', '--verify', `${start}^{tree}`])).trim();
   if (empty && tree !== startTree) return false;
   const index = await indexTree(dir);
-  return index !== undefined && (index === startTree || index === tree);
+  if (index === undefined || (index !== startTree && index !== tree)) return false;
+  return !(await submoduleWork(dir));
+}
+
+/**
+ * Whether a submodule of the worktree holds work of its own (a new commit, edits, untracked files):
+ * the patch carries at most its commit, never what is inside it, so removing the worktree loses it.
+ */
+async function submoduleWork(dir: string): Promise<boolean> {
+  const status = await must(dir, [
+    'status',
+    '--porcelain=v2',
+    '-z',
+    '--untracked-files=all',
+    '--ignore-submodules=none',
+  ]);
+  // Changed entries ("1 XY sub …", "2 XY sub …", "u XY sub …"): `sub` is S<c><m><u> for a submodule.
+  return status.split('\0').some((entry) => /^[12u] \S\S S(?!\.\.\.)/.test(entry));
 }
 
 /** The worktree's own index as a tree, written from a copy so the index itself is not touched; undefined while it has conflicts. */
