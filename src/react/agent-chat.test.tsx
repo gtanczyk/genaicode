@@ -1160,8 +1160,14 @@ describe('AgentChat', () => {
     expect(document.querySelector('.gc-steer small[data-receipt="delivered"]')?.getAttribute('title')).toBe(
       'claude took the message after 0.9s, between two steps of its work.',
     );
-    // Once the agent says something after a message it took, that message is answered.
+    // Text after a message is no answer by itself: it may have streamed while the message was on its way.
     turn.entries = [...turn.entries, { kind: 'text', text: 'Noted.', streaming: false }];
+    render({ state });
+    expect(receipts()[1]![2]).toBe('delivered');
+    // The session marks it answered once the agent starts a message after taking it.
+    turn.entries = turn.entries.map((entry) =>
+      entry.kind === 'input' && entry.text === 'two' ? { ...entry, answeredAt: 6_500 } : entry,
+    );
     render({ state });
     expect(receipts()[1]).toEqual(['✓✓ Delivered · answered', 'Your message: Delivered, answered', 'answered']);
     expect(receipts()[2]![2]).toBe('sent');

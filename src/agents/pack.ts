@@ -33,6 +33,7 @@ import {
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
 import { withBriefing } from './host-text.js';
+import { redactSecrets } from './redact.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -216,6 +217,8 @@ export interface PackStep {
   at: number;
   endedAt?: number;
   failed?: boolean;
+  /** A tool call that never returned: the task ended (was stopped, or crashed) while it ran. */
+  interrupted?: boolean;
 }
 
 export interface Pack extends CodingAgent {
@@ -487,7 +490,7 @@ const TOOL_INPUT_KEYS = [
   'description',
 ];
 
-/** The one argument worth showing for a tool call (its command, path, pattern...), on one line. */
+/** The one argument worth showing (credentials hidden) for a tool call (its command, path, pattern...), on one line. */
 function toolInputSummary(input: unknown): string {
   const value =
     typeof input === 'string'
@@ -499,7 +502,10 @@ function toolInputSummary(input: unknown): string {
         : undefined;
   // An array is shown only when it holds strings alone (`commands: ['npm test']`); else the tool name.
   const words = Array.isArray(value) && value.every((item) => typeof item === 'string') ? value.join(' ') : value;
-  const text = (typeof words === 'string' ? words : '').replace(/\s+/g, ' ').trim();
+  // Credentials go before the clip: a secret cut by it would keep its start.
+  const text = redactSecrets(typeof words === 'string' ? words : '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return text.length > 200 ? `${text.slice(0, 199)}…` : text;
 }
 
@@ -515,7 +521,7 @@ function describe(event: AgentEvent): string | undefined {
     case 'file-change':
       return `edited ${event.paths.join(', ')}`;
     case 'approval-request':
-      return `waiting for approval: ${event.request.summary ?? event.request.kind}`;
+      return `waiting for approval: ${redactSecrets(event.request.summary ?? event.request.kind)}`;
     case 'error':
       return `error: ${clip(event.message, 300)}`;
     default:
@@ -532,8 +538,21 @@ function activity(event: AgentEvent): string | undefined {
   }
 }
 
-/** A step with the id of its tool call, which its `tool-end` names. */
-type Step = PackStep & { id?: string };
+/**
+ * A step with the id of its tool call, which its `tool-end` names, or for an edit announced before
+ * its call returned, that call's id (`toolId`): the edit is dropped when the call fails.
+ */
+type Step = PackStep & { id?: string; toolId?: string };
+
+/** A tool call that has not returned (and was not cut short by the task's end). */
+function isOpenCall(step: PackStep): boolean {
+  return step.kind === 'tool' && step.endedAt === undefined;
+}
+
+/** When a step last moved: a returned tool call when it returned, anything else when it happened. */
+function recency(step: PackStep): number {
+  return step.kind === 'tool' && step.endedAt !== undefined ? step.endedAt : step.at;
+}
 
 /** One line of at most `max` characters. */
 function oneLine(text: string, max = 200): string {
@@ -560,9 +579,16 @@ function stepOf(event: AgentEvent, at: number): Step | undefined {
         };
       }
       case 'file-change':
-        return event.paths.length ? { kind: 'edit', text: oneLine(event.paths.join(', ')), at } : undefined;
+        return event.paths.length
+          ? {
+              kind: 'edit',
+              text: oneLine(event.paths.join(', ')),
+              at,
+              ...(event.toolId !== undefined ? { toolId: event.toolId } : {}),
+            }
+          : undefined;
       case 'approval-request':
-        return { kind: 'approval', text: oneLine(event.request.summary ?? event.request.kind), at };
+        return { kind: 'approval', text: oneLine(redactSecrets(event.request.summary ?? event.request.kind)), at };
       case 'error':
         return { kind: 'error', text: oneLine(event.message, 300), at };
       default:
@@ -586,7 +612,11 @@ function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
       );
     if (!found) return;
     found.endedAt = at;
-    if (event.isError) found.failed = true;
+    if (event.isError) {
+      found.failed = true;
+      // An edit announced when the call started did not happen.
+      if (found.id !== undefined) sub.steps = sub.steps?.filter((step) => step.toolId !== found.id);
+    }
     return;
   }
   if (event.type === 'message') {
@@ -597,9 +627,14 @@ function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
   const step = stepOf(event, at);
   if (!step) return;
   const steps = [...(sub.steps ?? []), step];
-  // The oldest go first, but never a tool call that still runs: its end is yet to be told.
+  // The least recent go first (a call that returned counts from its end, so one that just failed
+  // stays), but never a tool call that still runs: its end is yet to be told.
   while (steps.length > PACK_STEPS_KEPT) {
-    const drop = steps.findIndex((item) => !(item.kind === 'tool' && item.endedAt === undefined));
+    let drop = -1;
+    steps.forEach((item, index) => {
+      if (isOpenCall(item)) return;
+      if (drop < 0 || recency(item) < recency(steps[drop]!)) drop = index;
+    });
     steps.splice(drop < 0 ? 0 : drop, 1);
   }
   sub.steps = steps;
@@ -786,11 +821,15 @@ export function pack(options: PackOptions): Pack {
     const pullRequest = replyPullRequest(text);
     return { ...(verdict ? { verdict } : {}), ...(pullRequest ? { pullRequest } : {}) };
   };
-  // A tool call the task never ended (it was stopped, or crashed) ended with the task.
+  // A tool call the task never ended (it was stopped, or crashed) ended with the task, interrupted.
   const reportStep = (step: Step, sub: Sub): PackStep => {
     const copy: Step = { ...step };
     delete copy.id;
-    if (copy.kind === 'tool' && copy.endedAt === undefined && sub.endedAt !== undefined) copy.endedAt = sub.endedAt;
+    delete copy.toolId;
+    if (isOpenCall(copy) && sub.endedAt !== undefined) {
+      copy.endedAt = sub.endedAt;
+      copy.interrupted = true;
+    }
     return copy;
   };
   const report = (sub: Sub): PackTask => ({

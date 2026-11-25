@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { PackAction, PackSteer, PackStep } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalDecision, ApprovalRequest } from '../agents/types.js';
@@ -10,6 +10,7 @@ import {
   packQuotaText,
   packRunningStep,
   packStepLine,
+  packStepRecency,
   packSteerReceipt,
   packTaskElapsed,
   packTaskError,
@@ -607,7 +608,8 @@ function TaskDetail({
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
   const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
-  const perform = async (action: PackAction, intent?: { pullRequest?: true }) => {
+  /** `composer`: the composer's text this action sends, cleared once sent (Send again leaves a draft alone). */
+  const perform = async (action: PackAction, intent?: { pullRequest?: true }, composer?: string) => {
     if (!act || busy) return;
     setBusy(true);
     setFeedback(undefined);
@@ -627,7 +629,7 @@ function TaskDetail({
       } else {
         if (action.type !== 'steer' && action.type !== 'review' && action.type !== 'verify') setFeedback({ text });
         setConfirm(undefined);
-        if (action.type === 'steer') setInput('');
+        if (composer !== undefined) setInput((current) => (current === composer ? '' : current));
       }
     } catch (error) {
       setFeedback({ text: error instanceof Error ? error.message : String(error), error: true });
@@ -678,7 +680,7 @@ function TaskDetail({
   const said = packLatestMessage(task);
   const send = () => {
     const text = input.trim();
-    if (text) void perform({ type: 'steer', text });
+    if (text) void perform({ type: 'steer', text }, undefined, input);
   };
   // Any worktree still on disk can show its diff, also one whose task changed nothing: it may have
   // been edited since.
@@ -1011,7 +1013,7 @@ function TaskDetail({
             )}
           </fieldset>
         ) : null}
-        {task.steps?.length || task.steers?.length ? (
+        {task.steps?.length || task.steers?.length || task.startedAt !== undefined ? (
           <>
             <h4 className="gc-work-label">
               Timeline <span>newest first</span>
@@ -1119,6 +1121,24 @@ function Clock({ at }: { at: number }) {
   );
 }
 
+type TimelineRow = { at: number; order: number } & ({ step: PackStep } | { steer: PackSteer });
+
+/**
+ * The timeline's rows, newest first. A tool call that returned counts from its end, so one that ran
+ * long and just failed is at the top; one that has not returned is left out (the card above shows
+ * the one running now). Worked out when the task changes, not on every tick of the clock.
+ */
+function timelineRows(steps: PackStep[] = [], steers: PackSteer[] = []): TimelineRow[] {
+  const rows: TimelineRow[] = [
+    ...steps.flatMap((step, order) =>
+      step.kind === 'tool' && step.endedAt === undefined ? [] : [{ at: packStepRecency(step), order, step }],
+    ),
+    ...steers.map((steer, order) => ({ at: steer.at, order, steer })),
+  ];
+  // At the same instant a message to the task comes before (so shows under) what followed it.
+  return rows.sort((a, b) => b.at - a.at || Number('steer' in a) - Number('steer' in b) || b.order - a.order);
+}
+
 /**
  * What a task did, newest first: the tool calls that returned, with what each worked on and how it
  * went; what the agent said; the messages sent to it, each with its receipt; and its start. The
@@ -1138,20 +1158,14 @@ function Timeline({
   resend?(text: string): void;
 }) {
   const { task } = item;
-  const current = packRunningStep(task);
-  type Row = { at: number; order: number } & ({ step: PackStep } | { steer: PackSteer });
-  const rows: Row[] = [
-    ...(task.steps ?? []).filter((step) => step !== current).map((step, order) => ({ at: step.at, order, step })),
-    ...(task.steers ?? []).map((steer, order) => ({ at: steer.at, order, steer })),
-  ];
-  // Newest first; at the same instant a message to the task comes before (so shows under) what followed it.
-  rows.sort((a, b) => b.at - a.at || Number('steer' in a) - Number('steer' in b) || b.order - a.order);
+  const ended = task.endedAt !== undefined;
+  const rows = useMemo(() => timelineRows(task.steps, task.steers), [task.steps, task.steers]);
   return (
     <ol className="gc-work-tl" aria-label="Timeline">
       {rows.map((row) => {
         if ('steer' in row) {
           const { steer } = row;
-          const receipt = packSteerReceipt(steer, task.agent);
+          const receipt = packSteerReceipt(steer, task.agent, ended);
           const who = steer.from === 'lead' ? 'Lead' : 'You';
           return (
             <li key={`steer ${row.order}`} data-kind="steer">
@@ -1203,7 +1217,7 @@ function Timeline({
               <b>{line.verb}</b> <code title={line.object}>{line.object}</code>
               {line.detail ? <span> {line.detail}</span> : null}
             </span>
-            <Clock at={step.at} />
+            <Clock at={row.at} />
           </li>
         );
       })}

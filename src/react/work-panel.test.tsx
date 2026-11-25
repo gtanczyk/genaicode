@@ -221,7 +221,7 @@ describe('<WorkPanel> task detail', () => {
     );
     expect(rows).toEqual([
       'You: One more. [Not delivered]',
-      'Used mcp__docs__lookup',
+      'Used mcp__docs__lookup <1s',
       'Asked to approve npm install left-pad',
       'You: Also the lint. [✓ Delivered · 2.4s]',
       'Ran npm run lint failed · 12s',
@@ -229,7 +229,7 @@ describe('<WorkPanel> task detail', () => {
       'Edited src/cart.test.ts 3s',
       'codex: The total skips discounts. []',
       'You: Skip the snapshot tests. [✓✓ Delivered · answered]',
-      'Read src/cart.ts',
+      'Read src/cart.ts <1s',
       'Started by claude in .genaicode/worktrees/t1',
     ]);
     expect($$('.gc-work-tl .gc-receipt').map((item) => item.getAttribute('data-state'))).toEqual([
@@ -258,14 +258,56 @@ describe('<WorkPanel> task detail', () => {
     show([task], { props: { onPackAction: onAction } });
     // Only your own message: the lead's is the lead's to send again.
     expect($$('.gc-work-tl button').map((item) => item.textContent)).toEqual(['Send again']);
+    // While the task runs, it is not said to have ended.
+    expect($('.gc-work-tl .gc-receipt').getAttribute('title')).toBe(
+      'codex did not confirm that it took the message, so it may not have read it.',
+    );
+    // A draft in the composer is not what Send again sends: it stays.
+    type('.gc-work-field', 'half a thought');
     await actAsync(() => button('Send again')!.click());
     expect(onAction).toHaveBeenCalledWith(7, 't1', { type: 'steer', text: 'Use vitest.' });
+    expect($<HTMLInputElement>('.gc-work-field').value).toBe('half a thought');
     // Once it ended there is nothing to send to.
     show([{ ...task, status: 'completed', canSteer: false, endedAt: t0 + 9000 }], {
       props: { onPackAction: onAction },
     });
     expect(button('Send again')).toBeUndefined();
     expect($('.gc-work-tl .gc-receipt').getAttribute('title')).toBe('The task ended before codex took it.');
+  });
+
+  it('the timeline orders returned calls by their end and leaves out every call still running', () => {
+    show([
+      {
+        ...base,
+        id: 't1',
+        prompt: 'x',
+        status: 'running',
+        startedAt: t0,
+        steps: [
+          // Started first, ran long, failed just now: newest.
+          { kind: 'tool', name: 'Bash', text: 'npm test', at: t0 + 1_000, endedAt: t0 + 590_000, failed: true },
+          // Still running, though an older call than the one in the card.
+          { kind: 'tool', name: 'Bash', text: 'npm run build', at: t0 + 2_000 },
+          { kind: 'message', text: 'Waiting on the tests.', at: t0 + 300_000 },
+          { kind: 'tool', name: 'Read', text: 'a.ts', at: t0 + 400_000 },
+        ],
+      },
+    ]);
+    expect(text('.gc-work-now')).toContain('Reading a.ts');
+    const rows = $$('.gc-work-tl li').map(
+      (item) => item.querySelector('.gc-work-tl-x')?.textContent ?? item.querySelector('p')!.textContent,
+    );
+    expect(rows).toEqual([
+      'Ran npm test failed · 9m 49s',
+      'Waiting on the tests.',
+      'Started by claude in .genaicode/worktrees/t1',
+    ]);
+  });
+
+  it('a task that started and did nothing yet has a timeline with its start', () => {
+    show([{ ...base, id: 't1', prompt: 'x', status: 'running', startedAt: t0 }]);
+    expect(labels()).toContain('Timeline');
+    expect($$('.gc-work-tl li').map((item) => item.getAttribute('data-kind'))).toEqual(['start']);
   });
 
   it('running without steering: says what the person can do instead', () => {
@@ -305,7 +347,9 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-meta')).toMatch(/took 1m 05s$/);
     expect(text('.gc-work-verdict')).toBe('VERDICT: LGTM');
     expect(text('.gc-work-result')).toContain('Read it all.');
-    expect(labels()).toEqual(['What it was asked', 'Result']);
+    // Its timeline still has its start.
+    expect(labels()).toEqual(['What it was asked', 'Result', 'Timeline']);
+    expect($$('.gc-work-tl li').map((item) => item.getAttribute('data-kind'))).toEqual(['start']);
     expect($('.gc-work-steer')).toBeNull();
     expect($('.gc-work-merge')).toBeNull();
     expect($$('.gc-work-detail button').map((item) => item.textContent?.trim())).toEqual(['Tasks']);

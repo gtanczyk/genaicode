@@ -338,7 +338,8 @@ export function createGeminiParser(): AgentOutputParser {
           if (id) toolNames.set(id, name);
           events.push({ type: 'tool-start', ...(id ? { id } : {}), name, input: value.parameters });
           const path = stringField(value.parameters, 'file_path');
-          if (EDIT_TOOLS.has(name) && path) events.push({ type: 'file-change', paths: [path] });
+          if (EDIT_TOOLS.has(name) && path)
+            events.push({ type: 'file-change', paths: [path], ...(id ? { toolId: id } : {}) });
           break;
         }
         case 'tool_result': {

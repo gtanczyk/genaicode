@@ -243,9 +243,19 @@ describe('packStepLine', () => {
       running: false,
     });
     // Under a second says nothing of time; a failure says so.
-    expect(packStepLine({ kind: 'tool', name: 'Read', text: 'a.ts', at, endedAt: at + 20 }).detail).toBe('');
-    expect(packStepLine({ kind: 'tool', name: 'Bash', text: 'x', at, endedAt: at + 20, failed: true })).toMatchObject({
+    // Under a second still says it returned quickly.
+    expect(packStepLine({ kind: 'tool', name: 'Read', text: 'a.ts', at, endedAt: at + 20 }).detail).toBe('<1s');
+    // A call the task's end cut short is not worded as done.
+    expect(
+      packStepLine({ kind: 'tool', name: 'Write', text: 'a.ts', at, endedAt: at + 2_000, interrupted: true }),
+    ).toMatchObject({ verb: 'Writing', detail: 'interrupted · 2s', running: false });
+    // An edit whose call failed did not happen.
+    expect(packStepLine({ kind: 'edit', text: 'a.ts', at, failed: true })).toMatchObject({
+      verb: 'Could not edit',
       detail: 'failed',
+    });
+    expect(packStepLine({ kind: 'tool', name: 'Bash', text: 'x', at, endedAt: at + 20, failed: true })).toMatchObject({
+      detail: 'failed · <1s',
       failed: true,
     });
   });
@@ -337,8 +347,12 @@ describe('messageReceipt', () => {
     const steer = { text: 'x', from: 'user' as const, delivery: 'delivered' as const, ...sent };
     expect(packSteerReceipt(steer, 'codex').state).toBe('delivered');
     expect(packSteerReceipt({ ...steer, answeredAt: 12_000 }, 'codex').state).toBe('answered');
-    expect(packSteerReceipt({ ...steer, delivery: 'dropped' }, 'codex').title).toBe(
+    // Only a task known to have ended is said to have ended first.
+    expect(packSteerReceipt({ ...steer, delivery: 'dropped' }, 'codex', true).title).toBe(
       'The task ended before codex took it.',
+    );
+    expect(packSteerReceipt({ ...steer, delivery: 'dropped' }, 'codex').title).toBe(
+      'codex did not confirm that it took the message, so it may not have read it.',
     );
   });
 });

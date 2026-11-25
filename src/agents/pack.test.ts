@@ -976,6 +976,72 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('hides credentials in tool arguments, drops edits of failed calls and keeps a long call that just ended', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({
+        type: 'tool-start',
+        id: 'curl',
+        name: 'Bash',
+        input: { command: `curl -H "Authorization: Bearer ${'a'.repeat(190)}" https://api.example.com` },
+      });
+      emit({
+        type: 'tool-start',
+        id: 'env',
+        name: 'Bash',
+        input: { command: 'GITHUB_TOKEN=ghp_abcdefghijkl12 gh pr list' },
+      });
+      emit({ type: 'tool-end', id: 'env' });
+      // An edit announced as its call starts, and the call fails: nothing was edited.
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      emit({ type: 'tool-end', id: 'e2' });
+      await step();
+      // Many messages while the curl call runs, then it fails: it stays, older and shorter steps go.
+      for (let i = 0; i < PACK_STEPS_KEPT; i += 1) emit({ type: 'message', text: `note ${i}` });
+      emit({ type: 'tool-end', id: 'curl', isError: true });
+      emit({ type: 'message', text: 'after' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    // Every event a millisecond after the one before.
+    let clock = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1));
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(5));
+      const steps = task()!.steps!;
+      expect(steps[0]!.text).toBe('curl -H "Authorization: ***" https://api.example.com');
+      expect(steps[1]!.text).toBe('GITHUB_TOKEN=*** gh pr list');
+      expect(JSON.stringify(task())).not.toMatch(/aaaaaaaa|ghp_abcdef/);
+      expect(steps.filter((item) => item.kind === 'edit').map((item) => item.text)).toEqual(['src/b.ts']);
+      expect(steps.find((item) => item.text === 'src/a.ts')).toMatchObject({ kind: 'tool', failed: true });
+      next();
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('after'));
+      const kept = task()!.steps!;
+      expect(kept).toHaveLength(PACK_STEPS_KEPT);
+      expect(kept[0]).toMatchObject({ kind: 'tool', failed: true, text: expect.stringContaining('curl') });
+      expect(kept.some((item) => item.text === 'note 0')).toBe(false);
+    } finally {
+      now.mockRestore();
+      session.close();
+      await session.idle();
+    }
+  });
+
   it('shows the running tool call until it ends, reads string-array commands and never fails on odd input', async () => {
     let next = () => {};
     const step = () => new Promise<void>((resolve) => (next = resolve));
@@ -1015,8 +1081,10 @@ describe('pack chat turns', () => {
       expect(task()!.steps![2]).toEqual({ kind: 'tool', name: 'shell', text: 'npm test', at: expect.any(Number) });
       await session.actOnPackTask!(1, 't1', { type: 'stop' });
       expect(task()).toMatchObject({ status: 'aborted', stoppedBy: 'user' });
-      // A call the task never ended is over with the task.
+      // A call the task never ended is over with the task, and says it was cut short.
       expect(task()!.steps![2]!.endedAt).toBe(task()!.endedAt);
+      expect(task()!.steps![2]!.interrupted).toBe(true);
+      expect(task()!.steps![1]!.interrupted).toBeUndefined();
     } finally {
       session.close();
       await session.idle();

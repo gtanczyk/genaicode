@@ -58,9 +58,17 @@ export type SessionEntry =
     }
   /**
    * Input the user sent while the turn ran; `delivery` says whether it reached the agent, `at` when
-   * it was sent and `settledAt` when `delivery` left `sending` (epoch milliseconds).
+   * it was sent, `settledAt` when `delivery` left `sending` and `answeredAt` when the agent started
+   * its first message after it took the input (epoch milliseconds).
    */
-  | { kind: 'input'; text: string; delivery?: InputDelivery; at?: number; settledAt?: number }
+  | {
+      kind: 'input';
+      text: string;
+      delivery?: InputDelivery;
+      at?: number;
+      settledAt?: number;
+      answeredAt?: number;
+    }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
@@ -495,6 +503,23 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     });
   };
 
+  // Input the agent took and has not answered yet: `openAt` is the reply that was streaming when it
+  // took it, which began before and so is no answer.
+  let unanswered: Array<{ turnId: number; openAt: number; answer(at: number): void }> = [];
+  // A text event lands in a reply begun after the input was taken: that is its answer.
+  const noteAnswer = (turnId: number) => {
+    if (!unanswered.length) return;
+    const entries = state.turns.find((turn) => turn.id === turnId)?.entries;
+    if (!entries) return;
+    const open = openText(entries);
+    const into = open >= 0 ? open : entries.length;
+    const answered = unanswered.filter((wait) => wait.turnId === turnId && wait.openAt !== into);
+    if (!answered.length) return;
+    unanswered = unanswered.filter((wait) => !answered.includes(wait));
+    const at = Date.now();
+    for (const wait of answered) wait.answer(at);
+  };
+
   const addEntry = (id: number, entry: SessionEntry) =>
     updateTurn(id, (turn) => ({ ...turn, entries: [...closeStreaming(turn.entries), entry] }));
 
@@ -558,6 +583,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }
         return;
       case 'text-delta':
+        noteAnswer(turnId);
         updateTurn(turnId, (turn) => {
           const at = openText(turn.entries);
           const open = turn.entries[at];
@@ -570,6 +596,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       case 'message':
+        noteAnswer(turnId);
         updateTurn(turnId, (turn) => {
           const at = openText(turn.entries);
           const entry: SessionEntry = { kind: 'text', text: event.text, streaming: false };
@@ -1167,14 +1194,23 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           at: Date.now(),
         };
         addEntry(turnId, sent);
-        const deliver = (delivery: InputDelivery) => {
-          const next = { ...sent, delivery, settledAt: Date.now() };
+        const change = (patch: Partial<Extract<SessionEntry, { kind: 'input' }>>) => {
+          const next = { ...sent, ...patch };
           const was = sent;
           sent = next;
           updateTurn(turnId, (turn) => ({
             ...turn,
             entries: turn.entries.map((entry) => (entry === was ? next : entry)),
           }));
+        };
+        const deliver = (delivery: InputDelivery) => {
+          change({ delivery, settledAt: Date.now() });
+          if (delivery !== 'delivered') return;
+          const entries = state.turns.find((turn) => turn.id === turnId)?.entries;
+          unanswered = [
+            ...unanswered.filter((wait) => state.turns.some((turn) => turn.id === wait.turnId)),
+            { turnId, openAt: entries ? openText(entries) : -1, answer: (at) => change({ answeredAt: at }) },
+          ];
         };
         current.steer(steerText).then(
           (receipt) => deliver(receipt === 'taken' ? 'delivered' : 'sent'),

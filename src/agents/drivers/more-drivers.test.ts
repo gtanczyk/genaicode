@@ -193,7 +193,7 @@ describe('gemini driver', () => {
       { type: 'session', sessionId: 'g-1' },
       { type: 'text-delta', text: 'Fixing ' },
       { type: 'tool-start', id: 't1', name: 'replace', input: { file_path: 'a.ts' } },
-      { type: 'file-change', paths: ['a.ts'] },
+      { type: 'file-change', paths: ['a.ts'], toolId: 't1' },
       { type: 'tool-end', id: 't1', name: 'replace', isError: false, output: 'ok' },
       { type: 'text-delta', text: 'done.' },
       { type: 'message', text: 'Fixing done.' },

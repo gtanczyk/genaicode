@@ -83,12 +83,13 @@ function tookText(ms: number): string {
 /**
  * The receipt of a message sent to an agent while it worked: the lead (`SessionEntry` input) or a
  * delegated task (`PackSteer`). `answered`: the agent said something after it took the message.
- * `scope` is what ran: it words why a message was not delivered.
+ * `scope` is what ran and `ended` whether it is known to have ended: they word why a message was
+ * not delivered.
  */
 export function messageReceipt(
   message: { delivery?: InputDelivery; at?: number; settledAt?: number },
   agent: string,
-  options: { answered?: boolean; scope?: 'turn' | 'task' } = {},
+  options: { answered?: boolean; scope?: 'turn' | 'task'; ended?: boolean } = {},
 ): Receipt {
   const who = agent || 'the agent';
   const took =
@@ -132,7 +133,9 @@ export function messageReceipt(
         spoken: 'Not delivered',
         title:
           options.scope === 'task'
-            ? `The task ended before ${who} took it.`
+            ? options.ended
+              ? `The task ended before ${who} took it.`
+              : `${who} did not confirm that it took the message, so it may not have read it.`
             : `The turn was stopped before ${who} took it.`,
       };
     default:
@@ -145,9 +148,13 @@ export function messageReceipt(
   }
 }
 
-/** The receipt of a message steered into a delegated task. */
-export function packSteerReceipt(steer: PackSteer, agent: string): Receipt {
-  return messageReceipt(steer, agent, { answered: steer.answeredAt !== undefined, scope: 'task' });
+/** The receipt of a message steered into a delegated task; `ended`: the task is known to have ended. */
+export function packSteerReceipt(steer: PackSteer, agent: string, ended?: boolean): Receipt {
+  return messageReceipt(steer, agent, {
+    answered: steer.answeredAt !== undefined,
+    scope: 'task',
+    ended: ended ?? false,
+  });
 }
 
 /** Who sent input to a delegated task and what became of it: "Your message: Seen by codex". */
@@ -285,7 +292,7 @@ export interface PackStepLine {
   verb: string;
   /** The command, path or pattern; a tool without one is named instead. */
   object: string;
-  /** "14s so far" for a running tool call, how long a finished one took (a second or more), "failed". */
+  /** "14s so far" for a running tool call, how long a finished one took ("<1s" under a second), "failed", "interrupted". */
   detail: string;
   /** A tool call that still runs. */
   running: boolean;
@@ -314,7 +321,7 @@ export function packStepLine(step: PackStep, now = Date.now(), cwd?: string): Pa
     case 'message':
       return line('Said', text);
     case 'edit':
-      return line('Edited', text);
+      return line(step.failed ? 'Could not edit' : 'Edited', text, step.failed ? 'failed' : '');
     case 'approval':
       return line('Asked to approve', text);
     case 'error':
@@ -323,20 +330,27 @@ export function packStepLine(step: PackStep, now = Date.now(), cwd?: string): Pa
       const name = step.name ?? 'tool';
       const running = step.endedAt === undefined;
       const known = TOOL_VERBS.find(([pattern]) => pattern.test(name.toLowerCase()));
-      const verb = known ? known[running ? 1 : 2] : running ? 'Using' : 'Used';
+      // A call the task's end cut short is worded as under way ("Writing"), never as done ("Wrote").
+      const ongoing = running || !!step.interrupted;
+      const verb = known ? known[ongoing ? 1 : 2] : ongoing ? 'Using' : 'Used';
       // A tool that names nothing it works on is named itself; an unknown one is named with it.
       const object = known ? text || toolLabel(name) : text ? `${toolLabel(name)} ${text}` : toolLabel(name);
       const span = (step.endedAt ?? now) - step.at;
-      const took = running ? `${formatDuration(span)} so far` : span >= 1000 ? formatDuration(span) : '';
+      const took = running ? `${formatDuration(span)} so far` : span >= 1000 ? formatDuration(span) : '<1s';
       return {
         verb,
         object,
-        detail: [step.failed ? 'failed' : '', took].filter(Boolean).join(' · '),
+        detail: [step.failed ? 'failed' : '', step.interrupted ? 'interrupted' : '', took].filter(Boolean).join(' · '),
         running,
         failed: !!step.failed,
       };
     }
   }
+}
+
+/** When a step last moved: a tool call that returned (or was cut short) when it ended, else when it happened. */
+export function packStepRecency(step: PackStep): number {
+  return step.kind === 'tool' && step.endedAt !== undefined ? step.endedAt : step.at;
 }
 
 /** The tool call a running task is in right now: its latest one that has not returned. */

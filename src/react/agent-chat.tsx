@@ -903,11 +903,8 @@ function Turn({
       onApprove: live ? onApprove : undefined,
       onAutoApprove: live ? onAutoApprove : undefined,
       prompt: item.kind === 'input' ? prompt : undefined,
-      // Answered: the agent said something after it took the message.
-      answered:
-        item.kind === 'input' &&
-        item.delivery === 'delivered' &&
-        turn.entries.slice(turn.entries.indexOf(item) + 1).some((later) => later.kind === 'text'),
+      // Answered: the agent began a message after it took this one (the session records when).
+      answered: item.kind === 'input' && item.delivery === 'delivered' && item.answeredAt !== undefined,
       toolLabel: item.kind === 'tool' ? toolName(item.name) : undefined,
       artifactUrl: item.kind === 'artifact' ? artifactUrl : undefined,
       onOpenArtifact: item.kind === 'artifact' ? onOpenArtifact : undefined,
