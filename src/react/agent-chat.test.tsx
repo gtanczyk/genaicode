@@ -1067,6 +1067,82 @@ describe('AgentChat', () => {
     expect(active().querySelector(':scope > .gc-progress')).toBeNull();
   });
 
+  it('says whether input sent while the agent worked reached it', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.agent = 'claude';
+    turn.entries = [
+      { kind: 'input', text: 'one', delivery: 'sending' },
+      { kind: 'input', text: 'two', delivery: 'delivered' },
+      { kind: 'input', text: 'three', delivery: 'sent' },
+      { kind: 'input', text: 'four', delivery: 'queued' },
+      { kind: 'input', text: 'five', delivery: 'dropped' },
+      { kind: 'input', text: 'six' },
+    ];
+    render({ state });
+    const labels = $$('.gc-steer small').map((el) => [el.textContent, el.getAttribute('aria-label')]);
+    expect(labels).toEqual([
+      ['Sending…', 'Your message: Sending'],
+      ['Seen by claude', 'Your message: Seen by claude'],
+      ['Sent to claude', 'Your message: Sent to claude'],
+      ['Queued for the next turn', 'Your message: Queued for the next turn'],
+      ['Not delivered: stopped first', 'Your message: Not delivered: stopped first'],
+      ['Sent while working', 'Your message: Sent while working'],
+    ]);
+    expect($$('.gc-steer').map((el) => el.getAttribute('data-delivery'))).toEqual([
+      'sending',
+      'delivered',
+      'sent',
+      'queued',
+      'dropped',
+      null,
+    ]);
+  });
+
+  it('shows input sent to a delegated task in its detail and the latest one on its row', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1]!;
+    turn.pack = {
+      lead: 'claude',
+      maxParallel: 4,
+      interactive: true,
+      tasks: [
+        {
+          id: 't1',
+          agent: 'codex',
+          cwd: '/work/a',
+          prompt: 'Write CSV',
+          mode: 'shared',
+          status: 'running',
+          canSteer: true,
+          steers: [
+            { text: 'use commas', from: 'lead', at: 1, delivery: 'delivered' },
+            { text: 'and quote fields', from: 'user', at: 2, delivery: 'sending' },
+          ],
+        },
+      ],
+    };
+    render({ state });
+    const detail = $$('.gc-pack-steers li').map((el) => [
+      el.querySelector('p')?.textContent,
+      el.querySelector('.gc-pack-steer')?.textContent,
+    ]);
+    expect(detail).toEqual([
+      ['use commas', 'Lead’s message: Seen by codex'],
+      ['and quote fields', 'Your message: Sending…'],
+    ]);
+    expect(document.querySelector('.gc-pack-steers')?.getAttribute('aria-label')).toBe('Messages sent while it ran');
+
+    turn.pack.tasks[0]!.steers![1]!.delivery = 'dropped';
+    turn.pack.tasks.push({ ...turn.pack.tasks[0]!, id: 't2', prompt: 'Write docs' });
+    render({ state });
+    const rows = $$('.gc-pack-list button .gc-pack-steer').map((el) => el.textContent);
+    expect(rows).toEqual([
+      'Your message: Not delivered: the task ended first',
+      'Your message: Not delivered: the task ended first',
+    ]);
+  });
+
   it('keeps a steering input above the update that answers it, and the reply element when the turn ends', () => {
     const state = fixture();
     const turn = state.turns[1]!;

@@ -375,10 +375,23 @@ export interface AgentRun extends AsyncIterable<AgentEvent> {
   abort(): void;
   /**
    * Send more input to the task while it runs (`capabilities.steer`). Rejects once
-   * the task has ended, or when the agent did not acknowledge the input.
+   * the task has ended, or when the agent did not acknowledge the input. Resolves with
+   * `taken` when the agent itself confirmed it has the input in the running turn; `sent`
+   * (or nothing) when the input was only handed over.
    */
-  steer?(text: string): Promise<void>;
+  steer?(text: string): Promise<SteerReceipt | void>;
 }
+
+/** What a resolved `AgentRun.steer` promises: the agent `taken` the input, or it was only `sent`. */
+export type SteerReceipt = 'taken' | 'sent';
+
+/**
+ * What became of input sent while a turn ran: `sending` until the agent answers, then
+ * `delivered` (the agent confirmed it has the input in the running turn), `sent` (handed over;
+ * the agent does not confirm more), `queued` (the turn ended first, so it runs as the next turn)
+ * or `dropped` (the turn was stopped before the agent took it).
+ */
+export type InputDelivery = 'sending' | 'delivered' | 'sent' | 'queued' | 'dropped';
 
 export interface CodingAgent {
   readonly name: string;

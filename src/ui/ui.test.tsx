@@ -942,6 +942,34 @@ describe('terminal UI', () => {
       chat.close();
     }
   });
+  it('says on an input line whether the agent got it', () => {
+    const turn: SessionTurn = {
+      id: 1,
+      prompt: 'go',
+      agent: 'claude',
+      startedAt: 0,
+      entries: [
+        { kind: 'input', text: 'one', delivery: 'sending' },
+        { kind: 'input', text: 'two', delivery: 'delivered' },
+        { kind: 'input', text: 'three', delivery: 'queued' },
+        { kind: 'input', text: 'four' },
+      ],
+    };
+    const app = render(
+      <Box width={80}>
+        <TurnView turn={turn} width={80} />
+      </Box>,
+    );
+    try {
+      const frame = app.lastFrame()!;
+      expect(frame).toContain('one (sending…)');
+      expect(frame).toContain('two (seen by claude)');
+      expect(frame).toContain('three (queued for the next turn)');
+      expect(frame).toContain('four (sent while working)');
+    } finally {
+      app.unmount();
+    }
+  });
   it('keeps a delegated task row’s status and outcome visible at 80 columns under a long title', () => {
     const title = 'Finish the delegated tasks view redesign so every row reads well in a narrow terminal';
     const turn: SessionTurn = {

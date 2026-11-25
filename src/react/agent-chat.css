@@ -178,6 +178,15 @@
   color: var(--_muted);
   font-size: 0.75em;
 }
+.gc-prompt.gc-steer[data-delivery='delivered'] small {
+  color: var(--_ok);
+}
+.gc-prompt.gc-steer[data-delivery='queued'] small {
+  color: var(--_warn);
+}
+.gc-prompt.gc-steer[data-delivery='dropped'] small {
+  color: var(--_error);
+}
 .gc-agent-row {
   display: flex;
   gap: 10px;
@@ -1635,6 +1644,30 @@ img.gc-artifact-view {
   border-left: 3px solid var(--_ok);
   background: var(--_bg);
   border-radius: 0 var(--_radius) var(--_radius) 0;
+}
+.gc-chat .gc-pack .gc-pack-steer {
+  color: var(--_muted);
+}
+.gc-chat .gc-pack .gc-pack-steer[data-delivery='delivered'] {
+  color: var(--_ok);
+}
+.gc-chat .gc-pack .gc-pack-steer[data-delivery='dropped'] {
+  color: var(--_error);
+}
+.gc-chat .gc-pack-steers ol {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.gc-chat .gc-pack-steers li {
+  margin-top: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-left: 3px solid var(--_accent);
+  background: var(--_accent-soft);
+  border-radius: 0 var(--_radius) var(--_radius) 0;
+}
+.gc-chat .gc-pack-steers li p {
+  margin: 0;
 }
 .gc-chat .gc-pack-prompt {
   margin-top: 0.6rem;

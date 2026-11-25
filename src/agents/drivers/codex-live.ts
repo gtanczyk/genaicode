@@ -520,8 +520,10 @@ async function driveCodex(session: LiveSession, options: CodexLiveOptions): Prom
   if (!turnId) throw new Error('Codex did not return a turn id.');
   for (const params of earlyUsage.splice(0)) resumedUsage(params);
 
+  // The server answers once the input is part of the running turn.
   session.setSteer(async (text) => {
     await rpc.request('turn/steer', { threadId, expectedTurnId: turnId, input: input(text) }, timeout);
+    return 'taken';
   });
   return finished;
 }

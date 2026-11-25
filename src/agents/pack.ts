@@ -41,6 +41,7 @@ import type {
   ApprovalRequest,
   BudgetWarning,
   CodingAgent,
+  InputDelivery,
   McpServer,
   RateLimit,
 } from './types.js';
@@ -128,6 +129,8 @@ export interface PackTask {
   status: PackTaskStatus;
   /** This running task accepts steering input. */
   canSteer?: boolean;
+  /** Input sent to the task while it ran, oldest first. */
+  steers?: PackSteer[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
   /** The agent's final message, or the last thing it did while running. */
@@ -156,6 +159,19 @@ export interface PackTask {
 }
 
 export type PackStopCause = 'user' | 'lead' | 'lead-finished' | 'turn' | 'budget';
+
+/**
+ * Input sent to a running delegated task: by the lead's `steer` tool or a person through `act`.
+ * `delivery` is `sending`, then `delivered` (the agent confirmed it took it), `sent` (handed over
+ * without confirmation) or `dropped` (the task ended first).
+ */
+export interface PackSteer {
+  text: string;
+  from: 'lead' | 'user';
+  /** When it was sent (epoch milliseconds). */
+  at: number;
+  delivery: Exclude<InputDelivery, 'queued'>;
+}
 
 export interface Pack extends CodingAgent {
   /** Every task delegated so far, over all runs. */
@@ -265,6 +281,7 @@ interface Sub {
   run?: AgentRun;
   result?: AgentResult;
   last?: string;
+  steers?: PackSteer[];
   /** The tool call `last` is about, and the line shown before it started. */
   tool?: { id?: string; name: string; before?: string };
   usage?: TokenUsage;
@@ -626,6 +643,7 @@ export function pack(options: PackOptions): Pack {
     mode: sub.mode,
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
+    ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
     cwd: sub.cwd,
     ...(sub.result?.text !== undefined
       ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
@@ -1199,7 +1217,7 @@ export function pack(options: PackOptions): Pack {
         });
       };
 
-      const steer = async (sub: Sub, text: unknown) => {
+      const steer = async (sub: Sub, text: unknown, from: PackSteer['from']) => {
         if (sub.status !== 'running' || !sub.run) throw new PackActionError('not-running', `${sub.id} is not running.`);
         if (!sub.run.steer)
           throw new PackActionError(
@@ -1207,8 +1225,22 @@ export function pack(options: PackOptions): Pack {
             `${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`,
           );
         if (typeof text !== 'string' || !text.trim()) throw new PackActionError('input', '`text` is required.');
-        await sub.run.steer(text);
-        return `Sent to ${sub.id}.`;
+        const record: PackSteer = { text, from, at: Date.now(), delivery: 'sending' };
+        sub.steers = [...(sub.steers ?? []), record];
+        notify(sub);
+        const settle = (delivery: PackSteer['delivery']) => {
+          record.delivery = delivery;
+          notify(sub);
+        };
+        let receipt: unknown;
+        try {
+          receipt = await sub.run.steer(text);
+        } catch (error) {
+          settle('dropped');
+          throw error;
+        }
+        settle(receipt === 'taken' ? 'delivered' : 'sent');
+        return receipt === 'taken' ? `${sub.id} took the input.` : `Sent to ${sub.id}.`;
       };
 
       const stop = async (sub: Sub, cause: PackStopCause) => {
@@ -1354,7 +1386,7 @@ export function pack(options: PackOptions): Pack {
             const sub = find(args.id);
             if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
               throw new Error(`Cannot steer ${sub.id} while in Plan mode: it is running outside Plan mode.`);
-            return steer(sub, args.text);
+            return steer(sub, args.text, 'lead');
           },
         },
         {
@@ -1544,7 +1576,7 @@ export function pack(options: PackOptions): Pack {
             if (!mine.has(sub)) throw new PackActionError('missing', `Task ${id} belongs to another turn.`);
             switch (action.type) {
               case 'steer':
-                return steer(sub, action.text);
+                return steer(sub, action.text, 'user');
               case 'stop':
                 return stop(sub, 'user');
               case 'diff':

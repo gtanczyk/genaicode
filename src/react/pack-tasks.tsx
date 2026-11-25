@@ -7,6 +7,7 @@ import {
   packCheckLabel,
   packMetrics,
   packQuotaText,
+  packSteerText,
   packTaskElapsed,
   packTaskError,
   packTaskList,
@@ -78,6 +79,7 @@ export function PackTasks({
     const elapsed = packTaskElapsed(item, now);
     // A running task's row shows what it does right now: its current command or latest message.
     const live = item.status === 'running' ? packActivity(item.text ?? '') : undefined;
+    const steer = item.steers?.at(-1);
     return (
       <button
         type="button"
@@ -94,6 +96,11 @@ export function PackTasks({
             {item.agent} · <span className={asks ? 'gc-pack-warn' : ''}>{packTaskStatus(item, asks)}</span>
             {elapsed ? ` · ${elapsed}` : ''}
           </small>
+          {steer ? (
+            <small className="gc-pack-steer" data-delivery={steer.delivery}>
+              {packSteerText(steer, item.agent)}
+            </small>
+          ) : null}
           {live ? (
             <span className="gc-pack-live" aria-live="polite">
               {live.argument ? (
@@ -294,6 +301,21 @@ function TaskDetail({
       {stopped && <p className="gc-pack-stopped">{stopped}.</p>}
       {error && <p className="gc-err">{error}</p>}
       {children}
+      {task.steers?.length ? (
+        <section className="gc-pack-steers" aria-label="Messages sent while it ran">
+          <small className="gc-pack-label">Sent while it ran</small>
+          <ol>
+            {task.steers.map((steer, i) => (
+              <li key={i}>
+                <p>{steer.text}</p>
+                <small className="gc-pack-steer" data-delivery={steer.delivery} role="status">
+                  {packSteerText(steer, task.agent)}
+                </small>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <details className="gc-pack-prompt">
         <summary>Instructions given to {task.agent}</summary>
         <p>{task.prompt}</p>
