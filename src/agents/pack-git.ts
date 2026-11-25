@@ -192,7 +192,7 @@ export async function patchCoversWorktree(
  * the worktree would lose what is in there.
  */
 async function gitlinkChanged(dir: string, start: string, tree: string): Promise<boolean> {
-  const raw = await must(dir, ['diff', '--raw', '-z', '--no-renames', start, tree]);
+  const raw = await must(dir, ['diff', '--raw', '-z', '--no-renames', '--ignore-submodules=none', start, tree]);
   // Entries ":<old mode> <new mode> <old id> <new id> <status>": a gitlink is mode 160000.
   return raw.split('\0').some((entry) => /^:\d{6} 160000 /.test(entry));
 }

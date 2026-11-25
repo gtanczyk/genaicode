@@ -1309,6 +1309,8 @@ describe('pack chat turns', () => {
       await session.idle();
       expect(task()).toMatchObject({ status: 'completed', state: 'unmerged' });
       const dir = task()!.cwd;
+      // Also where git is told to leave submodules out of its diffs.
+      git(dir, 'config', 'diff.ignoreSubmodules', 'all');
       await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
         name: 'PackActionError',
         reason: 'changed',
