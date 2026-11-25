@@ -950,14 +950,25 @@ function App() {
   const switchSeq = useRef(0);
   // The project line looks a folder up (a typed path, the host's dialog): until it is found and
   // asked for, or dropped, prompts wait as they do while switching, as they may be for that folder.
+  // Each lookup holds only while no later chat was asked for: a later request (another folder,
+  // `/clear`, a row in the sidebar) decides where the window goes, and its own answer releases it.
   const [lookingUp, setLookingUp] = useState(0);
   const lookingUpRef = useRef(0);
+  const lookups = useRef(new Map<number, number>());
+  const lookupId = useRef(0);
+  const refreshLookups = () => {
+    let held = 0;
+    for (const mark of lookups.current.values()) if (mark === switchSeq.current) held += 1;
+    lookingUpRef.current = held;
+    setLookingUp(held);
+  };
   const lookUp = <T,>(found: Promise<T>): Promise<T> => {
-    lookingUpRef.current += 1;
-    setLookingUp(lookingUpRef.current);
+    const id = ++lookupId.current;
+    lookups.current.set(id, switchSeq.current);
+    refreshLookups();
     return found.finally(() => {
-      lookingUpRef.current -= 1;
-      setLookingUp(lookingUpRef.current);
+      lookups.current.delete(id);
+      refreshLookups();
     });
   };
   // Prompts wait; the commands that move the window (`navigates`) still go, and are ordered after it.
@@ -1022,6 +1033,7 @@ function App() {
     // The composer stays, and the next key goes to it.
     focusComposer();
     const mine = ++switchSeq.current;
+    refreshLookups();
     switchingRef.current = true;
     setSwitching(true);
     return command({ ...request, order: { window: WINDOW_ID, seq: mine } })
@@ -1061,7 +1073,10 @@ function App() {
    */
   const stayInChat = () => {
     if (switchingRef.current) void switchChat({ type: 'stay-chat' }, 'stay in this chat');
-    else switchSeq.current += 1;
+    else {
+      switchSeq.current += 1;
+      refreshLookups();
+    }
   };
   // A new chat: no prompt yet, so where it starts can still be chosen.
   const newChat = !!session && session.turns.length === 0 && !inSetup;
@@ -1207,9 +1222,10 @@ function App() {
       if (own.kind === 'new') {
         const stayed = switchingRef.current
           ? switchChat({ type: 'stay-chat' }, 'stay in this chat')
-          : ((switchSeq.current += 1), Promise.resolve(true));
+          : ((switchSeq.current += 1), refreshLookups(), Promise.resolve(true));
+        // Only when the window is still here: a chat opened meanwhile (`undefined`) is not reset.
         return stayed.then((here) =>
-          here === false
+          here !== true
             ? false
             : command({ type: 'submit', text }).then(
                 () => true,

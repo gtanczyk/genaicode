@@ -279,6 +279,8 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
         await retype('/clear');
         await message.press('Enter');
       } else await projects.getByRole('radio', { name: /Home folder/ }).click();
+      // The later choice decides: the field is given back before the old lookup answers.
+      await vi.waitFor(async () => expect(await message.getAttribute('aria-disabled')).toBeNull());
       const looked = page.waitForResponse(/\/api\/folder\?path=/);
       letGo();
       await looked;
