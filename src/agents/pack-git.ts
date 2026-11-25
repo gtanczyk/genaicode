@@ -231,6 +231,8 @@ async function indexTree(dir: string): Promise<string | undefined> {
 
 /** The worktree's changes since `start` as a patch `git apply` takes. */
 export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
+  // The patch's form is pinned: a person's diff settings (no prefixes, other prefixes, less
+  // context) would make `git apply` put a file elsewhere or a line in the wrong place.
   return mustBytes(dir, [
     'diff',
     '--binary',
@@ -238,6 +240,9 @@ export function worktreeDiff(dir: string, start: string, tree: string): Promise<
     '--no-textconv',
     '--no-ext-diff',
     '--no-color',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    '--unified=3',
     start,
     tree,
   ]);

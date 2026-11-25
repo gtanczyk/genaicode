@@ -1284,6 +1284,39 @@ describe('pack chat turns', () => {
     }
   });
 
+  it("merges the task's change where it was made, whatever the person's diff settings say", async () => {
+    const cwd = repo();
+    git(cwd, 'config', 'diff.noprefix', 'true');
+    git(cwd, 'config', 'diff.context', '0');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\ninserted\nthree\n');
+      mkdirSync(join(task.cwd, 'lib'));
+      writeFileSync(join(task.cwd, 'lib', 'thing'), 'thing\n');
+      return { text: 'Inserted a line and added lib/thing.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\ninserted\nthree\n');
+      expect(readFileSync(join(cwd, 'lib', 'thing'), 'utf8')).toBe('thing\n');
+      expect(existsSync(join(cwd, 'thing'))).toBe(false);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('keeps a worktree with a repository cloned into it, whose files the patch cannot carry', async () => {
     const cwd = repo();
     const dep = repo();
