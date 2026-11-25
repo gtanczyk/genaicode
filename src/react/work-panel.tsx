@@ -180,8 +180,9 @@ export function WorkPanel(props: WorkPanelProps) {
   const fromRow = useRef(false);
   // Per chat and task, the revision whose diff the person opened. Kept here, not in the detail: Merge
   // locally after leaving the task and opening it again still sends what was looked at, so a
-  // newer revision there is refused and its diff shown first.
-  const inspected = useRef(new Map<string, string>());
+  // newer revision there is refused and its diff shown first. `stale` marks a revision a merge was
+  // refused for: Merge locally waits until the newer diff is on screen, across navigation too.
+  const inspected = useRef(new Map<string, Inspected>());
   const chat = props.chatId ?? props.state?.sessionId ?? '';
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const act = props.disabled ? undefined : props.onPackAction;
@@ -235,9 +236,9 @@ export function WorkPanel(props: WorkPanelProps) {
             item={open}
             inspected={{
               get: () => inspected.current.get(`${chat}\n${open.key}`),
-              set: (revision) => {
+              set: (value) => {
                 const key = `${chat}\n${open.key}`;
-                if (revision) inspected.current.set(key, revision);
+                if (value) inspected.current.set(key, value);
                 else inspected.current.delete(key);
               },
             }}
@@ -522,6 +523,9 @@ function Diff({ text }: { text: string }) {
   );
 }
 
+/** The revision whose diff was read; `stale` once a merge of it was refused and the newer diff is not shown yet. */
+type Inspected = { revision: string; stale?: boolean };
+
 const CHANGE_WORD: Record<string, string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied' };
 
 function TaskDetail({
@@ -537,7 +541,7 @@ function TaskDetail({
 }: {
   item: WorkTask;
   /** The revision whose diff the person opened: Merge locally sends it, through reviews and tests. */
-  inspected: { get(): string | undefined; set(revision: string | undefined): void };
+  inspected: { get(): Inspected | undefined; set(value: Inspected | undefined): void };
   now: number;
   cwd: string;
   focusBack: boolean;
@@ -552,8 +556,14 @@ function TaskDetail({
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ text: string; revision?: string }>();
   // A merge refused because the worktree moved on from this revision: the diff reloads once the
-  // newer revision is known, and the next merge takes another click.
-  const [stale, setStale] = useState<string>();
+  // newer revision is known, and the next merge takes another click. Until that diff is on screen the
+  // refused revision stays the inspected one and Merge locally stays off, also after leaving the task.
+  const [stale, setStale] = useState<string | undefined>(() => {
+    const value = inspected.get();
+    return value?.stale ? value.revision : undefined;
+  });
+  // Reloading the newer diff failed: it waits for the person to retry.
+  const [reloadFailed, setReloadFailed] = useState(false);
   // A diff read before the revision was known: it is read again once the revision is.
   const [unresolved, setUnresolved] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
@@ -577,7 +587,9 @@ function TaskDetail({
       const text = await act(item.turnId, task.id, action);
       if (action.type === 'diff') {
         if (action.revision) {
-          inspected.set(action.revision);
+          inspected.set({ revision: action.revision });
+          setStale(undefined);
+          setReloadFailed(false);
           setDiff({ text, revision: action.revision });
         } else {
           // The revision was not known: the server worked it out and reports it with the task. Read
@@ -594,19 +606,21 @@ function TaskDetail({
       // The worktree moved on since the diff that was looked at: show what is there now first.
       // (`PackActionError` and the page's own errors carry the refusal's reason.)
       if (action.type === 'merge' && action.revision && (error as { reason?: unknown })?.reason === 'stale') {
-        inspected.set(undefined);
+        inspected.set({ revision: action.revision, stale: true });
         setDiff(undefined);
         setStale(action.revision);
+        setReloadFailed(false);
+      } else if (action.type === 'diff' && stale) {
+        setReloadFailed(true);
       }
     } finally {
       setBusy(false);
     }
   };
   useEffect(() => {
-    if (!stale || busy || !checks?.revision || checks.revision === stale) return;
-    setStale(undefined);
+    if (!stale || busy || reloadFailed || !checks?.revision || checks.revision === stale) return;
     void perform({ type: 'diff', revision: checks.revision });
-  }, [stale, busy, checks?.revision]);
+  }, [stale, busy, reloadFailed, checks?.revision]);
   useEffect(() => {
     if (!unresolved || busy || !checks?.revision) return;
     setUnresolved(false);
@@ -889,7 +903,9 @@ function TaskDetail({
                       type="button"
                       className={`gc-work-btn gc-work-sm${blocker || outdated ? '' : ' gc-work-primary'}`}
                       disabled={checking || !!stale}
-                      onClick={() => void perform({ type: 'merge', revision: inspected.get() ?? checks?.revision })}
+                      onClick={() =>
+                        void perform({ type: 'merge', revision: inspected.get()?.revision ?? checks?.revision })
+                      }
                     >
                       Merge locally
                     </button>
@@ -903,7 +919,24 @@ function TaskDetail({
                     {merges ? 'Discard' : 'Discard worktree'}
                   </button>
                 </div>
-                {merges ? (
+                {merges && stale ? (
+                  <p className="gc-work-note" role="status">
+                    The worktree changed since the diff you read. Merge locally waits until its new diff is shown.
+                    {reloadFailed ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="gc-work-btn gc-work-xs"
+                          disabled={!checks?.revision || checks.revision === stale}
+                          onClick={() => setReloadFailed(false)}
+                        >
+                          Retry diff
+                        </button>
+                      </>
+                    ) : null}
+                  </p>
+                ) : merges ? (
                   <p className="gc-work-note">
                     {MERGE_LOCALLY_HELP}
                     {blocker

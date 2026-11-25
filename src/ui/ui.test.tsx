@@ -1862,6 +1862,53 @@ describe('web UI server', () => {
     }
   });
 
+  it('discards a worktree offered as held by its pull request only after checking it again now', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const acted: string[] = [];
+    chat.session.actOnPackTask = async (_turn, id) => {
+      acted.push(id);
+      return 'Discarded';
+    };
+    let ours = false;
+    const asked: Array<{ fresh?: boolean } | undefined> = [];
+    const ui = await startWebUi({
+      controller: withTasks(chat),
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+      pullRequest: async (_url, _worktree, options) => {
+        asked.push(options);
+        return { state: 'merged', ours };
+      },
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const post = (body: object) =>
+      fetch(`${base}api/command`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': 't0k' },
+        body: JSON.stringify(body),
+      });
+    const discard = { type: 'pack-task', turnId: 1, id: 't1', action: { type: 'discard' }, conversation: 's1' };
+    try {
+      // The pull request merged, then the worktree got an edit it does not have: nothing is lost.
+      const refused = await post({ ...discard, pullRequest: true });
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({ ok: false, reason: 'stale' });
+      expect(acted).toEqual([]);
+      expect(asked).toEqual([{ fresh: true }]);
+      ours = true;
+      expect((await post({ ...discard, pullRequest: true })).status).toBe(200);
+      expect(acted).toEqual(['t1']);
+      // A task without a pull request of its own is discarded as asked: the page confirmed it.
+      ours = false;
+      expect((await post(discard)).status).toBe(200);
+      expect(acted).toEqual(['t1', 't1']);
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
   it('returns public pack action reasons and keeps internal diagnostics local', async () => {
     vi.resetModules();
     const { PackActionError: DriverError } = await import('../agents/pack.js');

@@ -12,9 +12,16 @@ export const PULL_REQUEST_LOOKUPS_WAITING = 8;
 
 /**
  * What became of the pull request at `url`, and whether the task whose worktree is `worktree` opened
- * it. Rejects with `PullRequestBusy` while too many lookups run or wait.
+ * it. Rejects with `PullRequestBusy` while too many lookups run or wait. `fresh` checks the worktree
+ * again now instead of reusing an answer (GitHub's own answer may still be reused).
  */
-export type PullRequestLookup = (url: string, worktree?: string) => Promise<PullRequestStatus | undefined>;
+export type PullRequestLookup = (
+  url: string,
+  worktree?: string,
+  options?: { fresh?: boolean },
+) => Promise<PullRequestStatus | undefined>;
+
+type View = { state?: unknown; headRefName?: unknown; headRefOid?: unknown };
 
 /** Too many pull request lookups run or wait: ask again later. */
 export class PullRequestBusy extends Error {
@@ -41,6 +48,9 @@ export function pullRequestLookup(
   } = {},
 ): PullRequestLookup {
   const kept = new Map<string, { at: number; status: Promise<PullRequestStatus | undefined> }>();
+  // What gh said, by address: a merged pull request stays merged, so its answer is kept; the
+  // worktree's own check is what repeats.
+  const views = new Map<string, { at: number; view: Promise<View | undefined> }>();
   const run: Run =
     options.run ??
     ((command, args) =>
@@ -70,14 +80,28 @@ export function pullRequestLookup(
     if (next) next();
     else running -= 1;
   };
+  const viewOf = (url: string): Promise<View | undefined> => {
+    const found = views.get(url);
+    if (found && Date.now() - found.at < KEPT_MS) return found.view;
+    const view = run('gh', ['pr', 'view', url, '--json', 'state,headRefName,headRefOid'])
+      .then((output) => JSON.parse(output) as View)
+      .catch(() => undefined);
+    views.set(url, {
+      at: Date.now(),
+      view: view.then((answer) => {
+        // Merged is final: kept for good (but for the oldest going first, below).
+        if (String(answer?.state ?? '').toLowerCase() === 'merged') views.set(url, { at: Infinity, view });
+        return answer;
+      }),
+    });
+    if (views.size > 200) views.delete(views.keys().next().value!);
+    return view;
+  };
   const look = async (url: string, worktree?: string): Promise<PullRequestStatus | undefined> => {
     if (running < PULL_REQUEST_LOOKUPS_RUNNING) running += 1;
     else await new Promise<void>((resolve) => waiting.push(resolve));
     try {
-      const view = await run('gh', ['pr', 'view', url, '--json', 'state,headRefName,headRefOid']).then(
-        (output) => JSON.parse(output) as { state?: unknown; headRefName?: unknown; headRefOid?: unknown },
-        () => undefined,
-      );
+      const view = await viewOf(url);
       if (!view) return undefined;
       const raw = String(view.state ?? '').toLowerCase();
       const state = raw === 'open' || raw === 'merged' || raw === 'closed' ? raw : undefined;
@@ -91,11 +115,11 @@ export function pullRequestLookup(
       release();
     }
   };
-  return (url, worktree) => {
+  return (url, worktree, lookup = {}) => {
     if (!PULL_REQUEST_URL.test(url)) return Promise.resolve(undefined);
     const key = `${url}\n${worktree ?? ''}`;
     const found = kept.get(key);
-    if (found && Date.now() - found.at < KEPT_MS) return found.status;
+    if (found && !lookup.fresh && Date.now() - found.at < KEPT_MS) return found.status;
     // A page that asks for more than this at once is turned away, not queued without end.
     if (running >= PULL_REQUEST_LOOKUPS_RUNNING && waiting.length >= PULL_REQUEST_LOOKUPS_WAITING)
       return Promise.reject(new PullRequestBusy('Too many pull request lookups at once.'));

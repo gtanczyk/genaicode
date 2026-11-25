@@ -433,6 +433,57 @@ describe('<WorkPanel> task detail', () => {
     expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: B });
   });
 
+  it('a failed reload after a stale merge keeps Merge locally off, across leaving the task, until the new diff shows', async () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    let diffFails = false;
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) => {
+      if (action.type === 'diff') {
+        if (action.revision === B && diffFails) throw new Error('git diff failed');
+        return `diff of ${action.revision}`;
+      }
+      if (action.type === 'merge' && action.revision !== B)
+        throw Object.assign(new Error('The worktree changed.'), { reason: 'stale' });
+      return 'Merged t6';
+    });
+    const task: PackTask = {
+      ...base,
+      id: 't6',
+      prompt: 'Change it.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta.ts'],
+      checks: { reviewer: 'claude', revision: A },
+    };
+    show([task], { props: { onPackAction: onAction } });
+    await actAsync(() => button('Show diff')!.click());
+    state.turns[0]!.pack!.tasks[0] = { ...task, checks: { reviewer: 'claude', revision: B } };
+    draw();
+    diffFails = true;
+    await actAsync(() => button('Merge locally')!.click());
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff', revision: B });
+    expect(text('.gc-work-feedback')).toBe('git diff failed');
+    // B was never shown: Merge locally stays off and offers a retry, not a merge of B.
+    expect(button('Merge locally')!.hasAttribute('disabled')).toBe(true);
+    expect(button('Retry diff')).toBeDefined();
+    // Leaving the task and coming back does not forget it.
+    click(button('Tasks'));
+    click($('[data-task="7:t6"] .gc-work-row'));
+    await actAsync(async () => undefined);
+    expect(button('Merge locally')!.hasAttribute('disabled')).toBe(true);
+    // Reopened, the reload is tried again; it fails again, and the retry button is back.
+    expect(button('Retry diff')).toBeDefined();
+    diffFails = false;
+    await actAsync(() => button('Retry diff')!.click());
+    await actAsync(async () => undefined);
+    expect(text('.gc-work-diff')).toBe(`diff of ${B}`);
+    expect(button('Merge locally')!.hasAttribute('disabled')).toBe(false);
+    expect(onAction.mock.calls.filter((call) => call[2].type === 'merge')).toHaveLength(1);
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: B });
+  });
+
   it('a diff read before the revision was known is read again for the revision the server reports', async () => {
     const R = 'c'.repeat(40);
     const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) =>

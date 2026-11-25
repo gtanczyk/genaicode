@@ -76,6 +76,29 @@ describe('pullRequestLookup', () => {
     ).toEqual({ state: 'open', ours: false });
   });
 
+  it('once merged, asks gh no more but checks the worktree again: an edit after the merge is not its pull request', async () => {
+    let status = '';
+    const run = vi.fn(async (...[command, args]: [command: string, args: readonly string[]]) => {
+      if (command === 'gh') return `{"state":"MERGED","headRefName":"work-panel","headRefOid":"${HEAD}"}`;
+      if (args[2] === 'rev-parse') return `${HEAD}\n`;
+      if (args[2] === 'status') return status;
+      return 'work-panel\n';
+    });
+    const lookup = pullRequestLookup({ run });
+    expect(await lookup(URL, WORKTREE)).toEqual({ state: 'merged', ours: true });
+    status = ' M src/app.ts\n';
+    // Within the reuse window the answer stands, unless asked fresh.
+    expect(await lookup(URL, WORKTREE)).toEqual({ state: 'merged', ours: true });
+    expect(await lookup(URL, WORKTREE, { fresh: true })).toEqual({ state: 'merged', ours: false });
+    vi.useFakeTimers({ now: Date.now() + 10 * 60_000, toFake: ['Date'] });
+    try {
+      expect(await lookup(URL, WORKTREE)).toEqual({ state: 'merged', ours: false });
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(run.mock.calls.filter(([command]) => command === 'gh')).toHaveLength(1);
+  });
+
   it('has no answer when gh fails or says something else', async () => {
     const failing = async () => {
       throw new Error('gh: command not found');

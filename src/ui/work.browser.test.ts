@@ -172,6 +172,8 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
   };
 
   let running: Promise<number> | undefined;
+  // Whether t5's worktree is still its pull request; `fresh` is the server's check before a discard.
+  let t5Held: (fresh: boolean) => boolean = () => true;
   try {
     const bundle = await build({
       entryPoints: ['src/ui/web/client.tsx'],
@@ -192,8 +194,10 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
         },
         clientScript: bundle.outputFiles[0]!.text,
         // No `gh` in a test: t5 opened the pull request (its worktree is on the head branch), and it is merged.
-        pullRequest: async (url, worktree) =>
-          url === PR ? { state: 'merged', ours: worktree?.endsWith('/t5') === true } : undefined,
+        pullRequest: async (url, worktree, options) =>
+          url === PR
+            ? { state: 'merged', ours: worktree?.endsWith('/t5') === true && t5Held(options?.fresh === true) }
+            : undefined,
       });
     running = main({
       argv: ['ui', '--no-artifacts'],
@@ -212,6 +216,8 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // Time runs as usual; the pull request's minute between checks can be skipped.
+    await page.clock.install();
     await page.goto(opened!);
     const composer = page.locator('.workspace .gc-box textarea');
     await composer.waitFor();
@@ -318,6 +324,21 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     expect(await shipped.getByRole('link', { name: 'PR #351 · merged' }).getAttribute('href')).toBe(PR);
     expect(await shipped.getByRole('button', { name: 'Merge locally' }).count()).toBe(0);
     expect(await shipped.getByRole('button', { name: 'Discard worktree' }).count()).toBe(1);
+    // An edit in the worktree after the merge: the server checks again before it discards anything...
+    t5Held = (fresh) => !fresh;
+    await shipped.getByRole('button', { name: 'Discard worktree' }).click();
+    await shipped.getByRole('button', { name: 'Confirm discard' }).click();
+    await shipped.locator('.gc-work-feedback').getByText('no longer matches its pull request').waitFor();
+    expect(actions.filter((action) => action.startsWith('t5'))).toEqual([]);
+    await shipped.getByRole('button', { name: 'Cancel' }).click();
+    // ...and the page asks again within a minute though the pull request merged: Merge locally is back.
+    t5Held = () => false;
+    await page.clock.fastForward(61_000);
+    await shipped.getByRole('button', { name: 'Merge locally' }).waitFor();
+    expect(await shipped.getByRole('button', { name: 'Discard', exact: true }).count()).toBe(1);
+    t5Held = () => true;
+    await page.clock.fastForward(61_000);
+    await expect.poll(() => shipped.getByRole('button', { name: 'Merge locally' }).count()).toBe(0);
 
     // The edge moves with the arrow keys; the width belongs to the window, the open task to the chat.
     const edge = work.getByRole('separator');

@@ -894,7 +894,9 @@ const PULL_REQUESTS_EVERY_MS = 60_000;
 /**
  * What the server learned of the pull requests the delegated tasks' replies link to, by task
  * (`WorkTask.key`): its state, and whether the task opened it. Asked when such a task first shows,
- * and again every minute while `watching` for those not merged yet: a closed one can be reopened.
+ * and again every minute while `watching` for those not merged yet (a closed one can be reopened)
+ * and for those whose task still has a worktree to merge or discard: an edit there after the pull
+ * request merged makes the worktree more than the pull request, so it is no longer only a link.
  * Only the tasks of `chat`, the conversation shown, are asked about.
  */
 function usePullRequests(
@@ -915,12 +917,18 @@ function usePullRequests(
   const states = found.chat === chat ? found.states : {};
   const latest = useRef(states);
   latest.current = states;
+  // Tasks whose worktree is still there: whether it is still the pull request is asked again.
+  const unmerged = useRef(new Set<string>());
+  unmerged.current = new Set(
+    tasks.filter((item) => item.task.mode === 'worktree' && item.task.state === 'unmerged').map((item) => item.key),
+  );
   useEffect(() => {
     if (!stamp) return;
     let stopped = false;
     const ask = (again: boolean) => {
       for (const key of stamp.split('\n')) {
-        if (again ? pullRequestSettled(latest.current[key]) : asked.current.keys.has(key)) continue;
+        if (again ? pullRequestSettled(latest.current[key]) && !unmerged.current.has(key) : asked.current.keys.has(key))
+          continue;
         asked.current.keys.add(key);
         const [turn = '', ...id] = key.split(':');
         const query = new URLSearchParams({ conversation: chat, turn, task: id.join(':') });
@@ -1524,7 +1532,17 @@ function App() {
               disabled={!connected || switching}
               onPackAction={async (turnId, id, action) => {
                 // The server refuses it once the window shows another conversation.
-                const reply = await postCommand({ type: 'pack-task', turnId, id, action, conversation: chatKey });
+                // Discard is offered without Merge locally when the pull request holds the work: the
+                // server checks that again first, so an edit made since is not lost.
+                const held = action.type === 'discard' && pullRequests[`${turnId}:${id}`]?.ours === true;
+                const reply = await postCommand({
+                  type: 'pack-task',
+                  turnId,
+                  id,
+                  action,
+                  conversation: chatKey,
+                  ...(held ? { pullRequest: true as const } : {}),
+                });
                 if (!reply.ok)
                   throw Object.assign(new Error(reply.error ?? 'The task action failed.'), { reason: reply.reason });
                 return reply.text ?? '';

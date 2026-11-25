@@ -220,7 +220,15 @@ export type WebCommand =
   | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
   /** With `conversation`, refused unless that conversation is still the one shown. */
-  | { type: 'pack-task'; turnId: number; id: string; action: PackAction; conversation?: string }
+  | {
+      type: 'pack-task';
+      turnId: number;
+      id: string;
+      action: PackAction;
+      conversation?: string;
+      /** A discard the page offered because the task's pull request holds its work: checked again first. */
+      pullRequest?: true;
+    }
   | WebSwitchCommand
   | { type: 'agent'; name: string }
   | { type: 'model'; model: string };
@@ -329,6 +337,8 @@ export function parseCommand(value: unknown): WebCommand | undefined {
           return undefined;
         return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) }, ...scope };
       }
+      if (type === 'discard' && command.pullRequest === true)
+        return { type: 'pack-task', turnId, id, action: { type }, pullRequest: true, ...scope };
       if (type === 'stop' || type === 'discard' || type === 'review' || type === 'verify')
         return { type: 'pack-task', turnId, id, action: { type }, ...scope };
       return undefined;
@@ -413,6 +423,19 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   const cookieName = () => `genaicode_${port}`;
   const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  /**
+   * The task's worktree is still exactly its pull request (branch, head commit, nothing uncommitted),
+   * checked now: a discard offered because the pull request holds the work loses nothing.
+   */
+  const holdsPullRequest = async (turnId: number, id: string): Promise<boolean> => {
+    const task = controller
+      .get()
+      .session.turns.find((turn) => turn.id === turnId)
+      ?.pack?.tasks.find((one) => one.id === id);
+    if (!task?.pullRequest || task.mode !== 'worktree' || !options.pullRequest) return false;
+    const status = await options.pullRequest(task.pullRequest.url, task.cwd, { fresh: true }).catch(() => undefined);
+    return status?.ours === true;
+  };
   const cookieOk = (req: IncomingMessage) => {
     const header = req.headers.cookie;
     if (!header) return false;
@@ -1167,6 +1190,18 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (command.type === 'pack-task') {
         if (!controller.session.actOnPackTask)
           return send(res, 404, 'application/json', '{"ok":false,"error":"Pack controls are unavailable."}');
+        if (command.pullRequest && !(await holdsPullRequest(command.turnId, command.id)))
+          return send(
+            res,
+            409,
+            'application/json',
+            JSON.stringify({
+              ok: false,
+              error:
+                'The worktree no longer matches its pull request: it has work the pull request does not. Nothing was discarded.',
+              reason: 'stale',
+            }),
+          );
         try {
           const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
