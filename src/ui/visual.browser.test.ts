@@ -249,6 +249,45 @@ const tasks: PackTask[] = [
   },
 ];
 
+/**
+ * A long turn's delegated tasks, as in the 48-task state of docs/design/desktop-layout.html: 10
+ * finished reviews, 3 failed, 5 fixes to merge (one with a review blocker), 30 running. No start
+ * times: how long a task has run differs between runs.
+ */
+const manyTasks: PackTask[] = Array.from({ length: 48 }, (_, index): PackTask => {
+  const n = index + 1;
+  const id = `t${n}`;
+  const agent = ['codex', 'gemini', 'claude'][n % 3]!;
+  const shared = { id, agent, prompt: `Review part ${n}.`, cwd: '/work/app', mode: 'shared' as const };
+  const own = { ...shared, cwd: `/work/app/.genaicode/worktrees/${id}`, mode: 'worktree' as const };
+  if (n <= 10)
+    return { ...shared, title: `Review part ${n} of the cart`, status: 'completed', verdict: 'VERDICT: LGTM' };
+  if (n <= 13) return { ...shared, title: `Review part ${n} of the cart`, status: 'failed', error: 'Out of quota.' };
+  if (n <= 18)
+    return {
+      ...own,
+      title: `Fix finding ${n} in the checkout`,
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\tsrc/cart.ts', 'M\tsrc/cart.test.ts'],
+      text: 'Fixed, with a test.',
+      checks:
+        n === 18
+          ? {
+              revision: 'r18',
+              review: { revision: 'r18', status: 'completed', detail: 'BLOCKER: the total is wrong.' },
+            }
+          : {},
+    };
+  return {
+    ...own,
+    title: `Fix finding ${n} in the checkout`,
+    status: 'running',
+    state: 'unmerged',
+    text: 'tool shell: npm test -- cart',
+  };
+});
+
 /** A turn at work: a plan, tools done and running, input sent meanwhile, three delegated tasks. */
 const runningTurn: SessionTurn = {
   id: 2,
@@ -561,8 +600,10 @@ describe('the genaicode ui page looks as its baseline', () => {
       capabilities: { mcp: true, resume: true, approvals: true },
       run(task) {
         const result: AgentResult = { ...done, sessionId: 'ses_0123456789abcdef', text: reply };
-        // A prompt that asks to delegate gets a turn that stays at work, with three delegated tasks.
-        if (/Delegate/.test(task.prompt)) {
+        // A prompt that asks to delegate gets a turn that stays at work, with three delegated tasks,
+        // or with 48 of them when it asks to hand out everything.
+        const handed = /Hand out/.test(task.prompt) ? manyTasks : delegated;
+        if (/Delegate|Hand out/.test(task.prompt)) {
           const released = new Promise<void>((resolve) => (release = resolve));
           return {
             result: released.then(() => result),
@@ -570,13 +611,16 @@ describe('the genaicode ui page looks as its baseline', () => {
             pack: {
               lead: 'helper',
               maxParallel: 3,
-              task: (id) => delegated.find((item) => item.id === id),
+              task: (id) => handed.find((item) => item.id === id),
               act: async () => '',
             },
             async *[Symbol.asyncIterator](): AsyncGenerator<AgentEvent> {
               yield { type: 'session', sessionId: result.sessionId! };
-              for (const item of delegated) yield { type: 'subtask-start', ...item };
-              yield { type: 'message', text: 'Three tasks are out; one is still running.' };
+              for (const item of handed) yield { type: 'subtask-start', ...item };
+              yield {
+                type: 'message',
+                text: handed === delegated ? 'Three tasks are out; one is still running.' : 'All 48 tasks are out.',
+              };
               await released;
               yield { type: 'done', result };
             },
@@ -735,6 +779,40 @@ describe('the genaicode ui page looks as its baseline', () => {
         await steady(page);
         await settle(page);
         await shot(page, `page-live-${THEMES[index]}`);
+      }
+      expect(differing).toEqual([]);
+    } finally {
+      release?.();
+      await Promise.all(pages.map((page) => page.context().close()));
+    }
+  });
+
+  // The same conversation again: a turn that hands out 48 tasks. One-line rows, the first 8 of a
+  // group, Done as one line, the filters above the list.
+  it('work panel with 48 delegated tasks, light and dark', async () => {
+    const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
+    try {
+      for (const page of pages) {
+        await page.goto(url!);
+        await page.locator('.gc-chat textarea').waitFor();
+      }
+      const mask = (page: Page) => [page.locator('.gc-turn-footer'), page.locator('.gc-working')];
+      const differing: string[] = [];
+      const shot = (page: Page, name: string) =>
+        expectScreenshot(page, name, { mask: mask(page) }).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
+      await pages[0]!.locator('.gc-chat textarea').fill('Review every part and fix what you find. Hand out all of it.');
+      await pages[0]!.keyboard.press('Enter');
+      for (const [index, page] of pages.entries()) {
+        const work = page.getByRole('complementary', { name: 'Work panel' });
+        await work.locator('[data-task$=":t48"]').waitFor();
+        await work.getByRole('button', { name: 'Tasks', exact: true }).waitFor({ state: 'detached' });
+        await page.locator('.gc-workline').last().waitFor();
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-work-many-${THEMES[index]}`);
       }
       expect(differing).toEqual([]);
     } finally {

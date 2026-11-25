@@ -3,11 +3,15 @@ import type { PackAction, PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import type { ApprovalRequest } from '../agents/types.js';
 import {
+  PACK_DENSE_ABOVE,
+  PACK_DENSE_PAGE,
   packActivity,
   packCheckLabel,
+  packDenseList,
   packMetrics,
   packQuotaText,
   packSteerText,
+  packTaskClearable,
   packTaskElapsed,
   packTaskError,
   packTaskList,
@@ -15,6 +19,7 @@ import {
   packTaskStatus,
   packTaskStopped,
   packTaskTitle,
+  packWorkLine,
   relativePath,
 } from './format.js';
 import { Markdown } from './markdown.js';
@@ -65,10 +70,21 @@ export function PackTasks({
   const [selected, select] = useState<string>();
   const [expanded, setExpanded] = useState(false);
   const asking = (task: PackTask) => pending.some((request) => request.subtaskId === task.id);
-  const first = packTaskList(visibleTasks, { asking }).shown[0]?.id;
+  // A long list: one-line rows, a filter, the first rows only, and finished tasks that can be cleared.
+  const dense = visibleTasks.length > PACK_DENSE_ABOVE;
+  const [query, setQuery] = useState('');
+  const [more, setMore] = useState(0);
+  const [cleared, setCleared] = useState<string[]>([]);
+  // A cleared task is not picked by itself; one that runs again or asks is back.
+  const gone = (task: PackTask) => dense && cleared.includes(task.id) && packTaskClearable(task, asking(task));
+  const first = packTaskList(
+    visibleTasks.filter((task) => !gone(task)),
+    { asking },
+  ).shown[0]?.id;
   const id = selected ?? first ?? (pending.length ? 'queue' : undefined);
-  const list = packTaskList(visibleTasks, { asking, keep: id, expanded });
-  const foldable = packTaskList(visibleTasks, { asking }).hidden > 0;
+  const long = dense ? packDenseList(visibleTasks, { asking, keep: id, query, more, cleared }) : undefined;
+  const list = long ?? packTaskList(visibleTasks, { asking, keep: id, expanded });
+  const foldable = !dense && packTaskList(visibleTasks, { asking }).hidden > 0;
   const task = visibleTasks.find((item) => item.id === id);
   const waiting = pending.filter((request) => request.subtaskId === id);
   const now = useNow(visibleTasks.some((item) => item.status === 'running'));
@@ -140,11 +156,55 @@ export function PackTasks({
           </button>
         ) : null}
       </div>
+      {long ? (
+        <div className="gc-pack-tools">
+          <small className="gc-pack-summary">{packWorkLine(visibleTasks, pending)}</small>
+          <input
+            type="search"
+            value={query}
+            maxLength={200}
+            placeholder="Filter by title, agent, id or status"
+            aria-label="Filter tasks"
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setMore(0);
+            }}
+          />
+          {long.clearable.length ? (
+            <button
+              type="button"
+              className="gc-btn"
+              title="Hides the finished tasks that left no worktree to merge or discard. The conversation keeps them."
+              onClick={() => {
+                setCleared([...new Set([...cleared, ...long.clearable.map((item) => item.id)])]);
+                // The shown task may go with them: the card shows the first of the rest.
+                if (long.clearable.some((item) => item.id === id)) select(undefined);
+              }}
+            >
+              Clear {long.clearable.length} finished
+            </button>
+          ) : null}
+          {long.cleared ? (
+            <button type="button" className="gc-btn" onClick={() => setCleared([])}>
+              Show {long.cleared} cleared
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {visibleTasks.length || id === 'queue' ? (
         <div className={single ? 'gc-pack-work gc-pack-single' : 'gc-pack-work'}>
           {single ? null : (
-            <div className="gc-pack-list" role="group" aria-label="Task list">
+            <div className="gc-pack-list" role="group" aria-label="Task list" data-dense={dense ? 'true' : undefined}>
               {list.shown.map(row)}
+              {long && !long.shown.length ? (
+                <p className="gc-pack-none">{query.trim() ? 'No task matches.' : 'Every finished task is cleared.'}</p>
+              ) : null}
+              {long?.hidden ? (
+                <button type="button" className="gc-pack-more" onClick={() => setMore(more + PACK_DENSE_PAGE)}>
+                  Show {Math.min(long.hidden, PACK_DENSE_PAGE)} {long.earlier ? 'earlier' : 'more'}
+                  {long.hidden > PACK_DENSE_PAGE ? ` of ${long.hidden}` : ''}
+                </button>
+              ) : null}
               {foldable ? (
                 <button
                   type="button"

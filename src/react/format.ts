@@ -472,6 +472,63 @@ export function packTaskList(
   return { shown: [...urgent, ...ready, ...kept], hidden: finished.length - kept.length };
 }
 
+/** Above this many tasks the inline card shows one-line rows, a filter, and its first rows only. */
+export const PACK_DENSE_ABOVE = 15;
+/** Rows the inline card shows of a long list before **Show N more**, and how many that adds. */
+export const PACK_DENSE_SHOWN = 12;
+export const PACK_DENSE_PAGE = 50;
+
+/**
+ * A finished task that leaves nothing to do in the card: it is not running or asking and has no
+ * worktree to merge or discard. Such a task can be cleared from the list.
+ */
+export function packTaskClearable(task: PackTask, waiting = false): boolean {
+  return !waiting && task.status !== 'running' && task.state !== 'unmerged';
+}
+
+/**
+ * A long list of delegated tasks for the inline card: in `packTaskList` order, without the
+ * `cleared` ones, narrowed to the tasks whose title, agent, id or status has every word of `query`,
+ * and cut to the first `PACK_DENSE_SHOWN + more` rows (`keep`, the selected task, always shows
+ * unless it is cleared). `hidden` counts the rows cut, `earlier` says they are all finished ones,
+ * `matched` counts the tasks that pass the filter and `clearable` the finished ones among them
+ * that can be cleared, the selected one included: the host picks another once it is cleared.
+ */
+export function packDenseList(
+  tasks: readonly PackTask[],
+  options: {
+    asking?: (task: PackTask) => boolean;
+    keep?: string;
+    query?: string;
+    more?: number;
+    cleared?: readonly string[];
+  } = {},
+): { shown: PackTask[]; hidden: number; earlier: boolean; matched: number; clearable: PackTask[]; cleared: number } {
+  const asking = options.asking ?? (() => false);
+  const words = (options.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  const gone = new Set(options.cleared ?? []);
+  const isCleared = (task: PackTask) => gone.has(task.id) && packTaskClearable(task, asking(task));
+  const listed = packTaskList(tasks, { asking, expanded: true }).shown.filter((task) => !isCleared(task));
+  const matching = listed.filter((task) => {
+    if (!words.length) return true;
+    const text =
+      `${packTaskTitle(task)}\n${task.agent}\n${task.id}\n${packTaskStatus(task, asking(task))}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+  const limit = PACK_DENSE_SHOWN + Math.max(0, options.more ?? 0);
+  const count = matching.length - limit <= 1 ? matching.length : limit;
+  const shown = matching.filter((task, index) => index < count || task.id === options.keep);
+  const rest = matching.filter((task) => !shown.includes(task));
+  return {
+    shown,
+    hidden: rest.length,
+    earlier: rest.length > 0 && rest.every((task) => !packTaskActive(task, asking(task))),
+    matched: matching.length,
+    clearable: matching.filter((task) => packTaskClearable(task, asking(task))),
+    cleared: tasks.filter(isCleared).length,
+  };
+}
+
 const INPUT_KEYS = ['command', 'cmd', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url', 'description'];
 
 /** `path` relative to `cwd` when it is inside it. */
