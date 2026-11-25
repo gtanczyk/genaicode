@@ -217,6 +217,21 @@ describe('needsItems', () => {
     });
   });
 
+  it('can reply from a deduplicated question even when the newest store is index-only', () => {
+    const resumable = own[1]!;
+    const indexed = { ...resumable, source: 'index', updatedAt: resumable.updatedAt + 10 };
+    const items = needsItems({ now, sessions: [indexed, resumable], senders: input.senders });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      since: indexed.updatedAt,
+      reply: { session: resumable, sandboxes: ['read-only'] },
+    });
+    const separate = { ...resumable, cwd: '/another-project' };
+    const split = needsItems({ now, sessions: [indexed, separate], senders: input.senders });
+    expect(split).toHaveLength(2);
+    expect(split.find((card) => card.key.includes('index'))?.reply).toBeUndefined();
+  });
+
   it('offers the answers each source takes', () => {
     const labels = (key: string, from = input) => item(key, from).choices.map((choice) => choice.label);
     // The open chat's approval: under the tower's id where the tower lists it (the tower checks the

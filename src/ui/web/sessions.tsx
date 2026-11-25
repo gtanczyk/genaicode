@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  acceptsSessionPrompt,
   attentionOf,
   groupSessions,
   staleSessions,
@@ -22,6 +21,7 @@ import {
   groupInOrder,
   resumeCommand,
   sessionStores,
+  sessionReplyTarget,
   UNSORTED_TOPIC,
   type SessionTopic,
 } from '../sessions.js';
@@ -327,21 +327,7 @@ export function Sessions({
     }, show);
   };
 
-  const senderOf = (session: SessionInfo) => {
-    if (
-      session.where !== 'local' ||
-      session.state === 'active' ||
-      session.turnInProgress ||
-      session.waitingFor === 'approval'
-    )
-      return;
-    for (const target of [session, ...storesOf(session).filter((row) => row.source !== session.source)]) {
-      const sender =
-        acceptsSessionPrompt(target) &&
-        listing?.senders?.find((s) => s.agent === target.agent && s.source === target.source);
-      if (sender) return { target, sandboxes: sender.sandboxes };
-    }
-  };
+  const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
   const isReplying = (session: SessionInfo) => replyTo?.source === session.source && replyTo.id === session.id;
   const actions = (session: SessionInfo, close?: () => void) => {
     const action = (label: string, run: () => void, title?: string) => (
@@ -388,7 +374,7 @@ export function Sessions({
     return sender ? (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
-        session={sender.target}
+        session={sender.session}
         token={token}
         sandboxes={sender.sandboxes}
         draft={drafts.get(key)}

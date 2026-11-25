@@ -147,6 +147,16 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // The newest index entry supplies the queue card; the underlying agent store reads and resumes it.
+    await page.route('**/api/sessions?days=7', async (route) => {
+      const response = await route.fetch();
+      const listing = await response.json();
+      const source = listing.sessions.find((row: SessionInfo) => row.id === question.id);
+      const sessions = source
+        ? [{ ...source, source: 'index', updatedAt: source.updatedAt + 1 }, ...listing.sessions]
+        : listing.sessions;
+      await route.fulfill({ json: { ...listing, sessions } });
+    });
     await page.goto(opened!);
 
     const side = page.getByRole('complementary', { name: 'Sidebar' });
@@ -197,12 +207,6 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await topbar.getByRole('button', { name: 'Needs you' }).click();
     expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
 
-    // A second store indexes the same session but cannot read its turns.
-    await page.route('**/api/sessions?days=7', async (route) => {
-      const response = await route.fetch();
-      const listing = await response.json();
-      await route.fulfill({ json: { ...listing, sessions: [{ ...question, source: 'index' }, ...listing.sessions] } });
-    });
     await side.getByRole('button', { name: 'All sessions', exact: true }).click();
     const list = page.locator('main.sessions:visible');
     const search = list.getByRole('searchbox');
@@ -231,7 +235,6 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await page.keyboard.press('Escape');
     expect(await search.inputValue()).toBe('sourdough');
     expect(await row.count()).toBe(1);
-    await page.unroute('**/api/sessions?days=7');
     await needsYou.click();
 
     // The filters count what they hold.

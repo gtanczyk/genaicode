@@ -1,9 +1,8 @@
-import { acceptsSessionPrompt } from '../agents/sessions/group.js';
 import type { PendingAsk } from '../agents/sessions/answer.js';
 import type { TowerDecision, TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import type { ApprovalDecision, ApprovalRequest, SandboxPolicy } from '../agents/types.js';
-import { ago } from './sessions.js';
+import { ago, sessionReplyTarget } from './sessions.js';
 import {
   chatTitle,
   folderName,
@@ -320,14 +319,11 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
     };
   });
 
-  const asking = elsewhere.sessions.map((session): NeedsItem => {
+  const asking = elsewhere.sessions.map(({ session, stores }): NeedsItem => {
     const approval = session.waitingFor === 'approval';
     // Without a tower the hook's question is answered from here.
     const ask = approval ? askOf(session, sessions, asks) : undefined;
-    const sender =
-      !approval && acceptsSessionPrompt(session)
-        ? input.senders?.find((one) => one.agent === session.agent && one.source === session.source)
-        : undefined;
+    const reply = sessionReplyTarget(session, stores, input.senders);
     const commands = session.waitingCommands?.map((one) => `${one.tool}  ${one.command}`).join('\n');
     return {
       // The question is part of it: once one is answered and the next waits, the card is another.
@@ -354,7 +350,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
             { label: 'Deny', decision: { via: 'ask', id: ask.id, behavior: 'deny' } },
           ]
         : [],
-      ...(sender ? { reply: { session, sandboxes: sender.sandboxes } } : {}),
+      ...(reply ? { reply } : {}),
       open: openOf(session),
       ...(approval && !ask ? { note: `Answer it in ${session.agent}: its own dialog holds the question.` } : {}),
     };

@@ -1,4 +1,11 @@
-import { attentionOf, groupSessions, type SessionInfo, type SessionProject } from '../agents/sessions/group.js';
+import type { SandboxPolicy } from '../agents/types.js';
+import {
+  acceptsSessionPrompt,
+  attentionOf,
+  groupSessions,
+  type SessionInfo,
+  type SessionProject,
+} from '../agents/sessions/group.js';
 
 /** Alternate stores can index one agent session. Conflicting project locations identify distinct rows. */
 export function sessionStores(rows: readonly SessionInfo[]): SessionInfo[][] {
@@ -29,6 +36,27 @@ export function sessionStores(rows: readonly SessionInfo[]): SessionInfo[][] {
 export function askingStore(stores: readonly SessionInfo[], now = Date.now()): SessionInfo | undefined {
   const asking = stores.filter((row) => attentionOf(row, now) === 'now').sort((a, b) => b.updatedAt - a.updatedAt);
   return asking.find((row) => row.waitingFor === 'approval') ?? asking[0];
+}
+
+/** The store that can deliver a reply in the session's own agent. */
+export function sessionReplyTarget(
+  session: SessionInfo,
+  stores: readonly SessionInfo[],
+  senders: ReadonlyArray<{ agent: string; source: string; sandboxes: readonly SandboxPolicy[] }> = [],
+) {
+  if (
+    session.where !== 'local' ||
+    session.state === 'active' ||
+    session.turnInProgress ||
+    session.waitingFor === 'approval'
+  )
+    return;
+  const preferred = stores.find((row) => row.source === session.source) ?? session;
+  for (const target of [preferred, ...stores.filter((row) => row !== preferred)]) {
+    if (!acceptsSessionPrompt(target)) continue;
+    const sender = senders.find((one) => one.agent === target.agent && one.source === target.source);
+    if (sender) return { session: target, sandboxes: sender.sandboxes };
+  }
 }
 
 /** What the Sessions view narrows the list by. */
