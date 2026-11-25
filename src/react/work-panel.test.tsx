@@ -351,7 +351,9 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-pill')).toBe('No changes');
     expect(button('Merge locally')).toBeUndefined();
     expect(button('Discard worktree')).toBeDefined();
-    expect(text('.gc-work-detail')).toContain('It changed no files. There is nothing to merge.');
+    expect(text('.gc-work-detail')).toContain(
+      'It changed no files. Git sees no changes, so there is nothing to merge. Discard worktree deletes its folder, files Git ignores (logs, build output) included.',
+    );
     // The worktree is still there: its diff shows any edit made since the task ended.
     await actAsync(() => button('Show diff')!.click());
     expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'diff' });
