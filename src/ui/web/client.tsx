@@ -711,6 +711,8 @@ interface HeldSwitch {
   label: string;
   /** Asked: the message offers Stop and open, and Wait. Stopping or waiting: it opens when the turn is over. */
   step: 'ask' | 'stopping' | 'waiting';
+  /** The conversation shown when it was asked for (`shownChat`): only from there does it open. */
+  from: string;
 }
 
 const SHORT_TITLE = 48;
@@ -1067,7 +1069,7 @@ function App() {
     // the focus stays where it is.
     if (request.type !== 'stay-chat' && runningRef.current) {
       setPanel('chat');
-      setHeld({ request, what, label: label ?? heldLabel(request), step: 'ask' });
+      setHeld({ request, what, label: label ?? heldLabel(request), step: 'ask', from: shownChatRef.current });
       return Promise.resolve(false);
     }
     setHeld(undefined);
@@ -1094,13 +1096,21 @@ function App() {
       });
   };
   const [held, setHeld] = useState<HeldSwitch>();
+  // The conversation the window shows: another one (a command from another window, the server
+  // moving the window) drops what was held, so Wait never opens a chat over one the person left.
+  const shownChat = `${conversation?.id ?? ''}:${view?.generation ?? ''}`;
+  const shownChatRef = useRef(shownChat);
+  shownChatRef.current = shownChat;
+  useEffect(() => {
+    setHeld((was) => (was && was.from !== shownChat ? undefined : was));
+  }, [shownChat]);
   // The turn is over (stopped, or finished while waited for): the chat asked for opens now. Asked
   // only, the question is moot: every chat can open again.
   useEffect(() => {
     if (running || !held) return;
     setHeld(undefined);
-    if (held.step !== 'ask') void switchChat(held.request, held.what, held.label);
-  }, [running, held]);
+    if (held.step !== 'ask' && held.from === shownChat) void switchChat(held.request, held.what, held.label);
+  }, [running, held, shownChat]);
   const startTopicChat = (topicId: string) =>
     void switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
   const startHomeChat = () => void switchChat({ type: 'home-chat' }, 'start a new chat');
@@ -2076,7 +2086,7 @@ function App() {
                 session?.model &&
                 turn === session.turns.at(-1) &&
                 turn.agent === session.agent &&
-                rejectsModel(turnErrorText(turn), session.model) ? (
+                rejectsModel(turnErrorText(turn), session.model, turn.result?.failure?.kind) ? (
                   <ModelRejected
                     agent={turn.agent}
                     model={session.model}

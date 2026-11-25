@@ -97,4 +97,14 @@ describe('rejectsModel', () => {
     expect(rejectsModel('Rate limit reached. Try again later.', 'opus')).toBe(false);
     expect(rejectsModel('The tests failed: 3 of 10.', 'opus')).toBe(false);
   });
+
+  it('leaves a busy model and sign-in or limit failures to their own message', () => {
+    expect(rejectsModel('You have hit your quota for claude-opus-9. It resets at 5pm.', 'claude-opus-9')).toBe(false);
+    expect(rejectsModel('Model claude-opus-9 is not found here', 'claude-opus-9', 'quota')).toBe(false);
+    expect(rejectsModel("There's an issue with the selected model (opus).", 'opus', 'auth')).toBe(false);
+    expect(rejectsModel('The model gpt-9 is not available right now due to high demand.', 'gpt-9')).toBe(false);
+    expect(rejectsModel('Model gpt-9 is overloaded, not ready.', 'gpt-9')).toBe(false);
+    // "not" inside a word does not count.
+    expect(rejectsModel('gpt-9 model: nothing to report, connection reset', 'gpt-9')).toBe(false);
+  });
 });

@@ -69,44 +69,54 @@ const partialProbes = new Map<string, Promise<boolean>>();
 
 /**
  * Whether the Claude Code at `command` takes `--include-partial-messages`: its `--help` lists it.
- * Asked once per command; false when it cannot be asked within a few seconds.
+ * Its answer is kept per command; false, and asked again next time, when it cannot be asked
+ * within a few seconds or does not start.
  */
 export function claudeTakesPartialMessages(command: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
-  let probe = partialProbes.get(command);
-  if (!probe) {
-    probe = new Promise<boolean>((resolve) => {
-      let out = '';
-      let child: ReturnType<typeof spawn>;
-      try {
-        child = spawn(command, ['--help'], {
-          cwd: tmpdir(),
-          env,
-          stdio: ['ignore', 'pipe', 'ignore'],
-          windowsHide: true,
-        });
-      } catch {
-        resolve(false);
-        return;
-      }
-      const timer = setTimeout(() => {
-        child.kill();
-        resolve(false);
-      }, 5_000);
-      child.stdout?.setEncoding('utf8');
-      child.stdout?.on('data', (chunk: string) => {
-        if (out.length < 1_000_000) out += chunk;
+  const running = partialProbes.get(command);
+  if (running) return running;
+  // Only what the CLI said is kept: a probe that timed out or could not start is asked again next time.
+  let settled = false;
+  const probe = new Promise<{ takes: boolean; keep: boolean }>((resolve) => {
+    const done = (takes: boolean, keep: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve({ takes, keep });
+    };
+    let out = '';
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(command, ['--help'], {
+        cwd: tmpdir(),
+        env,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true,
       });
-      child.on('error', () => {
-        clearTimeout(timer);
-        resolve(false);
-      });
-      child.on('close', () => {
-        clearTimeout(timer);
-        resolve(out.includes(PARTIAL_FLAG));
-      });
+    } catch {
+      done(false, false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      child.kill();
+      done(false, false);
+    }, 5_000);
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      if (out.length < 1_000_000) out += chunk;
     });
-    partialProbes.set(command, probe);
-  }
+    child.on('error', () => {
+      clearTimeout(timer);
+      done(false, false);
+    });
+    child.on('close', () => {
+      clearTimeout(timer);
+      done(out.includes(PARTIAL_FLAG), true);
+    });
+  }).then(({ takes, keep }) => {
+    if (!keep && partialProbes.get(command) === probe) partialProbes.delete(command);
+    return takes;
+  });
+  partialProbes.set(command, probe);
   return probe;
 }
 

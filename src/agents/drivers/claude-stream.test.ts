@@ -69,6 +69,15 @@ describe('claude() streaming', () => {
     expect(await claudeTakesPartialMessages(join(dir, 'missing-claude'))).toBe(false);
   });
 
+  it('asks again after a probe that could not start', async () => {
+    const name = 'claude-later';
+    const bin = join(dir, name);
+    expect(await claudeTakesPartialMessages(bin)).toBe(false);
+    // Installed since: the next probe finds the flag.
+    expect(fakeClaude(name, false)).toBe(bin);
+    expect(await claudeTakesPartialMessages(bin)).toBe(true);
+  });
+
   it('puts the flag after the output format', () => {
     const args = claudeArgs({ prompt: 'p', cwd: dir }, {}, undefined, undefined, false, false, true);
     expect(args.slice(args.indexOf('--output-format'), args.indexOf('--output-format') + 3)).toEqual([

@@ -1,4 +1,5 @@
 import type { SessionInfo } from '../agents/sessions/group.js';
+import type { AgentFailure } from '../agents/types.js';
 
 /** One entry of the agent chip's model list. */
 export interface ModelSuggestion {
@@ -124,20 +125,30 @@ const REJECTED = [
   /issue with the selected model/i,
   /model_not_found|invalid_model|unknown_model/i,
   /\b(?:invalid|unknown|unsupported|unrecognized)\b[^.\n]{0,20}\bmodel\b/i,
-  /\bmodel\b[^\n]{0,120}\b(?:not (?:found|supported|available|exist)|does not exist|doesn't exist|is not valid|no access|not have access|not allowed)\b/i,
+  /\bmodel\b[^\n]{0,120}\b(?:not (?:found|supported|exist)|does not exist|doesn't exist|is not valid|no access|not have access|not allowed)\b/i,
 ];
+
+// A model that is busy, not one the agent refuses: overloaded, out of capacity, limited for now.
+const BUSY =
+  /\b(?:overload(?:ed)?|capacity|high demand|temporarily|try again|rate.?limit(?:ed)?|quota|too many requests)\b/i;
 
 /**
  * Whether a failed turn's error says the agent did not take the model it was given. Only with a
- * model set: an agent's own default failing is not this.
+ * model set: an agent's own default failing is not this. Never for a sign-in or limit failure
+ * (`failure`), whose own card says what to do, nor for a busy model.
  */
-export function rejectsModel(error: string | undefined, model: string | undefined): boolean {
+export function rejectsModel(
+  error: string | undefined,
+  model: string | undefined,
+  failure?: AgentFailure['kind'],
+): boolean {
   if (!error || !model?.trim()) return false;
+  if (failure === 'auth' || failure === 'quota' || BUSY.test(error)) return false;
   if (REJECTED.some((pattern) => pattern.test(error))) return true;
   // Its name in an error that is about a model, as a CLI that names the model it was asked for says.
   return (
     /\bmodel\b/i.test(error) &&
     error.toLowerCase().includes(model.trim().toLowerCase()) &&
-    /not|invalid|unknown/i.test(error)
+    /\b(?:not|invalid|unknown)\b/i.test(error)
   );
 }
