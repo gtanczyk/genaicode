@@ -305,9 +305,12 @@ With no profile, all installed agents join and the first MCP-capable agent leads
 `--pack lead:member,member` overrides the whole roster for one launch. With bare `--pack`,
 `-a <lead>` overrides only the lead. An unavailable saved agent is reported by name.
 
-The lead chooses which tasks to delegate. **Pack tasks**
-under its turn shows each worker's prompt, activity, result and changed files. The slot counter
-includes workers waiting for approval. `--max-parallel` sets the slot limit (default 4).
+The lead chooses which tasks to delegate. **Delegated tasks**
+under its turn lists them, tasks that are running or need you first: each row shows what a running
+task does now (its command or latest message), or a finished task's outcome (a verdict line, the
+first line of its reply, changed-file count, error, or who stopped it) and how long it took. Older
+finished tasks fold behind "Show N earlier". Select a task for its instructions, result and changed
+files. `--max-parallel` sets how many run at once (default 4); workers waiting for approval count.
 `--max-tokens` and `--max-cost` include the lead and its workers.
 
 `--delegate` keeps the usual agent picker but gives every agent that takes MCP servers the same
