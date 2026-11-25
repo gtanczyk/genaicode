@@ -1,10 +1,19 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 import type { WebSessionListing } from './server.js';
-import { Sessions } from './sessions.js';
+import { Sessions as SessionsView } from './sessions.js';
+import { SessionReplies } from './session-reply.js';
+
+function Sessions(props: ComponentProps<typeof SessionsView>) {
+  return (
+    <SessionReplies>
+      <SessionsView {...props} />
+    </SessionReplies>
+  );
+}
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -95,10 +104,17 @@ it('opens the readable store once per session and shows the sources of distinct 
 
 it('keeps an index-only topic on the readable row when grouping, filtering and showing directory tags', async () => {
   const alias = { ...asking, source: 'index' };
-  const data = { ...listing, sessions: [asking, alias], readable: [asking.source],
-    topics: [{id: 'bread', name: 'Bread'}], topicOf: { ['index:' + asking.id]: 'bread' } };
+  const data = {
+    ...listing,
+    sessions: [asking, alias],
+    readable: [asking.source],
+    topics: [{ id: 'bread', name: 'Bread' }],
+    topicOf: { ['index:' + asking.id]: 'bread' },
+  };
   vi.stubGlobal('fetch', async () => new Response(JSON.stringify(data)));
-  await act(async () => root.render(<Sessions token="t" cwd="/work" topic="bread" onOpen={vi.fn()} onContinue={vi.fn()} />));
+  await act(async () =>
+    root.render(<Sessions token="t" cwd="/work" topic="bread" onOpen={vi.fn()} onContinue={vi.fn()} />),
+  );
   expect(host.querySelectorAll('.session-row')).toHaveLength(1);
   expect(host.querySelector('.project summary b')?.textContent).toBe('Bread');
   const by = host.querySelector<HTMLSelectElement>('[aria-label="Group by"]')!;

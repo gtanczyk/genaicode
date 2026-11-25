@@ -60,6 +60,7 @@ import {
 import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import { SessionReplies } from './session-reply.js';
 import { Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
@@ -2199,4 +2200,8 @@ function App() {
 
 // Before the first paint: the theme chosen in Settings, where there is one.
 applyTheme(readTheme());
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <SessionReplies>
+    <App />
+  </SessionReplies>,
+);

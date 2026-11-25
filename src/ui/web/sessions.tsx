@@ -138,8 +138,7 @@ export function Sessions({
 }) {
   const [days, setDays] = useState(initialDays ?? 7);
   const [listing, setListing] = useState<WebSessionListing>();
-  const [replyTo, setReplyTo] = useState<SessionInfo>();
-  const { drafts, keepDraft } = useSessionReplyDrafts();
+  const { drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
   const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
@@ -253,9 +252,7 @@ export function Sessions({
       .finally(() => setRound((value) => value + 1));
   };
   const shown = useMemo(() => {
-    const inTopic = topic
-      ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic)
-      : all;
+    const inTopic = topic ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic) : all;
     const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
     return INBOX.has(state) ? waitingSessions(found) : found;
@@ -332,8 +329,8 @@ export function Sessions({
   };
 
   const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
-  const isReplying = (session: SessionInfo) => replyTo?.source === session.source && replyTo.id === session.id;
   const actions = (session: SessionInfo, close?: () => void) => {
+    const sender = senderOf(session);
     const action = (label: string, run: () => void, title?: string) => (
       <button
         type="button"
@@ -349,9 +346,9 @@ export function Sessions({
     );
     return (
       <>
-        {senderOf(session) &&
-          !isReplying(session) &&
-          action('Reply', () => setReplyTo(session), `Send to this session in ${session.agent}`)}
+        {sender &&
+          replyTo !== sessionKey(sender.session) &&
+          action('Reply', () => setReplyTo(sessionKey(sender.session)), `Send to this session in ${session.agent}`)}
         {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) &&
           action('Continue here', () => onContinue(session), 'Bring this conversation into the current chat')}
         {resumeCommand(session) &&
@@ -372,10 +369,10 @@ export function Sessions({
     );
   };
   const replyEditor = (session: SessionInfo) => {
-    if (!isReplying(session)) return null;
     const sender = senderOf(session);
-    const key = sessionKey(session);
-    return sender ? (
+    if (!sender) return null;
+    const key = sessionKey(sender.session);
+    return replyTo === key ? (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
         session={sender.session}
@@ -383,16 +380,10 @@ export function Sessions({
         sandboxes={sender.sandboxes}
         draft={drafts.get(key)}
         onDraft={(draft) => keepDraft(key, draft)}
-        onClose={() => {
-          keepDraft(key, undefined);
-          setReplyTo(undefined);
-        }}
+        onClose={() => closeReply(key)}
         onSent={(text) => {
-          keepDraft(key, undefined);
+          closeReply(key);
           setReceipt({ session, text });
-          setReplyTo((current) =>
-            current?.source === session.source && current.id === session.id ? undefined : current,
-          );
           setRound((value) => value + 1);
           onReplied?.(session);
         }}

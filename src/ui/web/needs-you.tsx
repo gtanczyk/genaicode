@@ -8,6 +8,7 @@ import {
   type NeedsFilter,
   type NeedsItem,
 } from '../needs-you.js';
+import { sessionKey } from '../sidebar.js';
 import { towerText } from '../tower-format.js';
 import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { StateGlyph } from './sidebar.js';
@@ -62,9 +63,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   const [filter, setFilter] = useState<NeedsFilter>('all');
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState<string>();
-  const [replyTo, setReplyTo] = useState<string>();
-  // What is typed to each card, by its key: a filter that hides the card keeps it.
-  const { drafts, keepDraft } = useSessionReplyDrafts();
+  const { drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
@@ -143,7 +142,8 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
         {items.length && !shown.length && !incomplete ? <p className="needs-none">Nothing waits here.</p> : null}
         {shown.map((item) => {
           const age = waited(item.since, now);
-          const replying = replyTo === item.key && !!item.reply;
+          const key = item.reply && sessionKey(item.reply.session);
+          const replying = key !== undefined && replyTo === key;
           return (
             <article className="needs-card" key={item.key} data-source={item.source} data-kind={item.kind}>
               <div className="needs-meta">
@@ -184,8 +184,8 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                     {choice.label}
                   </button>
                 ))}
-                {item.reply && !replying ? (
-                  <button type="button" className="btn sm primary" onClick={() => setReplyTo(item.key)}>
+                {key && !replying ? (
+                  <button type="button" className="btn sm primary" onClick={() => setReplyTo(key)}>
                     Reply
                   </button>
                 ) : null}
@@ -202,16 +202,11 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                   session={item.reply!.session}
                   token={props.token}
                   sandboxes={item.reply!.sandboxes}
-                  draft={drafts.get(item.key)}
-                  onDraft={(draft) => keepDraft(item.key, draft)}
-                  onClose={() => {
-                    keepDraft(item.key, undefined);
-                    setReplyTo((current) => (current === item.key ? undefined : current));
-                  }}
+                  draft={drafts.get(key)}
+                  onDraft={(draft) => keepDraft(key, draft)}
+                  onClose={() => closeReply(key)}
                   onSent={(reply) => {
-                    keepDraft(item.key, undefined);
-                    // Another card's editor may be open by now: its draft stays.
-                    setReplyTo((current) => (current === item.key ? undefined : current));
+                    closeReply(key);
                     setFeedback(`Sent to ${item.agent}, ${item.origin}.`);
                     props.onReplied(item.reply!.session, reply);
                   }}

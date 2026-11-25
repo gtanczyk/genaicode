@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 import { needsItems, type NeedsDecision, type NeedsItem } from '../needs-you.js';
 import { needsYou } from '../sidebar.js';
+import { SessionReplies } from './session-reply.js';
 import { NeedsYouPage, type NeedsYouPageProps } from './needs-you.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,7 +88,14 @@ function props(patch: Partial<NeedsYouPageProps> = {}): NeedsYouPageProps {
     ...patch,
   };
 }
-const render = (value: NeedsYouPageProps) => act(() => root.render(<NeedsYouPage {...value} />));
+const render = (value: NeedsYouPageProps) =>
+  act(() =>
+    root.render(
+      <SessionReplies>
+        <NeedsYouPage {...value} />
+      </SessionReplies>,
+    ),
+  );
 const cards = () => Array.from(host.querySelectorAll('article'));
 const card = (text: string) => cards().find((one) => one.textContent?.includes(text))!;
 const button = (within: Element, name: string) =>

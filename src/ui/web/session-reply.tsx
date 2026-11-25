@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
 import type { SandboxPolicy } from '../../agents/types.js';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 
@@ -15,7 +15,8 @@ export interface SessionReplyDraft {
 }
 const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
 
-export function useSessionReplyDrafts() {
+function useReplyEditors() {
+  const [replyTo, setReplyTo] = useState<string>();
   const [drafts, setDrafts] = useState<ReadonlyMap<string, SessionReplyDraft>>(new Map());
   const keepDraft = (key: string, draft: SessionReplyDraft | undefined) =>
     setDrafts((all) => {
@@ -24,7 +25,25 @@ export function useSessionReplyDrafts() {
       else next.delete(key);
       return next;
     });
-  return { drafts, keepDraft };
+  const closeReply = (key: string) => {
+    keepDraft(key, undefined);
+    setReplyTo((current) => (current === key ? undefined : current));
+  };
+  return { drafts, keepDraft, replyTo, setReplyTo, closeReply };
+}
+
+const ReplyEditors = createContext<ReturnType<typeof useReplyEditors> | null>(null);
+
+/** The window owns session replies while their row, transcript or queue card comes and goes. */
+export function SessionReplies({ children }: { children: ReactNode }) {
+  const editors = useReplyEditors();
+  return <ReplyEditors.Provider value={editors}>{children}</ReplyEditors.Provider>;
+}
+
+export function useSessionReplyDrafts() {
+  const editors = useContext(ReplyEditors);
+  if (!editors) throw new Error('Session replies need a SessionReplies provider.');
+  return editors;
 }
 
 export function SessionReply({

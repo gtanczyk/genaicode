@@ -155,7 +155,14 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
       const sessions = source
         ? [{ ...source, source: 'index', updatedAt: source.updatedAt + 1 }, ...listing.sessions]
         : listing.sessions;
-      await route.fulfill({ json: { ...listing, sessions, topics: [{id: 'bread', name: 'Bread'}], topicOf: { ['index:' + question.id]: 'bread' } } });
+      await route.fulfill({
+        json: {
+          ...listing,
+          sessions,
+          topics: [{ id: 'bread', name: 'Bread' }],
+          topicOf: { ['index:' + question.id]: 'bread' },
+        },
+      });
     });
     await page.goto(opened!);
 
@@ -204,9 +211,19 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
       'Copy resume command',
       'Archive',
     ]);
+    await detail.getByRole('button', { name: 'Reply' }).click();
+    await detail.getByRole('textbox').fill('Save this draft');
+    await detail.getByLabel('Sandbox').selectOption('read-only');
     await topbar.getByRole('button', { name: 'Needs you' }).click();
     expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
 
+    expect(await asked.getByRole('textbox').inputValue()).toBe('Save this draft');
+    await asked.getByRole('button', { name: 'Open session' }).click();
+    await detail.getByRole('textbox').waitFor();
+    expect(await detail.getByRole('textbox').inputValue()).toBe('Save this draft');
+    expect(await detail.getByLabel('Sandbox').inputValue()).toBe('read-only');
+    await detail.getByRole('button', { name: 'Cancel' }).click();
+    await topbar.getByRole('button', { name: 'Needs you' }).click();
     await side.getByRole('button', { name: 'All sessions', exact: true }).click();
     const list = page.locator('main.sessions:visible');
     const search = list.getByRole('searchbox');
