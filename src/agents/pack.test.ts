@@ -1266,8 +1266,9 @@ describe('pack chat turns', () => {
       expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
       expect(readFileSync(join(dir, 'dep', 'a.txt'), 'utf8')).toBe('edited in the submodule\n');
       // A new commit of the submodule, staged in the parent: Merge locally cannot apply it either.
-      execFileSync('git', ['commit', '-q', '-am', 'dep work'], { cwd: join(dir, 'dep') });
-      execFileSync('git', ['add', 'dep'], { cwd: dir });
+      git(join(dir, 'dep'), 'commit', '-q', '-am', 'dep work');
+      // With the parent's a.txt staged too, the index matches the snapshot: only the gitlink stops it.
+      git(dir, 'add', 'a.txt', 'dep');
       await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
         name: 'PackActionError',
         reason: 'changed',
@@ -1277,6 +1278,44 @@ describe('pack chat turns', () => {
       execFileSync('git', ['reset', '-q', '--hard', 'HEAD~1'], { cwd: join(dir, 'dep') });
       execFileSync('git', ['reset', '-q', '--', 'dep'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('keeps a worktree with a repository cloned into it, whose files the patch cannot carry', async () => {
+    const cwd = repo();
+    const dep = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      execFileSync('git', ['clone', '-q', dep, 'vendor'], { cwd: task.cwd });
+      writeFileSync(join(task.cwd, 'vendor', 'a.txt'), 'patched in the clone\n');
+      return { text: 'Added a line and patched the vendored copy.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged' });
+      const dir = task()!.cwd;
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(readFileSync(join(dir, 'vendor', 'a.txt'), 'utf8')).toBe('patched in the clone\n');
+      expect(task()?.state).toBe('unmerged');
     } finally {
       session.close();
       await team.close();

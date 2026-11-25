@@ -183,7 +183,18 @@ export async function patchCoversWorktree(
   if (empty && tree !== startTree) return false;
   const index = await indexTree(dir);
   if (index === undefined || (index !== startTree && index !== tree)) return false;
-  return !(await submoduleWork(dir));
+  return !(await submoduleWork(dir)) && !(await gitlinkChanged(dir, start, tree));
+}
+
+/**
+ * Whether the snapshot adds or moves a gitlink (a repository cloned or committed inside the
+ * worktree): the patch carries only its commit id, not the repository, so applying it and removing
+ * the worktree would lose what is in there.
+ */
+async function gitlinkChanged(dir: string, start: string, tree: string): Promise<boolean> {
+  const raw = await must(dir, ['diff', '--raw', '-z', '--no-renames', start, tree]);
+  // Entries ":<old mode> <new mode> <old id> <new id> <status>": a gitlink is mode 160000.
+  return raw.split('\0').some((entry) => /^:\d{6} 160000 /.test(entry));
 }
 
 /**
