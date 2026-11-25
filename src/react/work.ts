@@ -78,18 +78,18 @@ export interface WorkTask {
 
 /**
  * A review that stands in the way of a merge: one on the current revision that failed, whose notes
- * have a line that starts with BLOCKER, or whose verdict line asks for changes (the reviewer is
- * asked to end with `VERDICT: LGTM` or `VERDICT: CHANGES REQUESTED`).
+ * have a line that starts with BLOCKER, or whose last verdict line asks for changes (the reviewer is
+ * asked to end with `VERDICT: LGTM` or `VERDICT: CHANGES REQUESTED`). Quoted lines (`> …`), such as
+ * an earlier round's findings, are not this review's.
  */
 export function reviewBlocker(checks: PackTaskChecks | undefined): boolean {
   const review = checks?.review;
   if (!review || review.status === 'running' || review.revision !== checks.revision) return false;
-  const detail = review.detail ?? '';
-  return (
-    review.status === 'failed' ||
-    /^[\s>*_#\-\d.)]*BLOCKER\b/m.test(detail) ||
-    /^[\s>*_#]*VERDICT\s*:\s*[*_]*\s*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/im.test(detail)
-  );
+  if (review.status === 'failed') return true;
+  const own = (review.detail ?? '').split('\n').filter((line) => !/^\s*>/.test(line));
+  if (own.some((line) => /^[\s*_#\-\d.)]*BLOCKER\b/.test(line))) return true;
+  const verdict = [...own].reverse().find((line) => /^[\s*_#]*VERDICT\s*:/i.test(line));
+  return !!verdict && /VERDICT\s*:\s*[*_]*\s*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/i.test(verdict);
 }
 
 /**

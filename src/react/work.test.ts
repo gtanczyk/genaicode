@@ -167,6 +167,11 @@ describe('reviewBlocker', () => {
     expect(review('[P1] Merge deletes user data\n\nVERDICT: CHANGES REQUESTED')).toBe(true);
     expect(review('**VERDICT:** changes requested')).toBe(true);
     expect(review('Looks fine.\nVERDICT: LGTM')).toBe(false);
+    // An earlier round quoted is not this review: its last own verdict decides.
+    expect(
+      review('> BLOCKER: drops rows\n> VERDICT: CHANGES REQUESTED\n\nFixed: rows are kept.\n\nVERDICT: LGTM'),
+    ).toBe(false);
+    expect(review('VERDICT: LGTM in the last round, but now:\n\nVERDICT: CHANGES REQUESTED')).toBe(true);
     // A review of an earlier revision says nothing about what is there now.
     expect(review('BLOCKER: x', 'completed', 'old')).toBe(false);
     expect(reviewBlocker(undefined)).toBe(false);
