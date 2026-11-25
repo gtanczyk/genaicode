@@ -35,6 +35,8 @@ import { pageHtml } from './page.js';
 import { parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 import type { FileRaw, ProjectFiles } from '../files.js';
+import { PullRequestBusy, type PullRequestLookup } from '../pull-requests.js';
+import { chatKey } from '../sidebar.js';
 
 export interface WebUiOptions {
   projectTeams?: import('../../agents/pack-profile.js').ProjectTeams;
@@ -127,6 +129,12 @@ export interface WebUiOptions {
   >;
   /** The app that started the server and shows its page (the desktop app), when there is one. */
   hostApp?: HostApp;
+  /**
+   * Whether the pull request a delegated task's reply links to is open, merged or closed, and
+   * whether the task opened it, at GET /api/pull-request?conversation=&turn=&task=. Only tasks of the
+   * conversation shown are looked up. Without it the page shows such a pull request as a plain link.
+   */
+  pullRequest?: PullRequestLookup;
   release?: () => UiRelease;
   /** Live settings that the page can read and update (e.g. opt-in CDN hosts for HTML artifacts). */
   settings?: WebSettings;
@@ -275,12 +283,25 @@ export interface WebUi {
 export type WebCommand =
   /** `files`: ids of uploads (POST /api/upload) that go with the prompt. */
   | { type: 'submit'; text: string; files?: string[] }
-  | { type: 'stop' }
+  /**
+   * With `conversation` (`chatKey()` of the chat it was pressed in, from `../sidebar.js`) and `turn`, it stops only that
+   * turn of that conversation: one that arrives after the window moved on changes nothing.
+   */
+  | { type: 'stop'; conversation?: string; turn?: number }
   | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
   /** Answer a question of the agent: chosen option labels or typed text per question id. */
   | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
-  | { type: 'pack-task'; turnId: number; id: string; action: PackAction }
+  /** With `conversation`, refused unless that conversation is still the one shown. */
+  | {
+      type: 'pack-task';
+      turnId: number;
+      id: string;
+      action: PackAction;
+      conversation?: string;
+      /** A discard the page offered because the task's pull request holds its work: checked again first. */
+      pullRequest?: true;
+    }
   | WebSwitchCommand
   | { type: 'agent'; name: string }
   | { type: 'model'; model: string }
@@ -356,12 +377,24 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       }
       return { type: 'submit', text: body, files: files as string[] };
     }
-    case 'stop':
-      return { type: 'stop' };
+    case 'stop': {
+      const conversation = text('conversation', 200);
+      const { turn } = command;
+      if (command.conversation !== undefined && conversation === undefined) return undefined;
+      if (turn !== undefined && (typeof turn !== 'number' || !Number.isSafeInteger(turn) || turn < 1)) return undefined;
+      return {
+        type: 'stop',
+        ...(conversation !== undefined ? { conversation } : {}),
+        ...(turn !== undefined ? { turn: turn as number } : {}),
+      };
+    }
     case 'pack-task': {
       const { turnId, action } = command;
       const id = text('id', 200);
+      const conversation = text('conversation', 200);
+      const scope = conversation !== undefined ? { conversation } : {};
       if (
+        (command.conversation !== undefined && conversation === undefined) ||
         !id ||
         typeof turnId !== 'number' ||
         !Number.isSafeInteger(turnId) ||
@@ -372,7 +405,7 @@ export function parseCommand(value: unknown): WebCommand | undefined {
         return undefined;
       const { type, text: input } = action as Record<string, unknown>;
       if (type === 'steer' && typeof input === 'string' && input.trim() && input.length <= 32_000)
-        return { type: 'pack-task', turnId, id, action: { type, text: input } };
+        return { type: 'pack-task', turnId, id, action: { type, text: input }, ...scope };
       if (type === 'merge' || type === 'diff') {
         const { revision } = action as Record<string, unknown>;
         if (
@@ -380,10 +413,22 @@ export function parseCommand(value: unknown): WebCommand | undefined {
           (typeof revision !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(revision))
         )
           return undefined;
-        return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) } };
+        return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) }, ...scope };
       }
-      if (type === 'stop' || type === 'discard' || type === 'review' || type === 'verify')
-        return { type: 'pack-task', turnId, id, action: { type } };
+      if (type === 'discard') {
+        // `empty`: the page showed no changes; the pack refuses if the worktree has some by now.
+        const empty = (action as Record<string, unknown>).empty === true ? { empty: true as const } : {};
+        return {
+          type: 'pack-task',
+          turnId,
+          id,
+          action: { type, ...empty },
+          ...(command.pullRequest === true ? { pullRequest: true as const } : {}),
+          ...scope,
+        };
+      }
+      if (type === 'stop' || type === 'review' || type === 'verify')
+        return { type: 'pack-task', turnId, id, action: { type }, ...scope };
       return undefined;
     }
     case 'tower': {
@@ -477,6 +522,21 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   const cookieName = () => `genaicode_${port}`;
   const tokenOk = (candidate: string | null | undefined) => secretOk(candidate, token);
+  /**
+   * The task's worktree is still exactly its pull request (branch, head commit, nothing uncommitted),
+   * checked now: a discard offered because the pull request holds the work loses nothing.
+   */
+  const holdsPullRequest = async (turnId: number, id: string): Promise<boolean> => {
+    const task = controller
+      .get()
+      .session.turns.find((turn) => turn.id === turnId)
+      ?.pack?.tasks.find((one) => one.id === id);
+    if (!task?.pullRequest || task.mode !== 'worktree' || !options.pullRequest) return false;
+    const status = await options
+      .pullRequest(task.pullRequest.url, task.worktree ?? task.cwd, { fresh: true })
+      .catch(() => undefined);
+    return status?.ours === true;
+  };
   /** Folders the person picked in the host app's dialog (real paths): a chat may start in them. */
   const chosenFolders = new Set<string>();
   const cookieOk = (req: IncomingMessage) => {
@@ -885,6 +945,34 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const limits = options.limits ? await options.limits().catch(() => []) : [];
       return send(res, 200, 'application/json', JSON.stringify({ limits }));
     }
+    if (req.method === 'GET' && url.pathname === '/api/pull-request') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      // Only a pull request a task of the conversation shown links to: the page cannot make the
+      // server ask GitHub about anything else.
+      const shown = controller.get();
+      const turnId = Number(url.searchParams.get('turn'));
+      const taskId = url.searchParams.get('task') ?? '';
+      const task =
+        url.searchParams.get('conversation') === chatKey(shown)
+          ? shown.session.turns.find((turn) => turn.id === turnId)?.pack?.tasks.find((one) => one.id === taskId)
+          : undefined;
+      if (!task?.pullRequest) return send(res, 404, 'application/json', '{"error":"no such task"}');
+      let status: Awaited<ReturnType<PullRequestLookup>>;
+      try {
+        status = options.pullRequest
+          ? await options.pullRequest(
+              task.pullRequest.url,
+              task.mode === 'worktree' ? (task.worktree ?? task.cwd) : undefined,
+            )
+          : undefined;
+      } catch (error) {
+        if (error instanceof PullRequestBusy) return send(res, 429, 'application/json', '{"error":"busy"}');
+        status = undefined;
+      }
+      return send(res, 200, 'application/json', JSON.stringify(status ?? {}), { 'cache-control': 'no-store' });
+    }
     if (req.method === 'GET' && url.pathname === '/api/shares') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
@@ -1226,9 +1314,44 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         command = undefined;
       }
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+      // A command pressed in one conversation never acts on the next one the window moved to.
+      if (
+        (command.type === 'pack-task' || command.type === 'stop') &&
+        command.conversation !== undefined &&
+        command.conversation !== chatKey(controller.get())
+      )
+        return send(
+          res,
+          409,
+          'application/json',
+          JSON.stringify({ ok: false, error: 'The conversation changed: nothing was done.', reason: 'conversation' }),
+        );
+      if (command.type === 'stop' && command.turn !== undefined) {
+        const turns = controller.get().session.turns;
+        const current = turns.at(-1);
+        if (!current || current.id !== command.turn || current.result)
+          return send(
+            res,
+            409,
+            'application/json',
+            JSON.stringify({ ok: false, error: 'That turn already ended: nothing was stopped.', reason: 'turn' }),
+          );
+      }
       if (command.type === 'pack-task') {
         if (!controller.session.actOnPackTask)
           return send(res, 404, 'application/json', '{"ok":false,"error":"Pack controls are unavailable."}');
+        if (command.pullRequest && !(await holdsPullRequest(command.turnId, command.id)))
+          return send(
+            res,
+            409,
+            'application/json',
+            JSON.stringify({
+              ok: false,
+              error:
+                'The worktree no longer matches its pull request: it has work the pull request does not. Nothing was discarded.',
+              reason: 'stale',
+            }),
+          );
         try {
           const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
@@ -1239,7 +1362,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
               res,
               refusal.reason === 'missing' ? 404 : 409,
               'application/json',
-              JSON.stringify({ ok: false, error: refusal.message }),
+              JSON.stringify({ ok: false, error: refusal.message, reason: refusal.reason }),
             );
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }

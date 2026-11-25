@@ -329,7 +329,17 @@ recent quota remaining and the requested capabilities. For a named model the pac
 seen the worker report that model. The operator decides whether to substitute a named agent.
 A 90% reading alone leaves the choice as it was.
 
-In the browser, select a task or open **Approvals**. In the terminal, press Tab on an empty
+In the browser and the desktop app the tasks are in the **work panel** on the right (the **Work**
+button in the top bar, or ⌘⌥B); the turn keeps one line for them in the chat ("3 delegated tasks ·
+1 running · Open"). The panel opens by itself where it fits beside the chat (the chat keeps
+600 px), and is a full-width view with a back arrow in a narrower window. Tasks are grouped by what
+to do next: **Needs you**, **Failed**, **Review blockers**, **Running**, **Unmerged**, **Done**. A
+row opens the task: what it was asked, its agent and model, when it started and how long it ran,
+what it does now, the messages sent to it and whether they arrived, its result, its changed files
+and the actions that apply. A task whose reply ends with a GitHub pull request link shows
+"PR #12 · merged" (or open, closed; looked up with `gh` when it is installed and signed in) with
+the link in place of **Merge locally**. The panel's width is remembered for the window, and whether
+it is open and which task shows for each chat. In the terminal, press Tab on an empty
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
 shows which keys are available. You can steer a live worker, stop it, inspect a finished
 worktree's diff, merge the changes into the lead's directory, or discard the worktree.

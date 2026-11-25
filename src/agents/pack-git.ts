@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -155,8 +155,118 @@ export async function worktreeChanges(dir: string, start: string, tree?: string)
   return (await must(dir, ['diff', '--name-status', '--no-renames', start, tree])).split('\n').filter(Boolean);
 }
 
+/**
+ * Files staged in the worktree's own index that differ from its HEAD, as `git diff --name-status`
+ * lines. A snapshot misses them once the working copy no longer has them (staged, then deleted).
+ */
+export async function stagedChanges(dir: string): Promise<string[]> {
+  return (await must(dir, ['diff', '--cached', '--name-status', '--no-renames', 'HEAD'])).split('\n').filter(Boolean);
+}
+
+/**
+ * Whether the patch from `start` to `tree` (the worktree's snapshot, taken with a fresh index) covers
+ * everything the worktree at `dir` holds, so that merging it or, with `empty`, discarding it loses
+ * nothing: HEAD is still `start` (a commit would not be carried), and the worktree's own index holds
+ * either the start or the snapshot (anything staged that the working copy no longer has would go).
+ * With `empty` the snapshot must also equal the start. Status flags such as `--assume-unchanged`
+ * hide an edit from `git status` but not from the snapshot, which is why it is compared as trees.
+ */
+export async function patchCoversWorktree(
+  dir: string,
+  start: string,
+  tree: string,
+  { empty = false }: { empty?: boolean } = {},
+): Promise<boolean> {
+  const head = (await must(dir, ['rev-parse', '--verify', 'HEAD'])).trim();
+  if (head !== start) return false;
+  const startTree = (await must(dir, ['rev-parse', '--verify', `${start}^{tree}`])).trim();
+  if (empty && tree !== startTree) return false;
+  const index = await indexTree(dir);
+  if (index === undefined || !(await stagedInSnapshot(dir, startTree, index, tree))) return false;
+  return !(await submoduleWork(dir)) && !(await gitlinkChanged(dir, start, tree));
+}
+
+/**
+ * Whether the snapshot adds or moves a gitlink (a repository cloned or committed inside the
+ * worktree): the patch carries only its commit id, not the repository, so applying it and removing
+ * the worktree would lose what is in there.
+ */
+async function gitlinkChanged(dir: string, start: string, tree: string): Promise<boolean> {
+  const raw = await must(dir, ['diff', '--raw', '-z', '--no-renames', '--ignore-submodules=none', start, tree]);
+  // Entries ":<old mode> <new mode> <old id> <new id> <status>": a gitlink is mode 160000.
+  return raw.split('\0').some((entry) => /^:\d{6} 160000 /.test(entry));
+}
+
+/**
+ * Whether every path staged in the worktree's index (where it differs from the start) is staged as
+ * the snapshot has it: then the patch carries it. A path staged one way and changed again on disk
+ * keeps a version only the index holds.
+ */
+async function stagedInSnapshot(dir: string, startTree: string, index: string, tree: string): Promise<boolean> {
+  if (index === startTree || index === tree) return true;
+  const entries = async (to: string) => {
+    const raw = await must(dir, [
+      'diff',
+      '--raw',
+      '-z',
+      '--no-renames',
+      '--ignore-submodules=none',
+      '--abbrev=40',
+      startTree,
+      to,
+    ]);
+    // "-z" raw output: ":<modes> <ids> <status>\0<path>\0" for each entry.
+    const parts = raw.split('\0');
+    const found = new Map<string, string>();
+    for (let at = 0; at + 1 < parts.length; at += 2) {
+      const [, , , id] = parts[at]!.slice(1).split(' ');
+      const mode = parts[at]!.slice(1).split(' ')[1];
+      found.set(parts[at + 1]!, `${mode} ${id}`);
+    }
+    return found;
+  };
+  const staged = await entries(index);
+  const snapshot = await entries(tree);
+  for (const [file, entry] of staged) if (snapshot.get(file) !== entry) return false;
+  return true;
+}
+
+/**
+ * Whether a submodule of the worktree changed at all (its commit, staged or not, edits, untracked
+ * files): the patch cannot carry what is inside it, nor does Merge locally apply a new commit of
+ * it, so removing the worktree would lose it.
+ */
+async function submoduleWork(dir: string): Promise<boolean> {
+  const status = await must(dir, [
+    'status',
+    '--porcelain=v2',
+    '-z',
+    '--untracked-files=all',
+    '--ignore-submodules=none',
+  ]);
+  // Changed entries ("1 XY sub …", "2 XY sub …", "u XY sub …"): `sub` is S<c><m><u> for a submodule,
+  // which git lists only when something about it changed (a staged new commit shows as `S...`).
+  return status.split('\0').some((entry) => /^[12u] \S\S S/.test(entry));
+}
+
+/** The worktree's own index as a tree, written from a copy so the index itself is not touched; undefined while it has conflicts. */
+async function indexTree(dir: string): Promise<string | undefined> {
+  const file = (await must(dir, ['rev-parse', '--path-format=absolute', '--git-path', 'index'])).trim();
+  const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
+  try {
+    const copy = path.join(scratch, 'index');
+    if (existsSync(file)) copyFileSync(file, copy);
+    const result = await git(dir, ['write-tree'], { env: { ...process.env, GIT_INDEX_FILE: copy } });
+    return result.code === 0 ? result.stdout.toString('utf8').trim() : undefined;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 /** The worktree's changes since `start` as a patch `git apply` takes. */
 export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
+  // The patch's form is pinned: a person's diff settings (no prefixes, other prefixes, less
+  // context) would make `git apply` put a file elsewhere or a line in the wrong place.
   return mustBytes(dir, [
     'diff',
     '--binary',
@@ -164,6 +274,9 @@ export function worktreeDiff(dir: string, start: string, tree: string): Promise<
     '--no-textconv',
     '--no-ext-diff',
     '--no-color',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    '--unified=3',
     start,
     tree,
   ]);

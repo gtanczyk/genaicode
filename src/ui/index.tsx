@@ -36,6 +36,7 @@ import {
 import { recordedConversation } from '../agents/sessions/workspace.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
+import { pullRequestLookup, type PullRequestLookup } from './pull-requests.js';
 import { formatTruncationReason } from './transcript.js';
 import {
   startWebUi,
@@ -92,6 +93,11 @@ export interface WebRunOptions extends UiRunOptions {
   assets?: ReadonlyMap<string, WebAsset>;
   /** Opens the link. Default: the system browser. */
   openUrl?(url: string): void;
+  /**
+   * Whether a pull request a delegated task ended in is open, merged or closed. Default: asks
+   * GitHub's CLI (`gh pr view`).
+   */
+  pullRequest?: PullRequestLookup;
   /**
    * Stop when stdin ends (`--exit-with-stdin`): a host app that starts the server through a
    * launcher such as npx stops it by closing the pipe, which also reaches the server itself.
@@ -768,6 +774,7 @@ function webLink(
         });
       },
       limits: () => knownLimits(options.env),
+      pullRequest: options.pullRequest ?? pullRequestLookup({ env: options.env }),
       projectTeams: options.projectTeams,
       // Automatic runs too: they use the plan like everything else.
       shares: async (query) => {

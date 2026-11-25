@@ -115,6 +115,39 @@ describe('<Shell>', () => {
     expect(bar.querySelectorAll('button')).toHaveLength(0);
   });
 
+  it("gives the work panel a column, or the chat's place with a way back and Stop; ⌘⌥B toggles it", () => {
+    const onToggleWork = vi.fn();
+    const onRoom = vi.fn();
+    const work = <aside className="gc-work">tasks</aside>;
+    render(props({ work, onToggleWork, onRoom }));
+    expect(shell().className).toBe('shell has-work');
+    expect(shell().lastElementChild?.className).toBe('gc-work');
+    expect(onRoom).toHaveBeenCalledWith({ room: expect.any(Number), window: expect.any(Number) });
+    // By its place on the keyboard: with Option, macOS types another letter.
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+    // ⌘B alone is still the sidebar's.
+    expect(shell().classList.contains('side-collapsed')).toBe(false);
+    press('b', { ...mod(), code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+    expect(shell().classList.contains('side-collapsed')).toBe(true);
+
+    const onBack = vi.fn();
+    const onStop = vi.fn();
+    render(props({ work, workFull: true, onBack, onStop }));
+    expect(shell().classList.contains('work-full')).toBe(true);
+    const bar = host.querySelector('header.topbar')!;
+    click(Array.from(bar.querySelectorAll('button')).find((item) => item.textContent === 'Stop')!);
+    expect(onStop).toHaveBeenCalledOnce();
+    click(Array.from(bar.querySelectorAll('button')).find((item) => item.textContent === 'Chat')!);
+    press('Escape');
+    expect(onBack).toHaveBeenCalledTimes(2);
+    // Without a panel there is no third column, whatever `workFull` says.
+    render(props({ workFull: true }));
+    expect(shell().classList.contains('has-work')).toBe(false);
+    expect(shell().classList.contains('work-full')).toBe(false);
+  });
+
   it('folds to the rail with the button and with ⌘B, and remembers it', () => {
     const store = memoryStore();
     render(props({ store }));
@@ -546,6 +579,42 @@ describe('Search (⌘K)', () => {
     expect(palette()).toBeNull();
     click(button('Search'));
     expect(palette()).not.toBeNull();
+  });
+
+  it('keeps the work panel as it is while Search is open: ⌘⌥B waits for Escape', () => {
+    const onToggleWork = vi.fn();
+    render(props({ work: <aside className="gc-work">tasks</aside>, onToggleWork }));
+    press('k', mod());
+    expect(palette()).not.toBeNull();
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' }, field());
+    expect(onToggleWork).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(field());
+    key('Escape');
+    expect(palette()).toBeNull();
+    press('∫', { ...mod(), altKey: true, code: 'KeyB' });
+    expect(onToggleWork).toHaveBeenCalledOnce();
+  });
+
+  it('gives the focus to the message field when what had it is gone once Search closes', () => {
+    const composer = (
+      <div className="gc-composer">
+        <textarea aria-label="Message" />
+      </div>
+    );
+    const work = (
+      <aside className="gc-work">
+        <button type="button">Tasks</button>
+      </aside>
+    );
+    render(props({ work, children: <div className="workspace">{composer}</div> }));
+    act(() => host.querySelector<HTMLButtonElement>('.gc-work button')!.focus());
+    press('k', mod());
+    expect(palette()).not.toBeNull();
+    // The work panel leaves while Search is open (the sidebar took its room).
+    render(props({ children: <div className="workspace">{composer}</div> }));
+    key('Escape');
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(host.querySelector('.gc-composer textarea'));
   });
 
   it('moves with the arrows, around the ends, and starts again from the top when the words change', () => {

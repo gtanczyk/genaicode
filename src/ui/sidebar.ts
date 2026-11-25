@@ -15,6 +15,15 @@ export const GLYPH_TITLE: Record<ChatGlyph, string> = {
   idle: 'Idle',
 };
 
+/**
+ * Which conversation a window shows, as the page and the server both name it: its id in `--home`
+ * mode, else the agent's session id (empty until the agent names one). Turn numbers start again in
+ * every conversation, so a command for a turn says which conversation it meant.
+ */
+export function chatKey(view: { conversation?: { id: string }; session?: { sessionId?: string } | null }): string {
+  return view.conversation?.id ?? view.session?.sessionId ?? '';
+}
+
 /** What a listed session's glyph shows: an agent at work, one that asks for you, one that ended, or one left. */
 export function sessionGlyph(session: SessionInfo, now = Date.now()): ChatGlyph {
   if (session.waitingFor === 'approval' || attentionOf(session, now) === 'now') return 'ask';
