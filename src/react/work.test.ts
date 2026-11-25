@@ -77,6 +77,7 @@ describe('workTasks', () => {
     }),
     task('t7', { state: 'unmerged', pullRequest: { url: 'https://github.com/o/r/pull/7', number: 7 } }),
     task('t8', { status: 'aborted', stoppedBy: 'user' }),
+    task('t9', { status: 'completed', mode: 'shared', dismissed: true }),
   ];
   // t7 opened the pull request its reply links to.
   const opened = { '1:t7': { ours: true } };

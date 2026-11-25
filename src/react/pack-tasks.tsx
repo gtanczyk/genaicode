@@ -61,18 +61,19 @@ export function PackTasks({
   approval(request: ApprovalRequest): ReactNode;
 }) {
   const pack = turn.pack!;
+  const visibleTasks = pack.tasks.filter((item) => !item.dismissed);
   const [selected, select] = useState<string>();
   const [expanded, setExpanded] = useState(false);
   const asking = (task: PackTask) => pending.some((request) => request.subtaskId === task.id);
-  const first = packTaskList(pack.tasks, { asking }).shown[0]?.id;
+  const first = packTaskList(visibleTasks, { asking }).shown[0]?.id;
   const id = selected ?? first ?? (pending.length ? 'queue' : undefined);
-  const list = packTaskList(pack.tasks, { asking, keep: id, expanded });
-  const foldable = packTaskList(pack.tasks, { asking }).hidden > 0;
-  const task = pack.tasks.find((item) => item.id === id);
+  const list = packTaskList(visibleTasks, { asking, keep: id, expanded });
+  const foldable = packTaskList(visibleTasks, { asking }).hidden > 0;
+  const task = visibleTasks.find((item) => item.id === id);
   const waiting = pending.filter((request) => request.subtaskId === id);
-  const now = useNow(pack.tasks.some((item) => item.status === 'running'));
+  const now = useNow(visibleTasks.some((item) => item.status === 'running'));
   // One task needs no list beside it: its card takes the whole width.
-  const single = pack.tasks.length === 1 && id !== 'queue';
+  const single = visibleTasks.length === 1 && id !== 'queue';
   const row = (item: PackTask) => {
     const asks = asking(item);
     const status = statusKey(item, asks);
@@ -139,7 +140,7 @@ export function PackTasks({
           </button>
         ) : null}
       </div>
-      {pack.tasks.length || id === 'queue' ? (
+      {visibleTasks.length || id === 'queue' ? (
         <div className={single ? 'gc-pack-work gc-pack-single' : 'gc-pack-work'}>
           {single ? null : (
             <div className="gc-pack-list" role="group" aria-label="Task list">

@@ -18,11 +18,13 @@ import { personText } from './host-text.js';
 import {
   clipReview,
   delegationBrief,
+  MAX_WAIT_SECONDS,
   pack,
   PackActionError,
   replyPullRequest,
   type PackTask as PackReport,
 } from './pack.js';
+import { claude } from './drivers/claude.js';
 
 describe('clipReview', () => {
   it('keeps the lines that decide a long review after the clip', () => {
@@ -1673,6 +1675,384 @@ describe('pack chat turns', () => {
       expect((await editRun.result).ok).toBe(true);
     } finally {
       await sharedPack.close();
+    }
+  });
+
+  it('continues a finished task via steer in the same session and worktree, and refuses non-resumable drivers', async () => {
+    const cwd = repo();
+    const seen: Array<{ prompt: string; resume?: string; cwd: string }> = [];
+    const worker = fake(
+      'worker',
+      async (task, emit) => {
+        seen.push({ prompt: task.prompt, resume: task.resume, cwd: task.cwd });
+        emit({ type: 'session', sessionId: 'worker-sess-1' });
+        if (!task.resume) {
+          writeFileSync(join(task.cwd, 'first.txt'), 'round 1\n');
+          return { text: 'round 1 done', sessionId: 'worker-sess-1', usage: { inputTokens: 10, outputTokens: 5 } };
+        }
+        writeFileSync(join(task.cwd, 'second.txt'), 'round 2\n');
+        return { text: 'round 2 done', sessionId: 'worker-sess-1', usage: { inputTokens: 20, outputTokens: 10 } };
+      },
+      { resume: true },
+    );
+    const noResume = fake('noresume', async () => ({ text: 'done', sessionId: 'ignored' }), { resume: false });
+    const noSessionId = fake('nosess', async () => ({ text: 'done' }), { resume: true });
+    let firstCwd = '';
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const listed = JSON.parse(await tool(task, 'agents')) as Array<{ name: string; resume?: boolean }>;
+        expect(listed.map((m) => [m.name, m.resume])).toEqual([
+          ['worker', true],
+          ['noresume', undefined],
+          ['nosess', true],
+        ]);
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'worker', prompt: 'write first file', title: 'Files' }),
+        ) as { id: string; cwd: string };
+        firstCwd = started.cwd;
+        const [r1] = JSON.parse(await tool(task, 'wait', { ids: [started.id] })) as [PackReport];
+        expect(r1).toMatchObject({ id: 't1', status: 'completed', text: 'round 1 done', changes: ['A\tfirst.txt'] });
+
+        const continued = await tool(task, 'steer', { id: 't1', text: 'now write second file' });
+        expect(continued).toContain('Continued t1');
+
+        const [r2] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(r2).toMatchObject({
+          id: 't1',
+          status: 'completed',
+          text: 'round 2 done',
+          cwd: firstCwd,
+          changes: ['A\tfirst.txt', 'A\tsecond.txt'],
+        });
+        expect(r2.steers).toMatchObject([{ text: 'now write second file', from: 'lead', delivery: 'delivered' }]);
+        await tool(task, 'merge', { id: 't1' });
+        // Cannot continue after its worktree was merged.
+        await expect(tool(task, 'steer', { id: 't1', text: 'too late' })).rejects.toThrow(/already merged/);
+
+        // Refuses driver without capabilities.resume.
+        await tool(task, 'delegate', { agent: 'noresume', prompt: 'once', mode: 'shared' });
+        await tool(task, 'wait', { ids: ['t2'] });
+        await expect(tool(task, 'steer', { id: 't2', text: 'again' })).rejects.toThrow(/cannot resume/);
+
+        // Refuses task whose first run never reported a session id.
+        await tool(task, 'delegate', { agent: 'nosess', prompt: 'once', mode: 'shared' });
+        await tool(task, 'wait', { ids: ['t3'] });
+        await expect(tool(task, 'steer', { id: 't3', text: 'again' })).rejects.toThrow(/no session id/);
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker, noResume, noSessionId] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 15 });
+      expect(seen).toEqual([
+        { prompt: 'write first file', resume: undefined, cwd: firstCwd },
+        { prompt: 'now write second file', resume: 'worker-sess-1', cwd: firstCwd },
+      ]);
+      expect(readFileSync(join(cwd, 'first.txt'), 'utf8')).toBe('round 1\n');
+      expect(readFileSync(join(cwd, 'second.txt'), 'utf8')).toBe('round 2\n');
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('resumes a real driver (claude --resume) in the same worktree when continuing a finished task', async () => {
+    const cwd = repo();
+    const binDir = mkdtempSync(join(root, 'claude-resume-'));
+    const logFile = join(binDir, 'calls.jsonl');
+    const script = join(binDir, 'fake-claude.mjs');
+    writeFileSync(
+      script,
+      `import { appendFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(logFile)}, JSON.stringify({ cwd: process.cwd(), args }) + '\\n');
+const resumed = args.includes('--resume');
+writeFileSync(join(process.cwd(), resumed ? 'round2.txt' : 'round1.txt'), resumed ? 'r2\\n' : 'r1\\n');
+console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-sess-42' }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: 'claude-sess-42', result: resumed ? 'fixed' : 'initial' }));
+`,
+    );
+    const bin = join(binDir, 'claude');
+    writeFileSync(bin, `#!${process.execPath}\nimport(${JSON.stringify(script)});\n`, { mode: 0o755 });
+    const worker = claude({ command: bin, steer: false });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'claude', prompt: 'round one' });
+        const [first] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(first).toMatchObject({ id: 't1', status: 'completed', text: 'initial', changes: ['A\tround1.txt'] });
+        await tool(task, 'steer', { id: 't1', text: 'round two' });
+        const [second] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(second).toMatchObject({
+          id: 't1',
+          status: 'completed',
+          text: 'fixed',
+          changes: ['A\tround1.txt', 'A\tround2.txt'],
+        });
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      const calls = readFileSync(logFile, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { cwd: string; args: string[] });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]!.args).not.toContain('--resume');
+      expect(calls[1]!.cwd).toBe(calls[0]!.cwd);
+      expect(calls[1]!.args.slice(-3)).toEqual(['--resume', 'claude-sess-42', 'round two']);
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('dismisses finished shared tasks via discard and hides them from lead and UI, while refusing running ones', async () => {
+    const cwd = repo();
+    let release!: () => void;
+    const blocking = new Promise<void>((resolve) => (release = resolve));
+    const worker = fake(
+      'worker',
+      async (task) => {
+        if (task.prompt === 'slow') await blocking;
+        return { text: `done:${task.prompt}`, sessionId: 's-shared' };
+      },
+      { resume: true },
+    );
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'slow', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'fast', mode: 'shared' });
+        // Running shared task cannot be discarded.
+        await expect(tool(task, 'discard', { id: 't1' })).rejects.toThrow(/still running/);
+        await tool(task, 'wait', { ids: ['t2'] });
+        // Finished shared task is dismissed.
+        expect(await tool(task, 'discard', { id: 't2' })).toBe('Dismissed t2.');
+        // Dismissing twice or continuing a dismissed shared task is refused.
+        await expect(tool(task, 'discard', { id: 't2' })).rejects.toThrow(/already dismissed/);
+        await expect(tool(task, 'steer', { id: 't2', text: 'more' })).rejects.toThrow(/already dismissed/);
+        release();
+        const remaining = JSON.parse(await tool(task, 'wait')) as PackReport[];
+        expect(remaining.map((r) => r.id)).toEqual(['t1']);
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(team.tasks().map((t) => t.id)).toEqual(['t1']);
+      expect(session.get().turns[0]?.pack?.tasks.map((t) => t.id)).toEqual(['t1']);
+    } finally {
+      release();
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('caps total delegated tasks per turn via maxTasksPerTurn while still allowing steer to reuse tasks', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => ({ text: task.prompt, sessionId: `s-${task.prompt}` }), {
+      resume: true,
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (task.prompt.startsWith('turn 2')) {
+          const started = JSON.parse(
+            await tool(task, 'delegate', { agent: 'worker', prompt: 'fresh turn', mode: 'shared' }),
+          ) as { id: string };
+          expect(started.id).toBe('t3');
+          await tool(task, 'wait');
+          return;
+        }
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'one', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'two', mode: 'shared' });
+        await tool(task, 'wait');
+        // Dismissing a shared task does not bypass the per-turn cap.
+        await tool(task, 'discard', { id: 't2' });
+        await expect(tool(task, 'delegate', { agent: 'worker', prompt: 'three', mode: 'shared' })).rejects.toThrow(
+          /limit of 2 delegated tasks.*steer.*ask the person/i,
+        );
+        // Reusing an existing finished task via steer still works after reaching the cap.
+        expect(await tool(task, 'steer', { id: 't1', text: 'follow up' })).toContain('Continued t1');
+        const [reused] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(reused).toMatchObject({ id: 't1', status: 'completed', text: 'follow up' });
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker], maxTasksPerTurn: 2 });
+    try {
+      expect((await team.run({ prompt: 'turn 1', cwd }).result).ok).toBe(true);
+      expect((await team.run({ prompt: 'turn 2', cwd }).result).ok).toBe(true);
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('omits full prompt on repeated wait calls and returns a short title instead', async () => {
+    const cwd = repo();
+    let finish!: () => void;
+    const blocking = new Promise<void>((resolve) => (finish = resolve));
+    const longPrompt =
+      `Investigate the flaky test suite in src/agents. ${'Extra detailed context. '.repeat(30)}`.trim();
+    const worker = fake('worker', async (_task, _emit, signal) => {
+      await Promise.race([
+        blocking,
+        new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })),
+      ]);
+      return { text: 'all green' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: longPrompt, mode: 'shared' });
+        const [first] = JSON.parse(await tool(task, 'wait', { timeoutSeconds: 0 })) as [Record<string, unknown>];
+        expect(first.prompt).toBe(longPrompt);
+        expect(first.status).toBe('running');
+
+        const [second] = JSON.parse(await tool(task, 'wait', { timeoutSeconds: 0 })) as [Record<string, unknown>];
+        expect(second.prompt).toBeUndefined();
+        expect(second.title).toBe('Investigate the flaky test suite in src/agents.');
+        expect(second.status).toBe('running');
+
+        finish();
+        const [third] = JSON.parse(await tool(task, 'wait')) as [Record<string, unknown>];
+        expect(third.prompt).toBeUndefined();
+        expect(third.title).toBe('Investigate the flaky test suite in src/agents.');
+        expect(third.status).toBe('completed');
+        expect(third.text).toBe('all green');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      // Full prompt is still kept on PackTask for the UI and pack.tasks().
+      expect(team.tasks()[0]!.prompt).toBe(longPrompt);
+    } finally {
+      finish();
+      await team.close();
+    }
+  });
+
+  it('caps wait timeout below 300s and streams MCP progress notifications over SSE when accepted', async () => {
+    const cwd = repo();
+    let finish!: () => void;
+    const blocking = new Promise<void>((resolve) => (finish = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', name: 'shell', input: { command: 'npm test' } });
+      await Promise.race([
+        blocking,
+        new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })),
+      ]);
+      return { text: 'finished' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const server = task.mcpServers?.find((candidate) => candidate.name === 'pack') as Extract<
+          McpServer,
+          { url: string }
+        >;
+        // Check wait tool description advertises the cap below 300s.
+        const listRes = await fetch(server.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...server.headers },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+        });
+        const listed = (await listRes.json()) as {
+          result: {
+            tools: Array<{
+              name: string;
+              description: string;
+              inputSchema: { properties: Record<string, { description?: string }> };
+            }>;
+          };
+        };
+        const waitTool = listed.result.tools.find((t) => t.name === 'wait')!;
+        expect(waitTool.description).toContain(String(MAX_WAIT_SECONDS));
+        expect(waitTool.inputSchema.properties.timeoutSeconds?.description).toContain(String(MAX_WAIT_SECONDS));
+
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'run tests', mode: 'shared' });
+
+        // Call wait with Accept: text/event-stream and _meta.progressToken -> receives progress events then result.
+        const sseRes = await fetch(server.url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...server.headers,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'wait',
+              arguments: { timeoutSeconds: 0.25 },
+              _meta: { progressToken: 'wait-tok' },
+            },
+          }),
+        });
+        expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
+        const body = await sseRes.text();
+        const messages = body
+          .split('\n\n')
+          .map((chunk) =>
+            chunk
+              .split('\n')
+              .find((line) => line.startsWith('data: '))
+              ?.slice(6),
+          )
+          .filter((line): line is string => !!line)
+          .map(
+            (line) =>
+              JSON.parse(line) as {
+                id?: number;
+                method?: string;
+                params?: Record<string, unknown>;
+                result?: { content: [{ text: string }] };
+              },
+          );
+        const progress = messages.filter((m) => m.method === 'notifications/progress');
+        expect(progress.length).toBeGreaterThanOrEqual(1);
+        expect(progress[0]!.params).toMatchObject({ progressToken: 'wait-tok', total: 0.25 });
+        const final = messages.find((m) => m.id === 2);
+        expect(final?.result?.content[0].text).toContain('"status": "running"');
+
+        // Verify timeoutSeconds > MAX_WAIT_SECONDS is capped at MAX_WAIT_SECONDS (240s).
+        const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        try {
+          const longWait = tool(task, 'wait', { timeoutSeconds: 600 });
+          await vi.waitFor(() =>
+            expect(timeoutSpy.mock.calls.some((call) => call[1] === MAX_WAIT_SECONDS * 1000)).toBe(true),
+          );
+          expect(timeoutSpy.mock.calls.some((call) => call[1] === 600_000)).toBe(false);
+          finish();
+          const [done] = JSON.parse(await longWait) as [PackReport];
+          expect(done).toMatchObject({ id: 't1', status: 'completed', text: 'finished' });
+        } finally {
+          timeoutSpy.mockRestore();
+        }
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+    } finally {
+      finish();
+      await team.close();
     }
   });
 });

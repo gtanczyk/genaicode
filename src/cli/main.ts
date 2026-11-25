@@ -360,6 +360,7 @@ Chat and UI options:
                           explicitly, e.g. claude:codex,gemini. Follow its tasks in the chat; in
                           the tower, Ctrl+G opens approvals and proposed session messages
       --max-parallel <n>  Delegated tasks that can run at once with --pack (default: 4)
+      --max-tasks <n>     Most delegated tasks started in one lead turn (default: 25)
       --delegate          Every agent may hand work to the other installed agents (the pack
                           tools), so their approvals come to this chat; read-only commands pass
       --verify <command>  Test command on each pack task's card (default: the project's npm test script)
@@ -884,6 +885,7 @@ async function runUi(
       lead,
       members,
       maxParallel: spec.maxParallel,
+      maxTasksPerTurn: spec.maxTasksPerTurn,
       readLimits: knownLimits,
       operatorMerge: true,
       sessionProposalTool: towerInbox?.proposalTool,
@@ -926,6 +928,7 @@ async function runUi(
             name: agent.name,
             lead: agent,
             members: helpers,
+            maxTasksPerTurn: options.maxTasksPerTurn,
             brief: delegationBrief,
             operatorMerge: true,
             projectMembers: async (directory) => {

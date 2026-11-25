@@ -484,6 +484,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if (!task) return;
     updateTurn(turnId, (turn) => {
       if (!turn.pack) return turn;
+      if (task.dismissed) {
+        const tasks = turn.pack.tasks.filter((known) => known.id !== id);
+        if (tasks.length === turn.pack.tasks.length) return turn;
+        return { ...turn, pack: { ...turn.pack, tasks } };
+      }
       const tasks = turn.pack.tasks.slice();
       const index = tasks.findIndex((known) => known.id === id);
       if (index < 0) tasks.push(task);
@@ -523,8 +528,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             'approval-resolved',
             'done',
           ].includes(child.type)
-        )
-          syncPackTask(turnId, event.id);
+        ) {
+          if (packRuns.get(turnId)?.controls.task(event.id)) {
+            syncPackTask(turnId, event.id);
+          } else {
+            const origin = packRuns.get(turnId);
+            for (const [id, packRun] of packRuns) {
+              if (packRun.agent === origin?.agent && packRun.controls.task(event.id)) {
+                syncPackTask(id, event.id);
+                break;
+              }
+            }
+          }
+        }
         return;
       }
       case 'subtask-update': {

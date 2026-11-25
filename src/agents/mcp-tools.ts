@@ -30,6 +30,11 @@ export interface McpCallContext {
   inputResponses?: Readonly<Record<string, unknown>>;
   /** The `requestState` that attempt gave, as the client sent it back. Verify it: the client held it. */
   requestState?: string;
+  /**
+   * Send an MCP `notifications/progress` update while a long-running tool works. Present when the
+   * client supplied `_meta.progressToken` and the transport can stream notifications.
+   */
+  progress?(progress: number, total?: number, message?: string): void;
 }
 
 /**
@@ -145,6 +150,7 @@ export async function handleMcpMessage(
   tools: readonly McpTool[],
   serverInfo: McpServerInfo,
   state?: McpServerState,
+  onNotify?: (notification: object) => void,
 ): Promise<object | null> {
   if (!isRequest(message)) return rpcError(null, -32600, 'invalid request');
   const { id, method, params } = message;
@@ -232,10 +238,28 @@ export async function handleMcpMessage(
       const args = isObject(params?.arguments) ? params.arguments : {};
       const meta = isObject(params?._meta) ? params._meta : {};
       const capabilities = stateless && isObject(meta[CAPABILITIES_KEY]) ? meta[CAPABILITIES_KEY] : {};
+      const token = meta.progressToken;
+      const progressToken = typeof token === 'string' || typeof token === 'number' ? token : undefined;
       const context: McpCallContext = {
         capabilities,
         ...(stateless && isObject(params?.inputResponses) ? { inputResponses: params.inputResponses } : {}),
         ...(stateless && typeof params?.requestState === 'string' ? { requestState: params.requestState } : {}),
+        ...(onNotify && progressToken !== undefined
+          ? {
+              progress(progress: number, total?: number, message?: string) {
+                onNotify({
+                  jsonrpc: '2.0',
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken,
+                    progress,
+                    ...(total !== undefined ? { total } : {}),
+                    ...(message !== undefined ? { message } : {}),
+                  },
+                });
+              },
+            }
+          : {}),
       };
       try {
         const output = await tool.call(args, context);
