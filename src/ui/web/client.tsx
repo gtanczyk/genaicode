@@ -1202,6 +1202,12 @@ function App() {
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({ ...workView, ...(workLayout.docks ? { open: true } : {}), task: undefined, seen: tasks.length });
   };
+  /** A count on the mission strip opens Tasks on that group; a task id there opens that task. */
+  const openWork = (change: Partial<WorkPanelView>) => {
+    setViewer(undefined);
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setWorkView({ ...workView, ...(workLayout.docks ? { open: true } : {}), ...change, seen: tasks.length });
+  };
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
     if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
@@ -1536,6 +1542,7 @@ function App() {
               view={workView}
               onView={setWorkView}
               onClose={closeWork}
+              needsYou={{ total: needs.total, onOpen: openNeedsYou }}
               mode={workFull ? 'full' : 'docked'}
               width={workLayout.width}
               bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
@@ -1970,6 +1977,20 @@ function App() {
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}
+              // The team's counts and the next approval of a task, above the message box at every width.
+              missionStrip={{
+                pullRequests,
+                dismissed: workView.dismissed,
+                onOpenGroup: (group) =>
+                  openWork({
+                    tab: 'tasks',
+                    task: undefined,
+                    filter: group,
+                    more: undefined,
+                    folded: { ...workView.folded, [group]: false },
+                  }),
+                onOpenTask: (key) => openWork({ task: key }),
+              }}
               hint={
                 inSetup ? (
                   'Connect an agent to start'

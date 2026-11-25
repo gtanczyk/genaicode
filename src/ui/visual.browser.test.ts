@@ -27,7 +27,7 @@ import { chromium, type Browser, type Locator, type Page } from 'playwright';
 import { PNG } from 'pngjs';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import type { PackTask } from '../agents/pack.js';
+import { packApproval, type PackTask } from '../agents/pack.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
 import { loadAssets, runWeb } from './index.js';
@@ -530,7 +530,19 @@ describe('the genaicode ui page looks as its baseline', () => {
    * The tasks of that turn: one running, with the steps it took and the messages sent to it, one
    * with changes to merge and an agent to review them, one failed.
    */
-  const delegated = tasks.map((task): PackTask => {
+  /** A fourth task, which waits for an approval: the mission strip and Live › Needs you carry it. */
+  const asking: PackTask = {
+    id: 't4',
+    agent: 'gemini',
+    title: 'Install the date library',
+    prompt: 'Add a date library and use it in the cart.',
+    mode: 'worktree',
+    status: 'running',
+    cwd: '/work/app/.genaicode/worktrees/t4',
+    startedAt: NOW - 60_000,
+    steps: [{ kind: 'approval', text: 'npm install date-fns', at: NOW - 20_000 }],
+  };
+  const delegated = [...tasks, asking].map((task): PackTask => {
     if (task.id === 't2') return { ...task, checks: { reviewer: 'helper' } };
     if (task.id !== 't1') return task;
     const at = task.startedAt!;
@@ -619,8 +631,14 @@ describe('the genaicode ui page looks as its baseline', () => {
               for (const item of handed) yield { type: 'subtask-start', ...item };
               yield {
                 type: 'message',
-                text: handed === delegated ? 'Three tasks are out; one is still running.' : 'All 48 tasks are out.',
+                text: handed === delegated ? 'Four tasks are out; one waits for you.' : 'All 48 tasks are out.',
               };
+              // The task that installs asks first; the turn goes on meanwhile.
+              if (handed === delegated)
+                void task.onApproval?.(
+                  packApproval('t4', 'gemini', { id: 'ap-1', kind: 'command', summary: 'npm install date-fns' }),
+                  stop.signal,
+                );
               await released;
               yield { type: 'done', result };
             },
@@ -779,6 +797,16 @@ describe('the genaicode ui page looks as its baseline', () => {
         await steady(page);
         await settle(page);
         await shot(page, `page-live-${THEMES[index]}`);
+        // The Live tab: what waits for the person, the lead, the watched task and the team feed,
+        // with the mission strip over the message box.
+        await work.getByRole('tab', { name: 'Live' }).click();
+        await work.locator('.gc-live-feed li').first().waitFor();
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-mission-${THEMES[index]}`);
+        // The next page starts on Tasks again: the tab is remembered for the chat.
+        await work.getByRole('tab', { name: /^Tasks/ }).click();
       }
       expect(differing).toEqual([]);
     } finally {

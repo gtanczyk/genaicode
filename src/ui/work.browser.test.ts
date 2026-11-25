@@ -260,7 +260,62 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       .poll(() => page.locator('.gc-workline').textContent())
       .toBe('5 delegated tasks1 needs you · 2 running · 1 failed · 2 finishedOpen ›');
     expect(await page.locator('.gc-pack').count()).toBe(0);
-    await page.locator('.gc-approval').getByText('worker wants to run:').waitFor();
+    // The approval a task waits for is on the mission strip above the message box, not in the transcript.
+    const strip = page.getByRole('group', { name: 'Team status' });
+    await strip.locator('.gc-strip-ask').waitFor();
+    expect(await page.locator('.gc-approval').count()).toBe(0);
+    await expect
+      .poll(() => strip.locator('.gc-strip-stat').allTextContents())
+      .toEqual(['1Needs you', '1Failed', '1Running', '1Unmerged', '1Done']);
+    expect(await strip.locator('.gc-strip-what').textContent()).toBe('worker · t4 wants to run');
+    expect(await strip.locator('.gc-strip-ask code').textContent()).toBe('npm install left-pad');
+    expect(await strip.locator('.gc-strip-of').textContent()).toBe('1 in this chat');
+    expect(await strip.locator('.gc-strip-lead').textContent()).toBe('helper: waiting for 2 tasks');
+    // It sits over the message box, no wider than it, and the keyboard stays in the field.
+    const stripBox = (await strip.boundingBox())!;
+    const cardBox = (await page.locator('.workspace .gc-card').boundingBox())!;
+    expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(cardBox.y);
+    expect(Math.round(stripBox.width)).toBe(Math.round(cardBox.width));
+    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    // Live: what waits for the person, the lead, the running task as a card, and one feed over all tasks.
+    await work.getByRole('tab', { name: 'Live' }).click();
+    const liveTab = work.getByRole('tabpanel', { name: 'Live' });
+    await expect
+      .poll(() => liveTab.locator('section').evaluateAll((list) => list.map((item) => item.getAttribute('aria-label'))))
+      .toEqual(['Needs you', 'Lead', 'Watching', 'Team feed']);
+    expect(await liveTab.locator('section[aria-label="Needs you"] .gc-work-card').textContent()).toContain(
+      'worker wants to run a command · t4',
+    );
+    expect(await liveTab.locator('section[aria-label="Lead"] .gc-work-now').textContent()).toBe('Waiting for 2 tasks');
+    expect(await liveTab.locator('.gc-live-watch .gc-work-ref').allTextContents()).toEqual(['t1']);
+    expect(await liveTab.locator('.gc-live-watch .gc-work-doing').textContent()).toMatch(
+      /^Running npm test -- cart · \d+s so far$/,
+    );
+    expect(await liveTab.locator('.gc-live-watch .gc-live-say').textContent()).toBe('“The total skips discounts.”');
+    await expect
+      .poll(() => liveTab.locator('.gc-live-feed .gc-live-x').allTextContents())
+      .toEqual([
+        't4 worker · wants to run npm install left-pad',
+        't5 worker · finished: 1 file changed · Opened https://github.com/acme/app/pull/351',
+        't2 worker · finished: 1 file changed · Added one line under Unreleased.',
+        't3 worker · failed: The dev server did not start.',
+        't1 worker · said: “The total skips discounts.”',
+        't1 worker · 1 read in src',
+      ]);
+    // A task id in the feed opens that task; Back returns to Live. The tab is remembered for the chat.
+    await liveTab.locator('.gc-live-feed .gc-work-ref').nth(3).click();
+    await work.getByRole('region', { name: 'Task t3' }).waitFor();
+    await work.getByRole('button', { name: 'Live', exact: true }).click();
+    await liveTab.locator('.gc-live-feed').waitFor();
+    await page.reload();
+    await work.getByRole('tabpanel', { name: 'Live' }).locator('.gc-live-feed').waitFor();
+    // A count on the strip opens Tasks; the task id of its approval opens that task.
+    await strip.getByRole('button', { name: '1 failed' }).click();
+    await expect.poll(() => work.getByRole('tab', { name: /^Tasks/ }).getAttribute('aria-selected')).toBe('true');
+    await strip.getByRole('button', { name: 'Open task t4' }).click();
+    await work.getByRole('region', { name: 'Task t4' }).waitFor();
+    await work.getByRole('button', { name: 'Tasks', exact: true }).click();
 
     // Groups in the order of what to do next; Done is folded.
     await expect
@@ -502,7 +557,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     // When the turn ends the tasks stay in the panel.
     finish?.();
     await page.locator('.gc-chat[data-status="idle"]').waitFor();
-    await expect.poll(() => work.locator('.gc-work-tab').textContent()).toBe('Tasks 5');
+    await expect.poll(() => work.locator('.gc-work-tab[data-tab="tasks"]').textContent()).toBe('Tasks 5');
     expect(errors).toEqual([]);
     await context.close();
   } finally {

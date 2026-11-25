@@ -45,6 +45,7 @@ import {
   type ToolDiff,
 } from './format.js';
 import { Markdown, readFileLinkPosition, type FilePosition } from './markdown.js';
+import { MissionStrip, type MissionStripProps } from './mission-strip.js';
 import { PackTasks, type PackActionHandler } from './pack-tasks.js';
 import { SessionRelayCard, type ChatSessionRelay } from './session-relay.js';
 import {
@@ -130,6 +131,15 @@ export interface AgentChatProps {
    * in the transcript. Without it the card is inline, with its list and actions, as before.
    */
   onOpenTasks?(turn: SessionTurn): void;
+  /**
+   * Shows the mission strip (`<MissionStrip>`) above the message box while delegated work runs: the
+   * tasks counted by state, what the lead does now, and the next approval a task waits for, with
+   * Approve and Deny (`onApprove`). With its `onOpenGroup` and `onOpenTasks`, an approval of a
+   * delegated task is answered on the strip (and in the host's `<WorkPanel>`) and no longer shows in
+   * the transcript; the lead's own approvals and every question stay inline. Pass `{}` for a strip
+   * that opens nothing; the transcript then keeps every approval, since the strip shows only the first.
+   */
+  missionStrip?: Pick<MissionStripProps, 'onOpenGroup' | 'onOpenTask' | 'pullRequests' | 'dismissed'>;
   /**
    * How a prompt bubble shows the text that was sent, e.g. to hide a context prefix the host
    * added. Return null to hide the bubble. `turn` is undefined for queued prompts and for
@@ -459,6 +469,7 @@ export function AgentChat(props: AgentChatProps) {
         onAutoApprove={props.onAutoApprove}
         onPackAction={props.disabled ? undefined : props.onPackAction}
         onOpenTasks={props.onOpenTasks}
+        taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
@@ -696,6 +707,14 @@ export function AgentChat(props: AgentChatProps) {
               </div>
             </div>
             <div className={card ? 'gc-composer gc-composer-card' : 'gc-composer'}>
+              {props.missionStrip ? (
+                <MissionStrip
+                  state={state}
+                  {...props.missionStrip}
+                  onApprove={props.onApprove}
+                  disabled={props.disabled}
+                />
+              ) : null}
               {state.queued.length ? (
                 <div className="gc-queued">
                   {state.queued.map((prompt, i) => {
@@ -862,6 +881,7 @@ function Turn({
   onAutoApprove,
   onPackAction,
   onOpenTasks,
+  taskApprovalsElsewhere,
   prompt,
   toolName,
   artifactUrl,
@@ -884,6 +904,8 @@ function Turn({
   onAutoApprove?: AgentChatProps['onAutoApprove'];
   onPackAction?: PackActionHandler;
   onOpenTasks?: AgentChatProps['onOpenTasks'];
+  /** The mission strip has the approvals of delegated tasks: they are not repeated here. */
+  taskApprovalsElsewhere?: boolean;
   prompt?: AgentChatProps['renderPrompt'];
   toolName: (name: string) => string;
   fold: boolean;
@@ -933,6 +955,16 @@ function Turn({
       pending.length &&
       item.kind === 'approval' &&
       !item.decision &&
+      pending.some((request) => request.id === item.request.id)
+    )
+      return false;
+    // On the mission strip instead. A question stays: its options are answered here.
+    if (
+      taskApprovalsElsewhere &&
+      item.kind === 'approval' &&
+      !item.decision &&
+      item.request.subtaskId &&
+      item.request.kind !== 'question' &&
       pending.some((request) => request.id === item.request.id)
     )
       return false;

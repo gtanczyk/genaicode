@@ -163,7 +163,7 @@ afterEach(() => {
 describe('<WorkPanel> with 150 tasks', () => {
   it('groups them with counts, folds Done into one line, and shows the first rows of a long group', () => {
     show(manyTasks());
-    expect(text('.gc-work-tab')).toBe('Tasks 150');
+    expect(text('.gc-work-tab[data-tab="tasks"]')).toBe('Tasks 150');
     expect(heads()).toEqual([
       ['Needs you 2', 'true'],
       ['Failed 4', 'true'],
@@ -316,7 +316,7 @@ describe('<WorkPanel> with 150 tasks', () => {
     ]);
     expect(text('.gc-work-chip')).toBe('All 42');
     // The conversation still has them: the tab counts all, the list says how many it hides.
-    expect(text('.gc-work-tab')).toBe('Tasks 150');
+    expect(text('.gc-work-tab[data-tab="tasks"]')).toBe('Tasks 150');
     expect(text('.gc-work-foot span')).toBe('108 cleared from this list. Show them');
 
     // One row: its own button, and the next row takes the keyboard.
@@ -528,7 +528,7 @@ describe('<WorkPanel> with 150 tasks', () => {
     // here, so the row count below is the real bound.
     expect(small).toBeLessThan(1500);
     const large = timed(manyTasks(1500));
-    expect(text('.gc-work-tab')).toBe('Tasks 1500');
+    expect(text('.gc-work-tab[data-tab="tasks"]')).toBe('Tasks 1500');
     // Ten times the tasks, the same number of rows per group.
     expect($$('.gc-work-row')).toHaveLength(8 * 4);
     expect(large).toBeLessThan(3000);

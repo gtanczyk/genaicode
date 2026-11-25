@@ -159,7 +159,7 @@ it('keeps 150 delegated tasks readable in the work panel: groups, filters, clear
     const heads = () => work.locator('.gc-work-group-head > button:first-child').allTextContents();
     const ids = (section?: string) =>
       work.locator(`${section ? `[data-section="${section}"] ` : ''}.gc-work-row .gc-work-id`).allTextContents();
-    await expect.poll(() => work.locator('.gc-work-tab').textContent()).toBe('Tasks 150');
+    await expect.poll(() => work.locator('.gc-work-tab[data-tab="tasks"]').textContent()).toBe('Tasks 150');
     // The chat keeps one line for the 150.
     await expect
       .poll(() => page.locator('.gc-workline').textContent())
@@ -255,7 +255,7 @@ it('keeps 150 delegated tasks readable in the work panel: groups, filters, clear
     await expect.poll(heads).toEqual(['Failed 5', 'Running 29', 'Unmerged 8']);
     expect(await work.locator('.gc-work-chip').first().textContent()).toBe('All 42');
     expect(await work.locator('.gc-work-foot span').textContent()).toBe('108 cleared from this list. Show them');
-    expect(await work.locator('.gc-work-tab').textContent()).toBe('Tasks 150');
+    expect(await work.locator('.gc-work-tab[data-tab="tasks"]').textContent()).toBe('Tasks 150');
     await page.reload();
     await work.locator('.gc-work-foot span').waitFor();
     expect(await heads()).toEqual(['Failed 5', 'Running 29', 'Unmerged 8']);
