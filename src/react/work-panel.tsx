@@ -114,7 +114,7 @@ const GLYPHS: Record<WorkTone, ReactNode> = {
 };
 
 /** A state as a hue and a shape. Decorative: the status is always written beside it. */
-function Glyph({ tone }: { tone: WorkTone }) {
+export function Glyph({ tone }: { tone: WorkTone }) {
   return (
     <svg className="gc-work-glyph" data-tone={tone} viewBox="0 0 12 12" aria-hidden="true">
       {GLYPHS[tone]}
@@ -122,7 +122,7 @@ function Glyph({ tone }: { tone: WorkTone }) {
   );
 }
 
-const GROUP_TONE: Record<WorkGroup, WorkTone> = {
+export const GROUP_TONE: Record<WorkGroup, WorkTone> = {
   ask: 'ask',
   failed: 'err',
   blocked: 'block',

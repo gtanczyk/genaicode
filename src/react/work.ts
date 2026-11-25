@@ -268,10 +268,14 @@ export interface WorkPanelView {
   scroll?: number;
   /** How many tasks the chat had when the panel was last looked at: more than that is news. */
   seen?: number;
+  /** Tasks pinned to Watching on the Live tab (`WorkTask.key`), in the order they were pinned. */
+  pinned?: string[];
+  /** The team feed of the Live tab shows routine steps too, one by one. Default: highlights only. */
+  feed?: 'all';
 }
 
-/** The panel's tabs. Live, Changes and Artifacts come with later steps of the layout. */
-export type WorkTab = 'tasks';
+/** The panel's tabs. Changes and Artifacts come with later steps of the layout. */
+export type WorkTab = 'live' | 'tasks';
 
 export const WORK_VIEW_KEY = 'genaicode-work';
 export const WORK_WIDTH_KEY = 'genaicode-work-width';
@@ -298,12 +302,16 @@ function readViews(store: Store): Array<[string, WorkPanelView]> {
 export function readWorkView(store: Store, chat: string): WorkPanelView {
   const found = readViews(store).find(([key]) => key === chat)?.[1];
   return {
-    tab: 'tasks',
+    tab: found?.tab === 'live' ? 'live' : 'tasks',
     ...(typeof found?.open === 'boolean' ? { open: found.open } : {}),
     ...(typeof found?.task === 'string' ? { task: found.task } : {}),
     ...(found?.folded && typeof found.folded === 'object' ? { folded: found.folded } : {}),
     ...(typeof found?.scroll === 'number' ? { scroll: found.scroll } : {}),
     ...(typeof found?.seen === 'number' ? { seen: found.seen } : {}),
+    ...(Array.isArray(found?.pinned)
+      ? { pinned: found.pinned.filter((key): key is string => typeof key === 'string').slice(0, 20) }
+      : {}),
+    ...(found?.feed === 'all' ? { feed: 'all' as const } : {}),
   };
 }
 
