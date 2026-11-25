@@ -23,6 +23,7 @@
  */
 :root,
 :host,
+:root[data-gc-theme='light'],
 .gc-chat[data-theme='light'],
 .gc-work[data-theme='light'] {
   --gc-color-bg: #fbfaf7;
@@ -76,6 +77,7 @@
   --gc-radius-control: 8px;
   --gc-radius-card: 12px;
 }
+:root[data-gc-theme='dark'],
 .gc-chat[data-theme='dark'],
 .gc-work[data-theme='dark'] {
   --gc-color-bg: #1a1917;

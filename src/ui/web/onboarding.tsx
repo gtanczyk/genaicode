@@ -4,7 +4,7 @@ import type { AgentInspection } from '../../agents/status.js';
 import type { RateLimit } from '../../agents/types.js';
 import { limitChips } from '../../react/format.js';
 
-async function copyText(text: string): Promise<boolean> {
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
@@ -58,6 +58,32 @@ export function CopyCommand({ command, label }: { command: string; label?: strin
 function isUsable(agent: Pick<AgentInspection, 'installed' | 'broken' | 'auth'>): boolean {
   return agent.installed && !agent.broken && agent.auth !== 'signed-out';
 }
+
+/** What a card says of an agent: checked from what is installed, then whether it runs, then its sign-in. */
+export type AgentCardState = 'checking' | 'missing' | 'broken' | 'signed-out' | 'ready' | 'installed';
+
+export function agentCardState(agent: AgentInspection, loading = false): AgentCardState {
+  return loading && agent.installed && !agent.version && agent.auth === 'unknown' && !agent.broken
+    ? 'checking'
+    : !agent.installed
+      ? 'missing'
+      : agent.broken
+        ? 'broken'
+        : agent.auth === 'signed-out'
+          ? 'signed-out'
+          : agent.auth === 'ready'
+            ? 'ready'
+            : 'installed';
+}
+
+export const CARD_STATE_LABEL: Record<AgentCardState, string> = {
+  checking: 'Checking…',
+  missing: 'Not installed',
+  broken: 'Needs reinstall',
+  'signed-out': 'Installed, not signed in',
+  ready: 'Ready',
+  installed: 'Installed',
+};
 
 export interface OnboardingProps {
   agents: readonly AgentInspection[];
@@ -162,30 +188,8 @@ export function Onboarding({
       <ul className="agent-cards">
         {agents.map((agent) => {
           const { guide } = agent;
-          const cardState =
-            loading && agent.installed && !agent.version && agent.auth === 'unknown' && !agent.broken
-              ? 'checking'
-              : !agent.installed
-                ? 'missing'
-                : agent.broken
-                  ? 'broken'
-                  : agent.auth === 'signed-out'
-                    ? 'signed-out'
-                    : agent.auth === 'ready'
-                      ? 'ready'
-                      : 'installed';
-          const statusLabel =
-            cardState === 'checking'
-              ? 'Checking…'
-              : cardState === 'missing'
-                ? 'Not installed'
-                : cardState === 'broken'
-                  ? 'Needs reinstall'
-                  : cardState === 'signed-out'
-                    ? 'Installed, not signed in'
-                    : cardState === 'ready'
-                      ? 'Ready'
-                      : 'Installed';
+          const cardState = agentCardState(agent, loading);
+          const statusLabel = CARD_STATE_LABEL[cardState];
           const account = agent.name.replace(/Live$/, '');
           const agentLimits = limits.filter((limit) => limit.agent === account);
           const chips = agentLimits.length ? limitChips({ usage: {}, rateLimits: agentLimits }, now) : [];
