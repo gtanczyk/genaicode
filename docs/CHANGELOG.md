@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- In the work panel, "Running" beside a long command no longer breaks into one letter a line (#NN)
+- In the work panel, "Running" beside a long command no longer breaks into one letter a line (#370)
 
 ## 3.4.0 — 2026-11-25
 
