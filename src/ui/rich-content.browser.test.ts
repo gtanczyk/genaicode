@@ -582,6 +582,16 @@ describe('rich content in genaicode ui (browser)', () => {
       await page.keyboard.press('Escape');
       await vi.waitFor(() => expect(longTurnAborted).toBe(true));
 
+      // The Artifacts menu closes when Settings takes the chat's place (⌘,): Escape there goes back.
+      await page.getByRole('button', { name: 'Artifacts · 1' }).click();
+      await page.locator('.artifacts-popover').waitFor();
+      await page.keyboard.press('ControlOrMeta+,');
+      const settings = page.getByRole('main', { name: 'Settings' });
+      await settings.waitFor();
+      await page.keyboard.press('Escape');
+      await settings.waitFor({ state: 'detached' });
+      expect(await page.locator('.artifacts-popover').count()).toBe(0);
+
       // Header Artifacts button re-opens an artifact from earlier in the session.
       await page.getByRole('button', { name: 'Artifacts · 1' }).click();
       await page.locator('.artifacts-popover button', { hasText: 'Survey' }).click();
@@ -688,7 +698,7 @@ describe('rich content in genaicode ui (browser)', () => {
     }
   }, 45_000);
 
-  it('persists HTML artifact CDN settings from the sidebar Settings menu and updates CSP live', async () => {
+  it('persists HTML artifact CDN settings from Settings › Artifacts and updates CSP live', async () => {
     mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
     const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'rich-settings-'));
     cleanupDirs.push(root);
@@ -743,33 +753,35 @@ describe('rich content in genaicode ui (browser)', () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       await page.goto(opened!);
 
-      // Settings › HTML artifact CDNs is there in desktop (--exit-with-stdin) mode, off by default.
-      const cdnItem = page.getByRole('menuitem', { name: /HTML artifact CDNs/ });
-      await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      expect(await cdnItem.locator('.pill').count()).toBe(0);
-      await cdnItem.click();
-      const dialog = page.getByRole('dialog', { name: 'Artifact network settings' });
-      await dialog.waitFor();
-      await dialog.locator('textarea').fill('cdn.jsdelivr.net');
-      await dialog.getByRole('button', { name: 'Save' }).click();
-      await dialog.waitFor({ state: 'detached' });
+      // Settings › Artifacts is there in desktop (--exit-with-stdin) mode, off by default.
+      const sections = page.getByRole('navigation', { name: 'Settings sections' });
+      const openArtifacts = async () => {
+        await page.getByRole('button', { name: 'Settings', exact: true }).click();
+        await sections.getByRole('button', { name: 'Artifacts', exact: true }).click();
+      };
+      const section = page.getByRole('region', { name: 'Artifacts' });
+      const hosts = section.getByRole('textbox', { name: 'Extra allowed hosts' });
+      await openArtifacts();
+      expect(await section.getByRole('switch', { name: 'Allow common library CDNs' }).isChecked()).toBe(false);
+      expect(await hosts.inputValue()).toBe('');
+      await hosts.fill('cdn.jsdelivr.net');
+      await section.getByRole('button', { name: 'Save' }).click();
+      await section.getByRole('status').getByText('Settings saved.').waitFor();
 
-      // The menu item says how many hosts are allowed, and stderr emitted the Settings protocol line.
-      await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      await vi.waitFor(async () => expect(await cdnItem.locator('.pill').textContent()).toBe('1'));
+      // stderr emitted the Settings protocol line for the host app.
       await vi.waitFor(() => {
         expect(stderrChunks.join('')).toContain('Settings {"artifactCdn":["https://cdn.jsdelivr.net"]}');
       });
 
-      // Reopening Settings preserves a partial preset host in the custom list so Save does not wipe it.
-      await cdnItem.click();
-      await dialog.waitFor();
-      expect(await dialog.locator('textarea').inputValue()).toBe('cdn.jsdelivr.net');
-      await dialog.getByRole('button', { name: 'Save' }).click();
-      await dialog.waitFor({ state: 'detached' });
-      await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      expect(await cdnItem.locator('.pill').textContent()).toBe('1');
-      await page.keyboard.press('Escape');
+      // Back in the chat and in Settings again: a partial preset host stays in the custom list, so Save does not wipe it.
+      await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).click();
+      await section.waitFor({ state: 'detached' });
+      await openArtifacts();
+      expect(await hosts.inputValue()).toBe('cdn.jsdelivr.net');
+      expect(await section.getByRole('switch', { name: 'Allow common library CDNs' }).isChecked()).toBe(false);
+      await section.getByRole('button', { name: 'Save' }).click();
+      await section.getByRole('status').getByText('Settings saved.').waitFor();
+      await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).click();
 
       // Artifact response now carries the live updated CSP header!
       const artifactHref = await page.locator('.gc-artifact a', { hasText: 'New tab' }).getAttribute('href');

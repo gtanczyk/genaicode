@@ -17,6 +17,16 @@ function readStore(store: Store | undefined): string | null {
   }
 }
 
+/** Input types a person types text into; a checkbox's or a button's `value` is not typed text. */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'number', 'password', 'tel']);
+
+/** Whether Escape lands in a control holding text that was typed (a page stays open over it). */
+export function holdsTypedText(target: EventTarget | null): target is HTMLElement {
+  if (target instanceof HTMLTextAreaElement) return !!target.value;
+  if (target instanceof HTMLInputElement) return TEXT_INPUT_TYPES.has(target.type) && !!target.value;
+  return target instanceof HTMLElement && target.isContentEditable && !!target.textContent;
+}
+
 export interface ShellProps {
   /** The sidebar's content; the shell owns whether it is collapsed. */
   side: Omit<SidebarProps, 'collapsed' | 'onToggle'>;
@@ -40,7 +50,7 @@ export interface ShellProps {
 /**
  * The window: the sidebar on the left, and the slim top bar over the chat or a page. ⌘B folds the
  * sidebar to its rail (remembered; the rail is the default in a narrow window), ⌘N starts a chat,
- * ⌘K is Search. Escape goes back from a page to the chat; it never reaches a running turn from here.
+ * ⌘K is Search, ⌘, opens Settings. Escape goes back from a page to the chat; it never reaches a running turn from here.
  */
 export function Shell(props: ShellProps) {
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(readStore(props.store), window.innerWidth));
@@ -71,10 +81,8 @@ export function Shell(props: ShellProps) {
       if (event.key === 'Escape') {
         // An open dialog takes its own Escape, and so did any menu before the key got here.
         if (document.querySelector('dialog[open]')) return;
-        const target = event.target;
         // Text being typed is not thrown away with the page: Escape clears the field first.
-        if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) && target.value && now.onBack)
-          return;
+        if (holdsTypedText(event.target) && now.onBack) return;
         if (escapeAction({ page: !!now.onBack }) === 'page') {
           event.preventDefault();
           now.onBack?.();
@@ -93,6 +101,9 @@ export function Shell(props: ShellProps) {
       } else if (key === 'k') {
         event.preventDefault();
         now.side.onSearch?.();
+      } else if (key === ',' && now.side.onSettings) {
+        event.preventDefault();
+        now.side.onSettings();
       }
     };
     window.addEventListener('resize', onResize);

@@ -527,6 +527,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       project: options.title.project !== false,
       ...(options.title.home ? { home: true } : {}),
       sessions: !!options.sessions,
+      ...(options.limits ? { limits: true } : {}),
       agents: !!options.agents,
       uploads: !!options.uploads,
       ...(options.projectTeams ? { projectTeams: true } : {}),
