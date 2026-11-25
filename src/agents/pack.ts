@@ -135,6 +135,8 @@ export interface PackTask {
   steers?: PackSteer[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
+  /** The root of a worktree task's worktree (`cwd` may be a folder inside it): what Discard removes. */
+  worktree?: string;
   /** The agent's final message, or the last thing it did while running. */
   text?: string;
   error?: string;
@@ -675,6 +677,7 @@ export function pack(options: PackOptions): Pack {
     ...(sub.run?.steer ? { canSteer: true } : {}),
     ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
     cwd: sub.cwd,
+    ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
       ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
       : sub.status === 'running' && sub.last
@@ -1167,7 +1170,8 @@ export function pack(options: PackOptions): Pack {
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
           // The files listed are those of the revision checked, which Merge locally then takes.
-          if (revision !== sub.checks.revision || !sub.changes) sub.changes = await listChanges(sub, revision);
+          // Read every time: staged-only work changes the list without moving the snapshot.
+          sub.changes = await listChanges(sub, revision);
           const checks = sub.checks;
           const abort = new AbortController();
           const cancel = () => abort.abort();
@@ -1322,6 +1326,8 @@ export function pack(options: PackOptions): Pack {
           sub.inspected = tree;
           const text = patch.toString('utf8');
           // Work only the index holds is in no patch: say where it is, and what Discard would do to it.
+          if (!listed && !text)
+            return "No changes in the working copy. Whether its index holds staged work could not be checked: don't discard it before looking.";
           const staged = (listed ?? []).length && !text ? listed! : [];
           if (staged.length)
             return `No changes in the working copy. Staged in the worktree's index only: ${staged

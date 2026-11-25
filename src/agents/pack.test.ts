@@ -1314,6 +1314,13 @@ describe('pack chat turns', () => {
       await session.idle();
       expect(task()?.changes).toEqual(['M\ta.txt']);
       const dir = task()!.cwd;
+      // Staged, then deleted from the working copy: the snapshot does not move, the list does.
+      writeFileSync(join(dir, 'notes.txt'), 'notes\n');
+      git(dir, 'add', 'notes.txt');
+      rmSync(join(dir, 'notes.txt'));
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tnotes.txt']);
+      git(dir, 'reset', '-q', '--', 'notes.txt');
       // A file added after the task ended: the check's revision has it, and so does the list.
       writeFileSync(join(dir, 'c.txt'), 'c\n');
       await session.actOnPackTask!(1, 't1', { type: 'verify' });
@@ -1369,6 +1376,8 @@ describe('pack chat turns', () => {
       session.send('go');
       await session.idle();
       expect(session.get().turns[0]?.pack?.tasks[0]).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      const ended = session.get().turns[0]!.pack!.tasks[0]!;
+      expect(ended.worktree).toBe(ended.cwd);
     } finally {
       session.close();
       await team.close();

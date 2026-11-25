@@ -532,7 +532,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       .session.turns.find((turn) => turn.id === turnId)
       ?.pack?.tasks.find((one) => one.id === id);
     if (!task?.pullRequest || task.mode !== 'worktree' || !options.pullRequest) return false;
-    const status = await options.pullRequest(task.pullRequest.url, task.cwd, { fresh: true }).catch(() => undefined);
+    const status = await options
+      .pullRequest(task.pullRequest.url, task.worktree ?? task.cwd, { fresh: true })
+      .catch(() => undefined);
     return status?.ours === true;
   };
   /** Folders the person picked in the host app's dialog (real paths): a chat may start in them. */
@@ -960,7 +962,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       let status: Awaited<ReturnType<PullRequestLookup>>;
       try {
         status = options.pullRequest
-          ? await options.pullRequest(task.pullRequest.url, task.mode === 'worktree' ? task.cwd : undefined)
+          ? await options.pullRequest(
+              task.pullRequest.url,
+              task.mode === 'worktree' ? (task.worktree ?? task.cwd) : undefined,
+            )
           : undefined;
       } catch (error) {
         if (error instanceof PullRequestBusy) return send(res, 429, 'application/json', '{"error":"busy"}');

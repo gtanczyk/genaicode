@@ -1755,7 +1755,9 @@ describe('web UI server', () => {
           id: 't1',
           agent: 'codex',
           prompt: 'Open a pull request.',
-          cwd: '/w/.genaicode/worktrees/t1',
+          // Delegated into a folder of the project: the worktree's root is what Discard removes.
+          cwd: '/w/.genaicode/worktrees/t1/pkg',
+          worktree: '/w/.genaicode/worktrees/t1',
           mode: 'worktree' as const,
           status: 'completed' as const,
           state: 'unmerged' as const,
@@ -1812,7 +1814,8 @@ describe('web UI server', () => {
       const found = await get({ conversation: 's1', turn: '1', task: 't1' });
       expect(found.status).toBe(200);
       expect(await found.json()).toEqual({ state: 'merged', ours: true });
-      // The task's worktree goes with the address: whether it opened the pull request is read there.
+      // The task's worktree (its root, not the folder it worked in) goes with the address: whether it
+      // opened the pull request is read there.
       expect(asked).toEqual([['https://github.com/acme/app/pull/351', '/w/.genaicode/worktrees/t1']]);
       expect((await get({ conversation: 's1', turn: '1', task: 't1' }, 'wrong')).status).toBe(403);
       // Another conversation, another turn, a task without a pull request, an address: nothing is asked.
