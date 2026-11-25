@@ -21,11 +21,14 @@ import type {
   ApprovalRequest,
   Artifact,
   CodingAgent,
+  InputDelivery,
   McpServer,
   QuestionAnswers,
   QuestionHandler,
   RateLimit,
 } from './types.js';
+
+export type { InputDelivery } from './types.js';
 
 /** One item of a turn's transcript, built from the run's `AgentEvent`s. */
 export type SessionEntry =
@@ -53,7 +56,8 @@ export type SessionEntry =
       /** A question's answers (`request.kind === 'question'`), secrets masked. */
       answers?: QuestionAnswers;
     }
-  | { kind: 'input'; text: string }
+  /** Input the user sent while the turn ran; `delivery` says whether it reached the agent. */
+  | { kind: 'input'; text: string; delivery?: InputDelivery }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
@@ -811,7 +815,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     takeover = did.length
       ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ${did.join('\n')}\n\n`
       : undefined;
-    const steered = failed.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : []));
+    // Input queued as its own turn runs there; the takeover repeats only what the agent heard.
+    const steered = failed.entries.flatMap((entry) =>
+      entry.kind === 'input' && entry.delivery !== 'queued' ? [entry.text] : [],
+    );
     steeredBefore = steered.length
       ? `\n\nWhile ${agent.name} worked on it, the user added:\n${steered.map((text) => `- ${text}`).join('\n')}`
       : undefined;
@@ -1142,18 +1149,33 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
         if (steerContext) turnContext.push(steerContext);
-        addEntry(turnId, { kind: 'input', text: prompt });
-        current.steer(steerText).catch(() => {
-          // The turn ended before the agent took the input: run it as the next turn instead,
-          // unless the user stopped that turn.
-          if (closed || turnController?.signal.aborted) return;
-          if (steerContext) restoreContext([steerContext]);
-          enqueue(prompt, wantedMode, wantedLeavePlan);
-          if (state.status === 'idle' && !budgetInReview()) {
-            const next = takeNext();
-            if (next !== undefined) startTurn(next.prompt, false, next.pinnedMode);
-          }
-        });
+        let sent: Extract<SessionEntry, { kind: 'input' }> = { kind: 'input', text: prompt, delivery: 'sending' };
+        addEntry(turnId, sent);
+        const deliver = (delivery: InputDelivery) => {
+          const next = { ...sent, delivery };
+          const was = sent;
+          sent = next;
+          updateTurn(turnId, (turn) => ({
+            ...turn,
+            entries: turn.entries.map((entry) => (entry === was ? next : entry)),
+          }));
+        };
+        current.steer(steerText).then(
+          (receipt) => deliver(receipt === 'taken' ? 'delivered' : 'sent'),
+          () => {
+            // The turn ended before the agent took the input: run it as the next turn instead,
+            // unless the user stopped that turn.
+            if (closed) return;
+            if (turnController?.signal.aborted) return deliver('dropped');
+            deliver('queued');
+            if (steerContext) restoreContext([steerContext]);
+            enqueue(prompt, wantedMode, wantedLeavePlan);
+            if (state.status === 'idle' && !budgetInReview()) {
+              const next = takeNext();
+              if (next !== undefined) startTurn(next.prompt, false, next.pinnedMode);
+            }
+          },
+        );
         return;
       }
       enqueue(prompt, wantedMode, wantedLeavePlan);

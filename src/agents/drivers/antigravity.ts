@@ -185,6 +185,8 @@ async function driveAntigravity(session: LiveSession, options: AntigravityAgentO
     activePrompt.catch(() => {});
     const outcome = await settled;
     if (!outcome.ok) throw outcome.error;
+    // The prompt resolves once the agent has answered it.
+    return 'taken';
   });
 
   while (activePrompt) {

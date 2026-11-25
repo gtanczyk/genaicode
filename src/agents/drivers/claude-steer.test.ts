@@ -115,17 +115,17 @@ describe('claude() steering', () => {
   });
 
   it('hands a steer to the running turn', async () => {
-    let steered: Promise<void> | undefined;
+    let steered: Promise<unknown> | undefined;
     const { result, events } = await runWith({}, (run) => (steered = run.steer!('also add tests')));
-    await expect(steered).resolves.toBeUndefined();
+    await expect(steered).resolves.toBe('taken');
     expect(result).toMatchObject({ ok: true, text: 'heard: build it | also add tests' });
     expect(events.filter((event) => event.type === 'tool-start')).toHaveLength(1);
   });
 
   it('runs a steer that came too late for its turn as one more turn, then ends', async () => {
-    let steered: Promise<void> | undefined;
+    let steered: Promise<unknown> | undefined;
     const { result, events } = await runWith({ FAKE_NO_LATE: '1' }, (run) => (steered = run.steer!('and docs')));
-    await expect(steered).resolves.toBeUndefined();
+    await expect(steered).resolves.toBe('taken');
     expect(result).toMatchObject({ ok: true, text: 'heard: and docs' });
     expect(events.filter((event) => event.type === 'tool-start')).toHaveLength(2);
   });
@@ -137,7 +137,7 @@ describe('claude() steering', () => {
   });
 
   it('rejects a steer the agent never took when the task is stopped', async () => {
-    let steered: Promise<void> | undefined;
+    let steered: Promise<unknown> | undefined;
     const { result } = await runWith({ FAKE_NO_LATE: '1', FAKE_TOOL_MS: '5000' }, (run) => {
       steered = run.steer!('never mind');
       steered.catch(() => {});

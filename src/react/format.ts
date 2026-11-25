@@ -1,9 +1,39 @@
 /** Display helpers shared by the chat front ends (`genaicode/react`, the terminal UI). No React here. */
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import type { AgentBudget, RateLimit } from '../agents/types.js';
+import type { AgentBudget, InputDelivery, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
-import type { PackStopCause, PackTask } from '../agents/pack.js';
+import type { PackSteer, PackStopCause, PackTask } from '../agents/pack.js';
 import type { PackTaskChecks } from '../agents/pack-checks.js';
+
+/**
+ * Plain words for what became of input sent while an agent worked ("Seen by claude"). Input
+ * recorded before delivery was tracked reads "Sent while working".
+ */
+export function inputDeliveryText(delivery: InputDelivery | undefined, agent: string): string {
+  const who = agent || 'the agent';
+  switch (delivery) {
+    case 'sending':
+      return 'Sending…';
+    case 'delivered':
+      return `Seen by ${who}`;
+    case 'sent':
+      return `Sent to ${who}`;
+    case 'queued':
+      return 'Queued for the next turn';
+    case 'dropped':
+      return 'Not delivered: stopped first';
+    default:
+      return 'Sent while working';
+  }
+}
+
+/** Who sent input to a delegated task and what became of it: "Your message: Seen by codex". */
+export function packSteerText(steer: PackSteer, agent: string): string {
+  const who = steer.from === 'lead' ? 'Lead’s message' : 'Your message';
+  const delivery =
+    steer.delivery === 'dropped' ? 'Not delivered: the task ended first' : inputDeliveryText(steer.delivery, agent);
+  return `${who}: ${delivery}`;
+}
 
 export function packQuotaText(agent: string, hint: NonNullable<PackTask['quotaHint']>): string {
   const time = (ms: number) =>

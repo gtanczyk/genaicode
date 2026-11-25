@@ -14,6 +14,7 @@ import {
 import type { Notice } from '../controller.js';
 import { plainSessionText } from '../controller.js';
 import {
+  inputDeliveryText,
   packMetrics,
   packTaskElapsed,
   packTaskList,
@@ -119,7 +120,18 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
   }
 }
 
-export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; outputLines: number; cwd?: string }) {
+export function EntryView({
+  entry,
+  outputLines,
+  cwd,
+  agent,
+}: {
+  entry: SessionEntry;
+  outputLines: number;
+  cwd?: string;
+  /** The agent the turn talks to, named in an input's delivery. */
+  agent?: string;
+}) {
   switch (entry.kind) {
     case 'progress':
       return (
@@ -207,7 +219,10 @@ export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; ou
         <Text>
           <Text color="cyan">› </Text>
           {entry.text}
-          <Text color="gray"> (sent while working)</Text>
+          <Text color={entry.delivery === 'dropped' ? 'red' : entry.delivery === 'delivered' ? 'green' : 'gray'}>
+            {' '}
+            ({inputDeliveryText(entry.delivery, agent ?? '').replace(/^\w/, (first) => first.toLowerCase())})
+          </Text>
         </Text>
       );
     case 'error':
@@ -266,7 +281,7 @@ export function TurnView({
         {entries.map((entry, i) => (
           // Tool steps stack tightly; prose gets a blank line around it.
           <Box key={i + hidden} marginTop={i > 0 && (entry.kind === 'text' || entries[i - 1].kind === 'text') ? 1 : 0}>
-            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} />
+            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} agent={turn.pack?.lead ?? turn.agent} />
           </Box>
         ))}
       </Box>

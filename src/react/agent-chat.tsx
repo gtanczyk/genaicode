@@ -26,6 +26,7 @@ import {
   formatBytes,
   formatDuration,
   formatUsage,
+  inputDeliveryText,
   limitChips,
   relativePath,
   shortId,
@@ -1171,8 +1172,13 @@ function Entry({
       const shown = prompt ? prompt(entry.text) : entry.text;
       if (shown === null || shown === undefined || shown === false) return null;
       return (
-        <div className="gc-prompt gc-steer">
-          <small>Sent while working</small>
+        <div className="gc-prompt gc-steer" data-delivery={entry.delivery}>
+          <small
+            role="status"
+            aria-label={`Your message: ${inputDeliveryText(entry.delivery, agent).replace(/…$/, '')}`}
+          >
+            {inputDeliveryText(entry.delivery, agent)}
+          </small>
           {shown}
         </div>
       );
