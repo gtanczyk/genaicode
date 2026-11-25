@@ -514,7 +514,8 @@ export interface WorkChanges {
 }
 
 function patchPath(name: string): string {
-  const path = name.replace(/\t.*$/, '').trim();
+  // Git puts a tab and a timestamp after the name.
+  const path = name.split('\t', 1)[0]!.trim();
   return path === '/dev/null' ? '' : path.replace(/^[ab]\//, '');
 }
 
