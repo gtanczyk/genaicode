@@ -455,7 +455,19 @@ export function AgentChat(props: AgentChatProps) {
     }
   };
   // Turn ids start again in each conversation: what a turn remembers is kept per conversation.
-  const conversation = props.chatId ?? String(state.turns[0]?.startedAt ?? '');
+  const firstTurn = state.turns[0]?.startedAt;
+  const chatId = props.chatId || undefined;
+  const previousChat = useRef<{ id?: string; firstTurn?: number; key: string }>(undefined);
+  const previous = previousChat.current;
+  const sameChat =
+    previous &&
+    (chatId
+      ? previous.id === chatId || (!previous.id && previous.firstTurn === firstTurn)
+      : !previous.id && previous.firstTurn === firstTurn);
+  const conversation = sameChat ? previous.key : chatId ? `chat:${chatId}` : `first:${firstTurn ?? ''}`;
+  useLayoutEffect(() => {
+    previousChat.current = { id: chatId, firstTurn, key: conversation };
+  }, [chatId, firstTurn, conversation]);
   state.turns.forEach((turn, index) => {
     flush(index);
     items.push(

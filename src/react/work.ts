@@ -3,7 +3,8 @@
  * the groups of "what to do next", their status in words, the panel's place beside the chat, and
  * what is remembered of it per chat.
  */
-import type { PackTaskChecks } from '../agents/pack-checks.js';
+import { reviewBlocker } from '../agents/pack-verdict.js';
+export { reviewBlocker } from '../agents/pack-verdict.js';
 import type { PackPullRequest, PackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalRequest, Artifact } from '../agents/types.js';
@@ -22,13 +23,14 @@ export const WORK_PANEL_VIEWER = 600;
  * full-width view in the chat's place. Docked, it is `saved` (or the default) between
  * `WORK_PANEL_MIN` and `max`: what the chat leaves, and never more than half the window.
  */
-export function workPanelLayout(sizes: { room: number; window: number; saved?: number }): {
+export function workPanelLayout(sizes: { room: number; window: number; saved?: number; viewer?: boolean }): {
   docks: boolean;
   width: number;
   max: number;
 } {
-  const max = Math.floor(Math.min(sizes.room - WORK_CHAT_MIN, sizes.window / 2));
-  const docks = max >= WORK_PANEL_MIN;
+  const docks = sizes.room >= WORK_CHAT_MIN + WORK_PANEL_MIN && sizes.window / 2 >= WORK_PANEL_MIN;
+  // A docked viewer can take its full preferred width while the chat keeps at least 540 px.
+  const max = Math.floor(Math.min(sizes.room - (sizes.viewer && docks ? 540 : WORK_CHAT_MIN), sizes.window / 2));
   const width = Math.max(WORK_PANEL_MIN, Math.min(Math.round(sizes.saved ?? WORK_PANEL_DEFAULT), max));
   return { docks, width: docks ? width : WORK_PANEL_MIN, max: Math.max(max, WORK_PANEL_MIN) };
 }
@@ -76,23 +78,6 @@ export interface WorkTask {
   group: WorkGroup;
   /** What the host learned of the pull request its reply links to, once it looked. */
   pullRequest?: PullRequestStatus;
-}
-
-/**
- * A review that stands in the way of a merge: one on the current revision that failed, whose notes
- * have a line that starts with BLOCKER, or whose last verdict line asks for changes (the reviewer is
- * asked to end with `VERDICT: LGTM` or `VERDICT: CHANGES REQUESTED`). Quoted lines (`> …`), such as
- * an earlier round's findings, are not this review's.
- */
-export function reviewBlocker(checks: PackTaskChecks | undefined): boolean {
-  const review = checks?.review;
-  if (!review || review.status === 'running' || review.revision !== checks.revision) return false;
-  if (review.status === 'failed') return true;
-  const own = (review.detail ?? '').split('\n').filter((line) => !/^\s*>/.test(line));
-  if (own.some((line) => /^[\s*_#\-\d.)]*BLOCKER\b/.test(line))) return true;
-  const verdict = [...own].reverse().find((line) => /^[\s*_#]*VERDICT\s*:/i.test(line));
-  // One class between the colon and the words: no two runs that could match the same spaces.
-  return !!verdict && /VERDICT\s*:[\s*_]*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/i.test(verdict);
 }
 
 /**
@@ -144,6 +129,9 @@ export function workTasks(
   pullRequests?: Readonly<Record<string, PullRequestStatus | undefined>>,
 ): WorkTask[] {
   const list: WorkTask[] = [];
+  // Continued tasks appear in both turn transcripts. The panel shows one row, owned by
+  // the latest turn so that approvals and actions address the worker now running.
+  const rows = new Map<string, number>();
   for (const turn of state?.turns ?? []) {
     if (!turn.pack) continue;
     // Only a turn still running has approvals to answer.
@@ -153,7 +141,10 @@ export function workTasks(
       const asks = pending.filter((request) => request.subtaskId === task.id);
       const key = `${turn.id}:${task.id}`;
       const pullRequest = task.pullRequest ? pullRequests?.[key] : undefined;
-      list.push({
+      const identity = JSON.stringify([task.id, task.startedAt, task.cwd, task.agent]);
+      const index = rows.get(identity) ?? list.length;
+      rows.set(identity, index);
+      list[index] = {
         key,
         turnId: turn.id,
         task,
@@ -162,7 +153,7 @@ export function workTasks(
         lead: turn.pack.lead,
         group: groupOf(task, asks.length, pullRequest),
         ...(pullRequest ? { pullRequest } : {}),
-      });
+      };
     }
   }
   return list;
@@ -408,6 +399,25 @@ export function askSubject(request: ApprovalRequest): string {
   return (request.summary ?? request.kind).replace(/^\[[^\]]*\]\s*/, '');
 }
 
+export interface ConfirmedCommand {
+  turn: number;
+  task: string;
+  command: string;
+}
+
+/** What the person sees before approving one command in a group, including full vendor arguments. */
+export function approvalCommand(request: ApprovalRequest): string | undefined {
+  const summary = request.summary;
+  if (request.detail == null) return summary && askSubject(request) !== request.kind ? summary : undefined;
+  try {
+    const detail = typeof request.detail === 'string' ? request.detail : JSON.stringify(request.detail, null, 2);
+    if (!detail) return undefined;
+    return summary && detail !== summary ? summary + '\n' + detail : detail;
+  } catch {
+    return undefined;
+  }
+}
+
 /** What the person can do when no agent can review a task's changes. */
 export function reviewHelp(task: PackTask): string {
   return (
@@ -431,11 +441,11 @@ export const MERGE_LOCALLY_HELP =
 
 /** What is left to do with a worktree whose work is in a pull request. */
 export const PULL_REQUEST_HELP =
-  'The work is in the pull request, so there is nothing to merge here. Discard removes the local worktree copy only.';
+  'The work is in the pull request, so there is nothing to merge here. You can discard the task and recover its local worktree later.';
 
 /** What is left to do with a worktree whose task changed no files. */
 export const NO_CHANGES_HELP =
-  'Git sees no changes, so there is nothing to merge. Discard worktree deletes its folder, files Git ignores (logs, build output) included.';
+  'Git sees no changes, so there is nothing to merge. Discard keeps the folder available for recovery, including ignored files.';
 
 // ---------------------------------------------------------------------------------------------
 // Artifacts and Changes
@@ -495,6 +505,8 @@ export interface WorkLeadChange {
 
 /** A file a delegated task changed, in its worktree or (a shared task) in the chat's folder. */
 export interface WorkTaskChange {
+  added?: number;
+  removed?: number;
   path: string;
   /** Where a renamed or copied file came from. */
   from?: string;
@@ -612,6 +624,7 @@ export function workChanges(
         path,
         ...(names.length > 1 ? { from: names[0] } : {}),
         kind: letter in WORK_CHANGE_WORD ? letter : 'M',
+        ...task.fileStats?.[path],
         task: item.key,
         id: task.id,
         state: task.state ?? 'shared',
@@ -632,7 +645,7 @@ export function workChanges(
         !!turn.pack &&
         entry.paths.length > 0 &&
         entry.paths.every((path) =>
-          merged.some((row) => row.task.startsWith(`${turn.id}:`) && samePath(row.local, path, cwd)),
+          merged.some((row) => (!entry.mergedTask || row.id === entry.mergedTask) && samePath(row.local, path, cwd)),
         );
       if (ofMerge) continue;
       const patches = entry.diff ? patchFiles(entry.diff) : [];
@@ -724,6 +737,7 @@ export function taskChatPath(task: PackTask, path: string): string {
  */
 export function taskFilePath(task: PackTask, path: string, cwd: string): string | undefined {
   const join = (dir: string, file: string) => (dir ? `${dir.replace(/[\\/]$/, '')}/${file}` : file);
+  if (task.mode === 'worktree' && task.state === 'discarded') return undefined;
   if (task.mode === 'worktree' && task.state === 'unmerged') return join(task.worktree ?? task.cwd, path);
   const local = taskChatPath(task, path);
   return local.startsWith('../') ? undefined : join(cwd, local);

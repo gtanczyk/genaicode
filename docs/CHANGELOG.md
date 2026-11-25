@@ -8,9 +8,15 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- The work panel confirms bulk approvals and checked merges, shows per-file changes, and lets you undo a discard. Merged and discarded worktrees stay on disk for recovery (#358, #365).
+
 ### Fixed
 
 - **Open session transcripts directly and see why a reply failed.** (#369)
+- In the work panel, "Running" beside a long command no longer breaks into one letter a line (#370)
+- Browser commands follow the conversation generation across windows. Resumed pack tasks renew their checks, and streaming waits report increasing progress and a final JSON-RPC response (#354, #362).
 
 ## 3.4.0 — 2026-11-25
 

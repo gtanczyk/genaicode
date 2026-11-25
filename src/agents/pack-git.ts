@@ -1,5 +1,15 @@
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -63,13 +73,16 @@ export async function currentBranch(cwd: string): Promise<string | undefined> {
 }
 
 /** Everything in `dir` (tracked, changed and untracked, minus ignored) as a git tree. Stages nothing. */
-export async function snapshotTree(dir: string): Promise<string> {
+export async function snapshotTree(dir: string, strict = false): Promise<string> {
   const scratch = mkdtempSync(path.join(tmpdir(), 'genaicode-pack-index-'));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, 'index') };
   try {
     const head = await git(dir, ['rev-parse', '--verify', '-q', 'HEAD']);
     if (head.code === 0) await must(dir, ['read-tree', head.stdout.toString().trim()], { env });
-    await must(dir, ['add', '-A'], { env });
+    const settings = strict
+      ? ['-c', 'core.ignoreCase=false', '-c', 'core.fileMode=true', '-c', 'core.symlinks=true']
+      : [];
+    await must(dir, [...settings, 'add', '-A'], { env });
     return (await must(dir, ['write-tree'], { env })).trim();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -159,7 +172,16 @@ export async function worktreeChanges(dir: string, start: string, tree?: string)
  * Files staged in the worktree's own index that differ from its HEAD, as `git diff --name-status`
  * lines. A snapshot misses them once the working copy no longer has them (staged, then deleted).
  */
-export async function stagedChanges(dir: string): Promise<string[]> {
+export async function stagedChanges(dir: string, revision?: string): Promise<string[]> {
+  if (revision) {
+    // Both comparisons use the real index. Only their intersection has a staged version
+    // different from both HEAD and the working-copy snapshot.
+    const changed = await stagedChanges(dir);
+    const different = new Set(
+      (await must(dir, ['diff', '--cached', '--name-only', '--no-renames', revision])).split('\n'),
+    );
+    return changed.filter((line) => different.has(line.slice(line.indexOf('\t') + 1)));
+  }
   return (await must(dir, ['diff', '--cached', '--name-status', '--no-renames', 'HEAD'])).split('\n').filter(Boolean);
 }
 
@@ -183,7 +205,9 @@ export async function patchCoversWorktree(
   if (empty && tree !== startTree) return false;
   const index = await indexTree(dir);
   if (index === undefined || !(await stagedInSnapshot(dir, startTree, index, tree))) return false;
-  return !(await submoduleWork(dir)) && !(await gitlinkChanged(dir, start, tree));
+  return (
+    tree === (await snapshotTree(dir, true)) && !(await submoduleWork(dir)) && !(await gitlinkChanged(dir, start, tree))
+  );
 }
 
 /**
@@ -237,16 +261,26 @@ async function stagedInSnapshot(dir: string, startTree: string, index: string, t
  * it, so removing the worktree would lose it.
  */
 async function submoduleWork(dir: string): Promise<boolean> {
-  const status = await must(dir, [
-    'status',
-    '--porcelain=v2',
-    '-z',
-    '--untracked-files=all',
-    '--ignore-submodules=none',
-  ]);
-  // Changed entries ("1 XY sub …", "2 XY sub …", "u XY sub …"): `sub` is S<c><m><u> for a submodule,
-  // which git lists only when something about it changed (a staged new commit shows as `S...`).
-  return status.split('\0').some((entry) => /^[12u] \S\S S/.test(entry));
+  const entries = await must(dir, ['ls-files', '--stage', '-z']);
+  for (const entry of entries.split('\0')) {
+    const link = /^160000 ([0-9a-f]+) 0\t([\s\S]+)$/.exec(entry);
+    if (!link) continue;
+    const child = path.join(dir, link[2]!);
+    const stat = lstatSync(child, { throwIfNoEntry: false });
+    if (!stat) continue;
+    if (!stat.isDirectory()) return true;
+    if (!existsSync(path.join(child, '.git'))) {
+      if (readdirSync(child).length) return true;
+    } else if (!(await worktreeMatchesCommit(child, link[1]!))) return true;
+  }
+  return false;
+}
+
+/** Compare the actual files (using a fresh index), staged content and nested repositories to a commit. */
+export async function worktreeMatchesCommit(dir: string, commit: string): Promise<boolean> {
+  if ((await must(dir, ['rev-parse', 'HEAD'])).trim() !== commit) return false;
+  const tree = (await must(dir, ['rev-parse', 'HEAD^{tree}'])).trim();
+  return (await indexTree(dir)) === tree && (await snapshotTree(dir, true)) === tree && !(await submoduleWork(dir));
 }
 
 /** The worktree's own index as a tree, written from a copy so the index itself is not touched; undefined while it has conflicts. */
@@ -263,11 +297,33 @@ async function indexTree(dir: string): Promise<string | undefined> {
   }
 }
 
+/** Git omits line counts for binary changes. Keep the same path spelling as --name-status. */
+export async function worktreeStats(dir: string, start: string, revision: string) {
+  const stats: Record<string, { added: number; removed: number }> = Object.create(null);
+  const output = await must(dir, ['diff', '--no-renames', '--numstat', start, revision]);
+  for (const line of output.split('\n')) {
+    const match = /^(\d+)\t(\d+)\t(.+)$/.exec(line);
+    if (match) stats[match[3]!] = { added: Number(match[1]), removed: Number(match[2]) };
+  }
+  return stats;
+}
+
 /** The worktree's changes since `start` as a patch `git apply` takes. */
-export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
+export async function worktreeDiff(dir: string, start: string, tree: string, file?: string): Promise<Buffer> {
+  // --name-status C-quotes unusual names for display. Resolve that spelling against the
+  // same tree's NUL-delimited path list before passing a literal pathspec back to Git.
+  if (file?.startsWith('"')) {
+    const args = ['diff', '--no-renames', '--name-only'];
+    const display = (await must(dir, [...args, start, tree])).split('\n');
+    const raw = (await must(dir, [...args, '-z', start, tree])).split('\0');
+    const index = display.indexOf(file);
+    if (index < 0) return Buffer.alloc(0);
+    file = raw[index];
+  }
   // The patch's form is pinned: a person's diff settings (no prefixes, other prefixes, less
   // context) would make `git apply` put a file elsewhere or a line in the wrong place.
   return mustBytes(dir, [
+    '--literal-pathspecs',
     'diff',
     '--binary',
     '--no-renames',
@@ -279,6 +335,7 @@ export function worktreeDiff(dir: string, start: string, tree: string): Promise<
     '--unified=3',
     start,
     tree,
+    ...(file ? ['--', file] : []),
   ]);
 }
 

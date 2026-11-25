@@ -18,6 +18,7 @@ import type { SessionTurn } from '../../agents/session.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AskDecision, PendingAsk } from '../../agents/sessions/answer.js';
 import type { ChatController, ChatSwitch, SwitchOrder } from '../controller.js';
+import { approvalCommand, type ConfirmedCommand } from '../../react/work.js';
 import { currentBranch, repoRoot } from '../../agents/pack-git.js';
 import type { TowerDecision } from '../../agents/sessions/tower.js';
 import {
@@ -282,7 +283,9 @@ export interface WebUi {
 }
 
 /** What the browser can ask for. Anything else is rejected with 400. */
-export type WebCommand =
+export type WebCommand = { generation?: number } & WebCommandBody;
+
+type WebCommandBody =
   /** `files`: ids of uploads (POST /api/upload) that go with the prompt. */
   | { type: 'submit'; text: string; files?: string[] }
   /**
@@ -290,7 +293,7 @@ export type WebCommand =
    * turn of that conversation: one that arrives after the window moved on changes nothing.
    */
   | { type: 'stop'; conversation?: string; turn?: number }
-  | { type: 'approve'; id: string; decision: 'approve' | 'deny' }
+  | { type: 'approve'; id: string; decision: 'approve' | 'deny'; confirmed?: ConfirmedCommand }
   /** Answer a question of the agent: chosen option labels or typed text per question id. */
   | { type: 'answer'; id: string; answers: Record<string, string[]> }
   | { type: 'tower'; id: string; decision: TowerDecision }
@@ -318,7 +321,7 @@ export type WebCommand =
  * among the requests of the page that sent it: one that arrives after a later one is answered
  * `{ ok: false, superseded: true }` and changes nothing.
  */
-export type WebSwitchCommand = WebSwitchTarget & { order?: SwitchOrder };
+export type WebSwitchCommand = WebSwitchTarget & { order?: SwitchOrder; generation?: number };
 
 type WebSwitchTarget =
   /**
@@ -366,6 +369,17 @@ function sessionCookies(cookieHeader: string | undefined, currentName: string, s
 export function parseCommand(value: unknown): WebCommand | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const command = value as Record<string, unknown>;
+  const { generation } = command;
+  if (
+    generation !== undefined &&
+    (typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 0)
+  )
+    return undefined;
+  const parsed = parseCommandBody(command);
+  return parsed && generation !== undefined ? { ...parsed, generation } : parsed;
+}
+
+function parseCommandBody(command: Record<string, unknown>): WebCommandBody | undefined {
   const text = (key: string, max: number) =>
     typeof command[key] === 'string' && (command[key] as string).length <= max ? (command[key] as string) : undefined;
   switch (command.type) {
@@ -415,7 +429,25 @@ export function parseCommand(value: unknown): WebCommand | undefined {
           (typeof revision !== 'string' || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(revision))
         )
           return undefined;
-        return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) }, ...scope };
+        const { checked, path } = action as Record<string, unknown>;
+        if (checked !== undefined && (type !== 'merge' || checked !== true || !revision)) return undefined;
+        if (
+          path !== undefined &&
+          (type !== 'diff' || typeof path !== 'string' || !path || path.length > 4096 || path.includes('\0'))
+        )
+          return undefined;
+        return {
+          type: 'pack-task',
+          turnId,
+          id,
+          action: {
+            type,
+            ...(revision ? { revision } : {}),
+            ...(checked ? { checked: true as const } : {}),
+            ...(path ? { path } : {}),
+          },
+          ...scope,
+        };
       }
       if (type === 'discard') {
         // `empty`: the page showed no changes; the pack refuses if the worktree has some by now.
@@ -429,7 +461,7 @@ export function parseCommand(value: unknown): WebCommand | undefined {
           ...scope,
         };
       }
-      if (type === 'stop' || type === 'review' || type === 'verify')
+      if (type === 'restore' || type === 'stop' || type === 'review' || type === 'verify')
         return { type: 'pack-task', turnId, id, action: { type }, ...scope };
       return undefined;
     }
@@ -444,6 +476,19 @@ export function parseCommand(value: unknown): WebCommand | undefined {
       const id = text('id', 200);
       const decision = command.decision;
       if (id === undefined || (decision !== 'approve' && decision !== 'deny')) return undefined;
+      if (command.confirmed !== undefined) {
+        if (!command.confirmed || typeof command.confirmed !== 'object') return undefined;
+        const { turn, task, command: shown } = command.confirmed as Record<string, unknown>;
+        if (
+          typeof turn !== 'number' ||
+          !Number.isSafeInteger(turn) ||
+          turn < 1 ||
+          typeof task !== 'string' ||
+          typeof shown !== 'string'
+        )
+          return undefined;
+        return { type: 'approve', id, decision, confirmed: { turn, task, command: shown } };
+      }
       return { type: 'approve', id, decision };
     }
     case 'answer': {
@@ -1346,9 +1391,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
       // A command pressed in one conversation never acts on the next one the window moved to.
       if (
-        (command.type === 'pack-task' || command.type === 'stop') &&
-        command.conversation !== undefined &&
-        command.conversation !== chatKey(controller.get())
+        (!isSwitch(command) &&
+          command.generation !== undefined &&
+          command.generation !== controller.get().generation) ||
+        ((command.type === 'pack-task' || command.type === 'stop') &&
+          command.conversation !== undefined &&
+          command.conversation !== chatKey(controller.get()))
       )
         return send(
           res,
@@ -1383,6 +1431,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
             }),
           );
         try {
+          if (command.generation !== undefined && command.generation !== controller.get().generation)
+            return send(
+              res,
+              409,
+              'application/json',
+              '{"ok":false,"reason":"conversation","error":"The conversation changed."}',
+            );
           const text = await controller.session.actOnPackTask(command.turnId, command.id, command.action);
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
         } catch (error) {
@@ -1398,7 +1453,11 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         }
       }
       if (isSwitch(command)) {
-        const result = await controller.switchChat(switchTarget(command, chosenFolders), command.order);
+        const result = await controller.switchChat(
+          switchTarget(command, chosenFolders),
+          command.order,
+          command.generation,
+        );
         return send(
           res,
           200,
@@ -1510,6 +1569,19 @@ async function run(
       controller.stop();
       return true;
     case 'approve':
+      if (command.confirmed) {
+        const { turn, task, command: shown } = command.confirmed;
+        const state = controller.get().session;
+        const request = state.approvals.find((one) => one.id === command.id);
+        if (
+          turn !== state.turns.at(-1)?.id ||
+          request?.kind !== 'command' ||
+          request.subtaskId !== task ||
+          request.scope === 'turn' ||
+          approvalCommand(request) !== shown
+        )
+          return false;
+      }
       return controller.approve(command.id, command.decision);
     case 'answer':
       return controller.answer(command.id, command.answers);

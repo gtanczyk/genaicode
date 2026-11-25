@@ -117,7 +117,12 @@ async function command(body: WebCommand): Promise<boolean> {
  * Sends `text`, first keeping `files` with the server so the agent can read them from the project.
  * Resolves to what went wrong when nothing was sent: a prompt never goes without one of its files.
  */
-async function sendPrompt(text: string, files: File[], dropped: AbortSignal): Promise<string | undefined> {
+async function sendPrompt(
+  text: string,
+  files: File[],
+  dropped: AbortSignal,
+  generation?: number,
+): Promise<string | undefined> {
   const ids: string[] = [];
   for (const file of files) {
     if (dropped.aborted) return STOPPED;
@@ -138,7 +143,7 @@ async function sendPrompt(text: string, files: File[], dropped: AbortSignal): Pr
   }
   // Stop drops what waits, as it does the prompts queued with the agent.
   if (dropped.aborted) return STOPPED;
-  const sent = await command(ids.length ? { type: 'submit', text, files: ids } : { type: 'submit', text }).catch(
+  const sent = await command({ type: 'submit', text, generation, ...(ids.length ? { files: ids } : {}) }).catch(
     () => false,
   );
   return sent ? undefined : 'Not sent: genaicode did not take the message.';
@@ -1028,7 +1033,7 @@ function App() {
     refreshLookups();
     switchingRef.current = true;
     setSwitching(true);
-    return command({ ...request, order: { window: WINDOW_ID, seq: mine } })
+    return command({ generation: view?.generation, ...request, order: { window: WINDOW_ID, seq: mine } })
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
@@ -1056,9 +1061,13 @@ function App() {
    * path looked up, the host's dialog answered): dropped, resolving undefined, when another chat was
    * asked for since, so a slow answer never takes the window back from a later choice.
    */
+  const latestGeneration = useRef(view?.generation);
+  latestGeneration.current = view?.generation;
   const chatMark = () => switchSeq.current;
   const startChosenProject = (path: string, mark: number) =>
-    mark === switchSeq.current ? startProjectChat(path) : Promise.resolve(undefined);
+    mark === switchSeq.current && latestGeneration.current === view?.generation
+      ? startProjectChat(path)
+      : Promise.resolve(undefined);
   /**
    * The chat stays where it is (its folder picked again, `/clear`): a choice still under way is
    * dropped. A request the server has not answered yet is dropped there too.
@@ -1107,7 +1116,8 @@ function App() {
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   // A setting takes effect now: it does not wait behind a prompt whose files still upload.
-  const control = (text: string) => void command({ type: 'submit', text });
+  const inChat = (body: Exclude<WebCommand, { type: 'auto' }>) => command({ ...body, generation: view?.generation });
+  const control = (text: string) => void inChat({ type: 'submit', text });
   // Auto-approve is for the conversation shown when it is clicked: the server refuses it once
   // another is shown (a click that arrives after this window, or another one, opened a new chat).
   const setAutoApprove = (on: boolean) =>
@@ -1118,7 +1128,7 @@ function App() {
   // submitted prompt keeps the mode that was active when the user sent it.
   const orderedControl = (text: string): Promise<boolean> => {
     const mine = sending.then(() =>
-      command({ type: 'submit', text }).then(
+      inChat({ type: 'submit', text }).then(
         () => true,
         () => true,
       ),
@@ -1149,17 +1159,20 @@ function App() {
   const chatKey = chatKeyOf({ conversation, session });
   // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
   const [workFullOpen, setWorkFullOpen] = useState(false);
-  const [work, setWork] = useState<{ chat: string; view: WorkPanelView }>(() => ({
+  const [work, setWork] = useState<{ chat: string; generation?: number; view: WorkPanelView }>(() => ({
+    generation: view?.generation,
     chat: chatKey,
     view: readWorkView(workStore(), chatKey),
   }));
-  if (work.chat !== chatKey) {
+  if (work.chat !== chatKey || work.generation !== view?.generation) {
     // The chat got its id: what was chosen in it meanwhile stays. Another chat: what was remembered for it.
-    const carried =
-      work.chat === '' &&
-      (work.view.open !== undefined || work.view.task !== undefined || work.view.viewing !== undefined);
+    const carried = work.chat === '' && work.generation === view?.generation && !!chatKey;
     if (carried) writeWorkView(workStore(), chatKey, work.view);
-    setWork({ chat: chatKey, view: carried ? work.view : readWorkView(workStore(), chatKey) });
+    setWork({
+      chat: chatKey,
+      generation: view?.generation,
+      view: carried ? work.view : readWorkView(workStore(), chatKey),
+    });
     if (!carried) {
       setWorkFullOpen(false);
       setExpanded(false);
@@ -1168,16 +1181,29 @@ function App() {
   }
   const workView = work.view;
   const setWorkView = (next: WorkPanelView) => {
-    setWork({ chat: chatKey, view: next });
+    setWork({ chat: chatKey, generation: view?.generation, view: next });
     if (chatKey) writeWorkView(workStore(), chatKey, next);
   };
+  useEffect(() => {
+    if (
+      sessionArtifacts.length &&
+      !tasks.length &&
+      workView.open === undefined &&
+      workView.tab === 'tasks' &&
+      !workView.viewing &&
+      !workView.task
+    ) {
+      setWorkView({ ...workView, tab: 'artifacts' });
+    }
+  }, [view?.generation, sessionArtifacts.length]);
   const viewing = workView.viewing;
   const [room, setRoom] = useState(() => ({ room: window.innerWidth, window: window.innerWidth }));
   const [savedWidth, setSavedWidth] = useState(() => workWidth.get());
   const [savedViewerWidth, setSavedViewerWidth] = useState(() => viewerWidth.get());
-  // With a file or an artifact open the panel is 600 px wide where the chat keeps its own 600.
+  // The docked viewer has its own preferred width and resize setting.
   const workLayout = workPanelLayout({
     ...room,
+    viewer: !!viewing,
     saved: viewing ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
   });
   const latestLayout = useRef(workLayout);
@@ -1187,7 +1213,7 @@ function App() {
   const workOpen =
     panel === 'chat' &&
     (hasWork || !!viewing) &&
-    (workLayout.docks ? (workView.open ?? tasks.length > 0) : workFullOpen);
+    (workLayout.docks ? (workView.open ?? (tasks.length > 0 || sessionArtifacts.length > 0)) : workFullOpen);
   // In the chat's place: no room beside it, or the viewer was expanded over it.
   const workFull = workOpen && (!workLayout.docks || (expanded && !!viewing));
   const workNeeds = workNeedsYou(tasks);
@@ -1351,22 +1377,15 @@ function App() {
           ? switchChat({ type: 'stay-chat' }, 'stay in this chat')
           : ((switchSeq.current += 1), refreshLookups(), Promise.resolve(true));
         // Only when the window is still here: a chat opened meanwhile (`undefined`) is not reset.
-        return stayed.then((here) =>
-          here !== true
-            ? false
-            : command({ type: 'submit', text }).then(
-                () => true,
-                () => true,
-              ),
-        );
+        return stayed.then((here) => (here !== true ? false : inChat({ type: 'submit', text }).catch(() => false)));
       }
-      return command({ type: 'submit', text }).then(
+      return inChat({ type: 'submit', text }).then(
         () => true,
         () => true,
       );
     }
     const dropped = waiting.signal;
-    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped));
+    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped, view?.generation));
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
@@ -1396,9 +1415,9 @@ function App() {
           onAgent={(name) => {
             // What still waits here was meant for the other agent.
             dropWaiting();
-            void command({ type: 'agent', name });
+            void inChat({ type: 'agent', name });
           }}
-          onModel={(model) => void command({ type: 'model', model })}
+          onModel={(model) => void inChat({ type: 'model', model })}
           onEffort={(level) => control(`/effort ${level}`)}
           onFallback={(names) => control(`/fallback ${names.length ? names.join(',') : 'off'}`)}
           onOpenSetup={hasAgentsApi ? openSetup : undefined}
@@ -1412,7 +1431,7 @@ function App() {
     ) : null;
   const stopTurn = () => {
     dropWaiting();
-    void command({ type: 'stop' });
+    void inChat({ type: 'stop' });
   };
   const canStop = running || !!view?.shells;
   // Stop has a key of its own (⌘. on a Mac, Ctrl+. elsewhere), wherever the focus is.
@@ -1530,9 +1549,9 @@ function App() {
     seen,
   });
   const decideNeed = async (decision: NeedsDecision): Promise<boolean> => {
-    if (decision.via === 'chat') return command({ type: 'approve', id: decision.id, decision: decision.decision });
+    if (decision.via === 'chat') return inChat({ type: 'approve', id: decision.id, decision: decision.decision });
     if (decision.via === 'tower') {
-      const done = await command({ type: 'tower', id: decision.id, decision: decision.decision });
+      const done = await inChat({ type: 'tower', id: decision.id, decision: decision.decision });
       // A hook's question the tower answered: the listing still has it, and the session waiting,
       // until it is read again.
       // The tower's card names the session, so it settles even before the listing has the questions.
@@ -1600,7 +1619,7 @@ function App() {
                 dropWaiting();
                 // Only the turn it was pressed for: the window may be on another chat when it arrives.
                 const turn = session?.turns.at(-1)?.id;
-                void command({ type: 'stop', conversation: chatKey, ...(turn ? { turn } : {}) });
+                void inChat({ type: 'stop', conversation: chatKey, ...(turn ? { turn } : {}) });
               }
             : undefined
         }
@@ -1608,7 +1627,7 @@ function App() {
           workOpen ? (
             <WorkPanel
               state={session}
-              chatId={chatKey}
+              chatId={view?.generation !== undefined ? String(view.generation) : chatKey || undefined}
               view={workView}
               onView={onWorkView}
               onClose={closeWork}
@@ -1665,6 +1684,7 @@ function App() {
                 // lost, also when the panel learned of it while the confirmation was open.
                 const held = action.type === 'discard' && intent?.pullRequest === true;
                 const reply = await postCommand({
+                  generation: view?.generation,
                   type: 'pack-task',
                   turnId,
                   id,
@@ -1676,7 +1696,9 @@ function App() {
                   throw Object.assign(new Error(reply.error ?? 'The task action failed.'), { reason: reply.reason });
                 return reply.text ?? '';
               }}
-              onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+              onApprove={(id, decision, confirmed) =>
+                inChat({ type: 'approve', id, decision, confirmed }).catch(() => false)
+              }
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               pullRequests={pullRequests}
             />
@@ -1891,7 +1913,7 @@ function App() {
                           // one being left.
                           if (switchingRef.current || lookingUpRef.current > 0) return;
                           dropWaiting();
-                          void command({ type: 'agent', name });
+                          void inChat({ type: 'agent', name });
                           backToChat();
                         },
                   }
@@ -1938,7 +1960,7 @@ function App() {
           <EscapeActive.Provider value={panel === 'chat' && !workFull}>
             <AgentChat
               state={session}
-              chatId={chatKey}
+              chatId={view?.generation !== undefined ? String(view.generation) : chatKey || undefined}
               header={null}
               // The work in one line that opens on click: a long run of tool calls buries the answer.
               foldSteps
@@ -2048,8 +2070,8 @@ function App() {
               onSend={submit}
               onStop={stopTurn}
               canStop={!!view?.shells}
-              onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-              onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
+              onApprove={(id, decision) => inChat({ type: 'approve', id, decision }).catch(() => false)}
+              onAnswer={(id, answers) => void inChat({ type: 'answer', id, answers })}
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}

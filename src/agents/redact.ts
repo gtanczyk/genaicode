@@ -31,10 +31,13 @@ const SECRETS: Array<[RegExp, string]> = [
     /(^|\s)(--?(?:password|passwd|pass|token|access-token|auth-token|api-key|apikey|secret|client-secret|private-key))(=|\s+)(?:"[^"]*"|'[^']*'|\S+)/gi,
     `$1$2$3${HIDDEN}`,
   ],
+  [/(\bcurl\b[^|;&\n]*?\s-b\s*)(?:"(?:[^"\\]|\\.)*"|'[^']*'|(?:[^\s\\]|\\.)+)/g, '$1' + HIDDEN],
+  // A long cookie option, or a short option carrying cookie pairs (including curl -bsid=value).
+  [/(^|\s)(--cookie(?:=|\s+)|-b\s*(?=["']?[^'"\s]*=))(?:"(?:[^"\\]|\\.)*"|'[^']*'|(?:[^\s\\]|\\.)+)/g, '$1$2' + HIDDEN],
   // `-u user:pass` (curl and the like): the password to the end of the argument, quoted or not.
-  [/(^|\s)(-u|--user)(=|\s+)'([^':]*):[^']*'/g, `$1$2$3'$4:${HIDDEN}'`],
-  [/(^|\s)(-u|--user)(=|\s+)"((?:[^"\\:]|\\.)*):(?:[^"\\]|\\.)*"/g, `$1$2$3"$4:${HIDDEN}"`],
-  [/(^|\s)(-u|--user)(=|\s+)((?:[^\s:'"\\]|\\.)+):(?:[^\s\\]|\\.)+/g, `$1$2$3$4:${HIDDEN}`],
+  [/(^|\s)(-u(?:=|\s*)|--user(?:=|\s+))'([^':]*):[^']*'/g, `$1$2'$3:${HIDDEN}'`],
+  [/(^|\s)(-u(?:=|\s*)|--user(?:=|\s+))"((?:[^"\\:]|\\.)*):(?:[^"\\]|\\.)*"/g, `$1$2"$3:${HIDDEN}"`],
+  [/(^|\s)(-u(?:=|\s*)|--user(?:=|\s+))((?:[^\s:'"\\]|\\.)+):(?:[^\s\\]|\\.)+/g, `$1$2$3:${HIDDEN}`],
   // `-p` with the password attached (`mysql -psecret`), and `sshpass -p secret`.
   [/(\b(?:mysql\w*|mariadb\w*)\b[^|;&\n]*?\s-p)(?!\s)(?:"[^"]*"|'[^']*'|\S+)/gi, `$1${HIDDEN}`],
   [/(\bsshpass\b[^|;&\n]*?\s-p\s*)(?:"[^"]*"|'[^']*'|\S+)/gi, `$1${HIDDEN}`],
