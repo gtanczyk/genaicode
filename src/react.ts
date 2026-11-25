@@ -50,7 +50,7 @@ export {
   turnFooter,
 } from './react/format.js';
 export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
-export type { SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
+export type { InputDelivery, SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
 export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
 export { useFollowScroll } from './react/follow-scroll.js';
 export { installResizeHandle, storedSize } from './react/resize-handle.js';

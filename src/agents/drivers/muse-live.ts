@@ -135,6 +135,8 @@ async function driveMuse(session: LiveSession, options: MuseLiveOptions): Promis
     );
     if (stringField(ack, 'turnId') !== turnId)
       throw new Error('Muse did not confirm the input; it may not have arrived.');
+    // Muse confirmed the input joined the running turn.
+    return 'taken';
   });
   return finished;
 }

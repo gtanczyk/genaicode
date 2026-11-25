@@ -2,7 +2,7 @@ import { keepRunLimit } from './sessions/limits.js';
 import { planError, planSpawnAsync, type PrepareContext, type PreparedRun, type SpawnPlan } from './prepare.js';
 import { startProcess, type ProcessHandle } from './process.js';
 import { invalidCwd, linkAbort, RunRecorder, type AgentOutcome } from './runtime.js';
-import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent } from './types.js';
+import type { AgentCapabilities, AgentEvent, AgentRun, AgentTask, CodingAgent, SteerReceipt } from './types.js';
 import type { SessionSource } from './sessions/types.js';
 
 export type { AgentOutcome } from './runtime.js';
@@ -178,9 +178,10 @@ function stdinInput(definition: CliAgentDefinition, input: CliAgentInput, task: 
   let taken = 0;
   let ended = false;
   let child: ProcessHandle | undefined;
-  const steers: { line: number; resolve(): void; reject(error: Error): void }[] = [];
+  const steers: { line: number; resolve(receipt: SteerReceipt): void; reject(error: Error): void }[] = [];
   const settle = () => {
-    while (steers.length && steers[0]!.line < taken) steers.shift()!.resolve();
+    // The agent echoed the line: it has the input in its turn.
+    while (steers.length && steers[0]!.line < taken) steers.shift()!.resolve('taken');
   };
   const flush = () => {
     if (!child) return;
@@ -210,11 +211,11 @@ function stdinInput(definition: CliAgentDefinition, input: CliAgentInput, task: 
       child?.endInput();
     },
     fail,
-    steer(text: string): Promise<void> {
+    steer(text: string): Promise<SteerReceipt> {
       if (ended) return Promise.reject(new Error(`${definition.name} is not accepting input.`));
       const line = lines.length;
       lines.push(input.steer(text));
-      const accepted = new Promise<void>((resolve, reject) => steers.push({ line, resolve, reject }));
+      const accepted = new Promise<SteerReceipt>((resolve, reject) => steers.push({ line, resolve, reject }));
       flush();
       return accepted;
     },

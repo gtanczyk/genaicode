@@ -11,6 +11,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 ### Added
 
 - The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
+- A message sent while the agent works says whether it reached the agent: "Sending…", then "Seen by claude" (the agent confirmed it took it), "Sent to …" (handed over, no confirmation), "Queued for the next turn" or "Not delivered", in the desktop, browser and terminal chat (`SessionEntry` input `delivery`). Messages steered into a delegated task, by the lead or by you, show the same in the task's detail and the latest one on its row (`PackTask.steers`). `AgentRun.steer` may resolve with `'taken'` (Claude, Codex, Muse, Antigravity) or `'sent'` (`SteerReceipt`) (#PR)
 
 ### Fixed
 

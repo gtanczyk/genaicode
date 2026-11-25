@@ -801,6 +801,63 @@ describe('pack chat turns', () => {
     }
     expect(session.get().turns[0].pack?.tasks[1].status).toBe('aborted');
   });
+  it('records input sent to a worker and whether the worker took it', async () => {
+    const pendingSteers: { text: string; resolve(receipt?: 'taken'): void; reject(error: Error): void }[] = [];
+    const base = fake(
+      'worker',
+      (_task, _emit, signal) => new Promise((resolve) => signal.addEventListener('abort', () => resolve())),
+    );
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run(task) {
+        return {
+          ...base.run(task),
+          steer: (text) =>
+            new Promise((resolve, reject) =>
+              pendingSteers.push({ text, resolve: (receipt) => resolve(receipt), reject }),
+            ),
+        };
+      },
+    };
+    let leadSteer: Promise<string> | undefined;
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'one', mode: 'shared' });
+        leadSteer = tool(task, 'steer', { id: 't1', text: 'from the lead' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const steers = () => session.get().turns[0]?.pack?.tasks[0]?.steers ?? [];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(steers()).toHaveLength(1));
+      expect(steers()[0]).toMatchObject({ text: 'from the lead', from: 'lead', delivery: 'sending' });
+      pendingSteers[0]!.resolve('taken');
+      await expect(leadSteer).resolves.toBe('t1 took the input.');
+      await vi.waitFor(() => expect(steers()[0]!.delivery).toBe('delivered'));
+
+      const user = session.actOnPackTask!(1, 't1', { type: 'steer', text: 'from you' });
+      await vi.waitFor(() => expect(steers()[1]).toMatchObject({ from: 'user', delivery: 'sending' }));
+      pendingSteers[1]!.resolve();
+      await expect(user).resolves.toBe('Sent to t1.');
+      await vi.waitFor(() => expect(steers()[1]!.delivery).toBe('sent'));
+
+      const late = session.actOnPackTask!(1, 't1', { type: 'steer', text: 'too late' });
+      await vi.waitFor(() => expect(pendingSteers).toHaveLength(3));
+      pendingSteers[2]!.reject(new Error('ended before it took the input'));
+      await expect(late).rejects.toThrow('ended before');
+      await vi.waitFor(() => expect(steers()[2]).toMatchObject({ text: 'too late', delivery: 'dropped' }));
+      expect(steers().map((steer) => steer.delivery)).toEqual(['delivered', 'sent', 'dropped']);
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
   it('shows the running tool call until it ends, reads string-array commands and never fails on odd input', async () => {
     let next = () => {};
     const step = () => new Promise<void>((resolve) => (next = resolve));

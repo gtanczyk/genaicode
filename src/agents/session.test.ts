@@ -594,10 +594,59 @@ describe('createAgentSession', () => {
     session.send('also this');
     await Promise.resolve();
     expect(steered).toEqual(['also this']);
-    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also this' });
+    // The fake's steer resolves with no receipt: handed over, not confirmed.
+    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also this', delivery: 'sent' });
     gate.resolve();
     await session.idle();
     expect(session.get().queued).toEqual([]);
+  });
+
+  it('tracks whether steered input reached the agent: sending, then delivered, sent or queued', async () => {
+    const gate = deferred();
+    const steers: { text: string; resolve(receipt?: 'taken'): void; reject(error: Error): void }[] = [];
+    const runs: string[] = [];
+    const agent: CodingAgent = {
+      name: 'claude',
+      command: 'claude',
+      capabilities: { steer: true },
+      run(task): AgentRun {
+        runs.push(task.prompt);
+        const result = (runs.length === 1 ? gate.promise : Promise.resolve()).then(
+          (): AgentResult => ({ status: 'completed', ok: true, exitCode: 0, signal: null }),
+        );
+        return {
+          result,
+          abort() {},
+          steer: (text) =>
+            new Promise((resolve, reject) => steers.push({ text, resolve: (receipt) => resolve(receipt), reject })),
+          async *[Symbol.asyncIterator]() {
+            yield { type: 'done', result: await result } as AgentEvent;
+          },
+        };
+      },
+    };
+    const session = createAgentSession({ agent, cwd: '.' });
+    const inputs = () => session.get().turns[0].entries.filter((entry) => entry.kind === 'input');
+    session.send('start');
+    session.send('one');
+    session.send('two');
+    session.send('three');
+    expect(inputs()).toEqual([
+      { kind: 'input', text: 'one', delivery: 'sending' },
+      { kind: 'input', text: 'two', delivery: 'sending' },
+      { kind: 'input', text: 'three', delivery: 'sending' },
+    ]);
+    steers[0].resolve('taken');
+    steers[1].resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(inputs().map((entry) => entry.kind === 'input' && entry.delivery)).toEqual(['delivered', 'sent', 'sending']);
+    // The turn ends before the agent takes the last one: it runs as the next turn.
+    steers[2].reject(new Error('ended'));
+    gate.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await session.idle();
+    expect(inputs().map((entry) => entry.kind === 'input' && entry.delivery)).toEqual(['delivered', 'sent', 'queued']);
+    expect(runs).toEqual(['start', 'three']);
   });
 
   it('sends transformed prompts to the agent and keeps the typed text in state', async () => {
@@ -610,7 +659,9 @@ describe('createAgentSession', () => {
     expect(tasks[0].prompt).toBe('[ctx] fix it');
     expect(steered).toEqual(['[ctx] also this']);
     expect(session.get().turns[0].prompt).toBe('fix it');
-    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also this' });
+    expect(session.get().turns[0].entries).toContainEqual(
+      expect.objectContaining({ kind: 'input', text: 'also this' }),
+    );
     gate.resolve();
     await session.idle();
   });
@@ -1238,6 +1289,7 @@ describe('createAgentSession', () => {
     expect(aborted).toBe(true);
     expect(runs).toEqual(['work']);
     expect(session.get().queued).toEqual([]);
+    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also', delivery: 'dropped' });
   });
 
   it('does not resume on agents without the capability', async () => {

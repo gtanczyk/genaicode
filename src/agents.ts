@@ -50,6 +50,7 @@ export type {
   QuestionHandler,
   RateLimit,
   SandboxPolicy,
+  SteerReceipt,
 } from './agents/types.js';
 export { epochMs, isAuthError, limitStatus, tokenCount, windowLabel } from './agents/runtime.js';
 export { decideApproval, liveAgent, questionAnswers, uuidv7 } from './agents/live-agent.js';
@@ -119,6 +120,7 @@ export type {
   PackControls,
   PackMember,
   PackOptions,
+  PackSteer,
   PackTask,
   PackTaskStatus,
 } from './agents/pack.js';
@@ -368,7 +370,14 @@ export {
 } from './agents/drivers/antigravity.js';
 export type { AntigravityAgentOptions } from './agents/drivers/antigravity.js';
 export { createAgentSession } from './agents/session.js';
-export type { AgentSession, AgentSessionOptions, SessionEntry, SessionState, SessionTurn } from './agents/session.js';
+export type {
+  AgentSession,
+  AgentSessionOptions,
+  InputDelivery,
+  SessionEntry,
+  SessionState,
+  SessionTurn,
+} from './agents/session.js';
 export {
   ArtifactError,
   artifactResponse,
