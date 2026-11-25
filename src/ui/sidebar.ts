@@ -149,6 +149,18 @@ export function chatTitle(session: SessionInfo): string {
 }
 
 /**
+ * Tells whether a session is one of this app's chats (`own`): by its store and id, or by its agent
+ * and id (the same session read through another of its agent's stores, or the open chat's row no
+ * store lists yet). An id alone says nothing, as two agents' stores may both hold it.
+ */
+export function ownSession(own: readonly SessionInfo[]): (session: SessionInfo) => boolean {
+  const mine = new Set(own.map(sessionKey));
+  const agentKey = (session: Pick<SessionInfo, 'agent' | 'id'>) => `${session.agent}\n${session.id}`;
+  const byAgent = new Set(own.filter((session) => session.id).map(agentKey));
+  return (session) => mine.has(sessionKey(session)) || byAgent.has(agentKey(session));
+}
+
+/**
  * The sessions this app did not start, for "Other agents' sessions": those that ask for you first,
  * then the latest, at most `limit` of them, and how many there are in all.
  */
@@ -158,15 +170,8 @@ export function otherSessions(
   limit = 4,
   now = Date.now(),
 ): { shown: SessionInfo[]; total: number } {
-  // A session is this app's by its store and id, or by its agent and id (the same session read
-  // through another of its agent's stores, or the open chat's row no store lists yet): an id alone
-  // says nothing, as two agents' stores may both hold it.
-  const mine = new Set(own.map(sessionKey));
-  const agentKey = (session: Pick<SessionInfo, 'agent' | 'id'>) => `${session.agent}\n${session.id}`;
-  const byAgent = new Set(own.filter((session) => session.id).map(agentKey));
-  const others = all.filter(
-    (session) => !session.archived && !mine.has(sessionKey(session)) && !byAgent.has(agentKey(session)),
-  );
+  const isOwn = ownSession(own);
+  const others = all.filter((session) => !session.archived && !isOwn(session));
   const asks = (session: SessionInfo) => (sessionGlyph(session, now) === 'ask' ? 0 : 1);
   const shown = [...others].sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt).slice(0, limit);
   return { shown, total: others.length };
@@ -191,60 +196,65 @@ export interface NeedsYouItem {
 }
 
 /** The tower lists the open chat's own approvals under ids that start so. */
-const TOWER_TURN_ITEM = 'turn:';
+export const TOWER_TURN_ITEM = 'turn:';
 
 /**
  * Whether a tower item stands for this session. Two stores may hold the same id, so the id alone
  * does not say: the item names the store, or (a hook's question) the agent of a local session.
  */
-function itemIsFor(item: NeedsYouItem, session: SessionInfo): boolean {
+export function itemIsFor(item: NeedsYouItem, session: SessionInfo): boolean {
   if (!item.sessionId || item.sessionId !== session.id) return false;
   if (item.source !== undefined) return item.source === session.source;
   if (item.agent !== undefined) return session.where === 'local' && item.agent === session.agent;
   return true;
 }
 
-/**
- * The count on "Needs you": the open chat's approvals and questions, the tower's items, and the
- * sessions of every agent that ask now. Each request is counted once: the tower repeats the open
- * chat's approvals, and its items for another agent's session stand for that session, so neither is
- * added again (nor is the open chat's own session: it counts as live). A session is the same one
- * only in the same store: an id that two stores share is two sessions.
- */
-export function needsYou(input: {
+/** What "Needs you" reads: the open chat, the tower and every agent's sessions. */
+export interface NeedsYouInput<Item extends NeedsYouItem = NeedsYouItem> {
+  /** How many approvals and questions the open chat holds. */
   approvals: number;
-  tower?: readonly NeedsYouItem[];
+  tower?: readonly Item[];
   sessions?: readonly SessionInfo[];
   /** The open chat's session: its id and the store of its agent (unknown: the id alone decides). */
   open?: { id?: string; source?: string };
   now?: number;
-}): NeedsYou {
+}
+
+/**
+ * What waits outside the open chat, each request once: the tower's items without the open chat's
+ * own approvals (the tower repeats those), and the sessions that ask now without the open chat's
+ * session (it counts as live) and those a tower item stands for. A session is the same one only in
+ * the same store: an id that two stores share is two sessions. The count on "Needs you" and the
+ * page behind it both read this, so they agree.
+ */
+export function waitingElsewhere<Item extends NeedsYouItem>(
+  input: Omit<NeedsYouInput<Item>, 'approvals'>,
+): { tower: Item[]; sessions: SessionInfo[] } {
   const tower = (input.tower ?? []).filter((item) => !item.id.startsWith(TOWER_TURN_ITEM));
   const open = input.open;
   const isOpen = (session: SessionInfo) =>
     !!open?.id && session.id === open.id && (open.source === undefined || session.source === open.source);
-  const elsewhere = (input.sessions ?? []).filter(
+  const sessions = (input.sessions ?? []).filter(
     (session) =>
       !isOpen(session) && !tower.some((item) => itemIsFor(item, session)) && attentionOf(session, input.now) === 'now',
-  ).length;
-  const total = input.approvals + tower.length + elsewhere;
+  );
+  return { tower, sessions };
+}
+
+/**
+ * The count on "Needs you": the open chat's approvals and questions, the tower's items, and the
+ * sessions of every agent that ask now, each request once (`waitingElsewhere`).
+ */
+export function needsYou(input: NeedsYouInput): NeedsYou {
+  const elsewhere = waitingElsewhere(input);
+  const total = input.approvals + elsewhere.tower.length + elsewhere.sessions.length;
   const scope = `${total} across all projects${input.approvals ? `, ${input.approvals} in this chat` : ''}`;
   return {
     total,
     here: input.approvals,
-    sessions: elsewhere,
+    sessions: elsewhere.sessions.length,
     title: total ? `Needs you: ${scope}` : 'Nothing needs you now',
   };
-}
-
-/**
- * Where "Needs you" goes. With a tower it is always the tower's inbox, also when that is empty: the
- * result of the last delivery and the stores that could not be read are only there (the sessions
- * that ask are one step on from it). Without one, the sessions that ask now; else the chat.
- */
-export function needsYouPage(has: { tower: boolean; sessions: boolean }): 'inbox' | 'sessions' | 'chat' {
-  if (has.tower) return 'inbox';
-  return has.sessions ? 'sessions' : 'chat';
 }
 
 /** One agent's plan in the sidebar: its worst window. */
