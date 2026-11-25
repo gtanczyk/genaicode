@@ -14,6 +14,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- In the work panel, "Running" beside a long command no longer breaks into one letter a line (#370)
 - Browser commands follow the conversation generation across windows. Resumed pack tasks renew their checks, and streaming waits report increasing progress and a final JSON-RPC response (#354, #362).
 
 ## 3.4.0 — 2026-11-25
