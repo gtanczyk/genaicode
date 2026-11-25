@@ -1319,6 +1319,14 @@ describe('pack chat turns', () => {
       writeFileSync(join(dir, 'd.txt'), 'd\n');
       await vi.waitFor(() => expect(task()!.checks!.revision).not.toBe(checked), { timeout: 5000 });
       expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt', 'A\td.txt']);
+      // A merge refused as stale shows the files of the revision it found.
+      const seen = task()!.checks!.revision;
+      writeFileSync(join(dir, 'e.txt'), 'e\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge', revision: seen })).rejects.toMatchObject({
+        reason: 'stale',
+      });
+      expect(task()!.checks!.revision).not.toBe(seen);
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt', 'A\td.txt', 'A\te.txt']);
       // a.txt staged, b.txt edited and not: the patch carries both, so it merges.
       writeFileSync(join(dir, 'b.txt'), 'b changed\n');
       git(dir, 'add', 'a.txt');

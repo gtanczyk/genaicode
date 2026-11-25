@@ -1111,23 +1111,22 @@ export function pack(options: PackOptions): Pack {
               ? 'discarded'
               : 'unavailable';
 
-      const updateRevision = (sub: Sub, revision?: string) => {
+      // A new revision and its file list go together, wherever it is seen: the list is what Merge
+      // locally then takes.
+      const updateRevision = async (sub: Sub, revision?: string) => {
         if (!sub.checks || sub.checks.revision === revision) return;
+        if (revision && sub.dir && sub.start) {
+          const changes = await worktreeChanges(sub.dir, sub.start, revision).catch(() => undefined);
+          if (changes) sub.changes = changes;
+        }
         sub.checks.revision = revision;
         notify(sub);
       };
 
-      // A new revision and its file list go together: the list is what Merge locally then takes.
       const refresh = (sub: Sub) =>
         withWorktree(async () => {
           if (!sub.dir || sub.state !== 'unmerged' || sub.closing) return;
-          const revision = await snapshotTree(sub.dir).catch(() => undefined);
-          if (!sub.checks || sub.checks.revision === revision) return;
-          if (revision && sub.start) {
-            const changes = await worktreeChanges(sub.dir, sub.start, revision).catch(() => undefined);
-            if (changes) sub.changes = changes;
-          }
-          updateRevision(sub, revision);
+          await updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
         });
 
       const observe = (sub: Sub) => {
@@ -1218,7 +1217,7 @@ export function pack(options: PackOptions): Pack {
           const tree = await snapshotTree(sub.dir);
           const checks = sub.checks;
           if (sub.inspected || checks?.review || checks?.verify || expected) {
-            updateRevision(sub, tree);
+            await updateRevision(sub, tree);
             if (
               expected
                 ? expected !== tree
@@ -1301,7 +1300,7 @@ export function pack(options: PackOptions): Pack {
           if (!sub.dir || !sub.start)
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           const tree = await snapshotTree(sub.dir);
-          updateRevision(sub, tree);
+          await updateRevision(sub, tree);
           // What the diff shows is what the task's files say: an edit made after the task ended shows
           // up, also when the diff asked for is stale (the detail then reads the newer one).
           setChanges(sub, await worktreeChanges(sub.dir, sub.start, tree));
@@ -1334,7 +1333,7 @@ export function pack(options: PackOptions): Pack {
           if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
             const changes = await worktreeChanges(sub.dir, sub.start, tree);
             const staged = await stagedChanges(sub.dir);
-            updateRevision(sub, tree);
+            await updateRevision(sub, tree);
             const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
             setChanges(sub, [
               ...changes,
