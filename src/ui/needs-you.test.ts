@@ -217,6 +217,21 @@ describe('needsItems', () => {
     });
   });
 
+  it('can reply from a deduplicated question even when the newest store is index-only', () => {
+    const resumable = own[1]!;
+    const indexed = { ...resumable, source: 'index', updatedAt: resumable.updatedAt + 10 };
+    const items = needsItems({ now, sessions: [indexed, resumable], senders: input.senders });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      since: indexed.updatedAt,
+      reply: { session: resumable, sandboxes: ['read-only'] },
+    });
+    const separate = { ...resumable, cwd: '/another-project' };
+    const split = needsItems({ now, sessions: [indexed, separate], senders: input.senders });
+    expect(split).toHaveLength(2);
+    expect(split.find((card) => card.key.includes('index'))?.reply).toBeUndefined();
+  });
+
   it('offers the answers each source takes', () => {
     const labels = (key: string, from = input) => item(key, from).choices.map((choice) => choice.label);
     // The open chat's approval: under the tower's id where the tower lists it (the tower checks the
@@ -247,7 +262,10 @@ describe('needsItems', () => {
     // A session that asks takes a reply where its agent can be sent to; this app's chat opens as a chat.
     expect(item('session:claude:gate').reply).toEqual({ session: own[1], sandboxes: ['read-only'] });
     expect(item('session:claude:gate').open).toEqual({ to: 'own', session: own[1] });
-    expect(item('session:codex:flaky').open).toEqual({ to: 'sessions' });
+    expect(item('session:codex:flaky').open).toMatchObject({
+      to: 'sessions',
+      session: { source: 'codex', id: 'flaky' },
+    });
     expect(item('session:codex:flaky', { ...input, senders: [] }).reply).toBeUndefined();
     // Without a tower a hook's question is answered at its own endpoint, and one no hook holds is not.
     const bare = { ...input, tower: undefined };
@@ -300,7 +318,7 @@ describe('needsItems, where answers could reach the wrong request', () => {
     // Two local rows with the same agent and id: which one asks is not known, so neither answers.
     const twin = session('hooked', { source: 'codexLive', agent: 'codex', waitingFor: 'approval' });
     const twins = needsItems({ ...bare, sessions: [...sessions, twin] }).filter((one) => one.key.includes(':hooked'));
-    expect(twins.map((one) => one.key)).toEqual(['session:codex:hooked', 'session:codexLive:hooked']);
+    expect(twins.map((one) => one.key)).toEqual(['session:codex:hooked']);
     expect(twins.flatMap((one) => one.choices)).toEqual([]);
   });
 

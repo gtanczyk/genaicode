@@ -1,9 +1,8 @@
-import { acceptsSessionPrompt } from '../agents/sessions/group.js';
 import type { PendingAsk } from '../agents/sessions/answer.js';
 import type { TowerDecision, TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import type { ApprovalDecision, ApprovalRequest, SandboxPolicy } from '../agents/types.js';
-import { ago } from './sessions.js';
+import { ago, sessionReplyTarget } from './sessions.js';
 import {
   chatTitle,
   folderName,
@@ -70,7 +69,7 @@ export interface NeedsItem {
    * Where the item is at home: the open chat, another chat of this app, or the list of sessions.
    * Absent while this app's chats are not read yet (`ownKnown: false`) and the session could be one.
    */
-  open?: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions' };
+  open?: { to: 'chat' } | { to: 'own'; session: SessionInfo } | { to: 'sessions'; session?: SessionInfo };
   /** Why nothing can be done here, when so. */
   note?: string;
 }
@@ -243,7 +242,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       ? { to: 'own', session }
       : session && input.ownKnown === false
         ? undefined
-        : { to: 'sessions' };
+        : { to: 'sessions', session };
   const named = (session: SessionInfo) => `${sourceOf(session) === 'app' ? 'chat' : 'session'} “${chatTitle(session)}”`;
   const oldestFirst = (a: NeedsItem, b: NeedsItem) => (a.since ?? now) - (b.since ?? now);
 
@@ -290,7 +289,10 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
 
   const held = elsewhere.tower.map((item): NeedsItem => {
     const key = `tower:${item.id}`;
-    const session = sessions.find((one) => itemIsFor(item, one));
+    const target = item.recipient ? { ...item, ...item.recipient } : item;
+    const matches = sessions.filter((one) => itemIsFor(target, one));
+    const local = matches.length > 1 ? matches.filter((one) => one.cwd === item.cwd) : matches;
+    const session = local.length === 1 ? local[0] : undefined;
     const ask = asks.find((one) => one.id === hookAsk(item));
     return {
       key,
@@ -299,7 +301,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       action: towerAction(item),
       agent: towerText(item.agent),
       project: projectOf(item.cwd),
-      origin: session ? named(session) : towerText(item.origin),
+      origin: session && !item.recipient ? named(session) : towerText(item.origin),
       text: towerText(item.text, true),
       verbatim: true,
       since: ask?.at ?? (item.kind === 'native' ? session?.updatedAt : undefined) ?? input.seen?.get(key),
@@ -317,14 +319,11 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
     };
   });
 
-  const asking = elsewhere.sessions.map((session): NeedsItem => {
+  const asking = elsewhere.sessions.map(({ session, stores }): NeedsItem => {
     const approval = session.waitingFor === 'approval';
     // Without a tower the hook's question is answered from here.
     const ask = approval ? askOf(session, sessions, asks) : undefined;
-    const sender =
-      !approval && acceptsSessionPrompt(session)
-        ? input.senders?.find((one) => one.agent === session.agent && one.source === session.source)
-        : undefined;
+    const reply = sessionReplyTarget(session, stores, input.senders);
     const commands = session.waitingCommands?.map((one) => `${one.tool}  ${one.command}`).join('\n');
     return {
       // The question is part of it: once one is answered and the next waits, the card is another.
@@ -351,7 +350,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
             { label: 'Deny', decision: { via: 'ask', id: ask.id, behavior: 'deny' } },
           ]
         : [],
-      ...(sender ? { reply: { session, sandboxes: sender.sandboxes } } : {}),
+      ...(reply ? { reply } : {}),
       open: openOf(session),
       ...(approval && !ask ? { note: `Answer it in ${session.agent}: its own dialog holds the question.` } : {}),
     };

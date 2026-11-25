@@ -15,6 +15,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- **Open session transcripts directly and see why a reply failed.** (#369)
 - **Read release highlights and expand changes for details.** (#368)
 - **The work panel keeps “Running” on one line beside long commands.** (#370)
 - **Browser commands follow the current conversation across windows.** (#371)

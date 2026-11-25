@@ -60,6 +60,7 @@ import {
 import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import { SessionReplies } from './session-reply.js';
 import { Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
@@ -911,7 +912,12 @@ function App() {
   useBark(view);
   const [theme, setTheme] = useTheme();
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
-  const [panel, setPanel] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
+  const [panel, navigate] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
+  const [openedSession, setOpenedSession] = useState<SessionInfo>();
+  const setPanel = (page: typeof panel) => {
+    setOpenedSession(undefined);
+    navigate(page);
+  };
   const [section, setSection] = useState<SettingsSection>('general');
   const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
@@ -1580,13 +1586,14 @@ function App() {
   return (
     <>
       <Shell
-        title={pageTitle ?? convTitle ?? 'New chat'}
+        title={openedSession?.title ?? openedSession?.id ?? pageTitle ?? convTitle ?? 'New chat'}
         subtitle={!pageTitle && convTopic && convTopic !== convTitle ? convTopic : undefined}
         project={
           !pageTitle && activeCwd && (hasProject || (isHome && conversation && conversation.origin !== 'home'))
             ? { name: folderName(activeCwd), path: activeCwd }
             : undefined
         }
+        backLabel={openedSession ? pageTitle : undefined}
         onBack={
           panel === 'chat'
             ? workFull
@@ -1595,7 +1602,9 @@ function App() {
                 ? () => setExpanded(false)
                 : closeWork
               : undefined
-            : backToChat
+            : openedSession
+              ? () => setOpenedSession(undefined)
+              : backToChat
         }
         onToggleWork={view && session && hasWork ? toggleWork : undefined}
         onRoom={setRoom}
@@ -1825,8 +1834,11 @@ function App() {
           connected,
         }}
       >
-        {showSessions ? (
+        {showSessions || openedSession ? (
           <Sessions
+            onArchived={chats.refresh}
+            selected={openedSession}
+            onOpen={setOpenedSession}
             key={listed}
             token={token}
             cwd={activeCwd}
@@ -1835,7 +1847,7 @@ function App() {
             onAllTopics={() => setTopic(undefined)}
             // From the Needs you page: the sessions that ask now, as the list has them.
             initialState={needsOnly ? 'now' : undefined}
-            own={listed === 'own'}
+            own={showSessions && listed === 'own'}
             initialDays={listed === 'own' ? 0 : undefined}
             onAllSessions={() => openSessions('all')}
             nativeSave={config?.nativeSave}
@@ -1849,6 +1861,7 @@ function App() {
         ) : null}
         {panel === 'needs' ? (
           <NeedsYouPage
+            hidden={!!openedSession}
             items={queue}
             chatTitle={convTitle}
             connected={connected}
@@ -1859,6 +1872,7 @@ function App() {
             onOpen={(item) => {
               if (item.open?.to === 'chat') backToChat();
               else if (item.open?.to === 'own') continueChat(item.open.session);
+              else if (item.open?.session) setOpenedSession(item.open.session);
               else if (item.open) openSessions('needs');
             }}
             sessionsPage={hasSessions}
@@ -2186,4 +2200,8 @@ function App() {
 
 // Before the first paint: the theme chosen in Settings, where there is one.
 applyTheme(readTheme());
-createRoot(document.getElementById('root')!).render(<App />);
+createRoot(document.getElementById('root')!).render(
+  <SessionReplies>
+    <App />
+  </SessionReplies>,
+);

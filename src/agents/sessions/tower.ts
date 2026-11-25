@@ -23,6 +23,8 @@ export interface TowerItem {
   cwd?: string;
   origin: string;
   text: string;
+  /** A proposal or its follow-up question points to a session without replacing its own waiting item. */
+  recipient?: Pick<Recipient, 'source' | 'sessionId'>;
   scope?: ApprovalRequest['scope'];
   /** The session of another agent that asks, so a count of what waits takes it once. */
   sessionId?: string;
@@ -122,6 +124,7 @@ export class TowerInbox {
         agent: target.agent,
         cwd: target.cwd,
         origin: recipientLabel(target),
+        recipient: { source: target.source, sessionId: target.sessionId },
         text,
       });
     }
@@ -258,6 +261,7 @@ export class TowerInbox {
           agent: target.agent,
           cwd: target.cwd,
           origin: recipientLabel(target),
+          recipient: { source: target.source, sessionId: target.sessionId },
           text: request.summary ?? request.kind,
           scope: request.scope,
         },

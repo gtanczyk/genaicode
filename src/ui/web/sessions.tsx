@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  acceptsSessionPrompt,
   attentionOf,
   groupSessions,
   staleSessions,
@@ -9,15 +8,20 @@ import {
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
-import { SessionReply } from './session-reply.js';
+import { sessionKey } from '../sidebar.js';
+import { SessionTranscript, transcriptUrl } from './session-transcript.js';
+import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
 import {
   ago,
+  askingStore,
   canContinueHere,
   filterSessions,
   groupByTopic,
   groupInOrder,
   resumeCommand,
+  sessionStores,
+  sessionReplyTarget,
   UNSORTED_TOPIC,
   type SessionTopic,
 } from '../sessions.js';
@@ -81,6 +85,9 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
   token,
+  selected,
+  onOpen,
+  onArchived,
   cwd,
   home,
   onContinue,
@@ -97,6 +104,9 @@ export function Sessions({
   onReplied,
 }: {
   token: string;
+  selected?: SessionInfo;
+  onOpen(session: SessionInfo): void;
+  onArchived?(): void;
   /** Where the chat works: sessions from here can be taken over. */
   cwd: string;
   /** True in `--home` mode: any local readable session can be continued, and topics get New chat. */
@@ -128,7 +138,7 @@ export function Sessions({
 }) {
   const [days, setDays] = useState(initialDays ?? 7);
   const [listing, setListing] = useState<WebSessionListing>();
-  const [replyTo, setReplyTo] = useState<SessionInfo>();
+  const { drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
   const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
@@ -160,18 +170,57 @@ export function Sessions({
     };
   }, [days, token, round, own]);
 
-  const everyones = listing?.sessions ?? [];
+  const index = useMemo(() => {
+    const byStore = new Map<string, { display: SessionInfo; stores: SessionInfo[] }>();
+    const rows = [];
+    const topicsBySession = { ...listing?.topicOf };
+    const rank = (row: SessionInfo) =>
+      Number(listing?.readable?.includes(row.source) ?? false) * 2 +
+      Number(listing?.senders?.some((sender) => sender.agent === row.agent && sender.source === row.source) ?? false);
+    for (const group of sessionStores(listing?.sessions ?? [])) {
+      // Display the readable source first, preferring one which can also resume the session.
+      group.sort((a, b) => rank(b) - rank(a) || b.updatedAt - a.updatedAt);
+      const reader = group[0]!;
+      const activity =
+        askingStore(group) ?? group.reduce((latest, row) => (row.updatedAt > latest.updatedAt ? row : latest));
+      const display =
+        activity === reader
+          ? reader
+          : {
+              ...reader,
+              state: activity.state,
+              updatedAt: activity.updatedAt,
+              ending: activity.ending,
+              lastReply: activity.lastReply,
+              waitingFor: activity.waitingFor,
+              waitingTool: activity.waitingTool,
+              waitingCommands: activity.waitingCommands,
+              turnInProgress: activity.turnInProgress,
+              archived: activity.archived,
+            };
+      const assigned = group.map((row) => listing?.topicOf?.[sessionKey(row)]).filter((id): id is string => !!id);
+      const primaryTopic = topic && assigned.includes(topic) ? topic : assigned[0];
+      if (!own && primaryTopic) topicsBySession[sessionKey(display)] = primaryTopic;
+      rows.push(display);
+      for (const row of group) byStore.set(sessionKey(row), { display, stores: group });
+    }
+    return { rows, byStore, topicsBySession };
+  }, [listing, own, topic]);
   const all = useMemo(() => {
-    if (!own || home) return everyones;
+    if (!own) return index.rows;
+    const sessions = listing?.sessions ?? [];
+    if (home) return sessions;
     const here = cwd.replace(/[\\/]+$/, '');
-    return everyones.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
-  }, [everyones, own, home, cwd]);
+    return sessions.filter((session) => session.where === 'local' && session.cwd?.replace(/[\\/]+$/, '') === here);
+  }, [index, own, home, cwd, listing]);
+
+  const storesOf = (row: SessionInfo) => (own ? [row] : (index.byStore.get(sessionKey(row))?.stores ?? [row]));
   const topicNames = useMemo(
     () => new Map((listing?.topics ?? []).map((item) => [item.id, item.name])),
     [listing?.topics],
   );
   const topicNameOf = (session: SessionInfo) => {
-    const id = listing?.topicOf?.[`${session.source}:${session.id}`];
+    const id = index.topicsBySession[sessionKey(session)];
     return id ? topicNames.get(id) : undefined;
   };
   const agents = useMemo(() => [...new Set(all.map((session) => session.agent))].sort(), [all]);
@@ -181,7 +230,7 @@ export function Sessions({
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
   const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
-    const keys = sessions.map(({ source, id }) => ({ source, id }));
+    const keys = sessions.flatMap(storesOf).map(({ source, id }) => ({ source, id }));
     // In batches the server takes, one after another.
     const send = async () => {
       for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
@@ -195,18 +244,19 @@ export function Sessions({
       return undefined;
     };
     send()
-      .then(setArchiveFailed)
+      .then((error) => {
+        setArchiveFailed(error);
+        if (!error) onArchived?.();
+      })
       .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
       .finally(() => setRound((value) => value + 1));
   };
   const shown = useMemo(() => {
-    const inTopic = topic
-      ? all.filter((session) => listing?.topicOf?.[`${session.source}:${session.id}`] === topic)
-      : all;
+    const inTopic = topic ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic) : all;
     const found = filterSessions(inTopic, { text, agent, state });
     // What waits for you: the sessions that ask for approval come first.
     return INBOX.has(state) ? waitingSessions(found) : found;
-  }, [all, text, agent, state, topic, listing]);
+  }, [all, text, agent, state, topic, index]);
   // What waits for you keeps its order across projects: the one with an approval first.
   const inbox = INBOX.has(state);
   const now = Date.now();
@@ -225,11 +275,11 @@ export function Sessions({
       return [{ key: 'own', name: 'Chats of this app', sessions: shown, updatedAt, agents: counts }];
     }
     return by === 'topic'
-      ? groupByTopic(shown, listing?.topics ?? [], listing?.topicOf ?? {})
+      ? groupByTopic(shown, listing?.topics ?? [], index.topicsBySession)
       : inbox
         ? groupInOrder(shown)
         : groupSessions(shown);
-  }, [shown, inbox, by, listing, own, home]);
+  }, [shown, inbox, by, listing, index, own, home]);
 
   const [answering, setAnswering] = useState<string>();
   const [answerFailed, setAnswerFailed] = useState<string>();
@@ -272,11 +322,77 @@ export function Sessions({
     // No Clipboard API on a page that is not a secure context: show the command to copy by hand.
     const show = () => void window.prompt('Continue it in a terminal with:', command);
     if (!navigator.clipboard) return show();
-    void navigator.clipboard.writeText(command).then(() => setCopied(session.id), show);
+    void navigator.clipboard.writeText(command).then(() => {
+      setCopied(transcriptUrl(session));
+      onStatus?.('Copied resume command');
+    }, show);
   };
 
-  return (
-    <main className="sessions">
+  const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
+  const actions = (session: SessionInfo, close?: () => void) => {
+    const sender = senderOf(session);
+    const action = (label: string, run: () => void, title?: string) => (
+      <button
+        type="button"
+        role={close ? 'menuitem' : undefined}
+        title={title}
+        onClick={() => {
+          close?.();
+          run();
+        }}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <>
+        {sender &&
+          replyTo !== sessionKey(sender.session) &&
+          action('Reply', () => setReplyTo(sessionKey(sender.session)), `Send to this session in ${session.agent}`)}
+        {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) &&
+          action('Continue here', () => onContinue(session), 'Bring this conversation into the current chat')}
+        {resumeCommand(session) &&
+          action(
+            copied === transcriptUrl(session) && !close ? 'Copied' : 'Copy resume command',
+            () => copy(session),
+            resumeCommand(session),
+          )}
+        {session.url && (
+          <a role={close ? 'menuitem' : undefined} href={session.url} target="_blank" rel="noreferrer">
+            {own ? 'Open' : 'Open in browser'}
+          </a>
+        )}
+        {session.where === 'local' &&
+          session.state !== 'active' &&
+          action(session.archived ? 'Unarchive' : 'Archive', () => archive([session], !session.archived))}
+      </>
+    );
+  };
+  const replyEditor = (session: SessionInfo) => {
+    const sender = senderOf(session);
+    if (!sender) return null;
+    const key = sessionKey(sender.session);
+    return replyTo === key ? (
+      <SessionReply
+        key={`reply:${session.source}:${session.id}`}
+        session={sender.session}
+        token={token}
+        sandboxes={sender.sandboxes}
+        draft={drafts.get(key)}
+        onDraft={(draft) => keepDraft(key, draft)}
+        onClose={() => closeReply(key)}
+        onSent={(text) => {
+          closeReply(key);
+          setReceipt({ session, text });
+          setRound((value) => value + 1);
+          onReplied?.(session);
+        }}
+      />
+    ) : null;
+  };
+  const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
+  const list = (
+    <main hidden={!!detail} className="sessions">
       <div className="tools">
         {own ? (
           <button className="chip waits" title="Show the sessions of every agent" onClick={onAllSessions}>
@@ -439,10 +555,6 @@ export function Sessions({
               ) : null}
             </summary>
             {rows.map((session) => {
-              const sender =
-                acceptsSessionPrompt(session) &&
-                listing?.senders?.find((s) => s.agent === session.agent && s.source === session.source);
-              const replying = replyTo?.source === session.source && replyTo.id === session.id;
               const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
               return [
                 <div key={`${session.source}:${session.id}`} className="session-row">
@@ -455,72 +567,35 @@ export function Sessions({
                   </span>
                   <span className="label" title={session.lastPrompt ?? session.title}>
                     {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {!own && session.source !== session.agent && <small title="Session source">{session.source}</small>}
                     {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
                     {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
                     {session.branch ? <small>{session.branch}</small> : null}
                   </span>
                   <span className="act">
-                    {sender && !replying ? <button onClick={() => setReplyTo(session)}>Reply</button> : null}
-                    {session.where === 'local' && session.state !== 'active' ? (
-                      <button
-                        title={
-                          session.archived
-                            ? 'Show it among the sessions again'
-                            : 'Hide it from the sessions; any news in it brings it back'
-                        }
-                        onClick={() => archive([session], !session.archived)}
-                      >
-                        {session.archived ? 'Unarchive' : 'Archive'}
-                      </button>
-                    ) : null}
-                    {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) ? (
-                      <button
-                        title="Bring this conversation into the chat: the agent chosen there continues it"
-                        onClick={() => onContinue(session)}
-                      >
-                        Continue here
-                      </button>
-                    ) : null}
-                    {session.url ? (
-                      <a href={session.url} target="_blank" rel="noreferrer">
+                    {own ? (
+                      actions(session)
+                    ) : (
+                      <button className="open-session" onClick={() => onOpen(session)}>
                         Open
-                      </a>
-                    ) : resumeCommand(session) ? (
-                      <button title={resumeCommand(session)} onClick={() => copy(session)}>
-                        {copied === session.id ? 'Copied' : 'Copy resume command'}
                       </button>
-                    ) : null}
+                    )}
                     <TranscriptMenu
+                      extra={own ? undefined : (close) => actions(session, close)}
                       token={token}
-                      endpoint={`/api/sessions/${encodeURIComponent(session.source)}/${encodeURIComponent(session.id)}/transcript`}
+                      endpoint={transcriptUrl(session)}
                       sessionId={session.id}
                       sessionPath={session.path}
                       storedSession={{ source: session.source, id: session.id }}
                       nativeSave={nativeSave}
                       label="⋯"
-                      ariaLabel={`Copy ID or transcript for ${session.title ?? session.id}`}
-                      title="Copy session ID, file path or transcript"
+                      ariaLabel={`Session actions for ${session.title ?? session.id}`}
+                      title="Session actions"
                       onStatus={onStatus}
                     />
                   </span>
                 </div>,
-                replying && sender ? (
-                  <SessionReply
-                    key={`reply:${session.source}:${session.id}`}
-                    session={session}
-                    token={token}
-                    sandboxes={sender.sandboxes}
-                    onClose={() => setReplyTo(undefined)}
-                    onSent={(text) => {
-                      setReceipt({ session, text });
-                      setReplyTo((current) =>
-                        current?.source === session.source && current.id === session.id ? undefined : current,
-                      );
-                      setRound((value) => value + 1);
-                      onReplied?.(session);
-                    }}
-                  />
-                ) : null,
+                !selected && replyEditor(session),
                 ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
                   <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
                     <span className="what">
@@ -572,5 +647,27 @@ export function Sessions({
         </div>
       ) : null}
     </main>
+  );
+  return (
+    <>
+      {detail && (
+        <main className="sessions session-detail" aria-label="Session transcript">
+          <p className="session-origin">
+            {[detail.agent, detail.source !== detail.agent && detail.source, detail.cwd ?? detail.repository]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+          <div className="session-actions">{actions(detail)}</div>
+          {replyEditor(detail)}
+          {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
+            <p role="status">{receipt.text || 'Turn completed.'}</p>
+          )}
+          {archiveFailed && <p role="alert">{archiveFailed}</p>}
+          {failed && <p role="alert">{failed}</p>}
+          <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
+        </main>
+      )}
+      {list}
+    </>
   );
 }

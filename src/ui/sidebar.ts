@@ -1,4 +1,5 @@
 import { attentionOf, type SessionInfo } from '../agents/sessions/group.js';
+import { askingStore, sessionStores } from './sessions.js';
 import type { RateLimit } from '../agents/types.js';
 
 /**
@@ -223,21 +224,21 @@ export interface NeedsYouInput<Item extends NeedsYouItem = NeedsYouItem> {
 /**
  * What waits outside the open chat, each request once: the tower's items without the open chat's
  * own approvals (the tower repeats those), and the sessions that ask now without the open chat's
- * session (it counts as live) and those a tower item stands for. A session is the same one only in
- * the same store: an id that two stores share is two sessions. The count on "Needs you" and the
- * page behind it both read this, so they agree.
+ * session (it counts as live) and those a tower item stands for. Each asking session keeps its
+ * alternate stores so the queue can find the one that accepts replies.
  */
 export function waitingElsewhere<Item extends NeedsYouItem>(
   input: Omit<NeedsYouInput<Item>, 'approvals'>,
-): { tower: Item[]; sessions: SessionInfo[] } {
+): { tower: Item[]; sessions: Array<{ session: SessionInfo; stores: SessionInfo[] }> } {
   const tower = (input.tower ?? []).filter((item) => !item.id.startsWith(TOWER_TURN_ITEM));
   const open = input.open;
   const isOpen = (session: SessionInfo) =>
     !!open?.id && session.id === open.id && (open.source === undefined || session.source === open.source);
-  const sessions = (input.sessions ?? []).filter(
-    (session) =>
-      !isOpen(session) && !tower.some((item) => itemIsFor(item, session)) && attentionOf(session, input.now) === 'now',
-  );
+  const sessions = sessionStores(input.sessions ?? []).flatMap((stores) => {
+    if (stores.some((row) => isOpen(row) || tower.some((item) => itemIsFor(item, row)))) return [];
+    const row = askingStore(stores, input.now);
+    return row ? [{ session: row, stores }] : [];
+  });
   return { tower, sessions };
 }
 

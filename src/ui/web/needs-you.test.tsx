@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 import { needsItems, type NeedsDecision, type NeedsItem } from '../needs-you.js';
 import { needsYou } from '../sidebar.js';
+import { SessionReplies } from './session-reply.js';
 import { NeedsYouPage, type NeedsYouPageProps } from './needs-you.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -87,7 +88,14 @@ function props(patch: Partial<NeedsYouPageProps> = {}): NeedsYouPageProps {
     ...patch,
   };
 }
-const render = (value: NeedsYouPageProps) => act(() => root.render(<NeedsYouPage {...value} />));
+const render = (value: NeedsYouPageProps) =>
+  act(() =>
+    root.render(
+      <SessionReplies>
+        <NeedsYouPage {...value} />
+      </SessionReplies>,
+    ),
+  );
 const cards = () => Array.from(host.querySelectorAll('article'));
 const card = (text: string) => cards().find((one) => one.textContent?.includes(text))!;
 const button = (within: Element, name: string) =>
@@ -119,8 +127,8 @@ it('has the actions of each source, and sends each answer where it belongs', asy
   render(props({ decide, onOpen }));
   const names = (within: Element) => Array.from(within.querySelectorAll('button'), (one) => one.textContent?.trim());
   expect(names(card('rm -rf dist'))).toEqual(['Approve', 'Deny', 'Open chat']);
-  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'Open session']);
-  expect(names(card('npm test'))).toEqual(['Approve once', 'Deny', 'Open session']);
+  expect(names(card('Go on.'))).toEqual(['Send to session', 'Dismiss', 'Browse waiting sessions']);
+  expect(names(card('npm test'))).toEqual(['Approve once', 'Deny', 'Browse waiting sessions']);
   expect(names(card('Gate verdict retries'))).toEqual(['Reply', 'Open chat']);
   expect(button(card('rm -rf dist'), 'Approve').className).toContain('primary');
   expect(button(card('rm -rf dist'), 'Deny').className).not.toContain('primary');
@@ -400,5 +408,7 @@ it('gives the draft back, open to edits and with the error, when a reply hidden 
   await click(chips()[0]!);
   expect(field().value).toBe('On 502 too.');
   expect(field().disabled).toBe(false);
-  expect(card('Gate verdict retries').querySelector('[role="alert"]')?.textContent).toBe('Busy.');
+  expect(card('Gate verdict retries').querySelector('[role="alert"]')?.textContent).toBe(
+    'Busy. Delivery to this session is unconfirmed.',
+  );
 });

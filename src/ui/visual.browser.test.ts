@@ -1051,6 +1051,33 @@ describe('the Needs you page looks as its baseline', () => {
     ],
   };
 
+  it('the session list and open transcript, light and dark', async () => {
+    for (const theme of THEMES) {
+      const page = await newPage(browser, theme, { width: 1280, height: 800 });
+      try {
+        await page.route('**/api/sessions?*', (route) => route.fulfill({ json: listing }));
+        await page.route('**/transcript?format=view', (route) =>
+          route.fulfill({
+            body: '## Turn 1 · helper\n\n### User\n\nCheck the retry policy.\n\n### helper\n\nRetry the gate verdict on 502 too, or only on timeouts?',
+          }),
+        );
+        await page.goto(url!);
+        await page.getByRole('button', { name: 'All sessions', exact: true }).click();
+        const list = page.locator('main.sessions');
+        const row = list.locator('.session-row', { hasText: 'Gate verdict retries' });
+        await row.waitFor();
+        await settle(page);
+        await expectScreenshot(list, `all-sessions-${theme}`);
+        await row.getByRole('button', { name: 'Open', exact: true }).click();
+        const detail = page.getByRole('main', { name: 'Session transcript' });
+        await detail.getByText('Check the retry policy.').waitFor();
+        await settle(page);
+        await expectScreenshot(detail, `session-transcript-${theme}`);
+      } finally {
+        await page.context().close();
+      }
+    }
+  });
   it('the queue, light and dark', async () => {
     const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
     try {

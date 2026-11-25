@@ -360,6 +360,12 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .project > summary .topic-new:hover { border-color: var(--accent); color: var(--text); }
 .session-row .label small.topic-tag { color: var(--accent); }
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
+.session-origin { margin: 0 0 12px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.session-detail > .gc-md { max-width: 85ch; overflow-wrap: anywhere; }
+.session-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-end: 16px; }
+.session-actions button, .session-actions a { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: var(--panel); color: var(--text); cursor: pointer; }
+.sessions .open-session { color: var(--accent); }
+.needs-page[hidden], .sessions[hidden] { display: none; }
 .sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .sessions .tools input[type='search'] { flex: 1; min-width: 180px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
 .sessions .tools select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
@@ -429,6 +435,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .more button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 13px; padding: 0; }
 .tm-wrap { position: relative; display: inline-flex; }
 .tm-popover { position: absolute; right: 0; top: calc(100% + 5px); z-index: 30; min-width: 240px; max-width: min(360px, calc(100vw - 24px)); padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .16); display: flex; flex-direction: column; gap: 1px; user-select: text; -webkit-user-select: text; }
+.session-row .tm-popover { max-height: min(50vh, 380px); overflow: auto; }
 .tm-popover.tm-up { top: auto; bottom: calc(100% + 5px); }
 .tm-head { padding: 5px 8px 6px; border-bottom: 1px solid var(--line); margin-bottom: 3px; display: flex; flex-direction: column; gap: 3px; }
 .tm-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--muted); min-width: 0; }

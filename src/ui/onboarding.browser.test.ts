@@ -334,7 +334,8 @@ it('keeps onboarding accessible after continuing an existing session during setu
     // The sidebar lists it too, under the other agents' sessions: the row meant is the page's.
     const listed = page.locator('main.sessions');
     await listed.getByText('Fix billing retry').waitFor();
-    await listed.getByRole('button', { name: 'Continue here' }).click();
+    await listed.getByRole('button', { name: /Session actions/ }).click();
+    await listed.getByRole('menuitem', { name: 'Continue here' }).click();
 
     // The loaded turn is visible, and onboarding + Check again remain accessible without clearing history.
     await page.getByText('Found the missing backoff guard.').waitFor();
