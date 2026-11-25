@@ -279,6 +279,8 @@ describe('<WorkPanel> task detail', () => {
     // No checks before a merge that does not happen here.
     expect($('.gc-work-checks')).toBeNull();
     click(button('Discard worktree'));
+    // The confirmation says what goes: the folder, files Git ignores included.
+    expect(text('.gc-work-merge')).toContain('Its folder is deleted, files Git ignores (logs, build output) included.');
     await actAsync(() => button('Confirm discard')!.click());
     // Sent as the pull request's: the host checks again that it still holds the work.
     expect(onAction).toHaveBeenCalledWith(7, 't5', { type: 'discard' }, { pullRequest: true });

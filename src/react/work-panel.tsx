@@ -918,6 +918,7 @@ function TaskDetail({
             {confirm === 'discard' ? (
               <>
                 <b>Discard this worktree and its changes?</b>
+                <p className="gc-work-note">Its folder is deleted, files Git ignores (logs, build output) included.</p>
                 <div className="gc-work-acts">
                   <button type="button" className="gc-work-btn gc-work-sm" onClick={() => setConfirm(undefined)}>
                     Cancel

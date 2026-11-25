@@ -247,7 +247,8 @@ export const PULL_REQUEST_HELP =
   'The work is in the pull request, so there is nothing to merge here. Discard removes the local worktree copy only.';
 
 /** What is left to do with a worktree whose task changed no files. */
-export const NO_CHANGES_HELP = 'There is nothing to merge. Discard worktree removes the empty worktree.';
+export const NO_CHANGES_HELP =
+  'Git sees no changes, so there is nothing to merge. Discard worktree deletes its folder, files Git ignores (logs, build output) included.';
 
 // ---------------------------------------------------------------------------------------------
 // What is remembered
