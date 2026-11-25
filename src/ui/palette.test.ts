@@ -171,6 +171,16 @@ describe('paletteProject and paletteTerms', () => {
       paletteItems(found, 'bakery').map((item) => [item.title, item.kind === 'command' ? '' : item.project]),
     ).toEqual([['Rye', 'bakery']]);
     expect(paletteItems(found, 'org')).toHaveLength(1);
+    // A session with a directory shows the directory, and is still found by its repository.
+    const both = {
+      chats: [],
+      sessions: [cloud({ repository: 'org/bakery', cwd: '/work/app', title: 'Rye' })],
+      commands: [],
+    } satisfies PaletteSource;
+    expect(
+      paletteItems(both, 'bakery').map((item) => [item.title, item.kind === 'command' ? '' : item.project]),
+    ).toEqual([['Rye', 'app']]);
+    expect(paletteItems(both, 'org')).toHaveLength(1);
   });
 
   it('splits what was typed into lower-case words', () => {

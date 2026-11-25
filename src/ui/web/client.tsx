@@ -1347,7 +1347,7 @@ function App() {
                     Artifacts · {sessionArtifacts.length}
                   </button>
                   {artifactsOpen ? (
-                    <div className="popover artifacts-popover" role="menu" aria-label="Session artifacts">
+                    <div className="popover artifacts-popover" data-popup role="menu" aria-label="Session artifacts">
                       {sessionArtifacts.map((group) => (
                         <button
                           key={group.id}

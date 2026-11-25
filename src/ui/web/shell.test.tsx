@@ -9,6 +9,7 @@ import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
 import { ViewerPanel } from './file-view.js';
 import { holdsTypedText, Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
+import { TranscriptMenu } from './transcript-menu.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -610,6 +611,26 @@ describe('Search (⌘K)', () => {
     expect(selected()).toBe('Chat d');
   });
 
+  it('keeps the first row selected when a refresh puts a newer one above it', () => {
+    const value = props();
+    render(value);
+    press('k', mod());
+    expect(selected()).toBe('Chat a');
+    const fresh = chat('d', { title: 'Chat d', updatedAt: now });
+    render({ ...value, search: { ...value.search!, chats: [fresh, ...chats] } });
+    expect(rows().map(row)[0]).toMatch(/^Chat d/);
+    expect(selected()).toBe('Chat a');
+    key('Enter');
+    expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[0]);
+    // The same after words were typed: the first match is kept.
+    press('k', mod());
+    type('chat');
+    expect(selected()).toBe('Chat d');
+    const newer = chat('e', { title: 'Chat e', updatedAt: now + 1 });
+    render({ ...value, search: { ...value.search!, chats: [newer, fresh, ...chats] } });
+    expect(selected()).toBe('Chat d');
+  });
+
   it('moves to the first and last row with Home and End, also with words typed', () => {
     render(props());
     press('k', mod());
@@ -649,6 +670,26 @@ describe('Search (⌘K)', () => {
     act(() => void field().dispatchEvent(escape));
     expect(palette()).toBeNull();
     expect(document.activeElement).toBe(button('Help'));
+  });
+
+  it('closes the Session menu of the top bar under it, and gives the focus back to its button', () => {
+    render(
+      props({
+        actions: (
+          <TranscriptMenu token="t" endpoint="/api/transcript" sessionId="s" sessionPath="/s.jsonl" label="Session" />
+        ),
+      }),
+    );
+    click(button('Session'));
+    const item = host.querySelector<HTMLElement>('.tm-popover [role=menuitem]')!;
+    item.focus();
+    press('k', mod(), item);
+    expect(host.querySelector('[role=menu]')).toBeNull();
+    expect(document.activeElement).toBe(field());
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field().dispatchEvent(escape));
+    expect(palette()).toBeNull();
+    expect(document.activeElement).toBe(button('Session'));
   });
 
   it('goes to another agent’s session, and opens a row on a click', () => {

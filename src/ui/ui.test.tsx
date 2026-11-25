@@ -23,6 +23,7 @@ import { PackActionError, type PackTask } from '../agents/pack.js';
 import type { SessionState, SessionTurn } from '../agents/session.js';
 import {
   readConversations,
+  saveConversation,
   SessionSendGate,
   sessionTools,
   writeTopics,
@@ -2651,6 +2652,51 @@ describe('web UI server', () => {
     (stdin as unknown as PassThrough).end();
     expect(await done).toBe(0);
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
+  });
+
+  it('lists in --home mode only the recorded sessions of their own store or agent, not one sharing the id', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'genaicode-own-'));
+    const homeEnv = { ...env, HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    await saveConversation(
+      { id: 'c1', cwd: '/p', origin: 'project', agent: 'echo', source: 'echo', sessionId: 'shared', updatedAt: 1 },
+      homeEnv,
+    );
+    const store = (name: string): SessionSource => ({
+      name,
+      where: 'local',
+      list: async () => [{ source: name, agent: name, id: 'shared', where: 'local', cwd: '/p', updatedAt: 1000 }],
+    });
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [echoAgent()],
+      sessionSources: [store('echo'), store('codex')],
+      cwd: join(root, 'home'),
+      env: homeEnv,
+      home: true,
+      noProject: true,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1]!;
+      const token = new URL(url).searchParams.get('token')!;
+      const own = await fetch(new URL('/api/sessions?own=1', url), { headers: { 'x-genaicode-token': token } });
+      const { sessions } = (await own.json()) as { sessions: SessionInfo[] };
+      // Codex's session with the same id is another agent's: it stays out of this app's chats.
+      expect(sessions.map((session) => `${session.source}:${session.id}`)).toEqual(['echo:shared']);
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('opens the terminal chat in the browser with chat --web', async () => {

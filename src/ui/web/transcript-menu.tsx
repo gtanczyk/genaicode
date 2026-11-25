@@ -266,6 +266,7 @@ export function TranscriptMenu({
       {open ? (
         <div
           className={`tm-popover${up ? ' tm-up' : ''}`}
+          data-popup
           role="menu"
           aria-label="Conversation transcript and developer actions"
           onMouseDown={(event) => event.stopPropagation()}

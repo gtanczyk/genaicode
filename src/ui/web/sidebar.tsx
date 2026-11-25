@@ -164,7 +164,12 @@ export function MenuButton({
         {button}
       </button>
       {open ? (
-        <div className={`menu${menuClassName ? ` ${menuClassName}` : ''}`} role="menu" aria-label={menuLabel ?? label}>
+        <div
+          className={`menu${menuClassName ? ` ${menuClassName}` : ''}`}
+          data-popup
+          role="menu"
+          aria-label={menuLabel ?? label}
+        >
           {children(() => setOpen(false))}
         </div>
       ) : null}

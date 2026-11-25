@@ -36,8 +36,9 @@ export function Palette(props: PaletteProps) {
   const now = props.now ?? Date.now();
   const [query, setQuery] = useState('');
   /**
-   * The row selected, by its key: a list refreshed under it (a chat moved up, a session ended) keeps
-   * the same row selected, wherever it is now. Undefined, or a row no longer listed: the first.
+   * The row selected, by its key: a list refreshed under it (a chat moved up, a newer one came, a
+   * session ended) keeps the same row selected, wherever it is now. Undefined, or a row no longer
+   * listed: the first, which is then stored (below), so that a refresh does not move it either.
    */
   const [selected, setSelected] = useState<string>();
   // Built when the source changes; typing only scores the rows.
@@ -46,6 +47,13 @@ export function Palette(props: PaletteProps) {
   const index = Math.max(0, selected === undefined ? 0 : items.findIndex((item) => item.key === selected));
   const list = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
+
+  const shown = index < items.length ? items[index]!.key : undefined;
+  // When the palette opens, the query changes or the selected row goes: the row now first is the
+  // one selected, by its key.
+  useEffect(() => {
+    if (shown !== selected) setSelected(shown);
+  }, [shown, selected]);
 
   useEscape(true, props.onClose);
   useEffect(() => field.current?.focus(), []);

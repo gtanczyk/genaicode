@@ -722,6 +722,23 @@ async function readConversationsUnlocked(file: string): Promise<ConversationReco
   }
 }
 
+/**
+ * The recorded conversation a session is, if any: the same id in the same store, or the same id of
+ * the same agent (read through another of its stores). An id alone says nothing, as two agents'
+ * stores may both hold it.
+ */
+export function recordedConversation(
+  recorded: readonly ConversationRecord[],
+  session: Pick<SessionInfo, 'source' | 'agent' | 'id'>,
+): ConversationRecord | undefined {
+  return recorded.find(
+    (conv) =>
+      !!conv.sessionId &&
+      conv.sessionId === session.id &&
+      ((!!conv.source && conv.source === session.source) || (!!conv.agent && conv.agent === session.agent)),
+  );
+}
+
 /** Read recorded conversations, newest first. Empty when missing or unreadable. */
 export async function readConversations(env: NodeJS.ProcessEnv = process.env): Promise<ConversationRecord[]> {
   const file = path.resolve(conversationsFile(env));

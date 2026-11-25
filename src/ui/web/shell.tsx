@@ -30,8 +30,11 @@ export function holdsTypedText(target: EventTarget | null): target is HTMLElemen
   return target instanceof HTMLElement && target.isContentEditable && !!target.textContent;
 }
 
-/** The open menus and popovers of the window: each sits beside its button in one anchor. */
-const POPUP = '.menu, .popover, .pop';
+/**
+ * The open menus and popovers of the window, whichever component draws them: each marks its panel
+ * with `data-popup` and sits beside its button in one anchor.
+ */
+const POPUP = '[data-popup]';
 
 /** The button of the open menu or popover that `focused` is in, or undefined outside one. */
 function popupTrigger(focused: Element | null): HTMLElement | undefined {

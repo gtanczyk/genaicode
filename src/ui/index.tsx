@@ -33,6 +33,7 @@ import {
   readConversations,
   startProjectChannel,
 } from '../agents/sessions/index.js';
+import { recordedConversation } from '../agents/sessions/workspace.js';
 import { createUploads } from './uploads.js';
 import { createProjectFiles } from './files.js';
 import { formatTruncationReason } from './transcript.js';
@@ -709,7 +710,6 @@ function webLink(
       sessions: async ({ own, ...query }) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
         const recorded = options.home ? await readConversations(options.env).catch(() => []) : [];
-        const recordedIds = new Set(recorded.flatMap((conv) => (conv.sessionId ? [conv.sessionId] : [])));
         const listing = await listSessions(sources, {
           ...query,
           // In `--cwd`/`--no-project` mode, own conversations live in `options.cwd`.
@@ -725,7 +725,7 @@ function webLink(
           own && options.home
             ? listing.sessions.filter(
                 (session) =>
-                  recordedIds.has(session.id) ||
+                  !!recordedConversation(recorded, session) ||
                   (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
               )
             : listing.sessions;
@@ -736,16 +736,13 @@ function webLink(
         const store = await readTopics(options.env).catch(() => undefined);
         const topics = [...(store?.topics ?? [])];
         const topicOf: Record<string, string> = {};
-        const recordedById = new Map(
-          recorded.flatMap((conv) => (conv.sessionId ? [[conv.sessionId, conv] as const] : [])),
-        );
         for (const session of sessions) {
           const key = `${session.source}:${session.id}`;
           const topic = store?.sessions[key];
           if (topic) {
             topicOf[key] = topic;
           } else {
-            const conv = recordedById.get(session.id);
+            const conv = recordedConversation(recorded, session);
             if (conv?.topicId && conv.topicName) {
               topicOf[key] = conv.topicId;
               if (!topics.some((t) => t.id === conv.topicId)) topics.push({ id: conv.topicId, name: conv.topicName });

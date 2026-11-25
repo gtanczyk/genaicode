@@ -110,8 +110,8 @@ function fieldsOf(item: PaletteItem): Fields {
     return { title: fold(item.title), label: fold(item.command.keywords ?? ''), prompt: '' };
   }
   const { session } = item;
-  // The repository's full name too: `org/bakery` is found by `org`.
-  const repository = session.repository && !session.cwd ? ` ${session.repository}` : '';
+  // The repository's full name too, whatever directory is shown: `org/bakery` is found by `org`.
+  const repository = session.repository ? ` ${session.repository}` : '';
   return {
     title: fold(item.title),
     label: fold(`${item.project}${repository} ${item.agent} ${session.branch ?? ''}`),
