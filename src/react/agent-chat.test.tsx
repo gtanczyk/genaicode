@@ -1799,4 +1799,97 @@ describe('AgentChat', () => {
       document.removeEventListener('keydown', below);
     }
   });
+
+  describe('the card composer', () => {
+    const submit = () => $<HTMLButtonElement>('.gc-submit');
+    const stop = () => $<HTMLButtonElement>('.gc-stop');
+
+    it('labels the submit button for what Enter does, with Stop as a button of its own beside it', () => {
+      // Idle: Send, and nothing to stop.
+      render({ state: fixture({ status: 'idle', queued: [] }), composerLayout: 'card' });
+      expect(submit().textContent).toBe('Send↵');
+      expect(submit().dataset.action).toBe('send');
+      expect(stop()).toBeNull();
+      // Running an agent that takes input mid-turn: Steer, and Stop beside it.
+      const props = render({ state: fixture({ canSteer: true }), composerLayout: 'card' });
+      expect(submit().textContent).toBe('Steer↵');
+      expect(stop().textContent).toBe('Stop');
+      expect(stop().nextElementSibling).toBe(submit());
+      // Running one that cannot: Queue. Stop does not take the submit button's place.
+      render({ ...props, state: fixture({ canSteer: false }) });
+      expect(submit().textContent).toBe('Queue↵');
+      expect(submit().title).toBe('Type a message');
+      expect(stop()).not.toBeNull();
+      type('next');
+      expect(submit().title).toMatch(/^Enter queues this/);
+      click(stop());
+      expect(props.onStop).toHaveBeenCalledTimes(1);
+      expect(props.onSend).not.toHaveBeenCalled();
+      click(submit());
+      expect(props.onSend).toHaveBeenCalledWith('next');
+      expect(props.onStop).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers Stop while idle when the host runs something of its own, and none without onStop', () => {
+      render({ state: fixture({ status: 'idle', queued: [] }), composerLayout: 'card', canStop: true });
+      expect(stop()).not.toBeNull();
+      expect(submit().textContent).toBe('Send↵');
+      render({ state: fixture(), composerLayout: 'card', onStop: undefined });
+      expect(stop()).toBeNull();
+      expect(submit()).not.toBeNull();
+    });
+
+    it('keeps the field over one row: attach, the host controls, Stop and submit; the header leads the card', () => {
+      render({
+        state: fixture({ canSteer: true }),
+        composerLayout: 'card',
+        composerHeader: <span>Starts in app</span>,
+        composerExtras: <button type="button">agent</button>,
+        attachments: {},
+      });
+      const card = $('.gc-card');
+      expect($('.gc-box')).toBeNull();
+      expect($('.gc-under')).toBeNull();
+      expect(Array.from(card.children).map((child) => child.className || child.tagName)).toEqual([
+        'gc-composer-header',
+        'TEXTAREA',
+        'gc-card-row',
+      ]);
+      expect(text('.gc-composer-header')).toEqual(['Starts in app']);
+      const row = Array.from($('.gc-card-row').children).map(
+        (child) => child.getAttribute('aria-label') ?? child.textContent ?? child.tagName,
+      );
+      expect(row).toEqual(['', 'Attach files', 'agent', 'Stop', 'Steer↵']);
+    });
+
+    it('sends files without text', async () => {
+      const onSend = vi.fn();
+      render({ state: fixture({ status: 'idle', queued: [] }), composerLayout: 'card', attachments: {}, onSend });
+      expect(submit().disabled).toBe(true);
+      expect(submit().title).toBe('Type a message or attach a file');
+      const note = new File(['the plan'], 'notes.txt', { type: 'text/plain' });
+      await act(async () => {
+        $('textarea').dispatchEvent(
+          Object.assign(new Event('paste', { bubbles: true, cancelable: true }), { clipboardData: { files: [note] } }),
+        );
+      });
+      expect($('.gc-card .gc-attachments').textContent).toContain('notes.txt');
+      expect(submit().disabled).toBe(false);
+      click(submit());
+      expect(onSend).toHaveBeenCalledWith('', [note]);
+      expect($('.gc-card .gc-attachments')).toBeNull();
+    });
+  });
+
+  it('keeps the default composer as it was: the field with Stop and submit, the header above it', () => {
+    render({ state: fixture({ canSteer: true }), composerHeader: <span>Starts in app</span> });
+    expect($('.gc-card')).toBeNull();
+    const box = $('.gc-box');
+    expect(box.previousElementSibling?.className).toBe('gc-composer-header');
+    expect(Array.from(box.children).map((child) => child.textContent || child.tagName)).toEqual([
+      'TEXTAREA',
+      'Stop',
+      'Steer',
+    ]);
+  });
 });

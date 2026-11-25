@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
@@ -42,9 +43,9 @@ import {
 } from './format.js';
 import { ChatApp, draftViewport, splitTranscript } from './tui/app.js';
 import { NoticeView, TurnView } from './tui/transcript.js';
-import { loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
+import { CHOOSE_FOLDER_LINE, loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { uiRelease } from './web/release.js';
-import { parseCommand, startWebUi } from './web/server.js';
+import { inspectFolder, parseCommand, startWebUi } from './web/server.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
@@ -2952,6 +2953,143 @@ describe('web UI server', () => {
       await waitFor('"title":"Knight AI"');
       expect(seen).toContain(JSON.stringify(knights));
       await reader.cancel();
+    } finally {
+      stdin.end();
+      expect(await done).toBe(0);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it('starts a chat in a new worktree, looks a folder up, and asks the host app for one', async () => {
+    // Outside os.tmpdir(): a chat does not start in a temporary directory.
+    mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+    const root = realpathSync(mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'starts-in-')));
+    const homeDir = join(root, 'home');
+    const repo = join(root, 'knights');
+    const plain = join(root, 'notes');
+    for (const dir of [homeDir, join(repo, 'src'), plain]) mkdirSync(dir, { recursive: true });
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { cwd: repo });
+    writeFileSync(join(repo, 'README.md'), 'committed\n');
+    git('init', '-q', '-b', 'main');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'start');
+    writeFileSync(join(repo, 'src', 'draft.ts'), 'not committed yet\n');
+    const homeEnv = { ...env, HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+
+    // The command and what the project line reads of a folder.
+    expect(parseCommand({ type: 'project-chat', cwd: repo, worktree: true })).toEqual({
+      type: 'project-chat',
+      cwd: repo,
+      worktree: true,
+    });
+    expect(parseCommand({ type: 'project-chat', cwd: repo, worktree: false })).toEqual({
+      type: 'project-chat',
+      cwd: repo,
+    });
+    expect(parseCommand({ type: 'project-chat', cwd: repo, worktree: 'yes' })).toBeUndefined();
+    expect(await inspectFolder(repo)).toEqual({ path: repo, exists: true, git: true, branch: 'main' });
+    expect(await inspectFolder(`${plain}/`)).toEqual({ path: plain, exists: true, git: false });
+    expect(await inspectFolder('~/knights', root)).toMatchObject({ path: repo, exists: true });
+    expect(await inspectFolder('~', root)).toMatchObject({ path: root, exists: true });
+    expect(await inspectFolder(join(root, 'missing'))).toEqual({ path: join(root, 'missing'), exists: false });
+    expect(await inspectFolder('knights')).toBeUndefined();
+    expect(await inspectFolder('  ')).toBeUndefined();
+
+    const agent = echoAgent();
+    const chat = createChatController({ agents: [agent], cwd: homeDir, env: homeEnv, home: true });
+    try {
+      // A folder no session worked in opens only when the person picked it in the host's dialog.
+      expect(await chat.startProjectChat(join(repo, 'src'), { worktree: true })).toBe(false);
+      expect(chat.get().notices.at(-1)).toMatchObject({
+        tone: 'error',
+        text: expect.stringMatching(/is not a project folder/),
+      });
+      expect(existsSync(join(repo, '.genaicode'))).toBe(false);
+      // A worktree needs a repository: nothing starts, and the chat stays where it was.
+      expect(await chat.startProjectChat(plain, { worktree: true, chosen: true })).toBe(false);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().notices.at(-1)).toMatchObject({
+        tone: 'error',
+        text: expect.stringMatching(/not in a git repository/),
+      });
+
+      // From a folder below the top of the repository: the same folder inside the copy, with what was not committed.
+      expect(await chat.startProjectChat(join(repo, 'src'), { worktree: true, chosen: true })).toBe(true);
+      const cwd = chat.get().session.cwd;
+      expect(cwd).toMatch(/[\\/]knights[\\/]\.genaicode[\\/]chats[\\/]knights-[0-9a-f]{8}[\\/]src$/);
+      expect(readFileSync(join(cwd, 'draft.ts'), 'utf8')).toBe('not committed yet\n');
+      expect(readFileSync(join(cwd, '..', 'README.md'), 'utf8')).toBe('committed\n');
+      expect(chat.get().conversation).toMatchObject({ cwd, origin: 'project' });
+      expect(chat.get().session.turns).toEqual([]);
+      expect(chat.get().notices.at(-1)?.text).toMatch(
+        /^Working in a new worktree: .*Nothing reaches src until you merge it\.$/,
+      );
+      // The copies are kept out of the repository they sit in, and the folder itself is untouched.
+      expect(git('status', '--porcelain').toString()).toBe('?? src/\n');
+      expect(readFileSync(join(repo, '.genaicode', 'chats', '.gitignore'), 'utf8')).toBe('*\n');
+      // Without the option the chat starts in the folder itself, and a worktree of the folder the chat
+      // is in is asked for from there: it is no new place.
+      expect(await chat.startProjectChat(repo, { chosen: true })).toBe(true);
+      expect(chat.get().session.cwd).toBe(repo);
+      expect(await chat.startProjectChat(repo, { worktree: true })).toBe(true);
+      expect(chat.get().session.cwd).toMatch(/[\\/]\.genaicode[\\/]chats[\\/]knights-[0-9a-f]{8}$/);
+    } finally {
+      chat.close();
+    }
+
+    // The desktop shell has a folder dialog: the page asks, the shell answers on stdin.
+    const stdin = new PassThrough();
+    let errors = '';
+    const done = runWeb({
+      agents: [agent],
+      cwd: homeDir,
+      env: { ...homeEnv, GENAICODE_DESKTOP_SHELL: '1' },
+      home: true,
+      noProject: true,
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      stdin: stdin as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      open: false,
+      exitWithStdin: true,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1]!;
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const events = await fetch(new URL('/api/events', url), { headers });
+      const reader = events.body!.getReader();
+      let seen = '';
+      while (!seen.includes('"chooseFolder":true')) seen += new TextDecoder().decode((await reader.read()).value);
+      await reader.cancel();
+
+      expect((await fetch(new URL('/api/choose-folder', url), { method: 'POST' })).status).toBe(403);
+      const asked = fetch(new URL('/api/choose-folder', url), { method: 'POST', headers });
+      await until(() => errors.includes(`${CHOOSE_FOLDER_LINE}\n`));
+      stdin.write(`folder ${JSON.stringify(repo)}\n`);
+      expect(await (await asked).json()).toEqual({ folder: { path: repo, exists: true, git: true, branch: 'main' } });
+      // A dismissed dialog chooses nothing.
+      const dismissed = fetch(new URL('/api/choose-folder', url), { method: 'POST', headers });
+      await until(() => errors.split(CHOOSE_FOLDER_LINE).length === 3);
+      stdin.write('folder null\n');
+      expect(await (await dismissed).json()).toEqual({});
+
+      // What was picked there may be opened; a path only typed into a request may not.
+      const start = (cwd: string) =>
+        fetch(new URL('/api/command', url), {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'project-chat', cwd }),
+        }).then((reply) => reply.json());
+      expect(await start(plain)).toEqual({ ok: false });
+      expect(await start(repo)).toEqual({ ok: true });
+
+      const found = await fetch(new URL(`/api/folder?path=${encodeURIComponent(plain)}`, url), { headers });
+      expect(await found.json()).toEqual({ path: plain, exists: true, git: false });
+      expect((await fetch(new URL('/api/folder?path=relative', url), { headers })).status).toBe(400);
+      expect((await fetch(new URL(`/api/folder?path=${encodeURIComponent(plain)}`, url))).status).toBe(403);
     } finally {
       stdin.end();
       expect(await done).toBe(0);

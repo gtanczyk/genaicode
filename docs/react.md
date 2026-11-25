@@ -90,6 +90,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `header`, `headerExtras`                                                       | replace the header (null for none), or add to its right end                                                                 |
 | `completions`                                                                  | commands the host understands (`{ name, args?, help? }`), offered while the message starts one                              |
 | `composerExtras`                                                               | host controls in a row under the message field, beside the attach button (agent, model, mode)                               |
+| `composerLayout`, `composerHeader`                                             | `'card'`: one card with the field over a row of attach, `composerExtras`, Stop and submit; a line above the field           |
 | `onOpenFile(path, position?)`, `onRevealFile(path)`                            | makes file links (carrying `:line`, `:line:col`, `#L12-L20` positions) clickable; `onRevealFile` adds a Reveal context menu |
 | `emptyState`, `placeholder`, `hint`, `composerTitle`                           | text before the first turn, in and under the input, its tooltip                                                             |
 | `formatToolName(name)`, `disabled`, `autoFocus`, `theme`, `className`, `style` |                                                                                                                             |

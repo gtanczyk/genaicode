@@ -1354,6 +1354,105 @@ img.gc-artifact-view {
   max-height: 200px;
   padding: 6px 0;
 }
+/* A line above the field: where a new chat starts. */
+.gc-composer-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--gc-type-12);
+  color: var(--_muted);
+  margin-bottom: 6px;
+}
+/*
+ * The card layout (composerLayout="card"): one bordered card with the field on top and one row of
+ * controls under it, the attach buttons first and Stop and the submit button last.
+ */
+.gc-composer.gc-composer-card {
+  border-top: 0;
+  background: transparent;
+  padding: 8px 24px 14px;
+  container-type: inline-size;
+}
+.gc-card {
+  position: relative;
+  background: var(--_panel);
+  border: 1px solid var(--gc-color-line-strong);
+  border-radius: 14px;
+  box-shadow: var(--gc-elevation-1);
+}
+.gc-card:focus-within {
+  border-color: var(--_accent);
+}
+.gc-card > .gc-composer-header {
+  margin: 0;
+  padding: 8px 8px 0;
+}
+.gc-card > .gc-attachments {
+  padding: 8px 10px 0;
+  margin: 0;
+}
+.gc-card > .gc-attach-problem {
+  padding: 6px 14px 0;
+}
+.gc-card textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  resize: none;
+  min-height: 48px;
+  max-height: 200px;
+  padding: 10px 14px 4px;
+}
+.gc-card-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 8px;
+}
+.gc-card-row .gc-grow {
+  flex: 1;
+}
+.gc-card-row .gc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: var(--gc-type-12);
+  white-space: nowrap;
+  flex: none;
+}
+.gc-card-row .gc-icon {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+  color: var(--_muted);
+  background: transparent;
+  border-color: transparent;
+}
+.gc-card-row .gc-icon:hover:not(:disabled) {
+  color: var(--_text);
+  background: var(--gc-color-sunken);
+}
+.gc-card-row .gc-icon.gc-recording {
+  color: #fff;
+  background: var(--_danger, #e5484d);
+  animation: gc-recording 1.2s ease-in-out infinite;
+}
+.gc-card-row .gc-submit kbd {
+  font: var(--gc-type-11) var(--_font);
+  opacity: 0.85;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gc-card-row .gc-icon.gc-recording {
+    animation: none;
+  }
+}
 .gc-hint {
   font-size: 0.8em;
   color: var(--_faint);

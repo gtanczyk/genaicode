@@ -215,20 +215,20 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Not logged in" >&2; exi
     // Even though codex came first in agents[], it is signed out so claude (Ready) is auto-selected.
     await page.getByRole('heading', { name: 'What should claude work on?' }).waitFor();
 
-    // Open the agent picker and inspect Ready, signed-out, unknown, and More agents rows.
-    await page.getByRole('button', { name: 'Agent' }).click();
-    const menu = page.getByRole('menu', { name: 'Choose an agent' });
+    // Open the agent chip and inspect Ready, signed-out, unknown, and More agents rows.
+    await page.getByRole('button', { name: /^Agent:/ }).click();
+    const menu = page.getByRole('dialog', { name: 'Agent, model, effort and fallback' });
     await menu.waitFor();
-    expect(await menu.getByRole('menuitemradio', { name: /Claude Code/ }).count()).toBe(1);
-    expect(await menu.getByRole('menuitemradio', { name: /Gemini CLI/ }).count()).toBe(1);
+    expect(await menu.getByRole('radio', { name: /Claude Code/ }).count()).toBe(1);
+    expect(await menu.getByRole('radio', { name: /Gemini CLI/ }).count()).toBe(1);
     // Codex is signed-out: not a choosable radio item, shows Sign in button.
-    expect(await menu.getByRole('menuitemradio', { name: /Codex/ }).count()).toBe(0);
+    expect(await menu.getByRole('radio', { name: /Codex/ }).count()).toBe(0);
     expect(await menu.textContent()).toContain('Not signed in');
     expect(await menu.textContent()).toContain('More agents');
-    expect(await menu.getByRole('menuitem', { name: 'Install' }).count()).toBe(1);
+    expect(await menu.getByRole('button', { name: 'Install' }).count()).toBe(1);
 
     // Clicking Sign in on Codex opens the Coding agents panel focused on Codex with `codex login`.
-    await menu.getByRole('menuitem', { name: 'Sign in' }).click();
+    await menu.getByRole('button', { name: 'Sign in' }).click();
     const codexCard = page.locator('li[data-agent="codex"]');
     await codexCard.waitFor();
     expect(await codexCard.textContent()).toContain('Installed, not signed in');
@@ -236,8 +236,8 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Not logged in" >&2; exi
     await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).click();
 
     // Switch to Gemini CLI (unknown auth) and send a prompt -> auth error becomes a Sign-in card instead of raw stderr.
-    await page.getByRole('button', { name: 'Agent' }).click();
-    await page.getByRole('menuitemradio', { name: /Gemini CLI/ }).click();
+    await page.getByRole('button', { name: /^Agent:/ }).click();
+    await page.getByRole('radio', { name: /Gemini CLI/ }).click();
     await page.getByRole('combobox', { name: 'Message' }).fill('hello gemini');
     await page.getByRole('button', { name: 'Send' }).click();
 
@@ -363,7 +363,7 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Logged in using ChatGPT
       expect(await page.getByRole('combobox', { name: 'Message' }).isDisabled()).toBe(false);
     });
     expect(await page.getByRole('region', { name: 'Connect a coding agent' }).count()).toBe(0);
-    expect(await page.getByRole('button', { name: 'Agent' }).textContent()).toContain('codex');
+    expect(await page.getByRole('button', { name: /^Agent:/ }).textContent()).toContain('codex');
   } finally {
     stop.abort();
     await browser.close();

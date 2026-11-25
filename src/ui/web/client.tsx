@@ -6,7 +6,7 @@ import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { EscapeActive, useEscape } from '../../react/escape.js';
-import { formatBytes } from '../../react/format.js';
+import { formatBytes, submitAction } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { SessionInfo } from '../../agents/sessions/group.js';
@@ -14,17 +14,9 @@ import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
 import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
 import type { AgentInspection } from '../../agents/status.js';
-import {
-  firstLine,
-  formatUsage,
-  limitChips,
-  needsAttention,
-  parseSlash,
-  SLASH_COMMANDS,
-  splitAttached,
-} from '../format.js';
+import { firstLine, formatUsage, needsAttention, parseSlash, SLASH_COMMANDS, splitAttached } from '../format.js';
 import type { UiRelease } from './release.js';
-import type { WebCommand, WebSessionListing, WebSwitchCommand } from './server.js';
+import type { WebCommand, WebFolder, WebSessionListing, WebSwitchCommand } from './server.js';
 import {
   chatProjects,
   folderName,
@@ -40,7 +32,7 @@ import {
   withOpenChat,
 } from '../sidebar.js';
 import { Shell } from './shell.js';
-import { AgentPicker } from './agent-picker.js';
+import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
@@ -240,6 +232,8 @@ interface PageConfig {
   /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
   nativeSave?: boolean;
   reveal?: boolean;
+  /** True when the host app has a folder dialog (`POST /api/choose-folder`). */
+  chooseFolder?: boolean;
   artifactCdn?: string[];
   canConfigureCdn?: boolean;
   /** A newer version of the app that shows this page: downloading, or ready to install on a relaunch. */
@@ -808,6 +802,25 @@ function CdnSettingsPopover({ hosts, onClose }: { hosts: readonly string[]; onCl
   );
 }
 
+/** The message field, for the focus: a new chat and the way back from a page start there. */
+function focusComposer() {
+  window.requestAnimationFrame(() =>
+    document.querySelector<HTMLTextAreaElement>('.workspace .gc-composer textarea')?.focus(),
+  );
+}
+
+/** What the server knows of a folder (`GET /api/folder`); undefined when the path is not one. */
+async function inspectFolder(path: string): Promise<WebFolder | undefined> {
+  const res = await fetch(`/api/folder?path=${encodeURIComponent(path)}`, { headers: { 'x-genaicode-token': token } });
+  return res.ok ? ((await res.json()) as WebFolder) : undefined;
+}
+
+/** The host's folder dialog (`POST /api/choose-folder`); undefined when nothing was chosen. */
+async function chooseFolder(): Promise<WebFolder | undefined> {
+  const res = await fetch('/api/choose-folder', { method: 'POST', headers: { 'x-genaicode-token': token } });
+  return res.ok ? ((await res.json()) as { folder?: WebFolder }).folder : undefined;
+}
+
 /** As many files as the server takes with one prompt. */
 const ATTACH = { max: 8 };
 
@@ -895,7 +908,6 @@ function App() {
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   const hasAgentsApi = config?.agents === true;
   useBark(view);
-  const [model, setModel] = useState<string>();
   const [showTeam, setShowTeam] = useState(false);
   // The Sessions / Agents views take the chat's place; the chat keeps running behind them.
   const [panel, setPanel] = useState<'chat' | 'sessions' | 'inbox' | 'agents'>('chat');
@@ -962,32 +974,61 @@ function App() {
     if (wasSetupRef.current && !inSetup && showAgents) setPanel('chat');
     wasSetupRef.current = inSetup;
   }, [inSetup, showAgents]);
-  /** Asks for another chat in this window. `what` names it when no answer comes at all. */
-  const switchChat = (request: WebSwitchCommand, what: string) => {
+  /**
+   * Asks for another chat in this window. `what` names it when no answer comes at all. Resolves to
+   * whether that chat is the one open now: false when the server refused, did not answer, or another
+   * chat was asked for meanwhile.
+   */
+  const switchChat = (request: WebSwitchCommand, what: string): Promise<boolean> => {
     // What still waits here was meant for the conversation that is left.
     dropWaiting();
     setViewer(undefined);
     setPanel('chat');
+    // The composer stays, and the next key goes to it.
+    focusComposer();
     const mine = ++switchSeq.current;
     switchingRef.current = true;
     setSwitching(true);
-    void command({ ...request, order: { window: WINDOW_ID, seq: mine } })
+    return command({ ...request, order: { window: WINDOW_ID, seq: mine } })
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
-        if (mine !== switchSeq.current) return;
+        if (mine !== switchSeq.current) return false;
         switchingRef.current = false;
         setSwitching(false);
         // The chat says why when the server refused; no answer at all is said here.
         if (done === undefined) showToast(`Could not ${what}.`, true);
+        return done === true;
       });
   };
   const startTopicChat = (topicId: string) =>
-    switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
-  const startHomeChat = () => switchChat({ type: 'home-chat' }, 'start a new chat');
+    void switchChat({ type: 'topic-chat', topic: topicId }, 'start a chat for that topic');
+  const startHomeChat = () => void switchChat({ type: 'home-chat' }, 'start a new chat');
   // The row's store goes with its id: another store may hold a session with the same one.
   const continueChat = (chat: Pick<SessionInfo, 'id' | 'source'>) =>
-    switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat');
+    void switchChat({ type: 'continue', id: chat.id, source: chat.source }, 'open that chat');
+  const startProjectChat = (path: string, name = folderName(path)) =>
+    switchChat({ type: 'project-chat', cwd: path }, `start a chat in ${name}`);
+  // A new chat: no prompt yet, so where it starts can still be chosen.
+  const newChat = !!session && session.turns.length === 0 && !inSetup;
+  // "New worktree" on the project line: made when the first prompt is sent, not before.
+  const [worktree, setWorktree] = useState(false);
+  const wantsWorktree = useRef(false);
+  wantsWorktree.current = worktree && newChat && isHome && conversation?.origin !== 'home';
+  const [folder, setFolder] = useState<WebFolder>();
+  useEffect(() => {
+    setWorktree(false);
+    setFolder(undefined);
+    if (!newChat || !activeCwd || !token) return;
+    let current = true;
+    inspectFolder(activeCwd).then(
+      (found) => current && setFolder(found),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [newChat, activeCwd, conversation?.id]);
   const convTopic = conversation?.topic?.name;
   const convTitle =
     conversation?.title ||
@@ -1008,7 +1049,6 @@ function App() {
   // On a plan the measure is the plan's own: a price there would be an estimate nobody pays.
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
-  const limits = session ? limitChips({ ...session, rateLimits }) : [];
   // A setting takes effect now: it does not wait behind a prompt whose files still upload.
   const control = (text: string) => void command({ type: 'submit', text });
   // Mode toggles wait behind any prompt whose attachments are still uploading, so an earlier
@@ -1097,7 +1137,20 @@ function App() {
       );
     }
     const dropped = waiting.signal;
-    const mine = sending.then(() => sendPrompt(text, files ?? [], dropped));
+    // The first prompt of a chat that starts in a new worktree makes the worktree, then goes there.
+    const copy = wantsWorktree.current ? activeCwd : undefined;
+    if (copy) {
+      wantsWorktree.current = false;
+      setWorktree(false);
+    }
+    const mine = sending.then(async () => {
+      if (copy) {
+        if (dropped.aborted) return STOPPED;
+        const made = await command({ type: 'project-chat', cwd: copy, worktree: true }).catch(() => false);
+        if (!made) return 'Not sent: the new worktree could not be made.';
+      }
+      return sendPrompt(text, files ?? [], dropped);
+    });
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
@@ -1110,118 +1163,62 @@ function App() {
   const efforts = currentAgent?.effort ?? [];
   const canPlan = !!currentAgent?.canPlan;
   const planOn = session?.mode === 'plan';
-  // What the next prompt runs with sits where it is typed, not in a bar above the conversation.
+  // What the next prompt runs with sits where it is typed: one chip for the agent, then the modes.
   const controls =
     view && session ? (
-      <div className="run-with">
-        {limits.map((chip) => (
-          <span key={chip.key} className="chip" data-level={chip.level} title={chip.title}>
-            {chip.text}
-          </span>
-        ))}
-        {hasAgentsApi ? (
-          <AgentPicker
-            current={session.agent}
-            agents={agentList}
-            noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
-            disabled={running}
-            onSelect={(name) => {
-              // What still waits here was meant for the other agent.
-              dropWaiting();
-              void command({ type: 'agent', name });
-            }}
-            onOpenSetup={openSetup}
-          />
-        ) : (
-          <select
-            aria-label="Agent"
-            title="The agent the next prompt goes to"
-            value={session.agent}
-            disabled={running}
-            onChange={(event) => {
-              // What still waits here was meant for the other agent.
-              dropWaiting();
-              void command({ type: 'agent', name: event.target.value });
-            }}
-          >
-            {view.agents.map((agent) => (
-              <option key={agent.name} value={agent.name}>
-                {agent.name}
-                {!agent.installed ? ' (not installed)' : agent.canAsk === false ? ' (no questions)' : ''}
-              </option>
-            ))}
-          </select>
-        )}
-        <input
-          aria-label="Model"
-          title={
-            !session.model && session.reportedModel
-              ? `The model id, or empty for the agent's default. It last ran ${session.reportedModel}.`
-              : "The model id, or empty for the agent's default"
-          }
-          placeholder={(!session.model && session.reportedModel) || 'model'}
-          size={Math.max(5, (model ?? session.model ?? session.reportedModel ?? '').length)}
-          value={model ?? session.model ?? ''}
-          onChange={(event) => setModel(event.target.value)}
-          onBlur={() => {
-            if (model !== undefined) void command({ type: 'model', model });
-            setModel(undefined);
+      <>
+        <AgentChip
+          agent={session.agent}
+          model={session.model}
+          reportedModel={session.reportedModel}
+          effort={session.effort}
+          efforts={efforts}
+          fallback={session.fallback ?? []}
+          agents={agentList}
+          noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
+          running={running}
+          onAgent={(name) => {
+            // What still waits here was meant for the other agent.
+            dropWaiting();
+            void command({ type: 'agent', name });
           }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-          }}
+          onModel={(model) => void command({ type: 'model', model })}
+          onEffort={(level) => control(`/effort ${level}`)}
+          onFallback={(names) => control(`/fallback ${names.length ? names.join(',') : 'off'}`)}
+          onOpenSetup={hasAgentsApi ? openSetup : undefined}
         />
-        {efforts.length > 0 && (
-          <select
-            aria-label="Effort"
-            title="How hard the agent thinks, from the next prompt"
-            value={session.effort ?? 'default'}
-            onChange={(event) => control(`/effort ${event.target.value}`)}
-          >
-            <option value="default">default effort</option>
-            {efforts.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        )}
-        {canPlan && (
-          <button
-            type="button"
-            className={planOn ? 'plan-on' : undefined}
-            title={
-              planOn
-                ? 'Plan mode on: the agent plans and asks without editing. Click to leave it.'
-                : 'Plan mode: from the next prompt, the agent plans and asks without editing'
-            }
-            aria-pressed={planOn}
-            onClick={() => void orderedControl(`/plan ${planOn ? 'off' : 'on'}`)}
-          >
-            {planOn ? '✓ Plan' : 'Plan'}
-          </button>
-        )}
-        <button
-          type="button"
-          title={
-            view.autoApprove
-              ? 'Every permission request is approved without asking'
-              : 'The agent asks before commands and edits it needs permission for'
-          }
-          aria-pressed={view.autoApprove}
-          onClick={() => control(`/auto ${view.autoApprove ? 'off' : 'on'}`)}
-        >
-          {view.autoApprove ? '✓ Auto-approve' : 'Ask first'}
-        </button>
-      </div>
+        <span className="grow" />
+        {canPlan ? (
+          <PlanToggle on={planOn} onToggle={(on) => void orderedControl(`/plan ${on ? 'on' : 'off'}`)} />
+        ) : null}
+        <PermissionSwitch auto={view.autoApprove} onChange={(auto) => control(`/auto ${auto ? 'on' : 'off'}`)} />
+      </>
     ) : null;
+  const stopTurn = () => {
+    dropWaiting();
+    void command({ type: 'stop' });
+  };
+  const canStop = running || !!view?.shells;
+  // Stop has a key of its own (⌘. on a Mac, Ctrl+. elsewhere), wherever the focus is.
+  const stopKey = useRef({ canStop, stopTurn });
+  stopKey.current = { canStop, stopTurn };
+  useEffect(() => {
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '.' || event.altKey || event.shiftKey) return;
+      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      if (!stopKey.current.canStop) return;
+      event.preventDefault();
+      stopKey.current.stopTurn();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const backToChat = () => {
     setPanel('chat');
     // Back from a page, the next key goes to the message field.
-    window.requestAnimationFrame(() =>
-      document.querySelector<HTMLTextAreaElement>('.workspace .gc-box textarea')?.focus(),
-    );
+    focusComposer();
   };
   const openSessions = (which: 'all' | 'needs' | 'own') => {
     setTopic(undefined);
@@ -1439,7 +1436,7 @@ function App() {
           },
           onNewChatIn: (project) => {
             if (!isHome || project.key === HOME_FOLDER) return startHomeChat();
-            switchChat({ type: 'project-chat', cwd: project.key }, `start a chat in ${project.name}`);
+            void startProjectChat(project.key, project.name);
           },
           // Outside --home the chat has one folder: a new chat starts there and nowhere else.
           canNewChatIn: (project) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
@@ -1533,6 +1530,25 @@ function App() {
               onOpenArtifact={openArtifactInPanel}
               imageUrl={imageUrl}
               completions={SLASH_COMMANDS}
+              composerLayout="card"
+              composerHeader={
+                // A page that names no project (`ui --no-project`) has no folder to say.
+                newChat && activeCwd && (isHome || hasProject) ? (
+                  <StartsIn
+                    cwd={activeCwd}
+                    atHome={isHome && (!conversation || conversation.origin === 'home')}
+                    folder={folder}
+                    projects={projects}
+                    canChange={isHome}
+                    worktree={worktree}
+                    onWorktree={setWorktree}
+                    onProject={(path) => startProjectChat(path)}
+                    onHome={startHomeChat}
+                    inspect={inspectFolder}
+                    choose={config?.chooseFolder ? chooseFolder : undefined}
+                  />
+                ) : undefined
+              }
               composerExtras={inSetup ? null : controls}
               attachments={config?.uploads && !inSetup ? ATTACH : undefined}
               onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
@@ -1601,10 +1617,7 @@ function App() {
                 );
               }}
               onSend={submit}
-              onStop={() => {
-                dropWaiting();
-                void command({ type: 'stop' });
-              }}
+              onStop={stopTurn}
               canStop={!!view?.shells}
               onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
               onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
@@ -1614,7 +1627,18 @@ function App() {
                 if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
                 return reply.text ?? '';
               }}
-              hint={inSetup ? 'Connect an agent to start' : null}
+              hint={
+                inSetup ? (
+                  'Connect an agent to start'
+                ) : session ? (
+                  <ComposerHint
+                    action={submitAction(session)}
+                    canStop={canStop}
+                    files={!!config?.uploads}
+                    quota={quota}
+                  />
+                ) : null
+              }
               composerTitle={
                 inSetup
                   ? 'Connect an agent to start'
