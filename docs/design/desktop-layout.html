@@ -1,0 +1,4899 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>genaicode · desktop window layout (design mockup, revision 2)</title>
+    <!--
+  Design mockup for docs/design/desktop-layout.md. Not production code: static data, no network.
+  One file, inline CSS and JS, so it opens from disk and inside the artifact sandbox.
+  Deep links for screenshots: #scn=new|chat|tasks|big &theme=dark|light &page=inbox|sessions|settings &task=t3 &tab=live|tasks|changes|artifacts
+-->
+    <style>
+      :root {
+        --bg: #fbfaf7;
+        --side: #f3f1ec;
+        --surface: #ffffff;
+        --sunken: #f0eee8;
+        --line: #e4e0d7;
+        --line-strong: #cfc9bc;
+        --text: #1e1c19;
+        --muted: #57524a;
+        --faint: #6a645a;
+        --accent: #a04a14;
+        --accent-soft: #f7e6d8;
+        --on-accent: #fff;
+        --ok: #276b43;
+        --ok-soft: #e2f1e7;
+        --warn: #855300;
+        --warn-soft: #fbefd2;
+        --err: #a83227;
+        --err-soft: #fae3e0;
+        --run: #2757b8;
+        --run-soft: #e2ebfb;
+        --merge: #6a3fb5;
+        --merge-soft: #ece6fa;
+        --shadow: 0 1px 2px rgba(30, 28, 25, 0.06), 0 8px 28px rgba(30, 28, 25, 0.1);
+        --r: 8px;
+        --r-lg: 12px;
+        --side-w: 268px;
+        --rail-w: 56px;
+        --work-w: 420px;
+        --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color-scheme: light;
+      }
+      :root[data-theme='dark'] {
+        --bg: #1a1917;
+        --side: #141312;
+        --surface: #222120;
+        --sunken: #121110;
+        --line: #2f2d2a;
+        --line-strong: #45423d;
+        --text: #ece9e3;
+        --muted: #b9b3a8;
+        --faint: #a19b90;
+        --accent: #e8935a;
+        --accent-soft: #3a2a1f;
+        --on-accent: #1a1917;
+        --ok: #6fc28c;
+        --ok-soft: #1d3125;
+        --warn: #e0b05a;
+        --warn-soft: #372c15;
+        --err: #f0958b;
+        --err-soft: #3b1f1c;
+        --run: #8fb1f4;
+        --run-soft: #1c2740;
+        --merge: #bda7f3;
+        --merge-soft: #2a2440;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.5);
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        font: 14px/1.5 var(--font);
+        color: var(--text);
+        background: var(--sunken);
+        -webkit-font-smoothing: antialiased;
+        overflow: hidden;
+      }
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      ::placeholder {
+        color: var(--faint);
+        opacity: 1;
+      }
+      svg.i {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      code,
+      .mono {
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .faint {
+        color: var(--faint);
+      }
+      .grow {
+        flex: 1;
+        min-width: 0;
+      }
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+        border-radius: 6px;
+      }
+
+      /* ---- state glyphs: one hue and one shape per state ------------------------ */
+      .sg {
+        width: 12px;
+        height: 12px;
+        flex: none;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        color: var(--faint);
+      }
+      .sg.run {
+        color: var(--run);
+        animation: spin 1.4s linear infinite;
+      }
+      .sg.ask {
+        color: var(--warn);
+      }
+      .sg.err,
+      .sg.block {
+        color: var(--err);
+      }
+      .sg.ready {
+        color: var(--merge);
+      }
+      .sg.ok {
+        color: var(--ok);
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .sg.run {
+          animation: none;
+        }
+      }
+
+      /* ---- one control style ---------------------------------------------------- */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .btn:hover {
+        background: var(--sunken);
+      }
+      .btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--on-accent);
+      }
+      .btn.primary:hover {
+        filter: brightness(1.06);
+      }
+      .btn.danger {
+        color: var(--err);
+      }
+      .btn.ghost {
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+      }
+      .btn.ghost:hover {
+        background: var(--sunken);
+        color: var(--text);
+      }
+      .btn.sm {
+        height: 26px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+      .btn.xs {
+        height: 22px;
+        padding: 0 7px;
+        font-size: 12px;
+        border-radius: 6px;
+      }
+      .btn.icon {
+        width: 30px;
+        padding: 0;
+        justify-content: center;
+      }
+      .btn.sm.icon {
+        width: 26px;
+      }
+      .btn[aria-pressed='true'] {
+        background: var(--accent-soft);
+        border-color: transparent;
+        color: var(--accent);
+      }
+      .btn[aria-disabled='true'] {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .btn kbd {
+        font: 11px var(--font);
+        opacity: 0.85;
+      }
+      .field {
+        height: 30px;
+        padding: 0 10px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        min-width: 0;
+      }
+      textarea.field {
+        height: auto;
+        padding: 8px 10px;
+        resize: vertical;
+      }
+      .seg {
+        display: inline-flex;
+        padding: 2px;
+        border-radius: var(--r);
+        background: var(--sunken);
+        border: 1px solid var(--line);
+      }
+      .seg button {
+        border: 0;
+        background: transparent;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .seg button[aria-pressed='true'] {
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 20px;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--sunken);
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .pill.run {
+        background: var(--run-soft);
+        color: var(--run);
+      }
+      .pill.ok {
+        background: var(--ok-soft);
+        color: var(--ok);
+      }
+      .pill.warn {
+        background: var(--warn-soft);
+        color: var(--warn);
+      }
+      .pill.err {
+        background: var(--err-soft);
+        color: var(--err);
+      }
+      .pill.merge {
+        background: var(--merge-soft);
+        color: var(--merge);
+      }
+      .pill .sg {
+        color: inherit;
+        animation: none;
+      }
+      .count {
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 9px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-grid;
+        place-items: center;
+        background: var(--sunken);
+        color: var(--muted);
+      }
+      .count.hot {
+        background: var(--warn);
+        color: var(--bg);
+      }
+
+      /* ---- window --------------------------------------------------------------- */
+      #app {
+        --side-cur: var(--side-w);
+        position: relative;
+        height: calc(100% - 44px);
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: var(--side-cur) minmax(0, 1fr) auto;
+        background: var(--bg);
+        overflow: hidden;
+      }
+      #app.side-collapsed {
+        --side-cur: var(--rail-w);
+      }
+      #app.framed {
+        border-left: 1px solid var(--line-strong);
+        border-right: 1px solid var(--line-strong);
+      }
+      /* macOS window buttons: fixed by the system at the window's top left, they never move */
+      .lights {
+        position: absolute;
+        left: 14px;
+        top: 17px;
+        z-index: 6;
+        display: flex;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .lights i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--line-strong);
+      }
+
+      /* ---- left sidebar --------------------------------------------------------- */
+      .side {
+        background: var(--side);
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+      }
+      .side-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 10px 0 78px;
+        flex: none;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .wolf {
+        width: 20px;
+        height: 20px;
+        color: var(--accent);
+      }
+      .side-actions {
+        padding: 4px 10px 8px;
+        display: grid;
+        gap: 2px;
+        flex: none;
+      }
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        height: 32px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: var(--r);
+        text-align: left;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .nav:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+      }
+      .nav[aria-current='page'] {
+        background: color-mix(in srgb, var(--text) 9%, transparent);
+        font-weight: 600;
+      }
+      .nav .grow {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .nav kbd {
+        font: 11px var(--font);
+        color: var(--faint);
+      }
+      .nav.new {
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .side-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 10px 10px;
+        min-height: 0;
+      }
+      .group-h {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 14px 9px 4px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      .proj {
+        margin-bottom: 2px;
+      }
+      .proj > summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: var(--r);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .proj > summary::-webkit-details-marker {
+        display: none;
+      }
+      .proj > summary:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+        color: var(--text);
+      }
+      .proj > summary .chev {
+        transition: transform 0.15s;
+      }
+      .proj[open] > summary .chev {
+        transform: rotate(90deg);
+      }
+      .proj > summary .add {
+        margin-left: auto;
+        opacity: 0;
+      }
+      .proj > summary:hover .add,
+      .proj > summary .add:focus-visible {
+        opacity: 1;
+      }
+      .chat {
+        padding-left: 14px;
+        height: 30px;
+      }
+      .chat small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .tag {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        border: 1px solid var(--line-strong);
+        border-radius: 4px;
+        padding: 0 4px;
+        line-height: 16px;
+        white-space: nowrap;
+      }
+      .side-foot {
+        border-top: 1px solid var(--line);
+        padding: 8px 10px;
+        display: grid;
+        gap: 2px;
+        flex: none;
+        position: relative;
+      }
+      .quota {
+        display: grid;
+        gap: 4px;
+        padding: 6px 9px 8px;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        border-radius: var(--r);
+      }
+      .quota:hover {
+        background: color-mix(in srgb, var(--text) 6%, transparent);
+      }
+      .quota-row {
+        display: grid;
+        grid-template-columns: 48px 1fr 88px;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .quota-row > :last-child {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .meter {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--line-strong);
+        overflow: hidden;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        background: var(--ok);
+        border-radius: 2px;
+      }
+      .meter i.mid {
+        background: var(--warn);
+      }
+      .meter i.hi {
+        background: var(--err);
+      }
+      .update {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 9px;
+        border-radius: var(--r);
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+        border: 0;
+        width: 100%;
+        text-align: left;
+      }
+      .foot-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .foot-row .nav {
+        width: auto;
+        flex: 1;
+      }
+      .badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex: none;
+      }
+      .conn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--faint);
+        padding: 2px 9px 0;
+      }
+      /* collapsed rail */
+      .side-collapsed .side .label,
+      .side-collapsed .side .group-h,
+      .side-collapsed .side .proj,
+      .side-collapsed .side kbd,
+      .side-collapsed .side .brand,
+      .side-collapsed .side .quota-row,
+      .side-collapsed .side .conn span,
+      .side-collapsed .side .other,
+      .side-collapsed .side-top .btn {
+        display: none;
+      }
+      .side-collapsed .nav {
+        justify-content: center;
+        padding: 0;
+        position: relative;
+      }
+      .side-collapsed .nav .count {
+        position: absolute;
+        top: 1px;
+        right: 4px;
+        min-width: 15px;
+        height: 15px;
+      }
+      .side-collapsed .foot-row {
+        flex-direction: column;
+      }
+      .side-collapsed .foot-row .nav {
+        width: 100%;
+      }
+      .side-collapsed .update {
+        justify-content: center;
+        padding: 7px 0;
+      }
+      .side-collapsed .update span {
+        display: none;
+      }
+      .side-collapsed .quota {
+        padding: 6px 0;
+        justify-items: center;
+      }
+      .side-collapsed .quota .ring {
+        display: grid;
+      }
+      .ring {
+        display: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text);
+        position: relative;
+      }
+      .ring::after {
+        content: '';
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: var(--side);
+      }
+      .ring b {
+        position: relative;
+        z-index: 1;
+      }
+      .side-collapsed .conn {
+        justify-content: center;
+        padding: 4px 0 0;
+      }
+
+      /* ---- center --------------------------------------------------------------- */
+      .center {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 12px 0 16px;
+        border-bottom: 1px solid var(--line);
+        flex: none;
+      }
+      /* rail: the window buttons overhang the 56 px rail, so the bar starts 88 px from the window edge */
+      .side-collapsed .topbar {
+        padding-left: 32px;
+      }
+      #side-expand,
+      #work-back,
+      #top-stop {
+        display: none;
+      }
+      .side-collapsed #side-expand {
+        display: inline-flex;
+      }
+      .work-full #work-back,
+      .work-full.is-running #top-stop {
+        display: inline-flex;
+      }
+      .topbar h1 {
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 60px;
+      }
+      .crumb {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+        border: 0;
+        background: transparent;
+        padding: 3px 6px;
+        border-radius: 6px;
+      }
+      .crumb:hover {
+        background: var(--sunken);
+        color: var(--text);
+      }
+      .topbar .sep {
+        color: var(--faint);
+      }
+      .tokens {
+        font-size: 12px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .menu-anchor {
+        position: relative;
+      }
+      .menu {
+        position: absolute;
+        z-index: 40;
+        min-width: 220px;
+        padding: 5px;
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        display: none;
+      }
+      .menu.open {
+        display: block;
+      }
+      .menu.right {
+        right: 0;
+        top: 36px;
+      }
+      .menu.up {
+        bottom: calc(100% + 6px);
+        left: 0;
+      }
+      .menu button,
+      .menu a {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        height: 30px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        text-align: left;
+        text-decoration: none;
+        color: var(--text);
+      }
+      .menu button:hover,
+      .menu a:hover {
+        background: var(--sunken);
+      }
+      .menu hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 5px 0;
+      }
+      .menu .mh {
+        font-size: 11px;
+        color: var(--faint);
+        padding: 6px 9px 2px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .page {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: none;
+      }
+      .page.on {
+        display: block;
+      }
+      #p-chat.on {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .work-full .center .page {
+        display: none !important;
+      }
+      .thread {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 24px 8px;
+        min-height: 0;
+      }
+      .col {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+      .msg {
+        margin-bottom: 22px;
+      }
+      .me {
+        margin-left: auto;
+        max-width: 78%;
+        width: fit-content;
+        padding: 9px 13px;
+        border-radius: 14px 14px 4px 14px;
+        background: var(--sunken);
+        border: 1px solid var(--line);
+      }
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .av {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 700;
+        flex: none;
+      }
+      .msg p + p,
+      .msg p + ul,
+      .msg ul + p {
+        margin-top: 8px;
+      }
+      .msg ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .fold {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .fold > button:first-child {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        font-size: 12px;
+      }
+      .fold > button:first-child:hover {
+        color: var(--text);
+      }
+      /* a task id is a link wherever it is written */
+      .tref {
+        border: 0;
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        color: var(--text);
+        font: 600 12px var(--mono);
+        padding: 0 4px;
+        border-radius: 4px;
+        line-height: 18px;
+      }
+      .tref:hover {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .workline {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        margin: 10px 0;
+        padding: 9px 12px;
+        border-radius: var(--r-lg);
+        border: 1px solid var(--line);
+        background: var(--surface);
+        text-align: left;
+        font-size: 13px;
+      }
+      .workline:hover {
+        border-color: var(--line-strong);
+      }
+      .workline .stats {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        flex: 1;
+        min-width: 0;
+        align-items: center;
+      }
+      .workline b {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .workline .open {
+        color: var(--muted);
+        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        white-space: nowrap;
+      }
+      /* a message sent to a running task leaves a receipt in the chat */
+      .rcpt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 6px 0 6px auto;
+        width: fit-content;
+        max-width: 86%;
+        padding: 6px 10px;
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--r);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .rc {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        color: var(--muted);
+      }
+      .rc.delivered {
+        color: var(--run);
+      }
+      .rc.answered {
+        color: var(--ok);
+      }
+      .rc.failed {
+        color: var(--err);
+      }
+      .rc.queued {
+        color: var(--warn);
+      }
+
+      /* ---- mission strip: the team at a glance, the next decision in reach ------ */
+      .composer-wrap {
+        padding: 8px 24px 14px;
+        flex: none;
+        container-type: inline-size;
+      }
+      .strip {
+        max-width: 760px;
+        margin: 0 auto 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        overflow: hidden;
+      }
+      .strip-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 5px 6px;
+        overflow: hidden;
+      }
+      .strip-row .lead {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 0 6px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+        text-align: right;
+      }
+      .stat {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 24px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        white-space: nowrap;
+      }
+      .stat:hover {
+        background: var(--sunken);
+      }
+      .stat span {
+        font-weight: 500;
+        color: var(--muted);
+      }
+      .strip-ask {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px 6px 12px;
+        background: var(--warn-soft);
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+      .strip-ask code {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+        flex: 0 1 auto;
+      }
+      .strip-ask .what {
+        white-space: nowrap;
+      }
+      @container (max-width: 800px) {
+        .perm-seg {
+          display: none !important;
+        }
+        .perm-one {
+          display: inline-flex !important;
+        }
+      }
+      @container (max-width: 640px) {
+        .stat span,
+        .chip-long {
+          display: none !important;
+        }
+      }
+
+      /* ---- composer ------------------------------------------------------------- */
+      .composer {
+        max-width: 760px;
+        margin: 0 auto;
+        border: 1px solid var(--line-strong);
+        border-radius: 14px;
+        background: var(--surface);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        position: relative;
+      }
+      .composer:focus-within {
+        border-color: var(--accent);
+      }
+      .composer textarea {
+        display: block;
+        width: 100%;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        resize: none;
+        padding: 10px 14px 4px;
+        min-height: 48px;
+      }
+      .composer-ctx {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 8px 8px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .attach {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        padding: 8px 10px 0;
+      }
+      .file {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 24px;
+        padding: 0 4px 0 8px;
+        border-radius: 6px;
+        background: var(--sunken);
+        border: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .file button {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        display: grid;
+        color: var(--muted);
+      }
+      .composer-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 8px 8px;
+        flex-wrap: wrap;
+      }
+      .perm-one {
+        display: none;
+      }
+      .composer-hint {
+        max-width: 760px;
+        margin: 6px auto 0;
+        display: flex;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--faint);
+        padding: 0 6px;
+      }
+      .composer-hint .hot {
+        color: var(--err);
+        font-weight: 600;
+      }
+      .pop {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 0;
+        z-index: 40;
+        width: 320px;
+        padding: 12px;
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        display: none;
+      }
+      .pop.open {
+        display: grid;
+        gap: 10px;
+      }
+      .pop label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .pop .note {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .agent-opt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+        font-size: 13px;
+      }
+      .agent-opt:hover {
+        background: var(--sunken);
+      }
+      .agent-opt[aria-checked='true'] {
+        background: var(--accent-soft);
+      }
+      .agent-opt small {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* new chat */
+      .home {
+        max-width: 640px;
+        margin: 0 auto;
+        padding: 5vh 0 8px;
+      }
+      .home h2 {
+        font-size: 24px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .home > p {
+        color: var(--muted);
+        margin-top: 6px;
+      }
+      .ideas {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 18px 0 22px;
+      }
+      .list-h {
+        font-size: 12px;
+        font-weight: 650;
+        color: var(--muted);
+        margin: 18px 0 6px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        margin-bottom: 6px;
+      }
+      .row b {
+        font-weight: 600;
+      }
+      .row small {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* ---- pages: settings, sessions, needs you --------------------------------- */
+      .pg {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 22px 28px 40px;
+      }
+      .pg-h {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      .pg-h h2 {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+        flex: 1;
+      }
+      .settings {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr);
+        gap: 28px;
+      }
+      .settings nav {
+        display: grid;
+        gap: 2px;
+        align-content: start;
+        position: sticky;
+        top: 0;
+      }
+      .sec {
+        display: none;
+      }
+      .sec.on {
+        display: block;
+      }
+      .sec h3 {
+        font-size: 16px;
+        font-weight: 650;
+      }
+      .sec > p {
+        color: var(--muted);
+        margin: 4px 0 16px;
+        font-size: 13px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        margin-bottom: 14px;
+      }
+      .set {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 13px 16px;
+        border-top: 1px solid var(--line);
+      }
+      .set:first-child {
+        border-top: 0;
+      }
+      .set b {
+        font-weight: 600;
+        display: block;
+      }
+      .set small {
+        color: var(--muted);
+        font-size: 12px;
+        display: block;
+      }
+      .set.col {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .switch {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        border-radius: 10px;
+        border: 0;
+        background: var(--faint);
+        flex: none;
+        transition: background 0.15s;
+      }
+      .switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      }
+      .switch[aria-checked='true'] {
+        background: var(--accent);
+      }
+      .switch[aria-checked='true']::after {
+        transform: translateX(14px);
+      }
+      .cmd {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 6px 6px 10px;
+        border-radius: 6px;
+        background: var(--sunken);
+        font-family: var(--mono);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .cmd span {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: var(--r);
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .check:has(input:checked) {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .check input {
+        accent-color: var(--accent);
+        margin: 0;
+      }
+      .bar {
+        display: grid;
+        grid-template-columns: 110px 1fr 40px;
+        gap: 10px;
+        align-items: center;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+        align-items: center;
+      }
+      .filters .field.search {
+        flex: 1;
+        min-width: 180px;
+      }
+      .srow {
+        display: grid;
+        grid-template-columns: 14px 36px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 9px 14px;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+      .srow:first-child {
+        border-top: 0;
+      }
+      .srow .t {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .srow .pv {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .srow.arch {
+        color: var(--muted);
+      }
+      .acts {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+      .srow .acts {
+        margin: 0;
+        flex-wrap: nowrap;
+        gap: 4px;
+      }
+      .card-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      pre.box {
+        margin: 8px 0 0;
+        padding: 9px 11px;
+        border-radius: 6px;
+        background: var(--sunken);
+        font: 12px/1.5 var(--mono);
+        overflow-x: auto;
+        white-space: pre-wrap;
+      }
+
+      /* ---- right work panel ----------------------------------------------------- */
+      .work {
+        width: var(--work-w);
+        border-left: 1px solid var(--line);
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        position: relative;
+      }
+      #app.work-closed .work {
+        display: none;
+      }
+      /* no room beside a 600 px chat column: the panel is a full-width view under the top bar, no scrim */
+      #app.work-full .work {
+        position: absolute;
+        top: 46px;
+        bottom: 0;
+        right: 0;
+        left: var(--side-cur);
+        width: auto;
+        border-left: 0;
+        z-index: 5;
+      }
+      .work-resize {
+        position: absolute;
+        left: -4px;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        cursor: col-resize;
+        z-index: 7;
+        border: 0;
+        background: transparent;
+        padding: 0;
+      }
+      .work-resize:hover,
+      .work-resize:focus-visible {
+        background: color-mix(in srgb, var(--accent) 35%, transparent);
+      }
+      .work-full .work-resize {
+        display: none;
+      }
+      .work-top {
+        display: flex;
+        align-items: center;
+        height: 46px;
+        padding: 0 8px 0 6px;
+        border-bottom: 1px solid var(--line);
+        flex: none;
+        gap: 2px;
+        overflow-x: auto;
+      }
+      .work-full .work-top {
+        height: 40px;
+      }
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 9px;
+        border: 0;
+        background: transparent;
+        border-radius: var(--r);
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .tab:hover {
+        color: var(--text);
+      }
+      .tab[aria-selected='true'] {
+        color: var(--text);
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        font-weight: 600;
+      }
+      .pane {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+        display: none;
+        padding: 14px;
+      }
+      .pane.on {
+        display: block;
+      }
+      #w-tasks {
+        padding: 0;
+        overflow: hidden;
+      }
+      #w-tasks.on {
+        display: flex;
+        flex-direction: column;
+      }
+      .thead {
+        padding: 12px 14px 6px;
+        flex: none;
+      }
+      .tscroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0 14px 14px;
+      }
+      .work-full .pane > *,
+      .work-full .thead,
+      .work-full .tscroll > *,
+      .work-full .tsteer > * {
+        max-width: 860px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .ph {
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--faint);
+        margin: 16px 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .ph:first-child {
+        margin-top: 0;
+      }
+      .ph .plain {
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 500;
+        font-size: 12px;
+      }
+      .steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .steps li {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 9px;
+        padding: 4px 0;
+        font-size: 13px;
+        align-items: start;
+      }
+      .steps .mk {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 1.5px solid var(--line-strong);
+        margin-top: 2px;
+        display: grid;
+        place-items: center;
+        color: var(--bg);
+      }
+      .steps .done .mk {
+        background: var(--ok);
+        border-color: var(--ok);
+      }
+      .steps .done {
+        color: var(--muted);
+      }
+      .steps .cur .mk {
+        border-color: var(--run);
+        border-top-color: transparent;
+        animation: spin 1s linear infinite;
+      }
+      .steps .cur {
+        font-weight: 600;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .steps .cur .mk {
+          animation: none;
+        }
+      }
+
+      /* readable activity: verb, then the file or command */
+      .actl {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 5px;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .actl .vb {
+        font-weight: 600;
+        color: var(--run);
+        flex: none;
+      }
+      .actl code {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .actl .dt {
+        color: var(--muted);
+        font-size: 12px;
+        flex: none;
+      }
+      .nowcard {
+        border: 1px solid color-mix(in srgb, var(--run) 40%, var(--line));
+        background: var(--run-soft);
+        border-radius: var(--r-lg);
+        padding: 10px 12px;
+      }
+      .nowcard .big {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        font-size: 14px;
+        min-width: 0;
+      }
+      .nowcard .big .vb {
+        font-weight: 650;
+        color: var(--run);
+      }
+      .nowcard .big code {
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .nowcard .big .dt {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .nowcard .say {
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--text);
+        border-left: 2px solid var(--run);
+        padding-left: 8px;
+      }
+      .nowcard .say small {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .watch {
+        border: 1px solid var(--line);
+        border-radius: var(--r-lg);
+        background: var(--surface);
+        padding: 9px 11px;
+        margin-bottom: 8px;
+      }
+      .watch-h {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 13px;
+      }
+      .watch-h b {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .watch .actl {
+        display: flex;
+        margin-top: 5px;
+        font-size: 13px;
+      }
+      .watch .say {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .feed {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .feed li {
+        display: grid;
+        grid-template-columns: 34px 12px minmax(0, 1fr) auto;
+        gap: 7px;
+        align-items: baseline;
+        padding: 5px 0;
+        font-size: 13px;
+        border-top: 1px solid var(--line);
+      }
+      .feed li:first-child {
+        border-top: 0;
+      }
+      .feed li .sg {
+        align-self: center;
+      }
+      .feed time,
+      .tl time {
+        font-size: 12px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .feed .x {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .feed .quiet .x {
+        color: var(--muted);
+      }
+
+      .askcard {
+        border: 1px solid var(--warn);
+        background: var(--warn-soft);
+        border-radius: var(--r-lg);
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+      .askcard b {
+        font-weight: 600;
+      }
+      .askcard .btns {
+        display: flex;
+        gap: 6px;
+        margin-top: 9px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .askcard.bad {
+        border-color: var(--err);
+        background: var(--err-soft);
+      }
+      .tfilters {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .chipf {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 26px;
+        padding: 0 9px;
+        border-radius: 13px;
+        border: 1px solid var(--line-strong);
+        background: transparent;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .chipf[aria-pressed='true'] {
+        background: var(--text);
+        color: var(--bg);
+        border-color: var(--text);
+      }
+      .chipf i {
+        font-style: normal;
+        font-weight: 600;
+      }
+      .ttools {
+        display: flex;
+        gap: 6px;
+      }
+      .ttools .field {
+        flex: 1;
+        height: 28px;
+        font-size: 12px;
+      }
+
+      /* task groups: sticky header with the bulk action, capped rows */
+      .tg {
+        margin-top: 6px;
+      }
+      .tgh {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 32px;
+        background: var(--bg);
+        border-bottom: 1px solid var(--line);
+      }
+      .tgt {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 0;
+        background: transparent;
+        padding: 4px 2px;
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .tgt .chev {
+        transition: transform 0.15s;
+        width: 12px;
+        height: 12px;
+      }
+      .tgt[aria-expanded='true'] .chev {
+        transform: rotate(90deg);
+      }
+      .task {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border-radius: var(--r);
+      }
+      .task:hover,
+      .task:focus-within {
+        background: var(--surface);
+      }
+      .tmain {
+        flex: 1;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 12px auto minmax(0, 1fr) auto;
+        gap: 2px 8px;
+        align-items: center;
+        padding: 7px 8px;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        border-radius: var(--r);
+      }
+      .tid {
+        font: 600 12px var(--mono);
+        color: var(--muted);
+        min-width: 22px;
+      }
+      .tt {
+        font-size: 13px;
+        font-weight: 550;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .ta {
+        font-size: 12px;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .tl2 {
+        grid-column: 2 / 5;
+        font-size: 12px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .tl2.bad {
+        color: var(--err);
+      }
+      .tl2.need {
+        color: var(--warn);
+      }
+      .tl2 .actl {
+        display: flex;
+        font-size: 12px;
+      }
+      .tl2 .say {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tact {
+        display: flex;
+        gap: 4px;
+        padding-right: 6px;
+        flex: none;
+      }
+      /* compact rows above 15 tasks: one line each */
+      .task.c .tmain {
+        grid-template-columns: 12px auto minmax(60px, 0.9fr) minmax(0, 1.1fr) auto;
+        padding: 4px 8px;
+        height: 28px;
+      }
+      .task.c .tl2 {
+        grid-column: auto;
+      }
+      .task.c .tl2 .say {
+        display: none;
+      }
+      .more-btn {
+        display: block;
+        width: 100%;
+        height: 26px;
+        margin-top: 2px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+        padding: 0 8px 0 28px;
+      }
+      .more-btn:hover {
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      /* task detail: a timeline, and a box to talk to the task */
+      .back {
+        margin: 8px 0 8px -6px;
+      }
+      .dt-h {
+        display: flex;
+        align-items: start;
+        gap: 8px;
+      }
+      .dt-h h3 {
+        font-size: 16px;
+        font-weight: 650;
+        flex: 1;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 4px 0 12px;
+      }
+      .result {
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      .tl {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .tl li {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: baseline;
+        padding: 5px 0;
+        font-size: 13px;
+      }
+      .tl li > .i {
+        align-self: center;
+        width: 14px;
+        height: 14px;
+        color: var(--faint);
+      }
+      .tl .x {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tl .x b {
+        font-weight: 600;
+      }
+      .tl .bubble {
+        grid-column: 2 / 4;
+        padding: 7px 10px;
+        border-radius: var(--r);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        white-space: normal;
+      }
+      .tl .you .bubble {
+        background: var(--sunken);
+        border-style: dashed;
+      }
+      .tl .bubble .by {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 2px;
+      }
+      .tsteer {
+        flex: none;
+        border-top: 1px solid var(--line);
+        padding: 8px 14px 10px;
+        background: var(--bg);
+      }
+      .tsteer .boxrow {
+        display: flex;
+        gap: 6px;
+      }
+      .tsteer .field {
+        flex: 1;
+      }
+      .tsteer small {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 5px;
+      }
+      details.more {
+        margin-top: 10px;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+      }
+      details.more summary {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .frow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        border-radius: 6px;
+        padding: 6px;
+        font-size: 12px;
+      }
+      .frow:hover {
+        background: var(--surface);
+      }
+      .frow code {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        direction: rtl;
+        text-align: left;
+      }
+      .st {
+        font: 600 12px var(--mono);
+        width: 14px;
+        text-align: center;
+      }
+      .st.M {
+        color: var(--warn);
+      }
+      .st.A,
+      .add {
+        color: var(--ok);
+      }
+      .st.D,
+      .del {
+        color: var(--err);
+      }
+      .delta {
+        font: 12px var(--mono);
+        white-space: nowrap;
+      }
+      .chk {
+        padding: 8px 0;
+        font-size: 13px;
+        border-top: 1px solid var(--line);
+      }
+      .chk:first-child {
+        border-top: 0;
+      }
+      .chk-h {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .chk ul {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        font-size: 13px;
+      }
+      pre.diff {
+        margin: 6px 0 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        font: 12px/1.55 var(--mono);
+        overflow-x: auto;
+        padding: 6px 0;
+      }
+      pre.diff span {
+        display: block;
+        padding: 0 10px;
+      }
+      pre.diff .a {
+        background: var(--ok-soft);
+      }
+      pre.diff .d {
+        background: var(--err-soft);
+      }
+      pre.diff .h {
+        color: var(--faint);
+      }
+      .art {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--surface);
+        text-align: left;
+        margin-bottom: 8px;
+      }
+      .art b {
+        display: block;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .art small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .vh {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .vh b {
+        font-size: 13px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+      .viewer {
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        height: 300px;
+        background: repeating-linear-gradient(
+          45deg,
+          var(--surface),
+          var(--surface) 10px,
+          var(--sunken) 10px,
+          var(--sunken) 20px
+        );
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+      }
+      .viewer span {
+        background: var(--surface);
+        color: var(--muted);
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+
+      /* sheet, search palette, toast, mockup controls */
+      .sheet-bg {
+        position: absolute;
+        inset: 0;
+        z-index: 50;
+        background: rgba(0, 0, 0, 0.32);
+        display: none;
+        place-items: center;
+        padding: 24px;
+      }
+      .sheet-bg.open {
+        display: grid;
+      }
+      .sheet-bg.top {
+        place-items: start center;
+        padding-top: 12vh;
+      }
+      .sheet {
+        width: min(560px, 100%);
+        max-height: 80%;
+        overflow: auto;
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        padding: 20px 22px;
+      }
+      .sheet h2 {
+        font-size: 20px;
+        font-weight: 650;
+      }
+      .sheet ul {
+        padding-left: 20px;
+        margin: 10px 0;
+      }
+      .sheet .btns {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+      .palette {
+        width: min(600px, 100%);
+        border-radius: 14px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .palette input {
+        display: block;
+        width: 100%;
+        height: 46px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        padding: 0 16px;
+        font-size: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      .palette .res {
+        max-height: 320px;
+        overflow-y: auto;
+        padding: 5px;
+      }
+      .pres {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        height: 34px;
+        padding: 0 10px;
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        font-size: 13px;
+        text-align: left;
+      }
+      .pres[aria-selected='true'] {
+        background: var(--accent-soft);
+      }
+      .pres .grow {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pres small {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .pfoot {
+        padding: 7px 14px;
+        border-top: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .toast {
+        position: absolute;
+        left: 50%;
+        bottom: 64px;
+        transform: translateX(-50%);
+        z-index: 60;
+        padding: 7px 13px;
+        border-radius: var(--r);
+        background: var(--text);
+        color: var(--bg);
+        font-size: 12px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        max-width: 80%;
+      }
+      .toast.on {
+        opacity: 1;
+      }
+      .mock {
+        position: fixed;
+        left: 50%;
+        bottom: 7px;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 6px 5px 11px;
+        border-radius: 18px;
+        background: #16130f;
+        color: #f3efe8;
+        font-size: 12px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+        white-space: nowrap;
+        max-width: calc(100vw - 16px);
+        overflow-x: auto;
+      }
+      .mock b {
+        font-weight: 650;
+        color: #cfc8bb;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-size: 11px;
+      }
+      .mock button {
+        border: 0;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 12px;
+        background: #37322b;
+        color: inherit;
+        font-size: 12px;
+      }
+      .mock button:hover {
+        background: #4a443b;
+      }
+      .mock button[aria-pressed='true'] {
+        background: #f3efe8;
+        color: #16130f;
+      }
+      .mock .gap {
+        width: 1px;
+        height: 14px;
+        background: #4a443b;
+        margin: 0 3px;
+      }
+
+      /* narrow chat column */
+      #app.narrow .tokens,
+      #app.narrow .crumb .path {
+        display: none;
+      }
+      #app.narrow .settings {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      #app.narrow .settings nav {
+        display: flex;
+        flex-wrap: wrap;
+        position: static;
+      }
+      #app.narrow .settings nav .nav {
+        width: auto;
+      }
+      #app.narrow .thread,
+      #app.narrow .composer-wrap {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></symbol>
+        <symbol id="i-search" viewBox="0 0 16 16">
+          <circle cx="7" cy="7" r="4" />
+          <path d="m10 10 3.5 3.5" />
+        </symbol>
+        <symbol id="i-inbox" viewBox="0 0 16 16">
+          <path d="M2 9.5 4 3h8l2 6.5V13H2z" />
+          <path d="M2 9.5h3.5l1 1.5h3l1-1.5H14" />
+        </symbol>
+        <symbol id="i-layers" viewBox="0 0 16 16">
+          <path d="m8 2 6 3-6 3-6-3z" />
+          <path d="m2 8 6 3 6-3M2 11l6 3 6-3" />
+        </symbol>
+        <symbol id="i-gear" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="2.2" />
+          <path
+            d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M12.4 3.6l-1.2 1.2M4.8 11.2l-1.2 1.2"
+          />
+        </symbol>
+        <symbol id="i-help" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="6" />
+          <path d="M6.3 6.3a1.8 1.8 0 1 1 2.5 1.7c-.5.3-.8.6-.8 1.2M8 11.3v.2" />
+        </symbol>
+        <symbol id="i-side" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="2" />
+          <path d="M6 3v10" />
+        </symbol>
+        <symbol id="i-work" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="2" />
+          <path d="M10 3v10" />
+        </symbol>
+        <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4" /></symbol>
+        <symbol id="i-back" viewBox="0 0 16 16"><path d="M10 4 6 8l4 4" /></symbol>
+        <symbol id="i-dots" viewBox="0 0 16 16">
+          <circle cx="3.5" cy="8" r=".6" />
+          <circle cx="8" cy="8" r=".6" />
+          <circle cx="12.5" cy="8" r=".6" />
+        </symbol>
+        <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" /></symbol>
+        <symbol id="i-clip" viewBox="0 0 16 16">
+          <path d="M13 7.5 8 12.5a3 3 0 0 1-4.2-4.2l5-5a2 2 0 0 1 2.8 2.8l-5 5a1 1 0 0 1-1.4-1.4L9.8 5" />
+        </symbol>
+        <symbol id="i-mic" viewBox="0 0 16 16">
+          <rect x="6" y="2" width="4" height="7" rx="2" />
+          <path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2" />
+        </symbol>
+        <symbol id="i-stop" viewBox="0 0 16 16">
+          <rect x="4.5" y="4.5" width="7" height="7" rx="1.2" fill="currentColor" />
+        </symbol>
+        <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 4.5h4l1.2 1.5H14V12.5H2z" /></symbol>
+        <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" /></symbol>
+        <symbol id="i-copy" viewBox="0 0 16 16">
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+          <path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+        </symbol>
+        <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 3v8M4.5 8 8 11.5 11.5 8M3 13.5h10" /></symbol>
+        <symbol id="i-spark" viewBox="0 0 16 16">
+          <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2 12 12M12 4l-1.8 1.8M5.8 10.2 4 12" />
+        </symbol>
+        <symbol id="i-doc" viewBox="0 0 16 16">
+          <path d="M4 2h5.5L12 4.5V14H4z" />
+          <path d="M9.5 2v2.5H12M6 8h4M6 10.5h4" />
+        </symbol>
+        <symbol id="i-users" viewBox="0 0 16 16">
+          <circle cx="6" cy="6" r="2.3" />
+          <path
+            d="M1.8 13c.4-2.2 2-3.4 4.2-3.4s3.8 1.2 4.2 3.4M10.6 3.9a2.3 2.3 0 0 1 0 4.3M12.2 10c1.1.5 1.8 1.5 2 3"
+          />
+        </symbol>
+        <symbol id="i-term" viewBox="0 0 16 16">
+          <rect x="2" y="3" width="12" height="10" rx="2" />
+          <path d="m5 6.5 2 1.5-2 1.5M8.5 10H11" />
+        </symbol>
+        <symbol id="i-pen" viewBox="0 0 16 16">
+          <path d="M3 13l.6-2.8L10.8 3a1.2 1.2 0 0 1 1.7 0l.5.5a1.2 1.2 0 0 1 0 1.7L5.8 12.4z" />
+        </symbol>
+        <symbol id="i-say" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z" /></symbol>
+        <symbol id="i-archive" viewBox="0 0 16 16"><path d="M2 3.5h12v3H2zM3 6.5V13h10V6.5M6.5 9.5h3" /></symbol>
+        <symbol id="i-expand" viewBox="0 0 16 16">
+          <path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9" />
+        </symbol>
+        <symbol id="i-pin" viewBox="0 0 16 16"><path d="M6 2.5h4l-.5 4 2.5 2.5H4L6.500 6.5zM8 9v4.5" /></symbol>
+        <symbol id="i-wolf" viewBox="0 0 20 20">
+          <path d="M3 3l4 3h6l4-3-1 7-6 7-6-7z" fill="currentColor" stroke="none" />
+        </symbol>
+        <!-- state glyphs -->
+        <symbol id="s-run" viewBox="0 0 12 12"><path d="M6 1.5A4.5 4.5 0 1 0 10.5 6" /></symbol>
+        <symbol id="s-ask" viewBox="0 0 12 12"><path d="M6 1 11 6 6 11 1 6z" fill="currentColor" /></symbol>
+        <symbol id="s-err" viewBox="0 0 12 12"><path d="m2.5 2.5 7 7M9.5 2.5l-7 7" /></symbol>
+        <symbol id="s-block" viewBox="0 0 12 12">
+          <path d="M6 1.5 11 10.500H1z" />
+          <path d="M6 5v2.5M6 9v.1" />
+        </symbol>
+        <symbol id="s-ready" viewBox="0 0 12 12">
+          <rect x="1.500" y="1.500" width="9" height="9" rx="2" />
+          <circle cx="6" cy="6" r="1.2" fill="currentColor" />
+        </symbol>
+        <symbol id="s-ok" viewBox="0 0 12 12"><path d="m2 6.500 2.800 2.800L10 3.500" /></symbol>
+        <symbol id="s-idle" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.500" /></symbol>
+      </defs>
+    </svg>
+
+    <div id="app" class="work-closed">
+      <span class="lights" aria-hidden="true" title="macOS window buttons (drawn by the system)"
+        ><i></i><i></i><i></i
+      ></span>
+      <!-- =================== LEFT SIDEBAR =================== -->
+      <aside class="side" aria-label="Sidebar">
+        <div class="side-top" title="Window drag region">
+          <span class="brand"
+            ><svg class="wolf" viewBox="0 0 20 20"><use href="#i-wolf" /></svg><span>genaicode</span></span
+          >
+          <span class="grow"></span>
+          <button class="btn ghost icon sm" data-act="side" title="Collapse sidebar (⌘B)" aria-label="Collapse sidebar">
+            <svg class="i"><use href="#i-side" /></svg>
+          </button>
+        </div>
+        <div class="side-actions">
+          <button class="nav new" data-go="chat" data-scn="new" title="New chat (⌘N)">
+            <svg class="i"><use href="#i-plus" /></svg><span class="label grow">New chat</span><kbd>⌘N</kbd>
+          </button>
+          <button class="nav" data-act="palette" title="Search chats and sessions (⌘K)">
+            <svg class="i"><use href="#i-search" /></svg><span class="label grow">Search</span><kbd>⌘K</kbd>
+          </button>
+          <button class="nav" data-go="inbox" id="nav-inbox">
+            <svg class="i"><use href="#i-inbox" /></svg><span class="label grow">Needs you</span
+            ><span class="count hot" id="n-needs">3</span>
+          </button>
+          <button class="nav" data-go="sessions" title="Sessions of every agent on this machine">
+            <svg class="i"><use href="#i-layers" /></svg><span class="label grow">All sessions</span>
+          </button>
+        </div>
+        <div class="side-scroll" id="side-list"></div>
+        <div class="side-foot">
+          <button
+            class="update"
+            data-act="toast"
+            data-msg="Install 3.4.0 and relaunch: stops the agents this app runs"
+            title="Version 3.4.0 is downloaded. Relaunching installs it."
+          >
+            <svg class="i"><use href="#i-down" /></svg><span>Update ready · relaunch</span>
+          </button>
+          <button class="quota" data-go="settings" data-sec="usage" id="quota"></button>
+          <div class="foot-row">
+            <button class="nav" data-go="settings" title="Settings (⌘,)">
+              <svg class="i"><use href="#i-gear" /></svg><span class="label grow">Settings</span>
+            </button>
+            <span class="menu-anchor" style="flex: 1; display: flex">
+              <button class="nav" data-menu="m-help" title="Help and what's new">
+                <svg class="i"><use href="#i-help" /></svg><span class="label grow">Help</span
+                ><span class="badge-dot" title="New in 3.3.0"></span>
+              </button>
+              <div class="menu up" id="m-help" role="menu">
+                <button data-act="whatsnew">
+                  <svg class="i"><use href="#i-spark" /></svg><span class="grow">What's new</span
+                  ><span class="pill">3.3.0</span>
+                </button>
+                <hr />
+                <a href="#" data-act="toast" data-msg="Opens SUPPORT_URL in the browser"
+                  ><svg class="i"><use href="#i-help" /></svg>Get help</a
+                >
+                <a href="#" data-act="toast" data-msg="Opens BUG_REPORT_URL in the browser"
+                  ><svg class="i"><use href="#i-doc" /></svg>Report a bug</a
+                >
+                <a href="#" data-act="toast" data-msg="TODO for the owner: there is no terms page to link yet"
+                  ><svg class="i"><use href="#i-doc" /></svg>Terms</a
+                >
+                <button data-act="toast" data-msg="Lists the slash commands and keys (/help)">
+                  <svg class="i"><use href="#i-doc" /></svg>Commands and keys
+                </button>
+              </div>
+            </span>
+          </div>
+          <div class="conn" title="Connected to the genaicode server">
+            <svg class="sg ok"><use href="#s-ok" /></svg><span>Connected · 3.3.0</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- =================== CENTER =================== -->
+      <main class="center">
+        <header class="topbar" id="topbar">
+          <button
+            class="btn ghost icon sm"
+            id="side-expand"
+            data-act="side"
+            title="Show sidebar (⌘B)"
+            aria-label="Show sidebar"
+          >
+            <svg class="i"><use href="#i-side" /></svg>
+          </button>
+          <button class="btn ghost sm" id="work-back" data-act="work" title="Back to the chat (Esc)">
+            <svg class="i"><use href="#i-back" /></svg>Chat
+          </button>
+          <h1 id="title">Ship the sidebars layout</h1>
+          <span class="sep" aria-hidden="true">/</span>
+          <button
+            class="crumb"
+            id="crumb"
+            title="~/src/genaicode — click to copy, /where prints it"
+            data-act="toast"
+            data-msg="Working directory copied: ~/src/genaicode"
+          >
+            <svg class="i"><use href="#i-folder" /></svg>genaicode <span class="path">· master</span>
+          </button>
+          <span class="grow"></span>
+          <span class="tokens" id="tokens" title="Usage of this conversation"></span>
+          <button class="btn sm danger" id="top-stop" data-act="stop" title="Stop the turn (⌘.)">
+            <svg class="i"><use href="#i-stop" /></svg>Stop
+          </button>
+          <span class="menu-anchor" id="session-menu">
+            <button
+              class="btn ghost icon sm"
+              data-menu="m-session"
+              title="Session and transcript"
+              aria-label="Session menu"
+            >
+              <svg class="i"><use href="#i-dots" /></svg>
+            </button>
+            <div class="menu right" id="m-session" role="menu">
+              <div class="mh">Session …4ae4d086</div>
+              <button data-act="toast" data-msg="Session ID copied">
+                <svg class="i"><use href="#i-copy" /></svg>Copy session ID
+              </button>
+              <button data-act="toast" data-msg="File path copied">
+                <svg class="i"><use href="#i-copy" /></svg>Copy file path
+              </button>
+              <hr />
+              <div class="mh">Transcript</div>
+              <button data-act="toast" data-msg="Transcript copied as Markdown">
+                <svg class="i"><use href="#i-copy" /></svg>Copy as Markdown
+              </button>
+              <button data-act="toast" data-msg="Transcript copied as JSON">
+                <svg class="i"><use href="#i-copy" /></svg>Copy as JSON
+              </button>
+              <button data-act="toast" data-msg="Native Save dialog: Markdown">
+                <svg class="i"><use href="#i-down" /></svg>Save as Markdown…
+              </button>
+              <button data-act="toast" data-msg="Native Save dialog: JSON">
+                <svg class="i"><use href="#i-down" /></svg>Save as JSON…
+              </button>
+              <hr />
+              <button data-go="settings" data-sec="team">
+                <svg class="i"><use href="#i-users" /></svg>Team for this project…
+              </button>
+            </div>
+          </span>
+          <button class="btn ghost sm" id="work-toggle" data-act="work" aria-pressed="false">
+            <svg class="i"><use href="#i-work" /></svg><span id="work-label">Work</span
+            ><span class="count hot" id="work-badge">1</span
+            ><span class="badge-dot" id="work-new" title="New work since you last looked"></span>
+          </button>
+        </header>
+
+        <!-- chat (also the new chat: same page, same composer) -->
+        <section class="page on" id="p-chat">
+          <div class="thread"><div class="col" id="thread"></div></div>
+          <div class="composer-wrap">
+            <div class="strip" id="strip" aria-label="Team status"></div>
+            <div class="composer">
+              <div class="composer-ctx" id="ctx"></div>
+              <div class="attach" id="attach"></div>
+              <textarea id="msg" rows="2" aria-label="Message"></textarea>
+              <div class="composer-row">
+                <button
+                  class="btn ghost icon sm"
+                  data-act="addfile"
+                  title="Attach files (or paste, or drop them)"
+                  aria-label="Attach files"
+                >
+                  <svg class="i"><use href="#i-clip" /></svg>
+                </button>
+                <button class="btn ghost icon sm" title="Record a voice message" aria-label="Record a voice message">
+                  <svg class="i"><use href="#i-mic" /></svg>
+                </button>
+                <span class="menu-anchor" id="to-anchor">
+                  <button
+                    class="btn ghost sm"
+                    data-menu="m-to"
+                    id="to-chip"
+                    title="Who gets this message: the lead, or one running task (type @t3)"
+                  ></button>
+                  <div class="pop" id="m-to"></div>
+                </span>
+                <span class="menu-anchor">
+                  <button
+                    class="btn ghost sm"
+                    data-menu="m-agent"
+                    id="agent-chip"
+                    title="Agent, model, effort (high) and fallback for the next prompt"
+                  ></button>
+                  <div class="pop" id="m-agent">
+                    <div role="radiogroup" aria-label="Agent" id="agent-opts"></div>
+                    <label>Model<input class="field" id="model" placeholder="empty for the agent's default" /></label>
+                    <label
+                      >Effort<span class="seg" style="width: fit-content"
+                        ><button>default</button><button>low</button><button>medium</button
+                        ><button aria-pressed="true">high</button><button>max</button></span
+                      ></label
+                    >
+                    <label>Fallback when it runs out<input class="field" value="codex, agy" /></label>
+                  </div>
+                </span>
+                <span class="grow"></span>
+                <button
+                  class="btn ghost sm"
+                  aria-pressed="false"
+                  data-act="press"
+                  title="Plan mode: the agent plans and asks without editing"
+                >
+                  Plan
+                </button>
+                <span class="seg perm-seg" title="Permission requests in this session"
+                  ><button data-act="segp" data-v="ask">Ask first</button
+                  ><button
+                    data-act="segp"
+                    data-v="auto"
+                    aria-pressed="true"
+                    title="Approves every request for the rest of this session"
+                  >
+                    Auto-approve all
+                  </button></span
+                >
+                <button
+                  class="btn sm perm-one"
+                  data-act="permone"
+                  aria-pressed="true"
+                  title="Auto-approve all requests in this session. Click for Ask first."
+                >
+                  Auto-approve all
+                </button>
+                <button
+                  class="btn sm danger"
+                  id="stop"
+                  data-act="stop"
+                  title="Stop the turn (⌘.). Queued prompts are dropped."
+                >
+                  <svg class="i"><use href="#i-stop" /></svg>Stop
+                </button>
+                <button class="btn sm primary" id="send" data-act="send"></button>
+              </div>
+            </div>
+            <div class="composer-hint">
+              <span id="hint-l"></span><span class="grow"></span><span id="hint-r"></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- all sessions -->
+        <section class="page" id="p-sessions">
+          <div class="pg">
+            <div class="pg-h">
+              <h2>All sessions</h2>
+              <button
+                class="btn sm"
+                data-act="toast"
+                data-msg="Archives every session waiting or left half way for 2 days or more. The agents' own files are not touched."
+                title="genaicode sessions archive --stale"
+              >
+                Archive 4 stale</button
+              ><button class="btn sm">Refresh</button>
+            </div>
+            <div class="filters">
+              <input
+                class="field search"
+                placeholder="Search titles, prompts, directories, branches…"
+                aria-label="Search sessions"
+              />
+              <select class="field" aria-label="Agent">
+                <option>All agents</option>
+                <option>claude</option>
+                <option>codex</option>
+                <option>agy</option>
+              </select>
+              <select class="field" aria-label="State">
+                <option>Any state</option>
+                <option>Working</option>
+                <option>Needs you</option>
+                <option>Stalled</option>
+              </select>
+              <span
+                class="seg"
+                title="A project is a directory. A topic is a piece of work that can cross directories and agents."
+                ><button aria-pressed="true">By project</button><button>By topic</button></span
+              >
+              <select class="field" aria-label="Period">
+                <option>7 days</option>
+                <option>30 days</option>
+                <option>All</option>
+              </select>
+            </div>
+            <div class="filters">
+              <button class="chipf" aria-pressed="true">Needs you <i>2</i></button
+              ><button class="chipf">Stalled <i>3</i></button><button class="chipf">Only this app's chats</button
+              ><button class="chipf" aria-pressed="true">Archived <i>1</i></button>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <span class="grow">genaicode <span class="faint" style="font-weight: 400">· ~/src/genaicode</span></span
+                ><button class="btn sm ghost" data-go="chat" data-scn="new" data-proj="0">New chat</button>
+              </div>
+              <div class="srow">
+                <svg class="sg ask"><use href="#s-ask" /></svg><span class="faint">12m</span>
+                <span class="t"
+                  ><b>Fix flaky tower test</b> <span class="muted">· codex · asks for approval</span
+                  ><span class="pv"
+                    ><span class="tag">Bash</span> <code>npm test -- tower --reporter=dot</code></span
+                  ></span
+                >
+                <span class="acts"
+                  ><button class="btn sm primary" data-act="resolve" data-id="q-tower">Approve</button
+                  ><button class="btn sm" data-act="resolve" data-id="q-tower">Deny</button
+                  ><button class="btn sm ghost">Reply</button
+                  ><button class="btn sm ghost icon" title="Archive" aria-label="Archive">
+                    <svg class="i"><use href="#i-archive" /></svg></button
+                ></span>
+              </div>
+              <div class="srow">
+                <svg class="sg ask"><use href="#s-ask" /></svg><span class="faint">26m</span>
+                <span class="t"
+                  ><b>Bump CI Node version</b> <span class="muted">· gemini · asks for approval</span
+                  ><span class="pv"
+                    ><span class="tag">run_shell_command</span>
+                    <code>gh workflow run lint.yaml --ref ci/node-22</code> · answer it in Gemini CLI</span
+                  ></span
+                >
+                <span class="acts"
+                  ><button class="btn sm ghost icon" title="Copy resume command" aria-label="Copy resume command">
+                    <svg class="i"><use href="#i-copy" /></svg></button
+                  ><button class="btn sm ghost icon" title="Archive" aria-label="Archive">
+                    <svg class="i"><use href="#i-archive" /></svg></button
+                ></span>
+              </div>
+              <div class="srow">
+                <svg class="sg run"><use href="#s-run" /></svg><span class="faint">now</span>
+                <span class="t"><b>Ship the sidebars layout</b> <span class="muted">· claude · this app</span></span>
+                <span class="acts"><button class="btn sm" data-go="chat" data-scn="tasks">Open</button></span>
+              </div>
+              <div class="srow">
+                <svg class="sg"><use href="#s-idle" /></svg><span class="faint">6d</span>
+                <span class="t"><b>Vite overlay a11y pass</b> <span class="muted">· agy · left on an offer</span></span>
+                <span class="acts"
+                  ><button class="btn sm" title="Bring this conversation into the chat">Continue</button
+                  ><button class="btn sm ghost icon" title="Copy resume command" aria-label="Copy resume command">
+                    <svg class="i"><use href="#i-copy" /></svg></button
+                  ><button class="btn sm ghost icon" title="Copy session ID, file path or transcript" aria-label="More">
+                    <svg class="i"><use href="#i-dots" /></svg></button
+                  ><button class="btn sm ghost icon" title="Archive" aria-label="Archive">
+                    <svg class="i"><use href="#i-archive" /></svg></button
+                ></span>
+              </div>
+              <div class="srow arch">
+                <svg class="sg"><use href="#s-idle" /></svg><span>9d</span>
+                <span class="t"><b>Try rolldown for the UI bundle</b> <span>· codex · archived 7d ago</span></span>
+                <span class="acts"
+                  ><button class="btn sm" data-act="toast" data-msg="Unarchived: it is back in the lists">
+                    Unarchive
+                  </button></span
+                >
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <span class="grow"
+                  >www.gamedev.pl <span class="faint" style="font-weight: 400">· ~/src/www.gamedev.pl</span></span
+                ><button class="btn sm ghost" data-go="chat" data-scn="new" data-proj="1">New chat</button>
+              </div>
+              <div class="srow">
+                <svg class="sg run"><use href="#s-run" /></svg><span class="faint">3m</span>
+                <span class="t"><b>Kit API typings</b> <span class="muted">· claude · working</span></span>
+                <span class="acts"
+                  ><button class="btn sm ghost">Reply</button><button class="btn sm">Continue</button></span
+                >
+              </div>
+              <div class="srow">
+                <svg class="sg ask"><use href="#s-ask" /></svg><span class="faint">40m</span>
+                <span class="t"
+                  ><b>Gate verdict retries</b> <span class="muted">· claude · question: “retry on 502 too?”</span></span
+                >
+                <span class="acts"
+                  ><button class="btn sm ghost">Reply</button
+                  ><button class="btn sm" data-go="chat" data-scn="chat">Open</button
+                  ><button class="btn sm ghost icon" title="Archive" aria-label="Archive">
+                    <svg class="i"><use href="#i-archive" /></svg></button
+                ></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- needs you: one queue -->
+        <section class="page" id="p-inbox"><div class="pg" id="inbox"></div></section>
+
+        <!-- settings -->
+        <section class="page" id="p-settings">
+          <div class="pg">
+            <div class="pg-h">
+              <button class="btn ghost icon sm" data-go="chat" title="Back to chat (Esc)" aria-label="Back to chat">
+                <svg class="i"><use href="#i-back" /></svg>
+              </button>
+              <h2>Settings</h2>
+            </div>
+            <div class="settings">
+              <nav aria-label="Settings sections">
+                <button class="nav" data-sec="general">
+                  <svg class="i"><use href="#i-gear" /></svg><span class="grow">General</span>
+                </button>
+                <button class="nav" data-sec="agents">
+                  <svg class="i"><use href="#i-spark" /></svg><span class="grow">Agents</span
+                  ><span class="count hot">1</span>
+                </button>
+                <button class="nav" data-sec="team">
+                  <svg class="i"><use href="#i-users" /></svg><span class="grow">Team</span>
+                </button>
+                <button class="nav" data-sec="artifacts">
+                  <svg class="i"><use href="#i-doc" /></svg><span class="grow">Artifacts</span>
+                </button>
+                <button class="nav" data-sec="usage">
+                  <svg class="i"><use href="#i-layers" /></svg><span class="grow">Usage</span>
+                </button>
+                <button class="nav" data-sec="about">
+                  <svg class="i"><use href="#i-help" /></svg><span class="grow">About and updates</span>
+                </button>
+              </nav>
+              <div>
+                <div class="sec" id="s-general">
+                  <h3>General</h3>
+                  <p>How the window looks and behaves.</p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"><b>Theme</b><small>Follows the system unless you choose.</small></span
+                      ><span class="seg" id="theme-seg"
+                        ><button data-theme-set="system">System</button><button data-theme-set="light">Light</button
+                        ><button data-theme-set="dark">Dark</button></span
+                      >
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Bark when an agent needs you</b
+                        ><small
+                          >A sound and a count in the title while the window is in the background
+                          (<code>/bark</code>).</small
+                        ></span
+                      ><button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-act="switch"
+                        aria-label="Bark"
+                      ></button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Auto-approve all by default</b
+                        ><small
+                          >New chats start in Auto-approve all instead of Ask first (<code>/auto</code>). It always
+                          covers one session only.</small
+                        ></span
+                      ><button
+                        class="switch"
+                        role="switch"
+                        aria-checked="false"
+                        data-act="switch"
+                        aria-label="Auto-approve all by default"
+                      ></button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Open the work panel when work starts</b
+                        ><small
+                          >On the first plan, delegated task or approval of a turn, when it fits beside the chat. It
+                          never takes keyboard focus; where it does not fit, the Work button shows a dot instead.</small
+                        ></span
+                      ><button
+                        class="switch"
+                        role="switch"
+                        aria-checked="true"
+                        data-act="switch"
+                        aria-label="Open the work panel when work starts"
+                      ></button>
+                    </div>
+                  </div>
+                </div>
+                <div class="sec" id="s-agents">
+                  <h3>Agents</h3>
+                  <p>The coding agent CLIs on this machine. Install or sign in from Terminal, then check again.</p>
+                  <div class="card">
+                    <div class="set">
+                      <svg class="sg ok"><use href="#s-ok" /></svg
+                      ><span class="grow"
+                        ><b>Claude Code</b><small>Ready · 2.4.1 · Max plan · /opt/homebrew/bin/claude</small></span
+                      ><span class="pill ok">Default</span>
+                    </div>
+                    <div class="set">
+                      <svg class="sg ok"><use href="#s-ok" /></svg
+                      ><span class="grow"><b>Codex</b><small>Ready · 0.61 · Pro plan</small></span
+                      ><button class="btn sm">Use</button>
+                    </div>
+                    <div class="set">
+                      <svg class="sg ok"><use href="#s-ok" /></svg
+                      ><span class="grow"
+                        ><b>Antigravity</b><small>Ready · cannot ask questions while it runs</small></span
+                      ><button class="btn sm">Use</button>
+                    </div>
+                    <div class="set">
+                      <svg class="sg err"><use href="#s-err" /></svg
+                      ><span class="grow"><b>Gemini CLI</b><small>Ready · daily quota used, resets in 6h</small></span
+                      ><button class="btn sm">Use</button>
+                    </div>
+                    <div class="set col">
+                      <div style="display: flex; gap: 16px; align-items: center">
+                        <svg class="sg ask"><use href="#s-ask" /></svg
+                        ><span class="grow"><b>Cursor CLI</b><small>Installed, not signed in</small></span
+                        ><span class="pill warn">Sign in</span>
+                      </div>
+                      <div class="cmd">
+                        <span>cursor-agent login</span
+                        ><button
+                          class="btn sm ghost icon"
+                          title="Copy command"
+                          aria-label="Copy command"
+                          data-act="toast"
+                          data-msg="Command copied"
+                        >
+                          <svg class="i"><use href="#i-copy" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <div style="display: flex; gap: 16px; align-items: center">
+                        <svg class="sg"><use href="#s-idle" /></svg
+                        ><span class="grow"><b>Muse Code</b><small>Not installed</small></span>
+                      </div>
+                      <div class="cmd">
+                        <span>npm install -g @muse/code</span
+                        ><button
+                          class="btn sm ghost icon"
+                          title="Copy command"
+                          aria-label="Copy command"
+                          data-act="toast"
+                          data-msg="Command copied"
+                        >
+                          <svg class="i"><use href="#i-copy" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn"
+                    data-act="toast"
+                    data-msg="Re-reads the login shell environment and each agent's state"
+                  >
+                    Check again
+                  </button>
+                </div>
+                <div class="sec" id="s-team">
+                  <h3>Team</h3>
+                  <p>
+                    Who leads and who takes delegated tasks in one project (a directory). Saved in that directory's
+                    <code>.genaicode/pack.json</code>.
+                  </p>
+                  <div class="card">
+                    <div class="set col">
+                      <span
+                        ><b>Project folder</b><small>Type a path, pick a recent one, or choose a folder.</small></span
+                      >
+                      <div style="display: flex; gap: 8px">
+                        <input
+                          class="field mono grow"
+                          value="~/src/genaicode"
+                          list="dirs"
+                          aria-label="Project folder"
+                        /><datalist id="dirs">
+                          <option value="~/src/genaicode"></option>
+                          <option value="~/src/www.gamedev.pl"></option>
+                          <option value="~/Documents/RecordingsWorkbench"></option></datalist
+                        ><button class="btn" data-act="toast" data-msg="Native folder picker">Choose…</button>
+                      </div>
+                    </div>
+                    <div class="set">
+                      <span class="grow"><b>Lead</b><small>Plans the work, delegates and merges.</small></span
+                      ><select class="field" style="width: 160px" aria-label="Lead">
+                        <option>claude</option>
+                        <option>codex</option>
+                      </select>
+                    </div>
+                    <div class="set col">
+                      <span><b>Workers</b><small>Installed agents the lead may delegate to.</small></span>
+                      <div class="checks">
+                        <label class="check"><input type="checkbox" checked />claude</label
+                        ><label class="check"><input type="checkbox" checked />codex</label
+                        ><label class="check"><input type="checkbox" checked />agy</label
+                        ><label class="check"><input type="checkbox" checked />gemini</label>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    class="btn primary"
+                    data-act="toast"
+                    data-msg="Team saved in ~/src/genaicode/.genaicode/pack.json"
+                  >
+                    Remember this team for the project
+                  </button>
+                </div>
+                <div class="sec" id="s-artifacts">
+                  <h3>Artifacts</h3>
+                  <p>
+                    HTML artifacts run in a sandbox with no network. You can let them load libraries from CDNs you
+                    trust.
+                  </p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Allow common library CDNs</b
+                        ><small>cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, esm.sh</small></span
+                      ><button
+                        class="switch"
+                        role="switch"
+                        aria-checked="false"
+                        data-act="switch"
+                        aria-label="Allow common library CDNs"
+                      ></button>
+                    </div>
+                    <div class="set col">
+                      <span><b>Extra allowed hosts</b><small>One per line or comma-separated.</small></span
+                      ><textarea
+                        class="field"
+                        rows="3"
+                        placeholder="e.g. cdn.skypack.dev"
+                        aria-label="Extra allowed hosts"
+                      ></textarea>
+                    </div>
+                  </div>
+                  <p class="muted" style="font-size: 12px; margin: -4px 0 12px">
+                    Off by default. Allowed hosts can serve scripts, styles and fonts inside HTML artifacts; fetch,
+                    images and forms stay blocked. Loaded scripts run with the artifact's data.
+                  </p>
+                  <button class="btn primary" data-act="toast" data-msg="Settings saved">Save</button>
+                </div>
+                <div class="sec" id="s-usage">
+                  <h3>Usage</h3>
+                  <p>Plan limits last seen for each agent, and where its work went in the last 7 days (by topic).</p>
+                  <div class="card">
+                    <div class="set col">
+                      <b
+                        >claude <span class="pill ok" style="margin-left: 6px">7d 43% · resets in 4d 3h</span>
+                        <span class="pill warn">5h 62% · resets in 1h 12m</span></b
+                      >
+                      <div>
+                        <div class="bar">
+                          <span>sidebars layout</span><span class="meter"><i style="width: 58%"></i></span
+                          ><span>58%</span>
+                        </div>
+                        <div class="bar">
+                          <span>gate verdicts</span><span class="meter"><i style="width: 31%"></i></span
+                          ><span>31%</span>
+                        </div>
+                        <div class="bar">
+                          <span>recordings</span><span class="meter"><i style="width: 11%"></i></span><span>11%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <b>codex <span class="pill ok" style="margin-left: 6px">7d 18% · resets in 2d 9h</span></b>
+                      <div>
+                        <div class="bar">
+                          <span>sidebars layout</span><span class="meter"><i style="width: 84%"></i></span
+                          ><span>84%</span>
+                        </div>
+                        <div class="bar">
+                          <span>gate verdicts</span><span class="meter"><i style="width: 16%"></i></span
+                          ><span>16%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="set col">
+                      <b>agy <span class="pill" style="margin-left: 6px">reports no plan limits</span></b>
+                    </div>
+                    <div class="set col">
+                      <b
+                        >gemini
+                        <span class="pill err" style="margin-left: 6px">daily quota used · resets in 6h</span></b
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div class="sec" id="s-about">
+                  <h3>About and updates</h3>
+                  <p>Genaicode desktop 3.3.0.</p>
+                  <div class="card">
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Version 3.4.0 is downloaded</b
+                        ><small>Relaunching installs it and stops the agents this app runs.</small></span
+                      ><button class="btn primary sm">Install and relaunch</button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>What's new in 3.3.0</b><small>Release notes bundled with this version.</small></span
+                      ><button class="btn sm" data-act="whatsnew">Read</button>
+                    </div>
+                    <div class="set">
+                      <span class="grow"
+                        ><b>Help</b><small>Get help, report a bug. Terms: no page to link yet.</small></span
+                      ><button class="btn sm ghost">Get help</button><button class="btn sm ghost">Report a bug</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- =================== RIGHT WORK PANEL =================== -->
+      <aside class="work" aria-label="Work panel">
+        <button
+          class="work-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize work panel (arrow keys)"
+          title="Drag to resize, up to half the window"
+        ></button>
+        <div class="work-top" role="tablist">
+          <button class="tab" role="tab" data-tab="live">Live</button>
+          <button class="tab" role="tab" data-tab="tasks">Tasks <span class="count" id="n-tasks"></span></button>
+          <button class="tab" role="tab" data-tab="changes">Changes <span class="count" id="n-changes"></span></button>
+          <button class="tab" role="tab" data-tab="artifacts">Artifacts <span class="count">2</span></button>
+          <span class="grow"></span>
+          <button class="btn ghost icon sm" data-act="work" title="Close panel (⌘⌥B)" aria-label="Close work panel">
+            <svg class="i"><use href="#i-x" /></svg>
+          </button>
+        </div>
+        <div class="pane" id="w-live" role="tabpanel"></div>
+        <div class="pane" id="w-tasks" role="tabpanel"></div>
+        <div class="pane" id="w-changes" role="tabpanel"></div>
+        <div class="pane" id="w-artifacts" role="tabpanel"></div>
+      </aside>
+
+      <div class="sheet-bg" id="whatsnew">
+        <div class="sheet" role="dialog" aria-labelledby="wn-h">
+          <h2 id="wn-h">What's new in Genaicode 3.3.0</h2>
+          <p class="muted" style="margin-top: 4px">Updated from 3.2.1 to <b>3.3.0</b>.</p>
+          <ul>
+            <li><code>sessions mcp --send</code>: send to a session over MCP, confirmed by elicitation.</li>
+            <li><code>sessions --cloud</code>: cloud sessions from pull requests, and Codex Cloud tasks.</li>
+            <li>
+              <code>memory_list</code> and <code>memory_read</code>: what the other agents remember about a project.
+            </li>
+          </ul>
+          <div class="btns">
+            <button class="btn ghost">View release on GitHub</button
+            ><button class="btn primary" data-act="closesheet">Close</button>
+          </div>
+        </div>
+      </div>
+      <div class="sheet-bg top" id="palette">
+        <div class="palette" role="dialog" aria-label="Search chats and sessions">
+          <input
+            id="pq"
+            placeholder="Search chats and sessions…"
+            aria-label="Search chats and sessions"
+            autocomplete="off"
+          />
+          <div class="res" id="pres" role="listbox"></div>
+          <div class="pfoot">
+            ↑ ↓ move · Enter opens · Esc closes · searches titles and first and last prompt; each result names its
+            project and agent
+          </div>
+        </div>
+      </div>
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+
+    <div class="mock" aria-label="Mockup controls (not part of the design)">
+      <b>Mockup</b>
+      <button data-m="scn" data-v="new">New chat</button><button data-m="scn" data-v="chat">Plain chat</button
+      ><button data-m="scn" data-v="tasks">12 tasks</button><button data-m="scn" data-v="big">48 tasks</button
+      ><button data-m="scn" data-v="settings">Settings</button>
+      <span class="gap"></span>
+      <button data-m="side">Sidebar</button><button data-m="work">Work panel</button>
+      <span class="gap"></span>
+      <button data-m="width" data-v="0">Full</button><button data-m="width" data-v="1280">1280</button
+      ><button data-m="width" data-v="1100">1100</button><button data-m="width" data-v="900">900</button>
+      <span class="gap"></span>
+      <button data-m="theme">Dark / light</button>
+    </div>
+
+    <script>
+      (() => {
+        const $ = (s, r = document) => r.querySelector(s),
+          $$ = (s, r = document) => [...r.querySelectorAll(s)];
+        const app = $('#app'),
+          ic = (n, c = '') => `<svg class="i ${c}"><use href="#i-${n}"/></svg>`,
+          sg = (s) =>
+            `<svg class="sg ${s}" aria-hidden="true"><use href="#s-${{ run: 'run', ask: 'ask', err: 'err', block: 'block', ready: 'ready', ok: 'ok' }[s] || 'idle'}"/></svg>`;
+        const esc = (s) =>
+          String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+        /* ---------- agents: who can be steered mid-turn, and their plan limits ---------- */
+        const AG = {
+          claude: {
+            steer: true,
+            model: 'fable-5.2',
+            id: 'claude-fable-5-2',
+            note: 'Ready · leads the team · can be steered',
+            q: [62, '5h', '1h 12m'],
+          },
+          codex: {
+            steer: false,
+            model: 'gpt-6.2-astra',
+            id: 'gpt-6.2-astra',
+            note: 'Ready · prompts queue while it works',
+            q: [18, '7d', '2d 9h'],
+          },
+          agy: { steer: true, model: 'neon', id: 'neon', note: 'Ready · can be steered · no questions', q: null },
+          gemini: {
+            steer: false,
+            model: 'gemini-4-carbon',
+            id: 'gemini-4-carbon',
+            note: 'Out of quota · resets in 6h',
+            q: [100, 'day', '6h'],
+          },
+        };
+        const PROJ = [
+          { name: 'genaicode', path: '~/src/genaicode', branch: 'master' },
+          { name: 'www.gamedev.pl', path: '~/src/www.gamedev.pl', branch: 'main' },
+          { name: 'RecordingsWorkbench', path: '~/Documents/RecordingsWorkbench', branch: '' },
+          { name: 'Home folder', path: '~', branch: '', note: 'No project: asks across every project' },
+        ];
+        const CHATS = [
+          { id: 'tasks', title: 'Ship the sidebars layout', p: 0, s: 'run', age: 'now', agent: 'claude' },
+          { id: 'chat', title: 'Why does sessions mcp --send time out?', p: 0, s: 'ok', age: '2h', agent: 'claude' },
+          { id: 'c3', title: 'Release notes for 3.3.0', p: 0, s: '', age: '1d', agent: 'codex' },
+          { id: 'c4', title: 'Gate verdict retries', p: 1, s: 'ask', age: '40m', agent: 'claude' },
+          { id: 'c5', title: 'Studio inbox polling', p: 1, s: '', age: '3d', agent: 'claude' },
+          { id: 'c6', title: 'What is waiting for me?', p: 3, s: '', age: '5d', agent: 'claude' },
+        ];
+        const OTHER = [
+          { title: 'Fix flaky tower test', p: 0, s: 'ask', agent: 'codex', why: 'asks to run a command' },
+          { title: 'Kit API typings', p: 1, s: 'run', agent: 'claude', why: 'working' },
+          { title: 'Vite overlay a11y pass', p: 0, s: '', agent: 'agy', why: 'stalled on an offer' },
+        ];
+        /* needs you, outside the open chat. Tasks that wait add theirs: needs() is the one queue. */
+        const OQ = [
+          {
+            id: 'q-gate',
+            src: 'app',
+            chat: 'Gate verdict retries',
+            p: 1,
+            agent: 'claude',
+            action: 'Answer a question',
+            text: 'Retry the gate verdict on 502 too, or only on timeouts?',
+            age: '40m',
+          },
+          {
+            id: 'q-tower',
+            src: 'tower',
+            chat: 'Fix flaky tower test',
+            p: 0,
+            agent: 'codex',
+            action: 'Run a command',
+            cmd: 'npm test -- tower --reporter=dot',
+            age: '12m',
+          },
+        ];
+
+        /* ---------- tasks. live: [verb, file or command, detail]; msg: the task's latest message ---------- */
+        const rev = (id, k = 0) =>
+          (((+id.slice(1) + 7 + k) * 2654435761) >>> 0).toString(16).padStart(8, '0').slice(0, 7);
+        const base = () => [
+          {
+            id: 't5',
+            title: 'Settings page with sections',
+            agent: 'codex',
+            effort: 'high',
+            g: 'ask',
+            age: '2m',
+            mode: 'worktree',
+            ask: 'npm install @radix-ui/react-tabs',
+            msg: 'The tabs need a headless primitive; I would rather add @radix-ui/react-tabs than hand-roll focus handling.',
+            live: [
+              ['edit', 'src/ui/web/settings.tsx', '+212 −0'],
+              ['read', 'src/ui/web/client.tsx', 'lines 880–1040'],
+              ['grep', '"ProjectTeamDialog"', 'in src/ui · 6 matches'],
+            ],
+            prompt:
+              'Replace the Settings popover with a page: General, Agents, Team, Artifacts, Usage, About. Keep /api/settings as is.',
+          },
+          {
+            id: 't12',
+            title: 'Docs: work panel props in react.md',
+            agent: 'claude',
+            model: 'sonnet-5.5',
+            g: 'run',
+            age: '40s',
+            mode: 'shared',
+            msg: 'Documenting <WorkPanel> next to <AgentChat>; the fallback section comes last.',
+            live: [
+              ['edit', 'docs/react.md', '+38 −2'],
+              ['grep', '"onPackAction"', 'in src/react · 4 matches'],
+              ['read', 'docs/react.md', 'lines 1–220'],
+            ],
+            prompt: 'Document the new <WorkPanel> props next to <AgentChat> in docs/react.md.',
+          },
+          {
+            id: 't9',
+            title: 'Browser test: collapse and restore sidebar',
+            agent: 'agy',
+            effort: 'high',
+            g: 'run',
+            age: '3m',
+            mode: 'worktree',
+            mcp: ['pack', 'artifacts', 'playwright'],
+            msg: 'The reload case fails: the rail state is read after first paint. Moving the read into the page script.',
+            live: [
+              ['run', 'npm run test:browser -- sidebar', '14s so far'],
+              ['edit', 'src/ui/home.browser.test.ts', '+41 −3'],
+              ['run', 'npx playwright test home.browser', 'failed · 1 of 6 · 22s'],
+            ],
+            prompt: 'Add a Playwright test: ⌘B collapses the sidebar to the rail and the state survives a reload.',
+          },
+          {
+            id: 't4',
+            title: 'Work panel: Changes tab',
+            agent: 'agy',
+            effort: 'high',
+            g: 'run',
+            age: '6m',
+            mode: 'worktree',
+            msg: 'File list renders from task.changes. Next: the inline diff, loaded per file.',
+            live: [
+              ['run', 'npm test -- work-panel', '9s so far'],
+              ['edit', 'src/react/work-panel.tsx', '+64 −12'],
+              ['read', 'src/react/pack-tasks.tsx', 'lines 300–520'],
+            ],
+            prompt: 'List the files each task changed, with +/− counts and an inline diff.',
+          },
+          {
+            id: 't3',
+            title: 'Work panel: Tasks tab with groups and filters',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'run',
+            age: '9m',
+            mode: 'worktree',
+            msg: 'Understood: PackTasks stays as the inline fallback for an embedded AgentChat; the panel only moves the list when a host renders it.',
+            live: [
+              ['edit', 'src/react/work-panel.tsx', '+18 −4'],
+              ['run', 'npm run type-check', 'passed · 11s'],
+              ['edit', 'src/react/agent-chat.css', '+52 −0'],
+              ['read', 'src/react/format.ts', 'lines 1–90'],
+            ],
+            steers: [
+              {
+                id: 's0',
+                text: 'Keep the old card as the inline fallback for embedded AgentChat.',
+                s: 'answered',
+                ago: '4m',
+                took: '0.9s',
+              },
+            ],
+            prompt:
+              'Move the task list out of the chat card into the right panel: group by status, filter chips, search, recent first.',
+          },
+          {
+            id: 't6',
+            title: 'Team as a settings section',
+            agent: 'gemini',
+            g: 'fail',
+            age: '11m',
+            mode: 'worktree',
+            error: 'gemini ran out of its daily quota. It resets in 6h.',
+            hint: 'Retry with another agent hands the same prompt and worktree to a worker you pick.',
+            prompt: 'Turn ProjectTeamDialog into a section of the Settings page; keep an editable folder path.',
+          },
+          {
+            id: 't2',
+            title: 'Sidebar: chats grouped by project',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'block',
+            age: '18m',
+            mode: 'worktree',
+            text: 'The sidebar lists this app\'s chats under their directory, newest first, with a state glyph. "New chat" on a project starts one in that folder.',
+            changes: [
+              'A src/ui/web/sidebar.tsx',
+              'M src/ui/web/client.tsx',
+              'M src/ui/sessions.ts',
+              'A src/ui/web/sidebar.browser.test.ts',
+            ],
+            review: {
+              s: 'Blocker',
+              by: 'codex · t8',
+              notes: [
+                'BLOCKER: keyboard focus is lost when the list re-renders on an SSE update.',
+                'FOLLOW-UP: virtualize past 200 chats.',
+                'FOLLOW-UP: arrow keys between projects.',
+              ],
+            },
+            tests: {
+              s: 'Passed',
+              out: ' ✓ src/ui/web/sidebar.browser.test.ts (6 tests) 3.1s\n ✓ src/ui/sessions.test.ts (41 tests) 0.4s\n\n Test Files  2 passed (2)\n      Tests  47 passed (47)',
+            },
+            prompt: 'Build the left sidebar chat list from /api/sessions (own chats), grouped by directory.',
+          },
+          {
+            id: 't11',
+            title: "Move What's new into the Help menu",
+            agent: 'codex',
+            effort: 'high',
+            g: 'ready',
+            age: '14m',
+            mode: 'worktree',
+            text: "What's new is an item of the sidebar Help menu with a quiet dot while unread; the sheet still opens once after an update.",
+            changes: ['M src/ui/web/client.tsx', 'A src/ui/web/help-menu.tsx', 'M src/react/agent-chat.css'],
+            review: {
+              s: 'Outdated',
+              by: 'claude',
+              old: true,
+              notes: ['LGTM on the earlier revision. The worker has pushed one more edit since.'],
+            },
+            tests: {
+              s: 'Passed',
+              out: ' ✓ src/ui/web/help-menu.test.tsx (9 tests) 0.6s\n\n Test Files  1 passed (1)\n      Tests  9 passed (9)',
+            },
+            prompt: "Remove the What's new pill from the header; add it to the Help menu with an unread dot.",
+          },
+          {
+            id: 't8',
+            title: 'Review t2: sidebar chat list',
+            agent: 'codex',
+            effort: 'high',
+            g: 'done',
+            age: '15m',
+            mode: 'shared',
+            text: '1 BLOCKER: focus is lost when the list re-renders on SSE. 2 FOLLOW-UPs: virtualize past 200 chats; keyboard nav between projects.',
+            prompt: 'Review the diff of t2. Tag findings BLOCKER or FOLLOW-UP.',
+          },
+          {
+            id: 't7',
+            title: 'Review t1: app shell grid',
+            agent: 'claude',
+            model: 'opus-5.5',
+            effort: 'medium',
+            g: 'done',
+            age: '21m',
+            mode: 'shared',
+            text: 'LGTM. 2 FOLLOW-UPs: persist panel width per window; name the grid areas.',
+            prompt: 'Review the diff of t1. Tag findings BLOCKER or FOLLOW-UP.',
+          },
+          {
+            id: 't10',
+            title: 'Design tokens for dark and light',
+            agent: 'claude',
+            model: 'sonnet-5.5',
+            g: 'done',
+            age: '24m',
+            mode: 'worktree',
+            merged: true,
+            text: 'One token set (surface, line, text, accent, state colors) for both themes, shipped as aliases: the old per-component colors keep their names.',
+            changes: ['M src/react/agent-chat.css'],
+            review: { s: 'Passed', by: 'codex', notes: ['LGTM.'] },
+            tests: { s: 'Passed', out: ' Test Files  212 passed (212)' },
+            prompt: 'Introduce shared CSS custom properties for both themes.',
+          },
+          {
+            id: 't1',
+            title: 'App shell: three-column grid and rail',
+            agent: 'codex',
+            effort: 'high',
+            g: 'done',
+            age: '31m',
+            mode: 'worktree',
+            merged: true,
+            text: 'The window is a grid of sidebar, chat and work panel. The header became the 46 px top bar; the Tauri drag region moved with it.',
+            changes: ['M src/ui/web/client.tsx', 'M src/ui/web/page.ts', 'M src/react/agent-chat.css'],
+            review: {
+              s: 'Passed',
+              by: 'claude · t7',
+              notes: ['LGTM. FOLLOW-UP: persist panel width per window.', 'FOLLOW-UP: name the grid areas.'],
+            },
+            tests: { s: 'Passed', out: ' Test Files  212 passed (212)' },
+            prompt: 'Replace the header + single column with the three-column shell. No feature moves yet.',
+          },
+        ];
+        function extra() {
+          const comp = [
+            'sidebar',
+            'work panel',
+            'composer',
+            'settings page',
+            'needs-you queue',
+            'search palette',
+            'task detail',
+            'changes tab',
+            'artifact viewer',
+            'top bar',
+            'session rows',
+            'quota meters',
+            'help menu',
+          ];
+          const kind = [
+            'Unit tests:',
+            'A11y pass:',
+            'Dark theme:',
+            'Keyboard nav:',
+            'Review:',
+            'Docs:',
+            'Browser test:',
+          ];
+          const says = [
+            'Two cases left; the empty state is next.',
+            'Found the cause; fixing the selector before I rerun.',
+            'Tests pass locally. Checking the dark theme now.',
+            'Reading how the old card did this before I change it.',
+          ];
+          const plan = [
+            ...Array(26).fill('run'),
+            'ask',
+            'ask',
+            'fail',
+            'block',
+            'ready',
+            'ready',
+            'ready',
+            'done',
+            'done',
+            'done',
+          ];
+          return plan.map((g, i) => {
+            const id = 't' + (13 + i),
+              agent = ['claude', 'codex', 'agy'][i % 3],
+              c = comp[i % 13],
+              slug = c.replace(/ /g, '-');
+            const t = {
+              id,
+              title: `${kind[i % 7]} ${c}`,
+              agent,
+              g,
+              age: 2 + ((i * 7) % 27) + 'm',
+              mode: i % 4 ? 'worktree' : 'shared',
+              prompt: `${kind[i % 7]} ${c}. Report what you changed and what you left.`,
+            };
+            const ch = [`M src/ui/web/${slug}.tsx`, `A src/ui/web/${slug}.test.tsx`];
+            if (g === 'run' || g === 'ask') {
+              t.msg = says[i % 4];
+              t.live = [
+                [
+                  ['edit', 'run', 'read', 'grep'][i % 4],
+                  ['src/ui/web/' + slug + '.tsx', 'npm test -- ' + slug, 'src/react/agent-chat.css', '"' + slug + '"'][
+                    i % 4
+                  ],
+                  [
+                    '+' + (8 + i) + ' −' + (i % 5),
+                    5 + (i % 9) + 's so far',
+                    'lines 1–' + (120 + i * 10),
+                    'in src · ' + (2 + (i % 6)) + ' matches',
+                  ][i % 4],
+                ],
+                ['run', 'npm test -- ' + slug, 'passed · ' + (4 + (i % 8)) + 's'],
+                ['edit', `src/ui/web/${slug}.test.tsx`, '+' + (20 + i) + ' −0'],
+                ['read', `src/ui/web/${slug}.tsx`, 'lines 1–' + (90 + i * 6)],
+              ];
+            }
+            if (g === 'ask') t.ask = i % 2 ? 'git fetch origin master' : 'npx playwright install chromium';
+            if (g === 'fail')
+              (t.error = 'Tests failed 3 times; the worker gave up.'),
+                (t.hint = 'Retry starts it again in the same worktree, with the failing output in its prompt.');
+            if (g === 'block' || g === 'ready' || g === 'done')
+              (t.text = `Done: ${c}. Two files changed, tests added.`),
+                (t.changes = ch),
+                (t.tests = {
+                  s: 'Passed',
+                  out: ` ✓ src/ui/web/${slug}.test.tsx (12 tests) 0.8s\n\n Test Files  1 passed (1)`,
+                });
+            if (g === 'block')
+              t.review = {
+                s: 'Blocker',
+                by: 'claude',
+                notes: ['BLOCKER: the new test passes without the change; it asserts nothing about focus.'],
+              };
+            if (g === 'ready' || g === 'done') t.review = { s: 'Passed', by: 'codex', notes: ['LGTM.'] };
+            if (g === 'done') t.merged = true;
+            return t;
+          });
+        }
+        const finish = (l) =>
+          l.map((t) => ({
+            model: AG[t.agent].model,
+            mcp: ['pack', 'artifacts'],
+            steers: [],
+            ...t,
+            rev: rev(t.id),
+            dir: t.mode === 'shared' ? '.' : '.genaicode/worktrees/' + t.id,
+          }));
+        const DATA = { tasks: finish(base()), big: finish([...base(), ...extra()]) };
+        for (const l of Object.values(DATA))
+          for (const t of l) if (t.review) t.review.rev = t.review.old ? rev(t.id, 3) : t.rev;
+
+        const G = {
+          ask: ['Needs you', 'ask', 'warn', 'Approve all'],
+          fail: ['Failed', 'err', 'err', 'Retry failed'],
+          block: ['Review blockers', 'block', 'err'],
+          run: ['Running', 'run', 'run'],
+          ready: ['Unmerged', 'ready', 'merge', 'Merge all'],
+          done: ['Done', 'ok', 'ok'],
+        };
+        const statusText = (t) =>
+          t.g === 'ask'
+            ? 'Needs approval'
+            : t.g === 'done'
+              ? t.merged
+                ? 'Merged'
+                : 'Done'
+              : t.g === 'block'
+                ? 'Review blocker'
+                : G[t.g][0];
+        const VB = {
+          read: ['Reading', 'Read', 'doc'],
+          run: ['Running', 'Ran', 'term'],
+          edit: ['Editing', 'Edited', 'pen'],
+          grep: ['Searching', 'Searched', 'search'],
+        };
+
+        /* ---------- state. Panel memory is per chat; width and sidebar are per window. ---------- */
+        const st = {
+          page: 'chat',
+          scn: 'tasks',
+          work: 'tasks',
+          tick: 0,
+          agent: 'claude',
+          to: 'lead',
+          proj: 0,
+          wt: 'folder',
+          files: ['sidebar-states.png'],
+          workW: 420,
+          expand: false,
+          qf: 'all',
+          sent: [],
+          feedAll: false,
+          pal: 0,
+        };
+        // Keyed by scenario only; no prototype, so no key can reach Object.prototype.
+        const PM = Object.create(null);
+        const P = () =>
+          (PM[st.scn] ??= {
+            tab: st.scn === 'chat' ? 'live' : 'tasks',
+            task: null,
+            filter: 'all',
+            by: 'status',
+            q: '',
+            open: undefined,
+            scroll: 0,
+            more: {},
+            shut: { done: true },
+            diff: false,
+            view: null,
+          });
+        const T = () => DATA[st.work];
+        const byId = (id) => T().find((t) => t.id === id);
+        const hasWork = () => st.scn === 'tasks' || st.scn === 'big';
+        const counts = () => Object.fromEntries(Object.keys(G).map((k) => [k, T().filter((t) => t.g === k).length]));
+        const needs = () => [
+          ...T()
+            .filter((t) => t.g === 'ask')
+            .map((t) => ({
+              id: t.id,
+              src: 'app',
+              here: true,
+              chat: 'Ship the sidebars layout',
+              p: 0,
+              agent: t.agent,
+              action: 'Run a command',
+              cmd: t.ask,
+              task: t.id,
+              age: t.age,
+            })),
+          ...OQ.filter((q) => !q.done),
+        ];
+        const here = () => (hasWork() ? needs().filter((q) => q.here) : []);
+        const refs = (s) =>
+          esc(s).replace(/\bt\d+\b/g, (m) =>
+            byId(m)
+              ? `<button class="tref" data-act="task" data-id="${m}" title="Open ${m}: ${esc(byId(m).title)}">${m}</button>`
+              : m,
+          );
+        const cur = (t) => t.live[(st.tick + +t.id.slice(1)) % t.live.length];
+        const short = (o) => (o.includes('/') && !o.includes(' ') ? o.split('/').pop() : o);
+        const actLine = (t, full) => {
+          const [v, o, d] = cur(t);
+          return `<span class="vb">${VB[v][0]}</span><code title="${esc(o)}">${esc(full ? o : short(o))}</code>${full ? `<span class="dt">${esc(d)}</span>` : ''}`;
+        };
+        const RC = {
+          sending: ['Sending…', ''],
+          delivered: ['✓ Delivered', 'delivered'],
+          answered: ['✓✓ Delivered · answered', 'answered'],
+          queued: ['Queued · runs when this turn ends', 'queued'],
+          failed: ['Not delivered', 'failed'],
+        };
+        const rcpt = (s) =>
+          `<span class="rc ${RC[s.s][1]}" data-rc="${s.id}" title="${s.s === 'delivered' || s.s === 'answered' ? 'The agent took the message' + (s.took ? ' after ' + s.took : '') + ', between two tool calls.' : s.s === 'queued' ? 'This agent cannot take input mid-turn.' : ''}">${RC[s.s][0]}${s.took && s.s !== 'sending' ? ' · ' + s.took : ''}</span>`;
+
+        /* ---------- sidebar ---------- */
+        function side() {
+          const n = needs(),
+            h = here().length;
+          $('#n-needs').textContent = n.length;
+          $('#n-needs').hidden = !n.length;
+          $('#nav-inbox').title =
+            `Needs you: ${n.length} across all projects${hasWork() ? ', ' + h + ' in this chat' : ''}`;
+          CHATS[0].s = T().some((t) => t.g === 'ask') ? 'ask' : 'run';
+          const sel = st.page === 'chat' ? (hasWork() ? 'tasks' : st.scn) : '';
+          $('#side-list').innerHTML =
+            `<div class="group-h" title="A project is a directory"><span class="grow">Chats by project</span></div>` +
+            PROJ.map((p, i) => {
+              const l = CHATS.filter((c) => c.p === i);
+              return l.length
+                ? `<details class="proj" ${i < 2 ? 'open' : ''}><summary title="${p.path}">${ic('chev', 'chev')}${p.name}<button class="btn ghost icon sm add" data-go="chat" data-scn="new" data-proj="${i}" title="New chat in ${p.path}" aria-label="New chat in ${p.name}">${ic('plus')}</button></summary>${l.map((c) => `<button class="nav chat" data-go="chat" data-scn="${c.id === 'tasks' ? st.work : 'chat'}" ${c.id === sel ? 'aria-current="page"' : ''} title="${c.agent} · ${p.path}">${sg(c.s)}<span class="grow">${esc(c.title)}</span><small>${c.age}</small></button>`).join('')}</details>`
+                : '';
+            }).join('') +
+            `<div class="group-h other"><span class="grow">Other agents' sessions</span></div><div class="other">${OTHER.map((o) => `<button class="nav chat" data-go="sessions" title="${o.agent} · ${PROJ[o.p].name} · ${o.why}">${sg(o.s)}<span class="grow">${o.title}</span><span class="tag">${o.agent}</span></button>`).join('')}<button class="nav chat" data-go="sessions" style="color: var(--muted)"><span style="width:12px"></span><span class="grow">Show all 41 sessions</span>${ic('chev')}</button></div>`;
+          const qs = Object.entries(AG);
+          const worst = Math.max(...qs.map(([, a]) => a.q?.[0] ?? 0));
+          const lv = (v) => (v >= 90 ? 'hi' : v >= 60 ? 'mid' : '');
+          $('#quota').title =
+            'Plan limits of every agent on the team, worst window each. Opens Settings › Usage.\n' +
+            qs
+              .map(
+                ([k, a]) => `${k}: ${a.q ? a.q[0] + '% of ' + a.q[1] + ', resets in ' + a.q[2] : 'reports no limits'}`,
+              )
+              .join('\n');
+          $('#quota').innerHTML =
+            `<span class="ring" style="background:conic-gradient(var(--${worst >= 90 ? 'err' : worst >= 60 ? 'warn' : 'ok'}) ${worst}%, var(--line-strong) 0)"><b>${worst >= 100 ? '!' : worst}</b></span>` +
+            qs
+              .map(
+                ([k, a]) =>
+                  `<span class="quota-row"><span>${k}</span><span class="meter"><i class="${lv(a.q?.[0] ?? 0)}" style="width:${a.q?.[0] ?? 0}%"></i></span><span>${a.q ? (a.q[0] >= 100 ? 'out · ' + a.q[2] : a.q[0] + '% · ' + a.q[1]) : 'no limits'}</span></span>`,
+              )
+              .join('');
+        }
+
+        /* ---------- chat thread ---------- */
+        function thread() {
+          const c = counts(),
+            n = T().length;
+          const receipts = st.sent
+            .map(
+              (s) =>
+                `<div class="rcpt">You → <button class="tref" data-act="task" data-id="${s.task}">${s.task}</button><span>“${esc(s.text)}”</span>${rcpt(s)}</div>`,
+            )
+            .join('');
+          if (st.scn === 'new') {
+            $('#thread').innerHTML = `<div class="home"><h2>What should ${st.agent} work on?</h2>
+        <p>It starts in the project named in the box below. Pick another one there, or just ask: it also sees the sessions of your agents in every project.</p>
+        <div class="ideas">${['What is waiting for me?', 'What are my agents working on?', 'Sum up what got done today'].map((t) => `<button class="btn" data-act="idea">${t}</button>`).join('')}</div>
+        <div class="list-h">Topics that need you</div>
+        <div class="row">${sg('ask')}<span class="grow"><b>gate verdicts</b><small>1 needs you · claude, codex · www.gamedev.pl · 40m ago</small></span><button class="btn sm" data-go="inbox">Open</button></div>
+        <div class="list-h">Topics with agents at work</div>
+        <div class="row">${sg('run')}<span class="grow"><b>sidebars layout</b><small>${c.run + 1} working · claude, codex, agy · genaicode · now</small></span><button class="btn sm" data-go="chat" data-scn="${st.work}">Open</button></div>
+        <div class="list-h">Other topics</div>
+        <div class="row">${sg('')}<span class="grow"><b>recordings workbench</b><small>claude · RecordingsWorkbench · 2d ago</small></span><button class="btn sm" data-go="sessions">Open</button></div>
+        <p class="muted" style="font-size:12px;margin-top:10px">Stalled in 2 topics: offers, unsent reports and questions left for days. <button class="tref" data-go="sessions">Show</button></p></div>`;
+            return;
+          }
+          $('#thread').innerHTML = hasWork()
+            ? `<div class="msg"><div class="me">Implement the sidebars layout from docs/design/desktop-layout.md. Split it across the team and review each part before merging.</div></div>
+      <div class="msg"><div class="who"><span class="av">C</span>claude <span class="faint" style="font-weight:400">· lead · fable-5.2</span></div>
+        <div class="fold"><button data-act="opentab" data-tab="live">${ic('chev')} ${n * 2 - 1} steps · now waiting for</button> ${
+          n > 15
+            ? `${c.run} running tasks`
+            : refs(
+                T()
+                  .filter((t) => t.g === 'run')
+                  .map((t) => t.id)
+                  .join(', '),
+              )
+        }</div>
+        <p>${refs(n > 15 ? `I split the layout into ${n} tasks, one per component and concern. t1 and t10 are merged; t11 and three more wait for your merge; t2 and t42 have review blockers; t5, t39 and t40 ask for approval; t6 and t41 failed.` : 'I split the layout into the steps of the design doc and delegated them. t1 and t10 are merged, t11 waits for your merge, t2 has a review blocker from t8, t5 needs an approval and gemini ran out of quota on t6.')}</p>
+        <button class="workline" data-act="opentab" data-tab="tasks" title="Open the work panel on Tasks"><span class="stats"><b>${n} delegated tasks</b><span class="muted">${c.done} done · live counts are above the message box</span></span><span class="open">Open ${ic('chev')}</span></button>
+        <button class="workline" data-act="view" data-kind="art" data-title="Sidebar states"><span class="stats"><b>Artifact</b> <span class="muted">Sidebar states · HTML · v2</span></span><span class="open">Open ${ic('chev')}</span></button>
+        ${receipts}
+      </div>`
+            : `<div class="msg"><div class="me">Why does <code>sessions mcp --send</code> time out when the target session is mid-turn?</div></div>
+      <div class="msg"><div class="who"><span class="av">C</span>claude <span class="faint" style="font-weight:400">· fable-5.2</span></div>
+        <div class="fold"><button data-act="opentab" data-tab="live">${ic('chev')} 9 steps · 4 files read</button></div>
+        <p>The send is answered as an MCP task, but the relay waits for the target's current turn to finish before it delivers. With a long turn the client's own 60 s request timeout fires first.</p>
+        <ul><li>The relay queues the message (<code>status: 'queued'</code>) and only then reports back.</li><li>Clients that poll the task instead of holding the request open do not time out.</li></ul>
+        <p>The fix is on the client: poll the task. I can also make the relay acknowledge the queueing at once if you want that.</p>
+      </div>`;
+        }
+
+        /* ---------- mission strip + composer ---------- */
+        function strip() {
+          const el = $('#strip');
+          el.hidden = !hasWork();
+          if (!hasWork()) return;
+          const c = counts(),
+            h = here(),
+            q = h[0];
+          el.innerHTML =
+            `<div class="strip-row">${Object.entries(G)
+              .filter(([k]) => c[k])
+              .map(
+                ([k, g]) =>
+                  `<button class="stat" data-act="statf" data-v="${k}" title="${c[k]} ${g[0].toLowerCase()}: open Tasks on them">${sg(g[1])}${c[k]}<span>${g[0]}</span></button>`,
+              )
+              .join(
+                '',
+              )}<span class="lead" title="What the lead does now">lead: waiting for ${c.run} tasks</span></div>` +
+            (q
+              ? `<div class="strip-ask">${sg('ask')}<span class="what"><b>${q.agent}</b> · <button class="tref" data-act="task" data-id="${q.task}">${q.task}</button> wants to run</span><code title="${esc(q.cmd)}">${esc(q.cmd)}</code><span class="grow"></span><button class="btn xs primary" data-act="resolve" data-id="${q.id}" data-k="strip-ok">Approve</button><button class="btn xs" data-act="resolve" data-id="${q.id}" data-how="deny" data-k="strip-no">Deny</button>${h.length > 1 ? `<button class="btn xs ghost" data-act="statf" data-v="ask">1 of ${h.length} in this chat ›</button>` : `<span class="muted" style="font-size:12px;white-space:nowrap">1 in this chat</span>`}</div>`
+              : '');
+        }
+        function composer() {
+          const run = hasWork(),
+            isNew = st.scn === 'new',
+            p = PROJ[st.proj],
+            a = AG[st.agent];
+          const target = st.to !== 'lead' && run ? byId(st.to) : null;
+          const steer = target ? AG[target.agent].steer : a.steer;
+          $('#ctx').hidden = !isNew;
+          $('#ctx').innerHTML =
+            `<span>Starts in</span><span class="menu-anchor"><button class="btn sm" data-menu="m-proj" title="${p.path}">${ic('folder')}${p.name}${p.branch ? ` <span class="muted chip-long">· ${p.branch}</span>` : ''} ▾</button>
+        <div class="pop" id="m-proj" style="bottom:auto;top:calc(100% + 6px)"><div role="radiogroup" aria-label="Project">${PROJ.map((x, i) => `<button class="agent-opt" role="radio" aria-checked="${i === st.proj}" data-act="proj" data-v="${i}">${ic('folder')}${x.name}<small>${x.note || x.path}</small></button>`).join('')}</div>
+        <label>Or a new folder<span style="display:flex;gap:6px"><input class="field mono grow" id="newdir" placeholder="~/src/another-repo"><button class="btn" data-act="toast" data-msg="Native folder picker">Choose…</button></span></label>
+        <span class="note">A project is a directory. The chat is listed under it in the sidebar.</span></div></span>
+        <span class="seg" title="Where the agent edits"><button data-act="wt" data-v="folder" aria-pressed="${st.wt === 'folder'}">This folder</button><button data-act="wt" data-v="worktree" aria-pressed="${st.wt === 'worktree'}" ${p.branch ? '' : 'disabled title="Not a git repository"'}>New worktree</button></span>
+        <span>${st.wt === 'worktree' ? `a copy of ${p.branch}, merged when you say` : p.path}</span>`;
+          $('#attach').hidden = !st.files.length || isNew;
+          $('#attach').innerHTML = st.files
+            .map(
+              (f, i) =>
+                `<span class="file">${ic('doc')}${f}<button data-act="rmfile" data-v="${i}" aria-label="Remove ${f}">${ic('x')}</button></span>`,
+            )
+            .join('');
+          $('#msg').placeholder = isNew
+            ? `Ask ${st.agent} to work in ${p.name}…   / for commands, drop files to attach`
+            : target
+              ? `Message ${target.id} (${target.agent}) while it works…`
+              : run
+                ? `Steer ${st.agent}, or @t3 to talk to one task…`
+                : `Reply to ${st.agent}…   / for commands, drop files to attach`;
+          $('#to-anchor').hidden = !run;
+          $('#to-chip').innerHTML =
+            `To: ${target ? `<b>${target.id}</b><span class="chip-long">· ${target.agent}</span>` : `<b>lead</b>`} ▾`;
+          $('#m-to').innerHTML =
+            `<div role="radiogroup" aria-label="Recipient"><button class="agent-opt" role="radio" aria-checked="${!target}" data-act="to" data-v="lead">${sg('run')}lead<small>claude · steer the whole turn</small></button>${T()
+              .filter((t) => t.g === 'run' || t.g === 'ask')
+              .slice(0, 6)
+              .map(
+                (t) =>
+                  `<button class="agent-opt" role="radio" aria-checked="${st.to === t.id}" data-act="to" data-v="${t.id}">${sg(G[t.g][1])}<span class="tid">${t.id}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span><small>${t.agent} · ${AG[t.agent].steer ? 'steer' : 'queue'}</small></button>`,
+              )
+              .join(
+                '',
+              )}</div><span class="note">Typing <code>@t9</code> at the start of the message does the same. The task's timeline shows when the message was delivered.</span>`;
+          $('#agent-chip').innerHTML =
+            `<span class="av" style="width:16px;height:16px">${st.agent[0].toUpperCase()}</span>${st.agent}<span class="chip-long"> · ${a.model}</span>`;
+          $('#agent-chip').hidden = !!target;
+          $('#agent-opts').innerHTML = Object.entries(AG)
+            .map(
+              ([k, x]) =>
+                `<button class="agent-opt" role="radio" aria-checked="${k === st.agent}" data-act="agent" data-v="${k}">${sg(k === 'gemini' ? 'err' : 'ok')}${k}<small>${x.note}</small></button>`,
+            )
+            .join('');
+          $('#model').value = a.id;
+          $('#stop').hidden = !run;
+          const empty = !$('#msg').value.trim() && !(st.files.length && !isNew);
+          const label = !run
+            ? 'Send'
+            : target
+              ? (steer ? 'Steer ' : 'Queue for ') + target.id
+              : steer
+                ? 'Steer'
+                : 'Queue';
+          $('#send').innerHTML = `${label} <kbd>↵</kbd>`;
+          $('#send').setAttribute('aria-disabled', empty);
+          $('#send').title = empty
+            ? 'Type a message or attach a file'
+            : !run
+              ? 'Enter sends'
+              : steer
+                ? 'Enter sends this into the running turn: the agent reads it between two tool calls'
+                : 'Enter queues this: the agent cannot take input mid-turn, so it runs when the turn ends';
+          $('#hint-l').textContent =
+            `Enter ${!run ? 'sends' : steer ? 'steers' : 'queues'} · Shift+Enter new line${run ? ' · ⌘. stops' : ''}${st.files.length && !isNew ? ' · files send without text' : ''}`;
+          const out = Object.entries(AG).filter(([, x]) => (x.q?.[0] ?? 0) >= 80);
+          $('#hint-r').innerHTML = out
+            .map(
+              ([k, x]) =>
+                `<span class="hot">${k} ${x.q[0] >= 100 ? 'is out of quota' : x.q[0] + '% of ' + x.q[1]} · resets in ${x.q[2]}</span>`,
+            )
+            .join(' ');
+        }
+        function send() {
+          const box = $('#msg'),
+            text = box.value.trim(),
+            run = hasWork();
+          if (!text && !(st.files.length && st.scn !== 'new')) return toast('Type a message or attach a file');
+          const target = st.to !== 'lead' && run ? byId(st.to) : null;
+          if (target) {
+            const s = {
+              id: 's' + Date.now(),
+              task: target.id,
+              text: text || `${st.files.length} file`,
+              s: 'sending',
+              ago: 'now',
+            };
+            target.steers.unshift(s);
+            st.sent.push(s);
+            const step = (to, ms, took) =>
+              setTimeout(() => {
+                s.s = to;
+                if (took) s.took = took;
+                if (to === 'answered') target.msg = `Got it: “${s.text.slice(0, 60)}”. Adjusting now.`;
+                soft();
+              }, ms);
+            if (AG[target.agent].steer) step('delivered', 900, '0.9s'), step('answered', 4200);
+            else step('queued', 500);
+          } else
+            toast(
+              !run
+                ? `Sent${text ? '' : ' ' + st.files.length + ' file, no text'}`
+                : AG[st.agent].steer
+                  ? 'Steered: the lead takes it between two tool calls'
+                  : 'Queued: runs when this turn ends',
+            );
+          box.value = '';
+          st.files = [];
+          render();
+          box.focus();
+        }
+        /* updates that come from the agents repaint text in place: they never rebuild what holds focus */
+        function soft() {
+          thread();
+          for (const el of $$('[data-live]')) {
+            const t = byId(el.dataset.live);
+            if (t?.g === 'run') el.innerHTML = actLine(t, el.dataset.full);
+          }
+          for (const el of $$('[data-say]')) {
+            const t = byId(el.dataset.say);
+            if (t) el.textContent = '“' + t.msg + '”';
+          }
+          const tl = $('#ttl'),
+            t = P().task && byId(P().task);
+          if (tl && t) tl.innerHTML = timeline(t);
+        }
+
+        /* ---------- work panel: Live ---------- */
+        function live() {
+          const el = $('#w-live');
+          if (!hasWork()) {
+            el.innerHTML = `<div class="ph">Plan <span class="grow"></span><span class="plain">from report_progress</span></div><ol class="steps">${['Reproduce the timeout', 'Trace the relay queue', 'Explain and propose a fix'].map((t) => `<li class="done"><span class="mk">${ic('check')}</span><span>${t}</span></li>`).join('')}</ol><p class="muted" style="font-size:13px;margin-top:14px">The turn is finished. While an agent works, this tab shows what it is reading, running and editing, and its latest message.</p>`;
+            return;
+          }
+          const h = here(),
+            all = needs().length,
+            c = counts();
+          const watch = T()
+            .filter((t) => t.g === 'run')
+            .sort((a, b) => b.steers.length - a.steers.length)
+            .slice(0, 3);
+          const F = [
+            ...st.sent
+              .slice()
+              .reverse()
+              .map((s) => [
+                'now',
+                s.s === 'queued' ? 'ask' : 'ok',
+                `You → <b>${s.task}</b>: ${RC[s.s][0].toLowerCase()}`,
+                1,
+                s.task,
+              ]),
+            ['12s', 'err', '<b>t9</b> agy · <code>npx playwright test home.browser</code> failed, 1 of 6', 1, 't9'],
+            ['40s', 'run', '<b>t3</b> claude said: “PackTasks stays as the inline fallback…”', 1, 't3'],
+            ['1m', 'run', '<b>t4</b> agy · 6 reads, 2 edits in <code>src/react</code>', 0, 't4'],
+            ['2m', 'ask', '<b>t5</b> codex asks to run <code>npm install @radix-ui/react-tabs</code>', 1, 't5'],
+            ['3m', 'run', '<b>t12</b> claude · 3 reads in <code>docs/</code>', 0, 't12'],
+            ['4m', 'ok', 'You → <b>t3</b>: delivered after 0.9s, answered', 1, 't3'],
+            ['11m', 'err', '<b>t6</b> gemini ran out of its daily quota', 1, 't6'],
+            ['14m', 'ready', '<b>t11</b> codex finished: 3 files, tests passed', 1, 't11'],
+            ['15m', 'block', '<b>t8</b> codex reviewed t2: 1 BLOCKER, 2 FOLLOW-UPs', 1, 't8'],
+            ['24m', 'ok', '<b>t10</b> merged by the lead', 1, 't10'],
+          ].filter((f) => st.feedAll || f[3]);
+          el.innerHTML =
+            (h.length
+              ? `<div class="ph">Needs you <span class="plain">${h.length} in this chat</span><span class="grow"></span><button class="tref" data-go="inbox" style="font-family:var(--font)">all ${all} ›</button></div>${h
+                  .slice(0, 2)
+                  .map(
+                    (q) =>
+                      `<div class="askcard"><b>${q.agent}</b> wants to run a command · <button class="tref" data-act="task" data-id="${q.task}">${q.task}</button><pre class="box">${esc(q.cmd)}</pre><div class="btns"><button class="btn sm primary" data-act="resolve" data-id="${q.id}">Approve</button><button class="btn sm" data-act="resolve" data-id="${q.id}" data-how="deny">Deny</button></div></div>`,
+                  )
+                  .join(
+                    '',
+                  )}${h.length > 2 ? `<button class="more-btn" data-act="statf" data-v="ask" style="padding-left:2px">Show ${h.length - 2} more in Tasks</button>` : ''}`
+              : '') +
+            `<div class="ph">Lead <span class="plain">claude · plan from report_progress</span></div>
+      <ol class="steps">${[
+        ['done', 'Read the design doc and the current client.tsx'],
+        ['done', 'App shell and tokens merged: t1, t10'],
+        [
+          'cur',
+          T().length > 15
+            ? `One task per component and concern: ${c.run} running`
+            : 'Sidebar, work panel and settings in parallel: t2, t3, t4, t5, t6, t11',
+        ],
+        ['', 'Review every part, fix blockers'],
+        ['', 'Merge in order, run npm run check'],
+        ['', 'Changelog line and PR'],
+      ]
+        .map(
+          ([s, t]) =>
+            `<li class="${s}"><span class="mk">${s === 'done' ? '<svg class="i" style="width:10px;height:10px;stroke-width:2.4"><use href="#i-check"/></svg>' : ''}</span><span>${refs(t)}</span></li>`,
+        )
+        .join('')}</ol>
+      <div class="nowcard" style="margin-top:8px"><div class="big"><span class="vb">Waiting</span><code>pack wait · ${c.run} tasks</code><span class="dt">38s</span></div></div>
+      <div class="ph">Watching <span class="plain">tasks you messaged or pinned, else the newest</span></div>
+      ${watch.map((t) => `<div class="watch"><div class="watch-h">${sg('run')}<button class="tref" data-act="task" data-id="${t.id}">${t.id}</button><b>${esc(t.title)}</b><span class="grow"></span><span class="ta">${t.agent}</span><button class="btn xs ghost icon" title="Unpin" aria-label="Unpin ${t.id}" data-act="toast" data-msg="Unpinned: the next newest running task takes the slot">${ic('pin')}</button></div><span class="actl" data-live="${t.id}" data-full="1">${actLine(t, 1)}</span><div class="say" data-say="${t.id}">“${esc(t.msg)}”</div>${t.steers[0] ? `<div style="margin-top:4px;font-size:12px" class="muted">Your last message: ${rcpt(t.steers[0])}</div>` : ''}</div>`).join('')}
+      <div class="ph">Team feed <span class="grow"></span><span class="seg"><button data-act="feed" data-v="" aria-pressed="${!st.feedAll}">Highlights</button><button data-act="feed" data-v="1" aria-pressed="${st.feedAll}">Everything</button></span></div>
+      <ol class="feed">${F.map(([ago, s, x, hi, id]) => `<li class="${hi ? '' : 'quiet'}"><time>${ago}</time>${sg(s)}<span class="x">${x}</span><button class="btn xs ghost" data-act="task" data-id="${id}" aria-label="Open ${id}">${ic('chev')}</button></li>`).join('')}</ol>
+      <p class="faint" style="font-size:12px;margin-top:8px">Highlights: messages, approvals, failures, finished tasks and your own messages with their delivery. Routine reads and edits fold into one line per task.</p>`;
+        }
+
+        /* ---------- work panel: Tasks ---------- */
+        function taskRow(t, compact) {
+          const line =
+            t.g === 'ask'
+              ? `<span class="tl2 need"><code>${esc(t.ask)}</code></span>`
+              : t.g === 'run'
+                ? `<span class="tl2"><span class="actl" data-live="${t.id}">${actLine(t)}</span><span class="say" data-say="${t.id}">“${esc(t.msg)}”</span></span>`
+                : t.error
+                  ? `<span class="tl2 bad">${esc(t.error)}</span>`
+                  : `<span class="tl2">${esc(t.g === 'block' ? t.review.notes[0] : t.text || '')}</span>`;
+          const act =
+            t.g === 'ask'
+              ? `<button class="btn xs primary" data-act="resolve" data-id="${t.id}" data-k="ok-${t.id}">Approve</button><button class="btn xs" data-act="resolve" data-id="${t.id}" data-how="deny" data-k="no-${t.id}">Deny</button>`
+              : t.g === 'ready'
+                ? `<button class="btn xs" data-act="merge" data-id="${t.id}" data-k="mg-${t.id}" title="Merge revision ${t.rev} locally${t.review?.s === 'Outdated' ? '. Its review is outdated: asks to confirm' : ''}">Merge</button>`
+                : t.g === 'fail'
+                  ? `<button class="btn xs" data-act="retry" data-id="${t.id}" data-k="rt-${t.id}">Retry</button>`
+                  : '';
+          return `<div class="task ${compact ? 'c' : ''}"><button class="tmain" data-act="task" data-id="${t.id}" data-k="row-${t.id}" title="${esc(t.title)} · ${statusText(t)}">${sg(G[t.g][1])}<span class="tid">${t.id}</span><span class="tt">${esc(t.title)}</span>${compact ? line : ''}<span class="ta">${t.agent}${compact ? '' : ' · ' + t.age}${t.steers.some((s) => s.s === 'sending' || s.s === 'delivered') ? ' · ✉' : ''}</span>${compact ? '' : line}<span class="sr">${statusText(t)}</span></button>${act ? `<span class="tact">${act}</span>` : ''}</div>`;
+        }
+        function tlist() {
+          const p = P(),
+            q = p.q.toLowerCase(),
+            all = T(),
+            compact = all.length > 15;
+          const shown = all.filter(
+            (t) =>
+              (p.filter === 'all' || t.g === p.filter) &&
+              (!q || (t.title + ' ' + t.agent + ' ' + t.id).toLowerCase().includes(q)),
+          );
+          const st2 = p.by === 'status';
+          const keys = st2 ? Object.keys(G) : [...new Set(all.map((t) => t.agent))];
+          const cap = compact && p.filter === 'all' && !q ? 8 : 1e3;
+          return (
+            (keys
+              .map((k) => [k, shown.filter((t) => (st2 ? t.g : t.agent) === k)])
+              .filter(([, l]) => l.length)
+              .map(([k, l]) => {
+                const open = !(p.shut[k] && p.filter === 'all' && !q),
+                  more = p.more[k] ? 1e3 : cap;
+                const bulk =
+                  st2 && G[k][3] && l.length > 1
+                    ? `<button class="btn xs ghost" data-act="bulk" data-v="${k}" data-k="bulk-${k}" title="${k === 'ready' ? 'Merges the tasks whose review and tests passed on the revision shown. Asks to confirm with the list.' : k === 'ask' ? 'Shows the ' + l.length + ' commands, then approves them together.' : 'Starts the failed tasks again.'}">${G[k][3]}</button>`
+                    : '';
+                return `<div class="tg"><div class="tgh"><button class="tgt" data-act="tog" data-v="${k}" data-k="g-${k}" aria-expanded="${open}">${ic('chev', 'chev')}${st2 ? sg(G[k][1]) + G[k][0] : k} <span class="count">${l.length}</span></button><span class="grow"></span>${open ? bulk : ''}</div>${
+                  open
+                    ? l
+                        .slice(0, more)
+                        .map((t) => taskRow(t, compact))
+                        .join('') +
+                      (l.length > more
+                        ? `<button class="more-btn" data-act="more" data-v="${k}" data-k="more-${k}">Show ${l.length - more} more</button>`
+                        : '')
+                    : ''
+                }</div>`;
+              })
+              .join('') || '<p class="muted" style="font-size:13px;margin-top:14px">No task matches.</p>') +
+            `<p class="faint" style="font-size:12px;margin-top:14px">claude leads · ${all.length} tasks · ${new Set(all.map((t) => t.agent)).size} agents · 31m · newest first in each group${compact ? ' · one-line rows above 15 tasks' : ''}</p>`
+          );
+        }
+        function tasks() {
+          const el = $('#w-tasks'),
+            p = P();
+          if (!hasWork())
+            return void (el.innerHTML = `<div class="tscroll" style="padding-top:14px"><p class="muted" style="font-size:13px">No delegated tasks in this conversation. When a lead delegates work, each task shows here with what it is doing now.</p></div>`);
+          if (p.view?.from === 'task')
+            return void (el.innerHTML = `<div class="tscroll" id="tlist" style="padding-top:8px">${viewer(p.view)}</div>`);
+          if (p.task) return taskDetail(el, byId(p.task));
+          const c = counts();
+          el.innerHTML = `<div class="thead"><div class="tfilters">${[['all', 'All', T().length], ...Object.entries(G).map(([k, g]) => [k, k === 'block' ? 'Blockers' : g[0], c[k]])].map(([k, l, n]) => `<button class="chipf" data-act="filter" data-v="${k}" data-k="f-${k}" aria-pressed="${p.filter === k}">${l} <i>${n}</i></button>`).join('')}</div>
+      <div class="ttools"><input class="field" id="tq" placeholder="Filter by title, agent or id" value="${esc(p.q)}" aria-label="Filter tasks"><span class="seg"><button data-act="by" data-v="status" data-k="by-s" aria-pressed="${p.by === 'status'}">Status</button><button data-act="by" data-v="agent" data-k="by-a" aria-pressed="${p.by === 'agent'}">Agent</button></span></div></div>
+      <div class="tscroll" id="tlist">${tlist()}</div>`;
+        }
+        function timeline(t) {
+          const items = [];
+          if (t.live)
+            t.live.forEach(
+              ([v, o, d], i) =>
+                i &&
+                items.push([
+                  i * 2,
+                  `<li>${ic(VB[v][2])}<span class="x"><b>${VB[v][1]}</b> <code title="${esc(o)}">${esc(o)}</code> <span class="muted">${esc(d)}</span></span><time>${i * 2}m</time></li>`,
+                ]),
+            );
+          if (t.msg)
+            items.push([
+              1,
+              `<li class="say">${ic('say')}<div class="bubble"><div class="by"><b>${t.agent}</b><time>${t.steers[0]?.s === 'answered' ? 'after your message' : '1m'}</time></div>${esc(t.msg)}</div></li>`,
+            ]);
+          t.steers.forEach((s) =>
+            items.push([
+              s.ago === 'now' ? (s.s === 'answered' ? 1.5 : 0) : 1.5,
+              `<li class="you">${ic('say')}<div class="bubble"><div class="by"><b>You</b>${rcpt(s)}<time>${s.ago}</time>${s.s === 'failed' ? '<button class="btn xs">Send again</button>' : ''}</div>${esc(s.text)}</div></li>`,
+            ]),
+          );
+          if (t.ask)
+            items.push([
+              0.5,
+              `<li>${ic('term')}<span class="x"><b>Asked</b> to run <code>${esc(t.ask)}</code></span><time>${t.age}</time></li>`,
+            ]);
+          items.push([
+            99,
+            `<li>${ic('spark')}<span class="x"><b>Started</b> by the lead in <code>${t.dir}</code></span><time>${t.age}</time></li>`,
+          ]);
+          return items
+            .sort((a, b) => a[0] - b[0])
+            .map((i) => i[1])
+            .join('');
+        }
+        function taskDetail(el, t) {
+          const p = P(),
+            pill = G[t.g][2],
+            act = t.g === 'run' || t.g === 'ask',
+            can = AG[t.agent].steer;
+          const outdated = t.review && t.review.rev !== t.rev;
+          const diffStat = t.changes
+            ? `${t.changes.length} files · <span class="add">+${t.changes.length * 37}</span> <span class="del">−${t.changes.length * 6}</span>`
+            : '';
+          el.innerHTML = `<div class="tscroll" id="tlist">
+      <button class="btn ghost sm back" data-act="task" data-id="" data-k="back">${ic('back')} Tasks</button>
+      <div class="dt-h"><h3><span class="tid" style="font-size:13px">${t.id}</span> ${esc(t.title)}</h3><span class="pill ${pill}">${sg(G[t.g][1])}${statusText(t)}</span></div>
+      <p class="meta">${[t.agent, t.model, t.effort && 'effort ' + t.effort, t.mode === 'shared' ? 'shared directory' : 'worktree', 'started ' + t.age + ' ago'].filter(Boolean).join(' · ')}<br><code>${t.dir}</code> · revision <code>${t.rev}</code> · MCP: ${t.mcp.map((m) => `<code>${m}</code>`).join(' ')}</p>
+      ${t.ask ? `<div class="askcard"><b>${t.agent} wants to run a command</b><pre class="box">${esc(t.ask)}</pre><div class="btns"><button class="btn sm primary" data-act="resolve" data-id="${t.id}">Approve</button><button class="btn sm" data-act="resolve" data-id="${t.id}" data-how="deny">Deny</button><button class="btn sm ghost" data-act="resolve" data-id="${t.id}" data-how="all" title="Approves this and every later request for the rest of this session">Auto-approve all</button><span class="muted" style="font-size:12px">this session</span></div></div>` : ''}
+      ${t.g === 'run' ? `<div class="nowcard"><div class="big" data-live="${t.id}" data-full="1">${actLine(t, 1)}</div><div class="say"><small>Latest message · ${t.agent}</small><span data-say="${t.id}">“${esc(t.msg)}”</span></div></div>` : ''}
+      ${t.error ? `<div class="askcard bad"><b>${esc(t.error)}</b><div style="margin-top:4px">${esc(t.hint)}</div><div class="btns"><button class="btn sm" data-act="retry" data-id="${t.id}">Retry</button><button class="btn sm" data-act="toast" data-msg="Pick a worker: codex, agy, claude">Retry with another agent…</button><button class="btn sm danger" data-act="toast" data-msg="Asks to confirm: Discard this worktree and its changes?">Discard</button></div></div>` : ''}
+      ${t.text ? `<div class="ph">Result</div><div class="result">${refs(t.text)}</div>` : ''}
+      ${
+        t.changes
+          ? `<div class="ph">Changes <span class="plain">${diffStat} · revision <code>${t.rev}</code></span><span class="grow"></span><button class="btn xs" data-act="diff" data-k="diff" aria-expanded="${p.diff}">${p.diff ? 'Hide diff' : 'Show diff'}</button></div>
+        ${t.changes.map((l, i) => `<button class="frow" data-act="view" data-kind="file" data-from="task" data-title="${l.slice(2)}" title="Open the file in the viewer"><span class="st ${l[0]}">${l[0]}</span><code>${l.slice(2)}</code><span class="delta"><span class="add">+${37 + i * 9}</span> <span class="del">−${l[0] === 'A' ? 0 : 6 + i}</span></span></button>${p.diff ? `<pre class="diff"><span class="h">@@ -${41 + i * 20},7 +${41 + i * 20},9 @@</span><span>   const items = useItems();</span><span class="d">-  return &lt;header class="bar"&gt;{items}&lt;/header&gt;;</span><span class="a">+  const open = useOpen();</span><span class="a">+  return &lt;aside class="side" data-open={open}&gt;{items}&lt;/aside&gt;;</span><span>   }</span></pre>` : ''}`).join('')}`
+          : ''
+      }
+      ${
+        t.review
+          ? `<div class="ph">Checks before merge <span class="plain">on revision <code>${t.rev}</code></span></div><div>
+        <div class="chk"><div class="chk-h"><b>Code review</b><span class="muted">${t.review.by}</span><span class="grow"></span><span class="pill ${t.review.s === 'Passed' ? 'ok' : t.review.s === 'Blocker' ? 'err' : 'warn'}">${t.review.s === 'Blocker' ? '1 blocker' : t.review.s}</span>${t.merged ? '' : '<button class="btn xs">Request review</button>'}</div>${outdated ? `<div class="muted" style="font-size:12px;margin-top:4px">Ran on <code>${t.review.rev}</code>; the worktree is now <code>${t.rev}</code>.</div>` : ''}<ul>${t.review.notes.map((n) => `<li>${refs(n)}</li>`).join('')}</ul></div>
+        <div class="chk"><div class="chk-h"><b>Tests</b><code>npm test</code><span class="grow"></span><span class="pill ok">${t.tests.s}</span>${t.merged ? '' : '<button class="btn xs">Run tests</button>'}</div><details class="more" style="border:0;padding:0;margin-top:4px"><summary>Output</summary><pre class="box">${esc(t.tests.out)}</pre></details></div></div>`
+          : ''
+      }
+      ${t.changes && !t.merged ? `<div class="acts"><button class="btn sm ${t.g === 'ready' && !outdated ? 'primary' : ''}" data-act="merge" data-id="${t.id}" title="Merges exactly the revision shown. If the worktree changed since, nothing merges and the diff reloads.">Merge ${t.rev} locally</button><button class="btn sm danger" data-act="toast" data-msg="Asks to confirm: Discard this worktree and its changes?">Discard</button></div>${t.g === 'block' || outdated ? `<p class="muted" style="font-size:12px;margin-top:6px">${t.g === 'block' ? 'The review has a blocker: merging asks to confirm.' : 'The review is outdated: request it again, or merging asks to confirm.'}</p>` : ''}` : ''}
+      <div class="ph">Timeline <span class="plain">newest first</span></div><ol class="tl" id="ttl">${timeline(t)}</ol>
+      <details class="more"><summary>Prompt from the lead</summary><p style="font-size:13px;margin-top:6px">${esc(t.prompt)}</p></details>
+      </div>
+      ${act ? `<div class="tsteer"><div class="boxrow"><input class="field" id="tsteer" placeholder="Message ${t.id} while it works…" aria-label="Message ${t.id}"><button class="btn primary" data-act="tsend" data-id="${t.id}">${can ? 'Steer' : 'Queue'}</button><button class="btn danger" data-act="toast" data-msg="Asks to confirm: Stop this task?">Stop task</button></div><small>${can ? `${t.agent} reads it between two tool calls. The timeline shows Delivered once it took the message, and its next message below that.` : `${t.agent} cannot take input mid-turn: the message is queued and runs when this turn ends.`}</small></div>` : ''}`;
+        }
+
+        /* ---------- work panel: Changes, Artifacts, viewer drill-in ---------- */
+        const fileRows = () =>
+          T()
+            .filter((t) => t.changes)
+            .flatMap((t) =>
+              t.changes.map((l, i) => ({
+                s: l[0],
+                path: l.slice(2),
+                task: t.id,
+                merged: !!t.merged,
+                a: 37 + i * 9 + +t.id.slice(1),
+                d: l[0] === 'A' ? 0 : 6 + i,
+              })),
+            );
+        function viewer(v) {
+          const back = v.from === 'task' ? P().task : v.from === 'changes' ? 'Changes' : 'Artifacts';
+          return (
+            `<div class="vh"><button class="btn ghost sm" data-act="unview" data-k="unview" style="margin-left:-6px">${ic('back')} ${back}</button><b>${esc(v.title)}</b><span class="grow"></span>${v.kind === 'art' ? `<select class="field" style="height:26px;font-size:12px" aria-label="Version"><option>v2</option><option>v1</option></select>` : `<span class="seg"><button aria-pressed="true">Diff</button><button>File</button></span>`}<button class="btn sm" data-act="expand" data-k="expand" aria-pressed="${st.expand}" title="${st.expand ? 'Back beside the chat' : 'Use the whole chat area'}">${ic('expand')}${st.expand ? 'Dock' : 'Expand'}</button><button class="btn sm ghost" data-act="toast" data-msg="Revealed in Finder">Reveal in Finder</button></div>` +
+            (v.kind === 'art'
+              ? `<div class="viewer" style="height:${st.expand ? 480 : 340}px"><span>artifact preview (sandboxed iframe)</span></div>`
+              : `<pre class="diff"><span class="h">@@ -41,7 +41,9 @@ export function page(…)</span><span>   &lt;div id="root" data-cwd="…"&gt;</span><span class="d">-    &lt;header class="bar"&gt;&lt;/header&gt;</span><span class="a">+    &lt;aside class="side"&gt;&lt;/aside&gt;</span><span class="a">+    &lt;main class="center"&gt;&lt;/main&gt;</span><span class="a">+    &lt;aside class="work"&gt;&lt;/aside&gt;</span><span>   &lt;/div&gt;</span></pre><p class="faint" style="font-size:12px">File shows rendered Markdown, images, or source at a line. The panel widens to 600 px while a file or artifact is open, where the chat keeps 600 px.</p>`)
+          );
+        }
+        function changes() {
+          const el = $('#w-changes'),
+            p = P(),
+            F = hasWork() ? fileRows() : [];
+          $('#n-changes').textContent = F.length;
+          if (p.view?.from === 'changes') return void (el.innerHTML = viewer(p.view));
+          el.innerHTML = F.length
+            ? `<div class="tfilters"><button class="chipf" aria-pressed="true">All <i>${F.length}</i></button><button class="chipf">Merged <i>${F.filter((f) => f.merged).length}</i></button><button class="chipf">Unmerged <i>${F.filter((f) => !f.merged).length}</i></button></div>
+      ${F.slice(0, 40)
+        .map(
+          (f) =>
+            `<div class="task"><button class="frow" data-act="view" data-kind="file" data-from="changes" data-title="${f.path}" title="Open the diff"><span class="st ${f.s}">${f.s}</span><code>${f.path}</code><span class="delta"><span class="add">+${f.a}</span> <span class="del">−${f.d}</span></span></button><span class="tact"><button class="tref" data-act="task" data-id="${f.task}">${f.task}</button><span class="ta">${f.merged ? 'merged' : 'unmerged'}</span></span></div>`,
+        )
+        .join('')}
+      <p class="faint" style="font-size:12px;margin-top:10px">Changes of delegated tasks. The lead's own edits are not listed yet: the page does not get them today.</p>`
+            : `<p class="muted" style="font-size:13px">No task has changed files in this conversation.</p>`;
+        }
+        function artifacts() {
+          const el = $('#w-artifacts'),
+            p = P();
+          if (p.view?.from === 'artifacts') return void (el.innerHTML = viewer(p.view));
+          el.innerHTML = `<button class="art" data-act="view" data-kind="art" data-title="Sidebar states"><span class="av">◆</span><span class="grow"><b>Sidebar states</b><small>HTML · 48 KB · v2 of 2</small></span>${ic('chev')}</button>
+      <button class="art" data-act="view" data-kind="art" data-title="Task timeline"><span class="av">◆</span><span class="grow"><b>Task timeline</b><small>Image · 212 KB</small></span>${ic('chev')}</button>`;
+        }
+
+        /* ---------- needs you: one queue, the tower is a filter ---------- */
+        function inbox() {
+          const all = needs(),
+            f = {
+              all: () => true,
+              here: (q) => q.here,
+              app: (q) => q.src === 'app',
+              tower: (q) => q.src === 'tower',
+              cmd: (q) => q.cmd,
+              ask: (q) => q.text,
+            };
+          const chips = [
+            ['all', 'All'],
+            ['here', 'Ship the sidebars layout'],
+            ['app', "This app's chats"],
+            ['tower', "Tower: other agents' sessions"],
+            ['cmd', 'Approvals'],
+            ['ask', 'Questions'],
+          ];
+          $('#inbox').innerHTML =
+            `<div class="pg-h"><button class="btn ghost icon sm" data-go="chat" title="Back to chat (Esc)" aria-label="Back to chat">${ic('back')}</button><h2>Needs you</h2><span class="pill warn">${all.length} open</span></div>
+      <p class="muted" style="margin:-10px 0 14px;font-size:13px">One queue for everything that waits on your answer. Answering an item here, in its chat or in the work panel clears it everywhere.</p>
+      <div class="filters">${chips.map(([k, l]) => `<button class="chipf" data-act="qf" data-v="${k}" data-k="qf-${k}" aria-pressed="${st.qf === k}">${l} <i>${all.filter(f[k]).length}</i></button>`).join('')}</div>
+      ${
+        all
+          .filter(f[st.qf])
+          .map(
+            (
+              q,
+            ) => `<div class="card"><div class="set col"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${sg('ask')}<b style="display:inline">${q.action}</b><span class="tag">${PROJ[q.p].name}</span><span class="tag">${q.agent}</span><span class="muted">${q.src === 'tower' ? 'session' : 'chat'} “${q.chat}”${q.task ? ' · task ' + q.task : ''} · ${q.age} ago</span></div>
+        ${q.cmd ? `<pre class="box" style="margin:0">${esc(q.cmd)}</pre>` : `<div>“${esc(q.text)}”</div>`}
+        <div class="acts" style="margin-top:0">${q.cmd ? `<button class="btn sm primary" data-act="resolve" data-id="${q.id}">Approve</button><button class="btn sm" data-act="resolve" data-id="${q.id}" data-how="deny">Deny</button>` : `<button class="btn sm primary" data-act="resolve" data-id="${q.id}" data-how="reply">Reply</button>`}${q.task ? `<button class="btn sm ghost" data-go="chat" data-scn="${st.work}" data-task="${q.task}">Open task</button>` : q.src === 'app' ? `<button class="btn sm ghost" data-go="chat" data-scn="chat">Open chat</button>` : `<button class="btn sm ghost" data-go="sessions">Open session</button>`}</div></div></div>`,
+          )
+          .join('') || '<p class="muted">Nothing waits here.</p>'
+      }`;
+        }
+        function resolve(id, how) {
+          const t = byId(id),
+            q = OQ.find((x) => x.id === id);
+          if (t?.g === 'ask') {
+            t.g = 'run';
+            t.live.unshift(['run', t.ask, how === 'deny' ? 'denied by you' : 'approved · 2s so far']);
+            delete t.ask;
+            st.focus = 'row-' + id;
+          }
+          if (q) {
+            q.done = true;
+            const c = CHATS.find((x) => x.title === q.chat),
+              o = OTHER.find((x) => x.title === q.chat);
+            if (c) c.s = 'run';
+            if (o) o.s = 'run';
+          }
+          toast(
+            (how === 'deny'
+              ? 'Denied'
+              : how === 'reply'
+                ? 'Reply sent'
+                : how === 'all'
+                  ? 'Approved, and auto-approving all for this session'
+                  : 'Approved') + ' · cleared from every list',
+          );
+        }
+
+        /* ---------- search palette (⌘K) ---------- */
+        let palFrom;
+        const palItems = () => {
+          const q = $('#pq').value.toLowerCase();
+          return [
+            ...CHATS.map((c) => ({ ...c, kind: 'chat' })),
+            ...OTHER.map((o) => ({ ...o, kind: 'session' })),
+          ].filter((x) => !q || (x.title + ' ' + PROJ[x.p].name + ' ' + x.agent).toLowerCase().includes(q));
+        };
+        function palette(open) {
+          const el = $('#palette');
+          if (open === true) {
+            palFrom = document.activeElement;
+            el.classList.add('open');
+            $('#pq').value = '';
+            st.pal = 0;
+            $('#pq').focus();
+          }
+          if (open === false) {
+            el.classList.remove('open');
+            palFrom?.focus?.();
+            return;
+          }
+          const l = palItems();
+          st.pal = Math.max(0, Math.min(st.pal, l.length - 1));
+          $('#pres').innerHTML =
+            l
+              .map(
+                (x, i) =>
+                  `<button class="pres" role="option" aria-selected="${i === st.pal}" data-act="palgo" data-v="${i}">${sg(x.s)}<span class="grow">${esc(x.title)}</span><span class="tag">${PROJ[x.p].name}</span><span class="tag">${x.agent}</span><small>${x.kind}</small></button>`,
+              )
+              .join('') || '<p class="muted" style="padding:10px;font-size:13px">No chat or session matches.</p>';
+        }
+        function palGo(i) {
+          const x = palItems()[i];
+          if (!x) return;
+          $('#palette').classList.remove('open');
+          x.kind === 'session' ? go('sessions') : go('chat', { scn: x.id === 'tasks' ? st.work : 'chat' });
+        }
+
+        /* ---------- layout: the panel docks only where the chat keeps 600 px ---------- */
+        let wasTight;
+        function layout() {
+          const W = app.clientWidth,
+            tight = W < 980;
+          if (tight !== wasTight) app.classList.toggle('side-collapsed', tight), (wasTight = tight);
+          const sideW = app.classList.contains('side-collapsed') ? 56 : 268,
+            p = P(),
+            chat = st.page === 'chat' && st.scn !== 'new';
+          const drill = !!(p.view || (p.task && p.diff));
+          const room = W - sideW - 600,
+            want = Math.min(Math.max(st.workW, drill ? 600 : 0), Math.floor(W / 2));
+          const canDock = room >= 380;
+          if (p.open === undefined)
+            p.open = hasWork() && canDock; /* opens by itself only when it fits; never takes focus */
+          const open = chat && p.open,
+            full = open && (!canDock || (st.expand && !!p.view));
+          app.classList.toggle('work-closed', !open);
+          app.classList.toggle('work-full', full);
+          app.classList.toggle('is-running', hasWork());
+          app.classList.toggle('narrow', W - sideW - (open && !full ? Math.min(want, room) : 0) < 700);
+          app.style.setProperty('--work-w', Math.max(380, Math.min(want, room)) + 'px');
+          $('#work-toggle').setAttribute('aria-pressed', !!open);
+          $('#work-new').hidden = !!open || !hasWork();
+        }
+
+        /* ---------- state → DOM. Focus and scroll survive a repaint. ---------- */
+        function render() {
+          const a = document.activeElement,
+            key = a?.dataset?.k,
+            aid = a?.id,
+            sel = a?.selectionStart;
+          const sc = $('#tlist')?.scrollTop;
+          if (sc !== undefined && !st.keepScroll) P().scroll = sc;
+          st.keepScroll = false;
+          for (const p of $$('.page')) p.classList.toggle('on', p.id === 'p-' + st.page);
+          const chat = st.page === 'chat',
+            p = P(),
+            isNew = st.scn === 'new';
+          $('#title').textContent = chat
+            ? isNew
+              ? 'New chat'
+              : hasWork()
+                ? 'Ship the sidebars layout'
+                : 'Why does sessions mcp --send time out?'
+            : { sessions: 'All sessions', inbox: 'Needs you', settings: 'Settings' }[st.page];
+          for (const el of $$('#topbar .sep, #crumb, #tokens, #session-menu, #work-toggle')) el.hidden = !chat || isNew;
+          $('#tokens').textContent =
+            st.scn === 'big' ? '31.4M tokens' : st.scn === 'tasks' ? '9.8M tokens' : '212k tokens';
+          const h = here().length;
+          $('#work-badge').hidden = !h;
+          $('#work-badge').textContent = h;
+          $('#work-toggle').title = `Work panel (⌘⌥B)${h ? ' · ' + h + ' in this chat need you' : ''}`;
+          $('#n-tasks').textContent = hasWork() ? T().length : 0;
+          for (const t of $$('.tab')) t.setAttribute('aria-selected', t.dataset.tab === p.tab);
+          for (const x of $$('.pane')) x.classList.toggle('on', x.id === 'w-' + p.tab);
+          layout();
+          side();
+          thread();
+          strip();
+          composer();
+          live();
+          tasks();
+          changes();
+          artifacts();
+          inbox();
+          for (const b of $$('.mock [data-m="scn"]'))
+            b.setAttribute('aria-pressed', b.dataset.v === (chat ? st.scn : st.page));
+          const tl = $('#tlist');
+          if (tl) tl.scrollTop = p.task ? 0 : p.scroll;
+          const back =
+            (key && $(`[data-k="${key}"]`)) ||
+            (st.focus && $(`[data-k="${st.focus}"]`)) ||
+            (aid && document.getElementById(aid));
+          st.focus = null;
+          if (
+            back &&
+            back !== document.activeElement &&
+            (key || aid === 'tq' || a === document.body || !a.isConnected)
+          ) {
+            back.focus({ preventScroll: true });
+            if (sel != null && back.setSelectionRange) back.setSelectionRange(sel, sel);
+          }
+        }
+        function go(page, o = {}) {
+          st.page = page;
+          if (o.scn) st.scn = o.scn;
+          if (hasWork()) st.work = st.scn;
+          if (o.proj !== undefined) st.proj = +o.proj;
+          if (page === 'chat' && o.task) Object.assign(P(), { task: o.task, tab: 'tasks', open: true, view: null });
+          if (page === 'settings') section(o.sec || 'general');
+          closeMenus();
+          render();
+          if (page === 'chat' && (st.scn === 'new' || o.focus)) $('#msg').focus();
+        }
+        function section(id) {
+          for (const s of $$('.sec')) s.classList.toggle('on', s.id === 's-' + id);
+          for (const n of $$('.settings nav .nav'))
+            n.dataset.sec === id ? n.setAttribute('aria-current', 'page') : n.removeAttribute('aria-current');
+        }
+        const closeMenus = () => $$('.menu.open, .pop.open').forEach((m) => m.classList.remove('open'));
+        let toastT;
+        const toast = (m) => {
+          const t = $('#toast');
+          t.textContent = m;
+          t.classList.add('on');
+          clearTimeout(toastT);
+          toastT = setTimeout(() => t.classList.remove('on'), 2600);
+        };
+        const theme = (v) => {
+          const sys = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          document.documentElement.dataset.theme = v === 'system' ? sys : v;
+          for (const b of $$('#theme-seg button')) b.setAttribute('aria-pressed', b.dataset.themeSet === v);
+        };
+        const closeWork = () => {
+          P().open = false;
+          render();
+          $('#msg').focus();
+        };
+
+        document.addEventListener('click', (e) => {
+          const m = e.target.closest('[data-m]');
+          if (m) {
+            const v = m.dataset.v;
+            if (m.dataset.m === 'scn') v === 'settings' ? go(v) : go('chat', { scn: v });
+            if (m.dataset.m === 'side') app.classList.toggle('side-collapsed');
+            if (m.dataset.m === 'work')
+              st.page !== 'chat' || !hasWork() ? go('chat', { scn: st.work }) : (P().open = !P().open);
+            if (m.dataset.m === 'width')
+              (app.style.maxWidth = +v ? v + 'px' : ''), app.classList.toggle('framed', !!+v);
+            if (m.dataset.m === 'theme') theme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+            return render();
+          }
+          const menu = e.target.closest('[data-menu]');
+          if (menu) {
+            const el = $('#' + menu.dataset.menu),
+              was = el.classList.contains('open');
+            closeMenus();
+            el.classList.toggle('open', !was);
+            return;
+          }
+          if (e.target.id === 'palette') return palette(false);
+          if (e.target.id === 'whatsnew') return e.target.classList.remove('open');
+          if (!e.target.closest('.menu, .pop')) closeMenus();
+          const a = e.target.closest('[data-act], [data-go], [data-sec], [data-tab], [data-theme-set]');
+          if (!a) return;
+          if (a.tagName === 'A') e.preventDefault();
+          const d = a.dataset,
+            p = P();
+          if (d.themeSet) return theme(d.themeSet);
+          if (d.go) return go(d.go, { scn: d.scn, sec: d.sec, task: d.task, proj: d.proj });
+          if (d.sec && !d.act) return section(d.sec);
+          if (d.tab && !d.act) {
+            p.tab = d.tab;
+            return render();
+          }
+          switch (d.act) {
+            case 'side':
+              app.classList.toggle('side-collapsed');
+              break;
+            case 'work':
+              if (p.open) return closeWork();
+              p.open = true;
+              break;
+            case 'opentab':
+              Object.assign(p, { open: true, tab: d.tab, task: null, view: null });
+              break;
+            case 'statf':
+              Object.assign(p, { open: true, tab: 'tasks', task: null, view: null, filter: d.v, scroll: 0 });
+              st.keepScroll = true;
+              break;
+            case 'task':
+              Object.assign(p, { task: d.id || null, tab: 'tasks', open: true, view: null, diff: false });
+              if (d.id) st.focus = 'back';
+              else (st.focus = 'row-' + (p.last || '')), (st.keepScroll = true);
+              p.last = d.id || p.last;
+              break;
+            case 'filter':
+              p.filter = d.v;
+              break;
+            case 'by':
+              p.by = d.v;
+              break;
+            case 'tog':
+              p.shut[d.v] = a.getAttribute('aria-expanded') === 'true';
+              break;
+            case 'more':
+              p.more[d.v] = true;
+              st.focus = 'g-' + d.v;
+              break;
+            case 'feed':
+              st.feedAll = !!d.v;
+              break;
+            case 'qf':
+              st.qf = d.v;
+              break;
+            case 'diff':
+              p.diff = !p.diff;
+              break;
+            case 'view':
+              Object.assign(p, {
+                open: true,
+                view: { kind: d.kind, title: d.title, from: d.from || (d.kind === 'art' ? 'artifacts' : 'changes') },
+              });
+              if (p.view.from !== 'task') p.tab = p.view.from;
+              st.focus = 'unview';
+              break;
+            case 'unview':
+              p.view = null;
+              st.expand = false;
+              break;
+            case 'expand':
+              st.expand = !st.expand;
+              break;
+            case 'resolve':
+              resolve(d.id, d.how);
+              break;
+            case 'merge': {
+              const t = byId(d.id);
+              t.g = 'done';
+              t.merged = true;
+              st.focus = 'row-' + d.id;
+              toast(`Merged ${d.id} at ${t.rev}. Nothing is staged or committed.`);
+              break;
+            }
+            case 'retry': {
+              const t = byId(d.id);
+              t.g = 'run';
+              t.live = [['read', 'the failing output', 'from the last attempt']];
+              t.msg = 'Starting again from the failing output.';
+              delete t.error;
+              st.focus = 'row-' + d.id;
+              toast('Retrying ' + d.id);
+              break;
+            }
+            case 'bulk': {
+              const l = T().filter((t) => t.g === d.v);
+              if (d.v === 'ask')
+                l.forEach((t) => {
+                  t.g = 'run';
+                  t.live.unshift(['run', t.ask, 'approved · 1s so far']);
+                  delete t.ask;
+                }),
+                  toast(`Approved ${l.length} commands · cleared from every list`);
+              if (d.v === 'fail')
+                l.forEach((t) => {
+                  t.g = 'run';
+                  t.live = [['read', 'the failing output', 'from the last attempt']];
+                  t.msg = 'Starting again.';
+                  delete t.error;
+                }),
+                  toast(`Retrying ${l.length} tasks`);
+              if (d.v === 'ready') {
+                const ok = l.filter((t) => t.review?.s === 'Passed');
+                ok.forEach((t) => ((t.g = 'done'), (t.merged = true)));
+                toast(
+                  `Merged ${ok.length}${
+                    l.length - ok.length
+                      ? ` · skipped ${l
+                          .filter((t) => !ok.includes(t))
+                          .map((t) => t.id)
+                          .join(', ')}: review outdated`
+                      : ''
+                  }`,
+                );
+              }
+              st.focus = 'g-' + d.v;
+              break;
+            }
+            case 'agent':
+              st.agent = d.v;
+              break;
+            case 'to':
+              st.to = d.v;
+              closeMenus();
+              render();
+              return $('#msg').focus();
+            case 'proj':
+              st.proj = +d.v;
+              if (!PROJ[st.proj].branch) st.wt = 'folder';
+              break;
+            case 'wt':
+              st.wt = d.v;
+              break;
+            case 'idea':
+              $('#msg').value = a.textContent;
+              render();
+              return $('#msg').focus();
+            case 'addfile':
+              st.files.push('notes-' + (st.files.length + 1) + '.md');
+              break;
+            case 'rmfile':
+              st.files.splice(+d.v, 1);
+              break;
+            case 'send':
+              return send();
+            case 'tsend': {
+              const box = $('#tsteer');
+              if (!box.value.trim()) return box.focus();
+              st.to = d.id;
+              $('#msg').value = box.value;
+              send();
+              st.to = 'lead';
+              composer();
+              return $('#tsteer')?.focus();
+            }
+            case 'stop':
+              return toast('Stopped: the turn ends, running tasks stop, queued prompts are dropped');
+            case 'palette':
+              return palette(true), palette();
+            case 'palgo':
+              return palGo(+d.v);
+            case 'toast':
+              toast(d.msg);
+              closeMenus();
+              return;
+            case 'whatsnew':
+              closeMenus();
+              $('#whatsnew').classList.add('open');
+              return;
+            case 'closesheet':
+              $('#whatsnew').classList.remove('open');
+              return;
+            case 'switch':
+              a.setAttribute('aria-checked', a.getAttribute('aria-checked') !== 'true');
+              return;
+            case 'press':
+              a.setAttribute('aria-pressed', a.getAttribute('aria-pressed') !== 'true');
+              return;
+            case 'permone':
+              a.setAttribute('aria-pressed', a.getAttribute('aria-pressed') !== 'true');
+              a.textContent = a.getAttribute('aria-pressed') === 'true' ? 'Auto-approve all' : 'Ask first';
+              return;
+            case 'segp':
+              for (const b of a.parentElement.children) b.setAttribute('aria-pressed', b === a);
+              return;
+          }
+          render();
+        });
+        document.addEventListener('input', (e) => {
+          if (e.target.id === 'tq') {
+            P().q = e.target.value;
+            $('#tlist').innerHTML = tlist();
+          }
+          if (e.target.id === 'pq') {
+            st.pal = 0;
+            palette();
+          }
+          if (e.target.id === 'msg') {
+            const m = /^@(t\d+)\s/.exec(e.target.value);
+            if (m && hasWork() && byId(m[1])) (st.to = m[1]), (e.target.value = e.target.value.slice(m[0].length));
+            composer();
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          const mod = e.metaKey || e.ctrlKey,
+            pal = $('#palette').classList.contains('open');
+          if (pal && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            st.pal += e.key === 'ArrowDown' ? 1 : -1;
+            return palette();
+          }
+          if (pal && e.key === 'Enter') return palGo(st.pal);
+          if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'msg') {
+            e.preventDefault();
+            return send();
+          }
+          if (e.key === 'Enter' && e.target.id === 'tsteer') return $('[data-act="tsend"]').click();
+          if (e.target.classList?.contains('work-resize') && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            st.workW = Math.max(380, st.workW + (e.key === 'ArrowLeft' ? 16 : -16));
+            return layout();
+          }
+          if (e.key === 'Escape') {
+            /* Escape closes the innermost thing and puts focus back. It never stops a turn. */
+            if (pal) return palette(false);
+            if ($('.menu.open, .pop.open')) return closeMenus();
+            if ($('#whatsnew.open')) return $('#whatsnew').classList.remove('open');
+            if (st.page !== 'chat') return go('chat', { scn: st.scn, focus: true });
+            const p = P();
+            if (p.view) {
+              p.view = null;
+              st.expand = false;
+              return render();
+            }
+            if (app.classList.contains('work-full')) return closeWork();
+            if (e.target.closest?.('.work')) return $('#msg').focus();
+          }
+          if (mod && e.key === 'k') {
+            e.preventDefault();
+            palette(!pal);
+            if (!pal) palette();
+          }
+          if (mod && e.key === 'n') {
+            e.preventDefault();
+            go('chat', { scn: 'new' });
+          }
+          if (mod && e.key === '.') {
+            e.preventDefault();
+            if (hasWork()) toast('Stopped (⌘.)');
+          }
+          if (mod && e.code === 'KeyB') {
+            e.preventDefault();
+            if (e.altKey) {
+              if (P().open) return closeWork();
+              P().open = true;
+            } else app.classList.toggle('side-collapsed');
+            render();
+          }
+        });
+        /* resize: drag the panel's left edge, between 380 px and half the window */
+        $('.work-resize').addEventListener('pointerdown', (e) => {
+          const move = (ev) => {
+            st.workW = Math.max(380, Math.min(app.getBoundingClientRect().right - ev.clientX, app.clientWidth / 2));
+            layout();
+          };
+          const up = () => {
+            removeEventListener('pointermove', move);
+            removeEventListener('pointerup', up);
+          };
+          addEventListener('pointermove', move);
+          addEventListener('pointerup', up);
+          e.preventDefault();
+        });
+        new ResizeObserver(() => layout()).observe(app);
+
+        /* live activity: running tasks change their line in place */
+        setInterval(() => {
+          st.tick++;
+          if (st.page === 'chat' && hasWork())
+            for (const el of $$('[data-live]')) {
+              const t = byId(el.dataset.live);
+              if (t?.g === 'run') el.innerHTML = actLine(t, el.dataset.full);
+            }
+        }, 2400);
+
+        // The URL hash only picks among known states; anything else falls back to the default.
+        const h = new URLSearchParams(location.hash.slice(1));
+        const pick = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
+        theme(pick(h.get('theme'), ['system', 'light', 'dark'], 'system'));
+        section('general');
+        st.scn = pick(h.get('scn'), ['tasks', 'big', 'chat', 'new'], 'tasks');
+        if (hasWork()) st.work = st.scn;
+        const tab = pick(h.get('tab'), ['live', 'tasks', 'changes', 'artifacts'], '');
+        if (tab) (P().tab = tab), (P().open = true);
+        const task = /^t\d{1,3}$/.test(h.get('task') || '') ? h.get('task') : '';
+        if (task) Object.assign(P(), { task, tab: 'tasks', open: true });
+        go(pick(h.get('page'), ['chat', 'inbox', 'sessions', 'settings'], 'chat'), {
+          sec: pick(h.get('sec'), ['general', 'agents', 'team', 'artifacts', 'usage', 'about'], undefined),
+        });
+      })();
+    </script>
+  </body>
+</html>
