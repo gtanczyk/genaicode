@@ -280,7 +280,21 @@ describe('<WorkPanel> task detail', () => {
     expect($('.gc-work-checks')).toBeNull();
     click(button('Discard worktree'));
     await actAsync(() => button('Confirm discard')!.click());
-    expect(onAction).toHaveBeenCalledWith(7, 't5', { type: 'discard' });
+    // Sent as the pull request's: the host checks again that it still holds the work.
+    expect(onAction).toHaveBeenCalledWith(7, 't5', { type: 'discard' }, { pullRequest: true });
+
+    // The worktree is found edited while the confirmation is open: what was confirmed was a discard
+    // the pull request covers, so it still goes as one, for the host to refuse.
+    onAction.mockClear();
+    show([task], {
+      props: { onPackAction: onAction, pullRequests: { '7:t5': { state: 'merged', ours: true } } },
+    });
+    click(button('Discard worktree'));
+    props = { ...props, pullRequests: { '7:t5': { state: 'merged', ours: false } } };
+    draw();
+    await actAsync(() => button('Confirm discard')!.click());
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction).toHaveBeenCalledWith(7, 't5', { type: 'discard' }, { pullRequest: true });
 
     // Open, closed, and not looked up yet.
     for (const [state, label] of [
@@ -336,6 +350,22 @@ describe('<WorkPanel> task detail', () => {
     expect(button('Merge locally')).toBeUndefined();
     expect(button('Discard worktree')).toBeDefined();
     expect(text('.gc-work-detail')).toContain('It changed no files. There is nothing to merge.');
+    // The worktree is still there: its diff shows any edit made since the task ended.
+    await actAsync(() => button('Show diff')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'diff' });
+    // A discard of an "empty" worktree asks the host to check it is still clean first.
+    click(button('Discard worktree'));
+    await actAsync(() => button('Confirm discard')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'discard', empty: true });
+    // Reading the diff listed an edit: Merge locally is back, and a discard is an ordinary one.
+    show([{ ...empty, changes: ['A\tlate.txt'], checks: { revision: 'abc' } }], { props: { onPackAction: onAction } });
+    // The diff was read before the revision was known: it is read again for the one now reported.
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'diff', revision: 'abc' });
+    expect(button('Merge locally')).toBeDefined();
+    click(button('Discard'));
+    await actAsync(() => button('Confirm discard')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'discard' });
     show([empty], { list: true });
     expect($$('.gc-work-group').map((group) => group.getAttribute('aria-label'))).toEqual(['Done']);
 
@@ -477,6 +507,49 @@ describe('<WorkPanel> task detail', () => {
     diffFails = false;
     await actAsync(() => button('Retry diff')!.click());
     await actAsync(async () => undefined);
+    expect(text('.gc-work-diff')).toBe(`diff of ${B}`);
+    expect(button('Merge locally')!.hasAttribute('disabled')).toBe(false);
+    expect(onAction.mock.calls.filter((call) => call[2].type === 'merge')).toHaveLength(1);
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: B });
+  });
+
+  it('a newer diff that arrives after the detail closed is not marked read: reopening loads it again first', async () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    let answerB: ((text: string) => void) | undefined;
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) => {
+      if (action.type === 'diff' && action.revision === B && !answerB)
+        return new Promise<string>((resolve) => (answerB = resolve));
+      if (action.type === 'diff') return `diff of ${action.revision}`;
+      if (action.type === 'merge' && action.revision !== B)
+        throw Object.assign(new Error('The worktree changed.'), { reason: 'stale' });
+      return 'Merged t6';
+    });
+    const task: PackTask = {
+      ...base,
+      id: 't6',
+      prompt: 'Change it.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta.ts'],
+      checks: { reviewer: 'claude', revision: A },
+    };
+    show([task], { props: { onPackAction: onAction } });
+    await actAsync(() => button('Show diff')!.click());
+    state.turns[0]!.pack!.tasks[0] = { ...task, checks: { reviewer: 'claude', revision: B } };
+    draw();
+    // Merge of A is refused; the diff of B is asked for, and the person leaves before it arrives.
+    await actAsync(() => button('Merge locally')!.click());
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff', revision: B });
+    click(button('Tasks'));
+    await actAsync(async () => answerB!(`diff of ${B}`));
+    // Reopened: B was never on screen, so Merge locally waits for it and nothing merges yet.
+    click($('[data-task="7:t6"] .gc-work-row'));
+    expect(button('Merge locally')!.hasAttribute('disabled')).toBe(true);
+    await actAsync(async () => undefined);
+    expect(onAction.mock.calls.filter((call) => call[2].type === 'diff' && call[2].revision === B)).toHaveLength(2);
     expect(text('.gc-work-diff')).toBe(`diff of ${B}`);
     expect(button('Merge locally')!.hasAttribute('disabled')).toBe(false);
     expect(onAction.mock.calls.filter((call) => call[2].type === 'merge')).toHaveLength(1);

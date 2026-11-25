@@ -53,7 +53,7 @@ export type { BudgetRow, LimitChip, LimitLevel } from './react/format.js';
 export type { InputDelivery, SessionEntry, SessionState, SessionTurn, TurnAttachment } from './agents/session.js';
 export type { AgentBudget, ApprovalDecision, ApprovalRequest, RateLimit } from './agents/types.js';
 export { WorkPanel } from './react/work-panel.js';
-export type { WorkPanelProps } from './react/work-panel.js';
+export type { WorkActionHandler, WorkPanelProps } from './react/work-panel.js';
 export {
   readWorkView,
   WORK_CHAT_MIN,

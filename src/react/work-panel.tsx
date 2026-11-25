@@ -15,7 +15,6 @@ import {
   relativePath,
 } from './format.js';
 import { Markdown } from './markdown.js';
-import type { PackActionHandler } from './pack-tasks.js';
 import { installResizeHandle } from './resize-handle.js';
 import {
   askSubject,
@@ -65,8 +64,12 @@ export interface WorkPanelProps {
   bounds?: () => readonly [min: number, max: number];
   /** The edge was moved to `width`. `commit` is true when the size should be kept (the drag ended, a key). */
   onWidth?(width: number, commit: boolean): void;
-  /** Steer, stop, diff, review, test, merge or discard a task in its owning turn. Without it tasks are read-only. */
-  onPackAction?: PackActionHandler;
+  /**
+   * Steer, stop, diff, review, test, merge or discard a task in its owning turn. Without it tasks are
+   * read-only. A discard's `intent` is what the panel showed when the person opened its confirmation:
+   * `pullRequest` when the task's pull request held its work then (the host checks that again first).
+   */
+  onPackAction?: WorkActionHandler;
   /** Answer an approval a task waits for. Without it the request shows with no buttons. */
   onApprove?(id: string, decision: ApprovalDecision): void;
   /** Approve this and every later request of the session. Shown beside Approve when `onApprove` is set. */
@@ -524,6 +527,14 @@ function Diff({ text }: { text: string }) {
 }
 
 /** The revision whose diff was read; `stale` once a merge of it was refused and the newer diff is not shown yet. */
+/** `onPackAction` of `<WorkPanel>`; a `PackActionHandler` is one. */
+export type WorkActionHandler = (
+  turnId: number,
+  id: string,
+  action: PackAction,
+  intent?: { pullRequest?: true },
+) => Promise<string>;
+
 type Inspected = { revision: string; stale?: boolean };
 
 const CHANGE_WORD: Record<string, string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied' };
@@ -545,13 +556,17 @@ function TaskDetail({
   now: number;
   cwd: string;
   focusBack: boolean;
-  act?: PackActionHandler;
+  act?: WorkActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
   onBack(): void;
 }) {
   const { task } = item;
   const [confirm, setConfirm] = useState<'stop' | 'discard'>();
+  // What the discard confirmation was opened on: the pull request held the work, or the task had
+  // changed nothing. Sent as it was then, so the host re-checks it rather than discarding whatever is
+  // there once that changed while the confirmation was open.
+  const [discardAs, setDiscardAs] = useState<{ pullRequest: boolean; empty: boolean }>();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ text: string; revision?: string }>();
@@ -579,15 +594,15 @@ function TaskDetail({
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
   const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
-  const perform = async (action: PackAction) => {
+  const perform = async (action: PackAction, intent?: { pullRequest?: true }) => {
     if (!act || busy) return;
     setBusy(true);
     setFeedback(undefined);
     try {
-      const text = await act(item.turnId, task.id, action);
+      const text = await (intent ? act(item.turnId, task.id, action, intent) : act(item.turnId, task.id, action));
       if (action.type === 'diff') {
         if (action.revision) {
-          inspected.set({ revision: action.revision });
+          // Marked inspected once it is on screen (below): a reply after the detail closed shows nothing.
           setStale(undefined);
           setReloadFailed(false);
           setDiff({ text, revision: action.revision });
@@ -617,6 +632,10 @@ function TaskDetail({
       setBusy(false);
     }
   };
+  // Only a diff this detail renders is one the person read: Merge locally then sends its revision.
+  useEffect(() => {
+    if (visibleDiff !== undefined && diff?.revision) inspected.set({ revision: diff.revision });
+  }, [visibleDiff !== undefined, diff?.revision]);
   useEffect(() => {
     if (!stale || busy || reloadFailed || !checks?.revision || checks.revision === stale) return;
     void perform({ type: 'diff', revision: checks.revision });
@@ -635,6 +654,22 @@ function TaskDetail({
     const text = input.trim();
     if (text) void perform({ type: 'steer', text });
   };
+  // Any worktree still on disk can show its diff, also one whose task changed nothing: it may have
+  // been edited since.
+  const diffButton =
+    act && worktree ? (
+      <button
+        type="button"
+        className="gc-work-btn gc-work-xs"
+        aria-expanded={visibleDiff !== undefined}
+        disabled={busy}
+        onClick={() =>
+          visibleDiff === undefined ? void perform({ type: 'diff', revision: checks?.revision }) : setDiff(undefined)
+        }
+      >
+        {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
+      </button>
+    ) : null;
   const blocker = merges && reviewBlocker(checks);
   const outdated = merges && !!checks?.review && checks.review.revision !== checks.revision;
   return (
@@ -772,21 +807,7 @@ function TaskDetail({
                   </>
                 ) : null}
               </span>
-              {act && worktree ? (
-                <button
-                  type="button"
-                  className="gc-work-btn gc-work-xs"
-                  aria-expanded={visibleDiff !== undefined}
-                  disabled={busy}
-                  onClick={() =>
-                    visibleDiff === undefined
-                      ? void perform({ type: 'diff', revision: checks?.revision })
-                      : setDiff(undefined)
-                  }
-                >
-                  {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
-                </button>
-              ) : null}
+              {diffButton}
             </h4>
             {task.changes ? (
               <ul className="gc-work-files" aria-label="Changed files">
@@ -809,8 +830,10 @@ function TaskDetail({
           </>
         ) : empty && !running ? (
           <>
-            <h4 className="gc-work-label">Changed files</h4>
+            {/* The worktree is still there: an edit made in it since the task ended shows in its diff. */}
+            <h4 className="gc-work-label">Changed files {diffButton}</h4>
             <p className="gc-work-note">It changed no files.{worktree ? ` ${NO_CHANGES_HELP}` : ''}</p>
+            {worktree && visibleDiff !== undefined ? <Diff text={visibleDiff} /> : null}
           </>
         ) : null}
 
@@ -889,7 +912,12 @@ function TaskDetail({
                   <button
                     type="button"
                     className="gc-work-btn gc-work-sm gc-work-danger"
-                    onClick={() => void perform({ type: 'discard' })}
+                    onClick={() =>
+                      void perform(
+                        discardAs?.empty ? { type: 'discard', empty: true } : { type: 'discard' },
+                        discardAs?.pullRequest ? { pullRequest: true } : undefined,
+                      )
+                    }
                   >
                     Confirm discard
                   </button>
@@ -914,7 +942,10 @@ function TaskDetail({
                     type="button"
                     className="gc-work-btn gc-work-sm gc-work-danger"
                     disabled={checking}
-                    onClick={() => setConfirm('discard')}
+                    onClick={() => {
+                      setDiscardAs({ pullRequest: !!pullRequest, empty });
+                      setConfirm('discard');
+                    }}
                   >
                     {merges ? 'Discard' : 'Discard worktree'}
                   </button>

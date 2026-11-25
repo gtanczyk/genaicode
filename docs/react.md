@@ -141,7 +141,11 @@ The reply may only refer to it, so the panel shows it as a link beside **Merge l
 **Discard** until `pullRequests` says the task opened it (`ours`, for example its worktree is on
 the pull request's head branch): then "PR #12 · merged" (or open, closed) stands in for Merge
 locally. Give the `state` once you have looked it up, and keep asking about a closed one: it can
-be reopened. Pass `chatId`, your id for the conversation, so a task's detail starts afresh in
+be reopened. A discard confirmed while the pull request held the work calls `onPackAction` with a
+fourth argument, `{ pullRequest: true }`: check that the worktree still matches the pull request
+before you discard (the work may have changed since). A task that changed no files sends
+`{ type: 'discard', empty: true }`, which the pack refuses (reason `changed`) once its worktree has
+changes. Pass `chatId`, your id for the conversation, so a task's detail starts afresh in
 another chat. The panel draws with the design tokens
 (`--gc-color-*`) of `styles.css` and never takes the keyboard focus by itself.
 

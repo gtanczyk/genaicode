@@ -71,7 +71,7 @@ export function pullRequestLookup(
   const holds = async (worktree: string, branch: string, commit: string): Promise<boolean> => {
     if ((await git(worktree, 'symbolic-ref', '--short', '-q', 'HEAD'))?.trim() !== branch) return false;
     if ((await git(worktree, 'rev-parse', 'HEAD'))?.trim() !== commit) return false;
-    return (await git(worktree, 'status', '--porcelain'))?.trim() === '';
+    return (await git(worktree, 'status', '--porcelain', '--untracked-files=all'))?.trim() === '';
   };
   let running = 0;
   const waiting: Array<() => void> = [];

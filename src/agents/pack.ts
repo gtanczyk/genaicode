@@ -195,7 +195,12 @@ export interface Pack extends CodingAgent {
 export type PackAction =
   | { type: 'steer'; text: string }
   | { type: 'merge' | 'diff'; revision?: string }
-  | { type: 'stop' | 'discard' | 'review' | 'verify' };
+  | { type: 'stop' | 'review' | 'verify' }
+  /**
+   * With `empty`, the discard of a task shown as having changed nothing: refused (`changed`) when its
+   * worktree has changes by now, so an edit made since is not lost unseen.
+   */
+  | { type: 'discard'; empty?: true };
 
 const packActionRefusals = {
   missing: 'This pack task could not be found.',
@@ -212,6 +217,7 @@ const packActionRefusals = {
   reviewer: 'This pack has no other installed agent that can review without tools.',
   verification: 'No test command is configured for this pack.',
   stale: 'The worktree changed. Open the updated diff before merging.',
+  changed: 'The worktree has changes now. Open its diff before discarding it.',
   budget: 'The session has used its review budget.',
   'budget-busy': 'A turn or review is using the remaining budget. Try again when it finishes.',
   capacity: 'All pack worker slots are in use. Try the check when a slot is free.',
@@ -1281,10 +1287,18 @@ export function pack(options: PackOptions): Pack {
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
+          // What the diff shows is what the task's files say: an edit made after the task ended shows up.
+          setChanges(sub, await worktreeChanges(sub.dir, sub.start, tree));
           return clip(patch.toString('utf8'), MAX_DIFF) || 'No changes.';
         });
 
-      const discard = (sub: Sub) =>
+      const setChanges = (sub: Sub, changes: string[]) => {
+        if (sub.changes && sub.changes.join('\n') === changes.join('\n')) return;
+        sub.changes = changes;
+        notify(sub);
+      };
+
+      const discard = (sub: Sub, empty?: boolean) =>
         withWorktree(async () => {
           if (sub.checking) throw new PackActionError('checking');
           if (sub.status === 'running')
@@ -1294,6 +1308,15 @@ export function pack(options: PackOptions): Pack {
               worktreeReason(sub),
               `${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`,
             );
+          if (empty && sub.dir && sub.start) {
+            const tree = await snapshotTree(sub.dir);
+            const changes = await worktreeChanges(sub.dir, sub.start, tree);
+            if (changes.length) {
+              updateRevision(sub, tree);
+              setChanges(sub, changes);
+              throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
+            }
+          }
           sub.state = 'discarded';
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
@@ -1609,7 +1632,7 @@ export function pack(options: PackOptions): Pack {
               case 'merge':
                 return merge(sub, false, action.revision);
               case 'discard':
-                return discard(sub);
+                return discard(sub, action.empty);
             }
           },
         },

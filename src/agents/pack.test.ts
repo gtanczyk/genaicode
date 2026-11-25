@@ -1007,6 +1007,48 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('refuses to discard a worktree shown as unchanged once it has changes, and its diff lists them', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      // Someone edits the retained worktree after the task ended.
+      writeFileSync(join(task()!.cwd, 'late.txt'), 'kept\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+        publicMessage: 'The worktree has changes now. Open its diff before discarding it.',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      expect(existsSync(join(task()!.cwd, 'late.txt'))).toBe(true);
+      // Reading the diff also lists what changed since.
+      rmSync(join(task()!.cwd, 'late.txt'));
+      writeFileSync(join(task()!.cwd, 'other.txt'), 'x\n');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain('+x');
+      expect(task()?.changes).toEqual(['A\tother.txt']);
+      // Clean again, it discards as before.
+      rmSync(join(task()!.cwd, 'other.txt'));
+      expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
+      expect(task()?.state).toBe('discarded');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
     const cwd = repo();
     const seenWorkerModes: Array<string | undefined> = [];

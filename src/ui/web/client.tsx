@@ -1604,11 +1604,12 @@ function App() {
               }}
               // While the window moves to another chat nothing here may act: it would act on the chat left.
               disabled={!connected || switching}
-              onPackAction={async (turnId, id, action) => {
+              onPackAction={async (turnId, id, action, intent) => {
                 // The server refuses it once the window shows another conversation.
-                // Discard is offered without Merge locally when the pull request holds the work: the
-                // server checks that again first, so an edit made since is not lost.
-                const held = action.type === 'discard' && pullRequests[`${turnId}:${id}`]?.ours === true;
+                // Discard is offered without Merge locally when the pull request held the work as the
+                // confirmation opened: the server checks that again first, so an edit made since is not
+                // lost, also when the panel learned of it while the confirmation was open.
+                const held = action.type === 'discard' && intent?.pullRequest === true;
                 const reply = await postCommand({
                   type: 'pack-task',
                   turnId,
@@ -1622,7 +1623,7 @@ function App() {
                 return reply.text ?? '';
               }}
               onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-              onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
+              onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               pullRequests={pullRequests}
             />
           ) : null

@@ -415,9 +415,19 @@ export function parseCommand(value: unknown): WebCommand | undefined {
           return undefined;
         return { type: 'pack-task', turnId, id, action: { type, ...(revision ? { revision } : {}) }, ...scope };
       }
-      if (type === 'discard' && command.pullRequest === true)
-        return { type: 'pack-task', turnId, id, action: { type }, pullRequest: true, ...scope };
-      if (type === 'stop' || type === 'discard' || type === 'review' || type === 'verify')
+      if (type === 'discard') {
+        // `empty`: the page showed no changes; the pack refuses if the worktree has some by now.
+        const empty = (action as Record<string, unknown>).empty === true ? { empty: true as const } : {};
+        return {
+          type: 'pack-task',
+          turnId,
+          id,
+          action: { type, ...empty },
+          ...(command.pullRequest === true ? { pullRequest: true as const } : {}),
+          ...scope,
+        };
+      }
+      if (type === 'stop' || type === 'review' || type === 'verify')
         return { type: 'pack-task', turnId, id, action: { type }, ...scope };
       return undefined;
     }

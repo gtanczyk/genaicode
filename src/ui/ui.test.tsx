@@ -1876,8 +1876,10 @@ describe('web UI server', () => {
   it('discards a worktree offered as held by its pull request only after checking it again now', async () => {
     const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
     const acted: string[] = [];
-    chat.session.actOnPackTask = async (_turn, id) => {
+    const actions: unknown[] = [];
+    chat.session.actOnPackTask = async (_turn, id, action) => {
       acted.push(id);
+      actions.push(action);
       return 'Discarded';
     };
     let ours = false;
@@ -1914,6 +1916,11 @@ describe('web UI server', () => {
       ours = false;
       expect((await post(discard)).status).toBe(200);
       expect(acted).toEqual(['t1', 't1']);
+      // A discard of a worktree shown as unchanged reaches the pack with `empty`, for it to check.
+      expect((await post({ ...discard, action: { type: 'discard', empty: true } })).status).toBe(200);
+      expect(actions.at(-1)).toEqual({ type: 'discard', empty: true });
+      expect((await post({ ...discard, action: { type: 'discard', empty: 'yes' } })).status).toBe(200);
+      expect(actions.at(-1)).toEqual({ type: 'discard' });
     } finally {
       await ui.close();
       chat.close();

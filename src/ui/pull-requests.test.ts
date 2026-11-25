@@ -1,3 +1,7 @@
+import { execFile, execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PULL_REQUEST_LOOKUPS_RUNNING,
@@ -46,7 +50,7 @@ describe('pullRequestLookup', () => {
     expect(await pullRequestLookup({ run })(URL, WORKTREE)).toEqual({ state: 'open', ours: true });
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'symbolic-ref', '--short', '-q', 'HEAD']);
     expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'rev-parse', 'HEAD']);
-    expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'status', '--porcelain']);
+    expect(run).toHaveBeenCalledWith('git', ['-C', WORKTREE, 'status', '--porcelain', '--untracked-files=all']);
     // "Fixed locally, see PR #351 for the original bug": another branch, or none (a detached worktree).
     expect(await pullRequestLookup({ run: tools(view, 'fix-import') })(URL, WORKTREE)).toEqual({
       state: 'open',
@@ -97,6 +101,34 @@ describe('pullRequestLookup', () => {
       vi.useRealTimers();
     }
     expect(run.mock.calls.filter(([command]) => command === 'gh')).toHaveLength(1);
+  });
+
+  it('sees an untracked file in a real worktree even when git is told to hide untracked files', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'genaicode-pr-'));
+    try {
+      const git = (...args: string[]) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+      git('init', '-q', '-b', 'work-panel');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      git('config', 'status.showUntrackedFiles', 'no');
+      writeFileSync(join(dir, 'app.ts'), 'export {};\n');
+      git('add', 'app.ts');
+      git('commit', '-q', '-m', 'work');
+      const head = git('rev-parse', 'HEAD');
+      const run = (command: string, args: readonly string[]) =>
+        command === 'gh'
+          ? Promise.resolve(`{"state":"MERGED","headRefName":"work-panel","headRefOid":"${head}"}`)
+          : new Promise<string>((resolve, reject) =>
+              execFile(command, [...args], (error, stdout) => (error ? reject(error) : resolve(stdout))),
+            );
+      const lookup = pullRequestLookup({ run });
+      expect(await lookup(URL, dir, { fresh: true })).toEqual({ state: 'merged', ours: true });
+      writeFileSync(join(dir, 'notes.md'), 'kept only here\n');
+      expect(git('status', '--porcelain')).toBe('');
+      expect(await lookup(URL, dir, { fresh: true })).toEqual({ state: 'merged', ours: false });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('has no answer when gh fails or says something else', async () => {
