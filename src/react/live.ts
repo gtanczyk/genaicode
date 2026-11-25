@@ -17,11 +17,27 @@ import {
   toolArgument,
   type Receipt,
 } from './format.js';
-import { askSubject, WORK_GROUPS, workStatus, type WorkGroup, type WorkTask, type WorkTone } from './work.js';
+import {
+  askSubject,
+  WORK_GROUPS,
+  workClearable,
+  workStatus,
+  type WorkGroup,
+  type WorkTask,
+  type WorkTone,
+} from './work.js';
 
-/** How many tasks each group has, in the groups' order; empty groups are left out. */
-export function missionCounts(tasks: readonly WorkTask[]): Array<{ group: WorkGroup; count: number }> {
-  return WORK_GROUPS.map((group) => ({ group, count: tasks.filter((item) => item.group === group).length })).filter(
+/**
+ * How many tasks each group has, in the groups' order; empty groups are left out. A task cleared
+ * from Tasks (`dismissed`, as `workList` takes it from the view) is not counted, as it is not listed.
+ */
+export function missionCounts(
+  tasks: readonly WorkTask[],
+  dismissed?: readonly string[],
+): Array<{ group: WorkGroup; count: number }> {
+  const cleared = new Set(dismissed ?? []);
+  const listed = tasks.filter((item) => !(cleared.has(item.key) && workClearable(item)));
+  return WORK_GROUPS.map((group) => ({ group, count: listed.filter((item) => item.group === group).length })).filter(
     (entry) => entry.count,
   );
 }

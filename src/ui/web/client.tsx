@@ -1980,6 +1980,7 @@ function App() {
               // The team's counts and the next approval of a task, above the message box at every width.
               missionStrip={{
                 pullRequests,
+                dismissed: workView.dismissed,
                 onOpenGroup: (group) =>
                   openWork({
                     tab: 'tasks',

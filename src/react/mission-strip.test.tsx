@@ -15,7 +15,7 @@ import {
   type WorkPanelView,
 } from '../react.js';
 import { agoText, leadNow, leadNowText, missionActive, missionCounts, teamFeed, watchedTasks } from './live.js';
-import { readWorkView, workTasks, writeWorkView } from './work.js';
+import { readWorkView, workList, workTasks, writeWorkView } from './work.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -82,6 +82,8 @@ const texts = (selector: string) => $$(selector).map((item) => item.textContent?
 const button = (name: string) =>
   $$('button').find((item) => item.textContent?.trim() === name || item.getAttribute('aria-label') === name);
 const click = (element: Element | undefined) => act(() => (element as HTMLElement).click());
+/** Lets a newly shown request on the strip settle, so its buttons take clicks. */
+const settle = () => vi.setSystemTime(Date.now() + 500);
 
 beforeEach(() => {
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
@@ -169,6 +171,7 @@ describe('<MissionStrip>', () => {
     expect(onOpenGroup).toHaveBeenCalledWith('ask');
     click(button('Open task t2'));
     expect(onOpenTask).toHaveBeenCalledWith('7:t2');
+    settle();
     click(button('Deny for t2'));
     click(button('Approve for t2'));
     expect(onApprove.mock.calls).toEqual([
@@ -183,6 +186,52 @@ describe('<MissionStrip>', () => {
     strip(state, { onApprove, disabled: true });
     expect(button('Approve for t2')).toBeUndefined();
     expect($('.gc-strip-ask code').textContent).toBe('npm install left-pad');
+  });
+
+  it('a double click answers only the request that was shown, not the one that moves up', () => {
+    const onApprove = vi.fn();
+    const state = session([task('t1'), task('t2')], {
+      approvals: [ask('t1', 'npm test'), ask('t2', 'rm -rf build')],
+    });
+    strip(state, { onApprove });
+    const first = $('.gc-strip-ask');
+    settle();
+    click(button('Approve for t1'));
+    // The host answered t1: the next request takes its place, as a new row.
+    strip({ ...state, approvals: state.approvals.slice(1) }, { onApprove });
+    expect($('.gc-strip-ask code').textContent).toBe('rm -rf build');
+    expect($('.gc-strip-ask')).not.toBe(first);
+    click(button('Approve for t2'));
+    click(button('Deny for t2'));
+    expect(onApprove.mock.calls).toEqual([['t1:ap-t1', 'approve']]);
+    // Once it has been in view a moment, it takes an answer.
+    settle();
+    click(button('Approve for t2'));
+    expect(onApprove.mock.calls).toEqual([
+      ['t1:ap-t1', 'approve'],
+      ['t2:ap-t2', 'approve'],
+    ]);
+  });
+
+  it('counts only what Tasks lists: finished tasks cleared from it are not counted', () => {
+    const state = session([
+      task('t1'),
+      done('t2', { mode: 'shared', state: undefined }),
+      done('t3', { mode: 'shared', state: undefined }),
+      done('t4', { status: 'failed', state: undefined, error: 'No.' }),
+      done('t5', { state: 'unmerged', changes: ['M\ta.ts'] }),
+    ]);
+    const tasks = workTasks(state);
+    // All four finished tasks cleared; t5 still has a worktree to merge, so Tasks keeps it.
+    const dismissed = ['7:t2', '7:t3', '7:t4', '7:t5'];
+    const listed = Object.entries(workList(tasks, { dismissed }).counts).filter(([, count]) => count);
+    expect(listed).toEqual([
+      ['running', 1],
+      ['unmerged', 1],
+    ]);
+    expect(missionCounts(tasks, dismissed).map((entry) => [entry.group, entry.count])).toEqual(listed);
+    strip(state, { dismissed });
+    expect(texts('.gc-strip-stat')).toEqual(['1Running', '1Unmerged']);
   });
 
   it('many tasks: still one row of counts', () => {
@@ -226,15 +275,22 @@ describe('<AgentChat missionStrip>', () => {
 
   it("with it a task's approval is on the strip above the message box; the lead's stays inline", () => {
     const onApprove = vi.fn();
-    chat(state(), { onOpenTasks: () => {}, missionStrip: {}, onApprove });
+    chat(state(), { onOpenTasks: () => {}, missionStrip: { onOpenGroup: () => {} }, onApprove });
     expect($('.gc-composer > .gc-strip')).not.toBeNull();
     expect($$('.gc-approval')).toHaveLength(1);
     expect($('.gc-approval').textContent).toContain('git push');
     expect($('.gc-strip-ask code').textContent).toBe('npm install left-pad');
+    settle();
     click(button('Approve for t1'));
     expect(onApprove).toHaveBeenCalledWith('t1:ap-t1', 'approve');
     // The strip never takes the keyboard.
     expect(host.contains(document.activeElement) && document.activeElement?.closest('.gc-strip')).toBeFalsy();
+  });
+
+  it('a strip that opens nothing keeps the approvals of tasks in the transcript too', () => {
+    chat(state(), { onOpenTasks: () => {}, missionStrip: {} });
+    expect($('.gc-strip-ask code').textContent).toBe('npm install left-pad');
+    expect($$('.gc-approval')).toHaveLength(2);
   });
 
   it('a chat without delegated work has no strip', () => {

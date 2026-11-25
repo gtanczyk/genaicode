@@ -134,11 +134,12 @@ export interface AgentChatProps {
   /**
    * Shows the mission strip (`<MissionStrip>`) above the message box while delegated work runs: the
    * tasks counted by state, what the lead does now, and the next approval a task waits for, with
-   * Approve and Deny (`onApprove`). With it and `onOpenTasks`, an approval of a delegated task is
-   * answered on the strip (and in the host's `<WorkPanel>`) and no longer shows in the transcript;
-   * the lead's own approvals and every question stay inline. Pass `{}` for a strip that opens nothing.
+   * Approve and Deny (`onApprove`). With its `onOpenGroup` and `onOpenTasks`, an approval of a
+   * delegated task is answered on the strip (and in the host's `<WorkPanel>`) and no longer shows in
+   * the transcript; the lead's own approvals and every question stay inline. Pass `{}` for a strip
+   * that opens nothing; the transcript then keeps every approval, since the strip shows only the first.
    */
-  missionStrip?: Pick<MissionStripProps, 'onOpenGroup' | 'onOpenTask' | 'pullRequests'>;
+  missionStrip?: Pick<MissionStripProps, 'onOpenGroup' | 'onOpenTask' | 'pullRequests' | 'dismissed'>;
   /**
    * How a prompt bubble shows the text that was sent, e.g. to hide a context prefix the host
    * added. Return null to hide the bubble. `turn` is undefined for queued prompts and for
@@ -468,7 +469,7 @@ export function AgentChat(props: AgentChatProps) {
         onAutoApprove={props.onAutoApprove}
         onPackAction={props.disabled ? undefined : props.onPackAction}
         onOpenTasks={props.onOpenTasks}
-        taskApprovalsElsewhere={!!props.missionStrip && !!props.onOpenTasks}
+        taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
         prompt={props.renderPrompt}
         toolName={props.formatToolName ?? toolLabel}
         artifactUrl={props.artifactUrl}
