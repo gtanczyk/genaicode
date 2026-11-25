@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { personText } from '../../agents/host-text.js';
@@ -23,7 +23,7 @@ import {
   type SlashCommand,
 } from '../format.js';
 import type { UiRelease } from './release.js';
-import type { WebCommand, WebFolder, WebSessionListing, WebSwitchCommand } from './server.js';
+import type { WebCommand, WebFolder, WebSwitchCommand } from './server.js';
 import {
   chatProjects,
   folderName,
@@ -43,7 +43,8 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
-import { chatsWithoutAnswered, needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
+import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
+import { LIMITS_EVERY_MS, useChats } from './chats.js';
 import { NeedsYouPage, useFirstSeen } from './needs-you.js';
 import { chatLimits, SettingsPage, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
@@ -156,9 +157,6 @@ function promptBubble(text: string) {
   );
 }
 
-/** How often the limits last seen, and the lists of the sidebar, are asked for again. */
-const LIMITS_EVERY_MS = 60_000;
-
 /**
  * The limits last seen of every agent's plan (`/api/limits`): asked when the page opens, when a
  * turn starts or ends, and every minute. The sidebar shows each agent's worst window.
@@ -185,98 +183,6 @@ function useAllLimits(running: boolean): Array<RateLimit & { agent: string }> {
     };
   }, [running]);
   return limits;
-}
-
-const NO_SESSIONS: SessionInfo[] = [];
-
-/** What the sidebar and the Needs you page read of `/api/sessions`. */
-interface Chats {
-  own: SessionInfo[];
-  all: SessionInfo[];
-  /** The questions hooks hold open, and the agents that take a reply to a session. */
-  asks: NonNullable<WebSessionListing['asks']>;
-  senders: NonNullable<WebSessionListing['senders']>;
-  /** Asks again now: something was answered from here. */
-  refresh(): void;
-  /**
-   * A hook's question was answered from here (or already elsewhere): it no longer waits, nor does
-   * its session while no other question of it does, whatever the listing says until it is read again.
-   */
-  answered(ask: string): void;
-  /** A reply went to this session: it works again, whatever the stores still say until they are read. */
-  replied(session: SessionInfo): void;
-}
-
-const NO_LISTING: WebSessionListing = { sessions: NO_SESSIONS, errors: [] };
-const NO_ASKS_GONE: ReadonlySet<string> = new Set();
-
-/**
- * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
- * agent's sessions of the last 7. Asked again when `stamp` changes (a turn ended, another chat was
- * opened), every minute, when the window is looked at again, and after an answer given from here.
- */
-function useChats(enabled: boolean, stamp: string): Chats {
-  const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
-  const [listing, setListing] = useState<WebSessionListing>(NO_LISTING);
-  const [round, setRound] = useState(0);
-  // The questions answered from here that a listing may still hold: forgotten once one does not.
-  const [gone, setGone] = useState<ReadonlySet<string>>(NO_ASKS_GONE);
-  const keepListing = useCallback((found: WebSessionListing) => {
-    setListing(found);
-    setGone((ids) => {
-      const still = new Set((found.asks ?? []).map((ask) => ask.id));
-      const kept = [...ids].filter((id) => still.has(id));
-      return kept.length === ids.size ? ids : new Set(kept);
-    });
-  }, []);
-  useEffect(() => {
-    if (!enabled || !token) return;
-    let current = true;
-    const list = (query: string, keep: (listing: WebSessionListing) => void) =>
-      fetch(`/api/sessions?${query}`, { headers: { 'x-genaicode-token': token } })
-        .then((res) => (res.ok ? (res.json() as Promise<WebSessionListing>) : undefined))
-        .then(
-          (found) => {
-            if (current && found) keep(found);
-          },
-          () => undefined,
-        );
-    const ask = () => {
-      if (document.visibilityState !== 'visible') return;
-      void list('days=30&own=1', (found) => setOwn(found.sessions ?? []));
-      void list('days=7', keepListing);
-    };
-    ask();
-    const timer = window.setInterval(ask, LIMITS_EVERY_MS);
-    document.addEventListener('visibilitychange', ask);
-    return () => {
-      current = false;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', ask);
-    };
-  }, [enabled, stamp, round]);
-  return useMemo(() => {
-    const shown = chatsWithoutAnswered(own, listing.sessions ?? NO_SESSIONS, listing.asks ?? [], gone);
-    return {
-      own: shown.own,
-      all: shown.sessions,
-      asks: shown.asks,
-      senders: listing.senders ?? [],
-      refresh: () => setRound((value) => value + 1),
-      answered: (ask) => {
-        setGone((ids) => new Set([...ids, ask]));
-        setRound((value) => value + 1);
-      },
-      replied: (session) => {
-        const same = (one: SessionInfo) => one.source === session.source && one.id === session.id;
-        const working = (one: SessionInfo): SessionInfo =>
-          same(one) ? { ...one, state: 'active', waitingFor: undefined, updatedAt: Date.now() } : one;
-        setOwn((sessions) => sessions.map(working));
-        setListing((found) => ({ ...found, sessions: (found.sessions ?? []).map(working) }));
-        setRound((value) => value + 1);
-      },
-    };
-  }, [own, listing, gone]);
 }
 
 interface PageConfig {
@@ -1096,6 +1002,7 @@ function App() {
   const account = session?.agent.replace(/Live$/, '');
   const plan = useMemo(() => allLimits.filter((limit) => limit.agent === account), [allLimits, account]);
   const chats = useChats(
+    token,
     hasSessions,
     `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
   );

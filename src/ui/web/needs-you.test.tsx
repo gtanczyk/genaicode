@@ -314,3 +314,64 @@ it('keeps an unsent reply when a filter hides its card for a while', async () =>
   await click(button(card('Gate verdict retries'), 'Reply'));
   expect(field().value).toBe('');
 });
+
+it('keeps the editor of a reply on its way closed to edits when a filter hides its card for a while', async () => {
+  let land!: (res: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>((resolve) => (land = resolve))),
+  );
+  const onReplied = vi.fn();
+  render(props({ onReplied }));
+  const chips = () => Array.from(host.querySelectorAll('.chipf'));
+  const field = () => card('Gate verdict retries').querySelector('textarea')!;
+  const type = (text: string) =>
+    act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field(), text);
+      field().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  await type('On 502 too.');
+  await act(async () => {
+    card('Gate verdict retries')
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  expect(field().disabled).toBe(true);
+  // Away and back while the reply is on its way: the editor still takes no edits.
+  await click(chips()[4]!);
+  await click(chips()[0]!);
+  expect(field().value).toBe('On 502 too.');
+  expect(field().disabled).toBe(true);
+  expect(button(card('Gate verdict retries'), 'Sending…').disabled).toBe(true);
+  // It lands: the reply is done, and nothing typed meanwhile was lost.
+  await act(async () => land(new Response(JSON.stringify({ ok: true, text: 'On it.' }))));
+  expect(onReplied).toHaveBeenCalledWith(gate, 'On it.');
+  expect(card('Gate verdict retries').querySelector('textarea')).toBeNull();
+});
+
+it('gives the draft back, open to edits, when a reply hidden by a filter could not be sent', async () => {
+  let land!: (res: Response) => void;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>((resolve) => (land = resolve))),
+  );
+  render(props());
+  const chips = () => Array.from(host.querySelectorAll('.chipf'));
+  const field = () => card('Gate verdict retries').querySelector('textarea')!;
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field(), 'On 502 too.');
+    field().dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => {
+    card('Gate verdict retries')
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  });
+  await click(chips()[4]!);
+  await act(async () => land(new Response(JSON.stringify({ ok: false, error: 'Busy.' }), { status: 500 })));
+  await click(chips()[0]!);
+  expect(field().value).toBe('On 502 too.');
+  expect(field().disabled).toBe(false);
+});

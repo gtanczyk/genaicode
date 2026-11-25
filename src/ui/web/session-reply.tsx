@@ -2,10 +2,14 @@ import { useState, type FormEvent } from 'react';
 import type { SandboxPolicy } from '../../agents/types.js';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 
-/** A reply being written: its text and the sandbox chosen for it (`''`: the driver's default). */
+/**
+ * A reply being written: its text and the sandbox chosen for it (`''`: the driver's default), and
+ * whether it is on its way (the editor takes no edits until it lands or fails).
+ */
 export interface SessionReplyDraft {
   prompt: string;
   sandbox: string;
+  sending?: boolean;
 }
 const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
 
@@ -28,16 +32,16 @@ export function SessionReply({
   onDraft?(draft: SessionReplyDraft): void;
 }) {
   const [own, setOwn] = useState<SessionReplyDraft>(EMPTY_DRAFT);
-  const { prompt, sandbox } = draft ?? own;
+  // Kept with the draft: an editor shown again while the reply is on its way takes no edits either.
+  const { prompt, sandbox, sending = false } = draft ?? own;
   const keep = (next: SessionReplyDraft) => (onDraft ? onDraft(next) : setOwn(next));
   const setPrompt = (value: string) => keep({ prompt: value, sandbox });
   const setSandbox = (value: string) => keep({ prompt, sandbox: value });
-  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (sending || !prompt.trim()) return;
-    setSending(true);
+    keep({ prompt, sandbox, sending: true });
     setError(undefined);
     try {
       const target = [session.source, session.id].map(encodeURIComponent).join('/');
@@ -48,11 +52,12 @@ export function SessionReply({
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error ?? `The server answered ${response.status}.`);
+      // The caller drops a draft it keeps; one kept here stays, no longer sending.
+      if (!onDraft) setOwn({ prompt, sandbox });
       onSent(result.text ?? '');
     } catch (cause) {
+      keep({ prompt, sandbox });
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSending(false);
     }
   };
   return (
