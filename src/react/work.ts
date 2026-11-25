@@ -683,7 +683,13 @@ export function workViewerBack(view: WorkPanelView, tasks: readonly WorkTask[]):
   return 'Close';
 }
 
-const slashes = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+/** `path` with forward slashes and none at its end. */
+function slashes(path: string): string {
+  const forward = path.replaceAll('\\', '/');
+  let end = forward.length;
+  while (end > 0 && forward[end - 1] === '/') end -= 1;
+  return forward.slice(0, end);
+}
 
 /**
  * Where the chat's folder is in a worktree task's repository, from its root: `''` at the root,
