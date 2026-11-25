@@ -1117,10 +1117,17 @@ export function pack(options: PackOptions): Pack {
         notify(sub);
       };
 
+      // A new revision and its file list go together: the list is what Merge locally then takes.
       const refresh = (sub: Sub) =>
         withWorktree(async () => {
           if (!sub.dir || sub.state !== 'unmerged' || sub.closing) return;
-          updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
+          const revision = await snapshotTree(sub.dir).catch(() => undefined);
+          if (!sub.checks || sub.checks.revision === revision) return;
+          if (revision && sub.start) {
+            const changes = await worktreeChanges(sub.dir, sub.start, revision).catch(() => undefined);
+            if (changes) sub.changes = changes;
+          }
+          updateRevision(sub, revision);
         });
 
       const observe = (sub: Sub) => {

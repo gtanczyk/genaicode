@@ -1313,6 +1313,12 @@ describe('pack chat turns', () => {
       writeFileSync(join(dir, 'c.txt'), 'c\n');
       await session.actOnPackTask!(1, 't1', { type: 'verify' });
       expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt']);
+      // Another one while the check's result is shown: the watched worktree moves the revision on,
+      // and the list with it.
+      const checked = task()!.checks!.revision;
+      writeFileSync(join(dir, 'd.txt'), 'd\n');
+      await vi.waitFor(() => expect(task()!.checks!.revision).not.toBe(checked), { timeout: 5000 });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt', 'A\td.txt']);
       // a.txt staged, b.txt edited and not: the patch carries both, so it merges.
       writeFileSync(join(dir, 'b.txt'), 'b changed\n');
       git(dir, 'add', 'a.txt');
