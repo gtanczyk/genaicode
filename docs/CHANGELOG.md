@@ -17,6 +17,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - In the work panel, "Running" beside a long command no longer breaks into one letter a line (#370)
 - Browser commands follow the conversation generation across windows. Resumed pack tasks renew their checks, and streaming waits report increasing progress and a final JSON-RPC response (#354, #362).
 
+### Internal
+
+- Refresh the macOS visual test baselines for task details and the file viewer in both themes (#373)
+
 ## 3.4.0 — 2026-11-25
 
 ### Added
