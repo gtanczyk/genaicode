@@ -293,9 +293,10 @@ export function packTaskClearable(task: PackTask, waiting = false): boolean {
 /**
  * A long list of delegated tasks for the inline card: in `packTaskList` order, without the
  * `cleared` ones, narrowed to the tasks whose title, agent, id or status has every word of `query`,
- * and cut to the first `PACK_DENSE_SHOWN + more` rows (`keep`, the selected task, always shows).
- * `hidden` counts the rows cut, `earlier` says they are all finished ones, `matched` counts the
- * tasks that pass the filter and `clearable` the finished ones among them that can be cleared.
+ * and cut to the first `PACK_DENSE_SHOWN + more` rows (`keep`, the selected task, always shows
+ * unless it is cleared). `hidden` counts the rows cut, `earlier` says they are all finished ones,
+ * `matched` counts the tasks that pass the filter and `clearable` the finished ones among them
+ * that can be cleared, the selected one included: the host picks another once it is cleared.
  */
 export function packDenseList(
   tasks: readonly PackTask[],
@@ -310,8 +311,7 @@ export function packDenseList(
   const asking = options.asking ?? (() => false);
   const words = (options.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
   const gone = new Set(options.cleared ?? []);
-  const isCleared = (task: PackTask) =>
-    gone.has(task.id) && task.id !== options.keep && packTaskClearable(task, asking(task));
+  const isCleared = (task: PackTask) => gone.has(task.id) && packTaskClearable(task, asking(task));
   const listed = packTaskList(tasks, { asking, expanded: true }).shown.filter((task) => !isCleared(task));
   const matching = listed.filter((task) => {
     if (!words.length) return true;
@@ -328,7 +328,7 @@ export function packDenseList(
     hidden: rest.length,
     earlier: rest.length > 0 && rest.every((task) => !packTaskActive(task, asking(task))),
     matched: matching.length,
-    clearable: matching.filter((task) => task.id !== options.keep && packTaskClearable(task, asking(task))),
+    clearable: matching.filter((task) => packTaskClearable(task, asking(task))),
     cleared: tasks.filter(isCleared).length,
   };
 }

@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
-import { AgentChat, WorkPanel, type WorkActionHandler, type WorkPanelProps, type WorkPanelView } from '../react.js';
+import { AgentChat, WorkPanel, type WorkPanelProps, type WorkPanelView } from '../react.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -244,11 +244,11 @@ describe('<WorkPanel> with 150 tasks', () => {
     expect(view.filter).toBe('failed');
     expect(heads()).toEqual([['Failed 4', 'true']]);
     expect(ids()).toEqual(range(104, 101));
-    // A chip opens its group, also Done, on up to 50 rows.
+    // A chip opens its group, also Done, on its newest 8 rows.
     click($$('.gc-work-chip')[6]);
     expect(heads()).toEqual([['Done 108', 'true']]);
-    expect(ids()).toHaveLength(50);
-    expect(text('.gc-work-more')).toBe('Show 50 earlier of 58');
+    expect(ids()).toEqual([...range(150, 146), ...range(115, 113)]);
+    expect(text('.gc-work-more')).toBe('Show 50 earlier of 100');
     // The pressed chip again: all tasks.
     click($$('.gc-work-chip')[6]);
     expect(view.filter).toBeUndefined();
@@ -258,7 +258,8 @@ describe('<WorkPanel> with 150 tasks', () => {
     type('.gc-work-filter', 'gemini running');
     expect(view.query).toBe('gemini running');
     expect(heads()).toEqual([['Running 10', 'true']]);
-    expect(ids()).toEqual(['t143', 't140', 't137', 't134', 't131', 't128', 't125', 't122', 't119', 't116']);
+    expect(ids()).toEqual(['t143', 't140', 't137', 't134', 't131', 't128', 't125', 't122']);
+    expect(text('.gc-work-more')).toBe('Show 2 more');
     type('.gc-work-filter', 'T107');
     expect(heads()).toEqual([['Review blockers 1', 'true']]);
     type('.gc-work-filter', 'part 15');
@@ -279,7 +280,7 @@ describe('<WorkPanel> with 150 tasks', () => {
     expect(escape.defaultPrevented).toBe(true);
     expect(view.query).toBeUndefined();
 
-    // By agent: one group per agent, what needs the person first.
+    // By agent: one group per agent, newest first.
     click(button('Agent'));
     expect(view.by).toBe('agent');
     expect(heads()).toEqual([
@@ -287,7 +288,7 @@ describe('<WorkPanel> with 150 tasks', () => {
       ['codex 50', 'true'],
       ['gemini 50', 'true'],
     ]);
-    expect(ids('agent:claude')).toEqual(['t144', 't102', 't141', 't138', 't135', 't132', 't129', 't126']);
+    expect(ids('agent:claude')).toEqual(['t150', 't147', 't144', 't141', 't138', 't135', 't132', 't129']);
     expect(text('[data-section="agent:claude"] .gc-work-more')).toBe('Show 42 more');
     click($('[data-section="agent:codex"] .gc-work-group-head button'));
     expect(view.folded).toEqual({ 'agent:codex': true });
@@ -345,53 +346,6 @@ describe('<WorkPanel> with 150 tasks', () => {
     expect(text('.gc-work-foot')).toBe('1 cleared from this list. Show them');
   });
 
-  it('Approve all shows the requests first; Merge all takes the tasks whose review and tests passed', async () => {
-    const onApprove = vi.fn();
-    const merged: string[] = [];
-    const onPackAction = vi.fn<WorkActionHandler>(async (_turn, id, action) => {
-      if (id === 't105') throw new Error('The worktree changed. Open the updated diff before merging.');
-      merged.push(`${id} ${action.type} ${'revision' in action ? action.revision?.slice(0, 7) : ''}`);
-      return `Merged ${id}`;
-    });
-    show(manyTasks(), { props: { onApprove, onPackAction } });
-    click(button('Approve all'));
-    const card = () => $('.gc-work-bulk');
-    expect(card().getAttribute('aria-label')).toBe('Approve all');
-    expect(text('.gc-work-bulk b')).toBe('Approve these 2 requests?');
-    expect($$('.gc-work-bulk li').map((item) => item.textContent)).toEqual([
-      't145 rm -rf dist',
-      't144 npm install left-pad',
-    ]);
-    expect(onApprove).not.toHaveBeenCalled();
-    click(button('Approve 2'));
-    expect(onApprove.mock.calls).toEqual([
-      ['t145:ap-1', 'approve'],
-      ['t144:ap-1', 'approve'],
-    ]);
-    expect(card()).toBeNull();
-
-    click(button('Merge all'));
-    expect(card().getAttribute('aria-label')).toBe('Merge all');
-    expect(text('.gc-work-bulk b')).toBe(
-      'Merge t106, t105 locally? Review and tests passed on the revision each has now.',
-    );
-    expect(text('.gc-work-bulk .gc-work-note')).toBe('Left as they are: t112, t111, t110, t109, t108.');
-    await act(async () => {
-      button('Merge 2')!.click();
-      await Promise.resolve();
-    });
-    await act(async () => {});
-    expect(merged).toEqual(['t106 merge abc1234']);
-    expect(text('[data-section="unmerged"] .gc-work-feedback')).toBe(
-      'Merged t106. Not merged: t105: The worktree changed. Open the updated diff before merging.',
-    );
-
-    // Without the callbacks, or with one request only, there is nothing to do at once.
-    show(manyTasks(), { state: { approvals: approvals.slice(0, 1) } });
-    expect(button('Approve all')).toBeUndefined();
-    expect(button('Merge all')).toBeUndefined();
-  });
-
   it('a row under the keyboard focus or the pointer stays in its group, with its new state, until they leave', () => {
     const onApprove = vi.fn();
     show(manyTasks(), { props: { onApprove } });
@@ -429,6 +383,51 @@ describe('<WorkPanel> with 150 tasks', () => {
     expect(ids('running')).toEqual([...range(155, 151), 't144', 't143', 't142', 't137']);
     over('mouseout');
     expect(ids('running')).toEqual([...range(155, 151), 't144', 't143', 't142']);
+  });
+
+  it('keeps a focused row that matched the text filter while its status changes, until the focus leaves', () => {
+    show(manyTasks(), { state: { approvals: [] } });
+    type('.gc-work-filter', 'running');
+    expect(ids('running')).toEqual(range(145, 138));
+    const row = () => $('[data-task="7:t143"] .gc-work-row');
+    act(() => row().focus());
+    const kept = row();
+    state = session(
+      manyTasks().map((task) =>
+        task.id === 't143' ? { ...task, status: 'failed', error: 'The tests did not pass.', endedAt: t0 } : task,
+      ),
+      { approvals: [] },
+    );
+    draw();
+    expect(row()).toBe(kept);
+    expect(document.activeElement).toBe(kept);
+    expect(row().querySelector('.gc-work-sr')!.textContent).toBe('Failed');
+    act(() => row().blur());
+    expect($('[data-task="7:t143"]')).toBeNull();
+    expect(ids('running')).toEqual([...range(145, 144), ...range(142, 137)]);
+  });
+
+  it('lets no row go while a button is pressed, so Approve on the next row is not moved away', async () => {
+    const onApprove = vi.fn();
+    show(manyTasks(), { props: { onApprove } });
+    click($('[aria-label="Approve for t145"]'));
+    state = session(manyTasks(), { approvals: approvals.slice(0, 1) });
+    draw();
+    // t145 runs now, its row held by the focus Approve left on it.
+    expect(ids('ask')).toEqual(['t145', 't144']);
+    const next = $('[aria-label="Approve for t144"]');
+    // The press on the next Approve takes the focus from t145's row: the row stays until the release.
+    act(() => void next.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    act(() => next.focus());
+    expect(ids('ask')).toEqual(['t145', 't144']);
+    expect($('[aria-label="Approve for t144"]')).toBe(next);
+    click(next);
+    expect(onApprove).toHaveBeenLastCalledWith('t144:ap-1', 'approve');
+    await act(async () => {
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(ids('ask')).toEqual(['t144']);
   });
 
   it('renders 150 tasks, and 1500, in bounded time and rows', () => {
@@ -493,6 +492,52 @@ describe('<AgentChat> inline card with 150 tasks', () => {
     expect(button('Clear 112 finished')).toBeUndefined();
     click(button('Show 112 cleared'));
     expect(text('.gc-pack-more')).toBe('Show 50 earlier of 88');
+  });
+
+  it('clears the task it shows too, and shows the first of the rest', () => {
+    const done = manyTasks().slice(0, 16);
+    render(done);
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t16');
+    click(button('Clear 16 finished'));
+    expect(rows()).toEqual([]);
+    expect(text('.gc-pack-none')).toBe('Every finished task is cleared.');
+    // Nothing left to show but the approvals that wait.
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Approval queue');
+    click(button('Show 16 cleared'));
+    expect(rows()).toHaveLength(12);
+
+    // A task picked by hand goes with the others; the card moves to one that is left.
+    act(() => root.unmount());
+    root = createRoot(host);
+    render([...done, manyTasks()[120]!]);
+    click($$('.gc-pack-list button').find((row) => row.querySelector('strong')?.textContent === 'Review part 8'));
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t8');
+    click(button('Clear 16 finished'));
+    expect(rows()).toEqual(['Fix finding 121']);
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t121');
+  });
+
+  it('keeps what it remembers to its conversation and turn', () => {
+    const chat = (chatId?: string, startedAt = t0) => {
+      const state = session(manyTasks());
+      state.turns[0]!.startedAt = startedAt;
+      act(() =>
+        root.render(<AgentChat state={state} chatId={chatId} onSend={() => undefined} onApprove={() => undefined} />),
+      );
+    };
+    chat('a');
+    click(button('Clear 112 finished'));
+    expect(button('Show 112 cleared')).toBeDefined();
+    // Another chat whose turn has the same id starts afresh...
+    chat('b');
+    expect(button('Show 112 cleared')).toBeUndefined();
+    expect(button('Clear 112 finished')).toBeDefined();
+    // ...and so does another conversation of a host that passes no chatId.
+    chat();
+    click(button('Clear 112 finished'));
+    expect(button('Show 112 cleared')).toBeDefined();
+    chat(undefined, t0 + 1);
+    expect(button('Show 112 cleared')).toBeUndefined();
   });
 
   it('up to 15 tasks looks as it did', () => {

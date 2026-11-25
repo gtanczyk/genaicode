@@ -156,14 +156,13 @@ another chat. The panel draws with the design tokens
 
 A long list stays short on screen. Above 8 tasks the panel has status chips with counts, a text
 filter (title, agent, id, status) and a switch to group by agent; above 15 a row is one line and a
-group shows its first 8 rows and **Show N more**, 50 at a time. Done is one line ("100 done · 5
-stopped") until it is opened. A finished task with no worktree left to merge or discard can be
-cleared from the list (its row's ×, or **Clear N** on Done and Failed); the session keeps it, and
-**Show them** brings it back. **Approve all** shows the requests first, **Merge all** takes only
-the tasks whose review and tests passed on the revision they have now. All of it is in `view`
+group shows its newest 8 rows and **Show N more**, 50 at a time, also under a chip, a filter or
+by agent. Done is one line ("100 done · 5 stopped") until it is opened. A finished task with no
+worktree left to merge or discard can be cleared from the list (its row's ×, or **Clear N** on
+Done and Failed); the session keeps it, and **Show them** brings it back. All of it is in `view`
 (`filter`, `query`, `by`, `more`, `folded`, `dismissed`), so it is remembered wherever you keep
 `view`. The inline card of `<AgentChat>` does the same above 15 tasks: one-line rows, the first 12,
-a filter and **Clear N finished**.
+a filter and **Clear N finished**; pass it `chatId` so what it remembers stays with its conversation.
 
 Two smaller pieces come along for hosts that build their own panels around a transcript:
 

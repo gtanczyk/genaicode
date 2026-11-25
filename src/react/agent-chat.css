@@ -2827,21 +2827,6 @@ body[data-resizing='true'] iframe {
   font-weight: 500;
   padding: 0 7px;
 }
-.gc-work-bulk {
-  margin: 8px 0;
-}
-.gc-work-bulk ul {
-  list-style: none;
-  padding: 0;
-  margin: 6px 0 0;
-  max-height: 180px;
-  overflow-y: auto;
-}
-.gc-work-bulk li {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .gc-work-more {
   display: block;
   width: 100%;

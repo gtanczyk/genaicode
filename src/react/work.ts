@@ -178,14 +178,12 @@ export function workGroups(tasks: readonly WorkTask[]): Array<{ group: WorkGroup
 
 /** Above this many tasks a row is one line and a group shows its first rows only. */
 export const WORK_DENSE_ABOVE = 15;
-/** Rows a group shows in a long list before **Show N more**. */
+/** Rows a group shows in a long list before **Show N more**, also under a filter or by agent. */
 export const WORK_GROUP_SHOWN = 8;
-/** Rows **Show N more** adds, and rows a group shows while a filter narrows a long list. */
+/** Rows **Show N more** adds. */
 export const WORK_PAGE = 50;
 /** Above this many tasks the list has filter chips, a text filter and the grouping switch. */
 export const WORK_TOOLS_ABOVE = 8;
-/** Cleared tasks remembered per chat; the oldest are forgotten (and show again) past it. */
-const WORK_DISMISSED_KEPT = 2000;
 
 /**
  * A finished task that leaves nothing to do: it is not running or asking, and has no worktree to
@@ -196,9 +194,17 @@ export function workClearable(item: WorkTask): boolean {
   return (item.group === 'done' || item.group === 'failed') && item.task.state !== 'unmerged';
 }
 
-/** `dismissed` with `keys` added, as `WorkPanelView.dismissed` keeps it. */
-export function workDismiss(dismissed: readonly string[] | undefined, keys: readonly string[]): string[] {
-  return [...new Set([...(dismissed ?? []), ...keys])].slice(-WORK_DISMISSED_KEPT);
+/**
+ * `dismissed` with `keys` added, as `WorkPanelView.dismissed` keeps it: every key of a task the
+ * chat still has (`tasks`), however many; the keys of tasks it no longer has are dropped.
+ */
+export function workDismiss(
+  dismissed: readonly string[] | undefined,
+  keys: readonly string[],
+  tasks: readonly WorkTask[],
+): string[] {
+  const present = new Set(tasks.map((item) => item.key));
+  return [...new Set([...(dismissed ?? []), ...keys])].filter((key) => present.has(key));
 }
 
 /** Whether every word of `query` is in the task's title, agent, id or status ("failed", "needs you", "PR #12"). */
@@ -269,21 +275,22 @@ export function workSummary(tasks: readonly WorkTask[]): string {
 
 /**
  * The task list for `tasks` as `view` asks for it: without the cleared tasks, narrowed by the chip
- * and the text filter, grouped by status or agent, with long groups cut to their first rows.
- * `held` keeps a task in the group it had when the pointer or the keyboard focus came to its row,
- * so a row does not move from under them.
+ * and the text filter, grouped by status or agent, newest first, with long groups cut to their
+ * newest rows. `held` has the tasks under the pointer or the keyboard focus as they were when it
+ * came to their rows: such a row stays in the group it had, and in a text filter it matched, so it
+ * does not move or vanish from under them while its task changes.
  */
 export function workList(
   tasks: readonly WorkTask[],
   view: Pick<WorkPanelView, 'folded' | 'filter' | 'query' | 'by' | 'more' | 'dismissed'>,
-  held?: Readonly<Record<string, WorkGroup | undefined>>,
+  held?: Readonly<Record<string, WorkTask | undefined>>,
 ): WorkList {
   const dismissed = new Set(view.dismissed ?? []);
   const cleared = tasks.filter((item) => dismissed.has(item.key) && workClearable(item)).length;
   // A cleared task that runs again, or asks, is back in the list.
   const listed = tasks.filter((item) => !(dismissed.has(item.key) && workClearable(item)));
   // Where a row shows; the task itself keeps its own group, so its glyph and status are current.
-  const groupOf = (item: WorkTask) => held?.[item.key] ?? item.group;
+  const groupOf = (item: WorkTask) => held?.[item.key]?.group ?? item.group;
   const dense = listed.length > WORK_DENSE_ABOVE;
   const tools = listed.length > WORK_TOOLS_ABOVE;
   const counts = Object.fromEntries(WORK_GROUPS.map((group) => [group, 0])) as Record<WorkGroup, number>;
@@ -292,15 +299,19 @@ export function workList(
   const filter = tools && view.filter && counts[view.filter] ? view.filter : undefined;
   const query = tools ? (view.query ?? '').trim() : '';
   const filtering = !!filter || !!query;
-  const matching = listed.filter((item) => (!filter || groupOf(item) === filter) && workMatches(item, query)).reverse();
+  // A held row matches while its task did when the row was held: "running" keeps a row that just failed.
+  const matches = (item: WorkTask) => {
+    const before = held?.[item.key];
+    return workMatches(item, query) || (!!before && workMatches(before, query));
+  };
+  const matching = listed.filter((item) => (!filter || groupOf(item) === filter) && matches(item)).reverse();
   const byAgent = tools && view.by === 'agent';
-  const order = (item: WorkTask) => WORK_GROUPS.indexOf(groupOf(item));
   const keyed: Array<{ key: string; group?: WorkGroup; label: string; tasks: WorkTask[] }> = byAgent
     ? [...new Set(matching.map((item) => item.task.agent))].sort().map((agent) => ({
         key: `agent:${agent}`,
         label: agent,
-        // What needs the person first, as in the groups by status; the sort is stable.
-        tasks: matching.filter((item) => item.task.agent === agent).sort((a, b) => order(a) - order(b)),
+        // Newest first, as in the groups by status: an old failure does not push out today's tasks.
+        tasks: matching.filter((item) => item.task.agent === agent),
       }))
     : WORK_GROUPS.map((group) => ({
         key: group,
@@ -312,9 +323,8 @@ export function workList(
   const sections = present.map((entry): WorkSection => {
     // Done is out of the way while anything else is there to look at.
     const folded = !filtering && (view.folded?.[entry.key] ?? (entry.group === 'done' && present.length > 1));
-    const limit = dense
-      ? (filtering ? WORK_PAGE : WORK_GROUP_SHOWN) + Math.max(0, view.more?.[entry.key] ?? 0)
-      : Infinity;
+    // The newest 8 in every view: a chip or a filter opens a group, it does not unroll it.
+    const limit = dense ? WORK_GROUP_SHOWN + Math.max(0, view.more?.[entry.key] ?? 0) : Infinity;
     // Holding one row back saves nothing.
     const count = entry.tasks.length - limit <= 1 ? entry.tasks.length : limit;
     // A row under the pointer or the keyboard focus stays, also when newer tasks push it past the cut.
@@ -342,27 +352,6 @@ export function workFootnote(tasks: readonly WorkTask[]): string {
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-/**
- * The tasks of a group that **Merge all** merges, and the ones it leaves: only a task whose review
- * and tests both passed on the revision its worktree has now is merged without its diff being read.
- */
-export function workMergeable(tasks: readonly WorkTask[]): { ready: WorkTask[]; skipped: WorkTask[] } {
-  const passed = (item: WorkTask) => {
-    const checks = item.task.checks;
-    const on = (result?: { revision: string; status: string }) =>
-      !!result && result.status === 'completed' && result.revision === checks?.revision;
-    return (
-      item.interactive &&
-      mergesLocally(item.task, item.pullRequest) &&
-      !!checks?.revision &&
-      on(checks.review) &&
-      on(checks.verify) &&
-      !reviewBlocker(checks)
-    );
-  };
-  return { ready: tasks.filter(passed), skipped: tasks.filter((item) => !passed(item)) };
 }
 
 /** How many tasks wait for the person: the count on the Work button. */

@@ -36,7 +36,6 @@ import {
   workDismiss,
   workFootnote,
   workList,
-  workMergeable,
   workStatus,
   workTasks,
   workTimes,
@@ -274,7 +273,6 @@ export function WorkPanel(props: WorkPanelProps) {
             onView={onView}
             focus={back}
             onApprove={approve}
-            act={act}
             onOpen={(key) => {
               fromRow.current = true;
               onView({ ...view, task: key });
@@ -286,11 +284,6 @@ export function WorkPanel(props: WorkPanelProps) {
   );
 }
 
-/** What a group's bulk action asks before it runs, or says after it ran. */
-type Bulk =
-  | { kind: 'approve' | 'merge'; key: string; busy?: boolean }
-  | { kind: 'note'; key: string; text: string; error?: boolean };
-
 const CHIP_LABEL: Record<WorkGroup, string> = { ...WORK_GROUP_LABEL, blocked: 'Blockers' };
 
 function TaskList({
@@ -300,7 +293,6 @@ function TaskList({
   onView,
   focus,
   onApprove,
-  act,
   onOpen,
 }: {
   tasks: WorkTask[];
@@ -310,7 +302,6 @@ function TaskList({
   /** The row to focus once, after its detail closed. */
   focus: { current: string | undefined };
   onApprove?: WorkPanelProps['onApprove'];
-  act?: WorkActionHandler;
   onOpen(key: string): void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -335,23 +326,43 @@ function TaskList({
       if (top !== (latest.current.view.scroll ?? 0)) latest.current.onView({ ...latest.current.view, scroll: top });
     }, 200);
   };
-  // The group each row under the pointer or the keyboard focus had when they came to it: the row
-  // stays there, and moves to its new group once both have left.
-  const [held, setHeld] = useState<Record<string, WorkGroup>>({});
-  const over = useRef<{ hover?: string; focus?: string }>({});
-  const hold = (how: 'hover' | 'focus', item: WorkTask | undefined) => {
-    over.current[how] = item?.key;
+  // Each row under the pointer or the keyboard focus, as its task was when they came to it: the
+  // row stays in that group and filter, and moves to its new group once both have left.
+  const [held, setHeld] = useState<Record<string, WorkTask>>({});
+  const over = useRef<{ hover?: WorkTask; focus?: WorkTask }>({});
+  // While a button is pressed nothing is let go: a row that left the press's way would move the
+  // next row's Approve from under the pointer between its press and its release.
+  const pressed = useRef(false);
+  const settle = () =>
     setHeld((current) => {
-      const next: Record<string, WorkGroup> = {};
-      for (const key of [over.current.hover, over.current.focus]) {
-        if (key === undefined) continue;
-        const group = current[key] ?? (key === item?.key ? item.group : undefined);
-        if (group) next[key] = group;
-      }
+      const next: Record<string, WorkTask> = pressed.current ? { ...current } : {};
+      for (const item of [over.current.hover, over.current.focus]) if (item) next[item.key] = current[item.key] ?? item;
       const keys = Object.keys(next);
       return keys.length === Object.keys(current).length && keys.every((key) => current[key]) ? current : next;
     });
+  const hold = (how: 'hover' | 'focus', item: WorkTask | undefined) => {
+    over.current[how] = item;
+    settle();
   };
+  useEffect(() => {
+    let later: ReturnType<typeof setTimeout> | undefined;
+    // After the click the release makes, so it lands where the press did.
+    const release = () => {
+      if (!pressed.current) return;
+      clearTimeout(later);
+      later = setTimeout(() => {
+        pressed.current = false;
+        settle();
+      });
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    return () => {
+      clearTimeout(later);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+    };
+  }, []);
   // A held row that is no longer drawn (a filter took it away under the pointer) sends no leave
   // event: it is let go here, so its task is not kept in an old group.
   useEffect(() => {
@@ -359,12 +370,11 @@ function TaskList({
     const gone = Object.keys(held).filter((key) => !drawn(key));
     if (!gone.length) return;
     for (const how of ['hover', 'focus'] as const) {
-      const key = over.current[how];
+      const key = over.current[how]?.key;
       if (key !== undefined && gone.includes(key)) over.current[how] = undefined;
     }
     setHeld((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !gone.includes(key))));
   });
-  const [bulk, setBulk] = useState<Bulk>();
   // The first of the rows Show N more added takes the focus its button had.
   const reveal = useRef<{ key: string; index: number }>(undefined);
   useLayoutEffect(() => {
@@ -398,33 +408,9 @@ function TaskList({
       dismissed: workDismiss(
         view.dismissed,
         items.map((item) => item.key),
+        tasks,
       ),
     });
-  const mergeAll = async (key: string, ready: WorkTask[]) => {
-    if (!act) return;
-    setBulk({ kind: 'merge', key, busy: true });
-    const merged: string[] = [];
-    const refused: string[] = [];
-    for (const item of ready) {
-      try {
-        await act(item.turnId, item.task.id, { type: 'merge', revision: item.task.checks?.revision });
-        merged.push(item.task.id);
-      } catch (error) {
-        refused.push(`${item.task.id}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    setBulk({
-      kind: 'note',
-      key,
-      text: [
-        merged.length ? `Merged ${merged.join(', ')}.` : '',
-        refused.length ? `Not merged: ${refused.join(' ')}` : '',
-      ]
-        .filter(Boolean)
-        .join(' '),
-      error: refused.length > 0,
-    });
-  };
   return (
     <>
       {list.tools ? (
@@ -477,15 +463,19 @@ function TaskList({
           </div>
         </div>
       ) : null}
-      <div className="gc-work-scroll" data-dense={list.dense ? 'true' : undefined} ref={scroller} onScroll={onScroll}>
+      <div
+        className="gc-work-scroll"
+        data-dense={list.dense ? 'true' : undefined}
+        ref={scroller}
+        onScroll={onScroll}
+        onPointerDownCapture={() => {
+          pressed.current = true;
+        }}
+      >
         {list.sections.map((section) => {
           const { key, group, tasks: all } = section;
-          const requests =
-            group === 'ask' ? all.flatMap((item) => item.asks.filter((ask) => ask.kind !== 'question')) : [];
           // In a short list a row's own clear button is enough.
           const clearable = list.tools && (group === 'done' || group === 'failed') ? all.filter(workClearable) : [];
-          const mergeable = group === 'unmerged' && act && all.length > 1 ? workMergeable(all) : undefined;
-          const mine = bulk?.key === key ? bulk : undefined;
           const earlier = group === 'done' || group === 'failed' ? 'earlier' : 'more';
           return (
             <section key={key} className="gc-work-group" aria-label={section.label} data-section={key}>
@@ -505,28 +495,6 @@ function TaskList({
                 </button>
                 {section.folded && list.dense ? <span className="gc-work-summary">{section.summary}</span> : null}
                 <span className="gc-work-grow" />
-                {requests.length > 1 && onApprove && !section.folded ? (
-                  <button
-                    type="button"
-                    className="gc-work-btn gc-work-xs gc-work-ghost"
-                    title={`Shows the ${requests.length} requests, then approves them together.`}
-                    aria-expanded={mine?.kind === 'approve'}
-                    onClick={() => setBulk(mine?.kind === 'approve' ? undefined : { kind: 'approve', key })}
-                  >
-                    Approve all
-                  </button>
-                ) : null}
-                {mergeable && !section.folded ? (
-                  <button
-                    type="button"
-                    className="gc-work-btn gc-work-xs gc-work-ghost"
-                    title="Merges the tasks whose review and tests passed on the revision they have now. Shows the list first."
-                    aria-expanded={mine?.kind === 'merge'}
-                    onClick={() => setBulk(mine?.kind === 'merge' ? undefined : { kind: 'merge', key })}
-                  >
-                    Merge all
-                  </button>
-                ) : null}
                 {clearable.length ? (
                   <button
                     type="button"
@@ -543,80 +511,6 @@ function TaskList({
                   </button>
                 ) : null}
               </div>
-              {mine?.kind === 'approve' && requests.length > 1 && onApprove ? (
-                <div className="gc-work-card gc-work-bulk" data-tone="ask" role="group" aria-label="Approve all">
-                  <b>Approve these {requests.length} requests?</b>
-                  <ul>
-                    {all.flatMap((item) =>
-                      item.asks
-                        .filter((ask) => ask.kind !== 'question')
-                        .map((ask) => (
-                          <li key={ask.id}>
-                            <span className="gc-work-id">{item.task.id}</span> <code>{askSubject(ask)}</code>
-                          </li>
-                        )),
-                    )}
-                  </ul>
-                  <div className="gc-work-acts">
-                    <button
-                      type="button"
-                      className="gc-work-btn gc-work-sm gc-work-primary"
-                      onClick={() => {
-                        setBulk(undefined);
-                        for (const request of requests) onApprove(request.id, 'approve');
-                      }}
-                    >
-                      Approve {requests.length}
-                    </button>
-                    <button type="button" className="gc-work-btn gc-work-sm" onClick={() => setBulk(undefined)}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {mine?.kind === 'merge' && mergeable ? (
-                <div className="gc-work-card gc-work-bulk" data-tone="merge" role="group" aria-label="Merge all">
-                  {mergeable.ready.length ? (
-                    <b>
-                      Merge {mergeable.ready.map((item) => item.task.id).join(', ')} locally? Review and tests passed on
-                      the revision each has now.
-                    </b>
-                  ) : (
-                    <b>No task here has a review and tests that passed on its current revision.</b>
-                  )}
-                  {mergeable.skipped.length ? (
-                    <p className="gc-work-note">
-                      {mergeable.ready.length ? 'Left as they are: ' : 'Open a task to read its diff and merge it: '}
-                      {mergeable.skipped.map((item) => item.task.id).join(', ')}.
-                    </p>
-                  ) : null}
-                  <div className="gc-work-acts">
-                    {mergeable.ready.length ? (
-                      <button
-                        type="button"
-                        className="gc-work-btn gc-work-sm gc-work-primary"
-                        disabled={mine.busy}
-                        onClick={() => void mergeAll(key, mergeable.ready)}
-                      >
-                        Merge {mergeable.ready.length}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="gc-work-btn gc-work-sm"
-                      disabled={mine.busy}
-                      onClick={() => setBulk(undefined)}
-                    >
-                      {mergeable.ready.length ? 'Cancel' : 'Close'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {mine?.kind === 'note' ? (
-                <p role="status" className={mine.error ? 'gc-work-feedback gc-work-bad' : 'gc-work-feedback'}>
-                  {mine.text}
-                </p>
-              ) : null}
               {section.folded ? null : (
                 <>
                   {section.shown.map((item) => (

@@ -217,14 +217,16 @@ it('keeps 150 delegated tasks readable in the work panel: groups, filters, clear
     await expect.poll(() => work.locator('[data-section="failed"] [data-task="1:t130"]').count()).toBe(1);
     await expect.poll(heads).toEqual(['Needs you 2', 'Failed 5', 'Running 27', 'Unmerged 8', 'Done 108']);
 
-    // Approve all shows the two commands, then answers both.
+    // Approve on each row answers its own request.
     await scroller.evaluate((element) => (element.scrollTop = 0));
-    await work.getByRole('button', { name: 'Approve all' }).click();
-    const bulk = work.getByRole('group', { name: 'Approve all' });
-    expect(await bulk.locator('li').allTextContents()).toEqual(['t145 npm run build', 't144 npm install left-pad']);
     expect(decisions).toEqual([]);
-    await bulk.getByRole('button', { name: 'Approve 2' }).click();
+    await work.getByRole('button', { name: 'Approve for t145' }).click();
+    await expect.poll(() => decisions.slice()).toEqual(['t145 approve']);
+    await work.getByRole('button', { name: 'Approve for t144' }).click();
     await expect.poll(() => decisions.slice().sort()).toEqual(['t144 approve', 't145 approve']);
+    // The approved row stays under the pointer and the focus; once they leave, it runs with the others.
+    await page.mouse.move(0, 0);
+    await composer.focus();
     await expect.poll(heads).toEqual(['Failed 5', 'Running 29', 'Unmerged 8', 'Done 108']);
 
     // Filter by words of the title, agent, id or status; Escape clears the field first.
@@ -236,11 +238,11 @@ it('keeps 150 delegated tasks readable in the work panel: groups, filters, clear
     await expect.poll(() => filter.inputValue()).toBe('');
     expect(await filter.evaluate((element) => element === document.activeElement)).toBe(true);
     await expect.poll(async () => (await heads()).length).toBe(4);
-    // A status chip: its group alone, open, on up to 50 rows.
+    // A status chip: its group alone, open, on its newest 8 rows.
     await work.getByRole('button', { name: 'Done 108' }).first().click();
     await expect.poll(heads).toEqual(['Done 108']);
-    expect((await ids()).length).toBe(50);
-    expect(await work.locator('.gc-work-more').textContent()).toBe('Show 50 earlier of 58');
+    expect((await ids()).length).toBe(8);
+    expect(await work.locator('.gc-work-more').textContent()).toBe('Show 50 earlier of 100');
     await work.getByRole('button', { name: 'All 150' }).click();
     await expect.poll(async () => (await heads()).length).toBe(4);
     // By agent.

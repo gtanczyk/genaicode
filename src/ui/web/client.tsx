@@ -1855,6 +1855,7 @@ function App() {
           <EscapeActive.Provider value={panel === 'chat' && !workFull}>
             <AgentChat
               state={session}
+              chatId={chatKey}
               header={null}
               // The work in one line that opens on click: a long run of tool calls buries the answer.
               foldSteps

@@ -11,6 +11,7 @@ import {
   packMetrics,
   packQuotaText,
   packSteerText,
+  packTaskClearable,
   packTaskElapsed,
   packTaskError,
   packTaskList,
@@ -68,13 +69,18 @@ export function PackTasks({
   const [selected, select] = useState<string>();
   const [expanded, setExpanded] = useState(false);
   const asking = (task: PackTask) => pending.some((request) => request.subtaskId === task.id);
-  const first = packTaskList(pack.tasks, { asking }).shown[0]?.id;
-  const id = selected ?? first ?? (pending.length ? 'queue' : undefined);
   // A long list: one-line rows, a filter, the first rows only, and finished tasks that can be cleared.
   const dense = pack.tasks.length > PACK_DENSE_ABOVE;
   const [query, setQuery] = useState('');
   const [more, setMore] = useState(0);
   const [cleared, setCleared] = useState<string[]>([]);
+  // A cleared task is not picked by itself; one that runs again or asks is back.
+  const gone = (task: PackTask) => dense && cleared.includes(task.id) && packTaskClearable(task, asking(task));
+  const first = packTaskList(
+    pack.tasks.filter((task) => !gone(task)),
+    { asking },
+  ).shown[0]?.id;
+  const id = selected ?? first ?? (pending.length ? 'queue' : undefined);
   const long = dense ? packDenseList(pack.tasks, { asking, keep: id, query, more, cleared }) : undefined;
   const list = long ?? packTaskList(pack.tasks, { asking, keep: id, expanded });
   const foldable = !dense && packTaskList(pack.tasks, { asking }).hidden > 0;
@@ -168,7 +174,11 @@ export function PackTasks({
               type="button"
               className="gc-btn"
               title="Hides the finished tasks that left no worktree to merge or discard. The conversation keeps them."
-              onClick={() => setCleared([...new Set([...cleared, ...long.clearable.map((item) => item.id)])])}
+              onClick={() => {
+                setCleared([...new Set([...cleared, ...long.clearable.map((item) => item.id)])]);
+                // The shown task may go with them: the card shows the first of the rest.
+                if (long.clearable.some((item) => item.id === id)) select(undefined);
+              }}
             >
               Clear {long.clearable.length} finished
             </button>

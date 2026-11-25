@@ -13,7 +13,6 @@ import {
   workFootnote,
   workGroups,
   workList,
-  workMergeable,
   workNeedsYou,
   workPanelLayout,
   workStatus,
@@ -47,6 +46,9 @@ function session(tasks: PackTask[], approvals: SessionState['approvals'] = []): 
     ],
   } as SessionState;
 }
+
+const range = (from: number, to: number) =>
+  Array.from({ length: Math.abs(to - from) + 1 }, (_, i) => `t${from + (to < from ? -i : i)}`);
 
 describe('workList', () => {
   const many = (count: number, patch: (n: number) => Partial<PackTask>) =>
@@ -114,13 +116,55 @@ describe('workList', () => {
       dismissed: workDismiss(
         ['1:t1'],
         tasks.map((item) => item.key),
+        tasks,
       ),
     });
     expect(list).toMatchObject({ total: 4, cleared: 4 });
-    expect(workDismiss(['a', 'b'], ['b', 'c'])).toEqual(['a', 'b', 'c']);
+    // The keys of tasks the chat no longer has are dropped.
+    expect(workDismiss(['1:t1', 'gone'], ['1:t2', '1:t3'], tasks)).toEqual(['1:t1', '1:t2', '1:t3']);
   });
 
-  it('says what a folded group holds, and which unmerged tasks can be merged together', () => {
+  it('keeps every cleared task of the chat, past 2,000 too', () => {
+    const tasks = many(2501, () => ({}));
+    const keys = tasks.map((item) => item.key);
+    // Clear 2001, then the rest: none of them comes back.
+    const first = workDismiss(undefined, keys.slice(0, 2001), tasks);
+    expect(first).toHaveLength(2001);
+    expect(workList(tasks, { dismissed: first })).toMatchObject({ total: 500, cleared: 2001 });
+    const all = workDismiss(first, keys.slice(2001), tasks);
+    expect(all).toHaveLength(2501);
+    expect(workList(tasks, { dismissed: all })).toMatchObject({ total: 0, cleared: 2501 });
+  });
+
+  it('shows the newest 8 of a group in every view: by agent, under a chip and under a text filter', () => {
+    // 20 old failures of codex, then 40 of its tasks that run now.
+    const tasks = many(60, (n) => ({ status: n <= 20 ? 'failed' : 'running' }));
+    const newest = range(60, 53);
+    const shown = (view: Parameters<typeof workList>[1]) =>
+      workList(tasks, view).sections.map((section) => [
+        section.key,
+        section.shown.map((item) => item.task.id),
+        section.next,
+      ]);
+    expect(shown({ by: 'agent' })).toEqual([['agent:codex', newest, 50]]);
+    expect(shown({ filter: 'running' })).toEqual([['running', newest, 32]]);
+    expect(shown({ query: 'running' })).toEqual([['running', newest, 32]]);
+    expect(shown({ filter: 'failed' })).toEqual([['failed', range(20, 13), 12]]);
+  });
+
+  it('keeps a held row in the text filter it matched while its task changes', () => {
+    const before = many(20, () => ({ status: 'running' }));
+    const after = many(20, (n) => ({ status: n === 20 ? 'failed' : 'running' }));
+    const ids = (query: string, held?: Parameters<typeof workList>[2]) =>
+      workList(after, { query }, held).sections.flatMap((section) => section.shown.map((item) => item.task.id));
+    expect(ids('running')).not.toContain('t20');
+    const held = { '1:t20': before.at(-1)! };
+    expect(ids('running', held)).toContain('t20');
+    // A query the row did not match when it was held takes it away.
+    expect(ids('nothing', held)).toEqual([]);
+  });
+
+  it('says what a folded group holds', () => {
     const tasks = many(12, (n) => ({
       agent: n % 2 ? 'codex' : 'claude',
       status: n <= 2 ? 'aborted' : 'completed',
@@ -129,22 +173,6 @@ describe('workList', () => {
     expect(workSummary(tasks.slice(2))).toBe('5 codex · 5 claude');
     expect(workSummary(tasks.slice(2, 3))).toBe('1 done');
     expect(workFootnote(tasks)).toBe('claude leads · 12 tasks · 2 agents · newest first in each group');
-    const revision = 'a'.repeat(40);
-    const ok = { revision, status: 'completed' as const };
-    const worktree = { state: 'unmerged' as const, changes: ['M\ta'] };
-    const merge = workMergeable(
-      workTasks(
-        session([
-          task('t1', { ...worktree, checks: { revision, review: ok, verify: ok } }),
-          task('t2', { ...worktree, checks: { revision, review: ok } }),
-          task('t3', { ...worktree, checks: { revision, review: { ...ok, revision: 'b'.repeat(40) }, verify: ok } }),
-          task('t4', { ...worktree, checks: { revision, review: { ...ok, detail: 'BLOCKER: no' }, verify: ok } }),
-          task('t5', { ...worktree, checks: { revision, review: ok, verify: { ...ok, status: 'failed' } } }),
-        ]),
-      ),
-    );
-    expect(merge.ready.map((item) => item.task.id)).toEqual(['t1']);
-    expect(merge.skipped.map((item) => item.task.id)).toEqual(['t2', 't3', 't4', 't5']);
   });
 });
 
