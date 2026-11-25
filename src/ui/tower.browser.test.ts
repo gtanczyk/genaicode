@@ -177,10 +177,11 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     }
     const draft = desktop.getByRole('article').filter({ hasText: message.split('\n')[0] });
     expect(await draft.locator('pre').textContent()).toBe(message);
-    expect(await draft.textContent()).toContain(project);
+    expect(await draft.locator('.tag').first().getAttribute('title')).toBe(project);
     expect(await draft.textContent()).toContain('worker-store / catalog-release');
     const native = desktop.getByRole('article').filter({ hasText: 'Answer in worker' });
-    expect(await native.getByRole('button').count()).toBe(0);
+    // Nothing to answer with here: only the way to it, a chat of this folder.
+    expect(await native.getByRole('button').allTextContents()).toEqual(['Open chat']);
     // It is answered in the worker's own dialog: the tower's next reading of the stores drops it.
     nativeWaits = false;
     await mobile
@@ -215,18 +216,13 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     const badge = desktop.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
     await vi.waitFor(async () => expect(await badge.locator('.count').count()).toBe(0), { timeout: 10_000 });
     expect(await badge.getAttribute('title')).toBe('Nothing needs you now');
-    // Needs you is the tower's inbox also when it is empty: what the last delivery came to is read there.
+    // The Needs you page is there also when nothing waits: what the last delivery came to is read there.
     await badge.click();
-    await desktop.getByRole('heading', { name: 'Tower inbox' }).waitFor();
-    await desktop.locator('main.tower-inbox').getByText('No pending items.').waitFor();
-    expect(await desktop.locator('main.tower-inbox').getByRole('article').count()).toBe(0);
-    await desktop.locator('main.tower-inbox [role="status"]').getByText('worker-store / catalog-release').waitFor();
-    await desktop
-      .locator('main.tower-inbox')
-      .getByRole('button', { name: /ask for you$/ })
-      .click();
-    await vi.waitFor(async () => expect(await desktop.locator('header.topbar h1').textContent()).toBe('Needs you'));
-    await desktop.locator('main.sessions').waitFor();
+    const queue = desktop.getByRole('main', { name: 'Needs you' });
+    await queue.getByText('Nothing needs you now').waitFor();
+    expect(await queue.getByRole('article').count()).toBe(0);
+    await queue.locator('[role="status"]').getByText('worker-store / catalog-release').waitFor();
+    expect(await desktop.locator('header.topbar h1').textContent()).toBe('Needs you');
     expect(apiUrls.some((url) => url.endsWith('/api/events'))).toBe(true);
     expect(apiUrls.some((url) => url.includes('/api/sessions'))).toBe(true);
     expect(apiUrls.every((url) => !url.includes('token='))).toBe(true);

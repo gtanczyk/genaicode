@@ -775,3 +775,178 @@ describe('the genaicode ui page looks as its baseline', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// The Needs you page
+// ---------------------------------------------------------------------------------------------
+
+describe('the Needs you page looks as its baseline', () => {
+  const stop = new AbortController();
+  let root: string;
+  let project: string;
+  let running: Promise<number> | undefined;
+  let url: string | undefined;
+
+  beforeAll(async () => {
+    mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
+    root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'visual-needs-'));
+    project = join(root, 'app');
+    mkdirSync(project);
+    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: project });
+    const helper: CodingAgent = {
+      name: 'helper',
+      command: process.execPath,
+      capabilities: { mcp: true, resume: true, approvals: true },
+      run() {
+        return {
+          result: Promise.resolve(done),
+          abort() {},
+          async *[Symbol.asyncIterator](): AsyncGenerator<AgentEvent> {
+            yield { type: 'done', result: done };
+          },
+        };
+      },
+    };
+    const bundle = await build({
+      entryPoints: ['src/ui/web/client.tsx'],
+      bundle: true,
+      write: false,
+      platform: 'browser',
+      jsx: 'automatic',
+      loader: { '.css': 'text' },
+      define: { 'process.env.NODE_ENV': '"production"' },
+    });
+    const launch = (options: UiLaunch) =>
+      runWeb({
+        ...options,
+        stderr: new PassThrough().resume(),
+        openUrl(opened) {
+          url = opened;
+        },
+        clientScript: bundle.outputFiles[0]!.text,
+        assets: loadAssets(new URL('./web/assets/', import.meta.url)),
+      });
+    running = main({
+      argv: ['ui', '--sessions', '--no-artifacts'],
+      cwd: project,
+      env: { GENAICODE_HOME: join(root, '.genaicode'), HOME: root },
+      agents: [helper],
+      signal: stop.signal,
+      stdout: process.stdout,
+      stderr: { write() {} },
+      readStdin: async () => undefined,
+      loadUi: async () => ({ runChat: launch, runWeb: launch }),
+    });
+    await vi.waitFor(() => expect(url).toBeTruthy());
+  });
+  afterAll(async () => {
+    stop.abort();
+    await running;
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  // What the stores would list, at fixed times: one of each kind of item the page has.
+  const MINUTE = 60_000;
+  const session = (id: string, patch: Record<string, unknown>) => ({
+    source: 'helper',
+    agent: 'helper',
+    id,
+    where: 'local',
+    cwd: '/work/site',
+    state: 'waiting',
+    updatedAt: NOW - 40 * MINUTE,
+    ...patch,
+  });
+  const own = [
+    session('gate', {
+      title: 'Gate verdict retries',
+      ending: 'question',
+      lastReply: 'Both paths are covered.\n\nRetry the gate verdict on 502 too, or only on timeouts?',
+    }),
+  ];
+  const listing = {
+    errors: [],
+    readable: ['helper'],
+    senders: [{ agent: 'helper', source: 'helper', sandboxes: [] }],
+    asks: [
+      {
+        id: '0123456789ab',
+        agent: 'codex',
+        session: 'flaky',
+        tool: 'Bash',
+        preview: 'npm test -- tower.browser',
+        at: NOW - 5 * MINUTE,
+        pid: 1,
+      },
+    ],
+    sessions: [
+      ...own,
+      session('flaky', {
+        source: 'codex',
+        agent: 'codex',
+        cwd: '/work/genaicode',
+        title: 'Fix flaky tower test',
+        waitingFor: 'approval',
+        waitingTool: 'Bash',
+        updatedAt: NOW - 5 * MINUTE,
+      }),
+      session('report', {
+        source: 'gemini',
+        agent: 'gemini',
+        cwd: '/work/ops',
+        title: 'Weekly report',
+        waitingFor: 'approval',
+        waitingCommands: [{ tool: 'run_shell_command', command: 'gh run list --limit 20' }],
+        updatedAt: NOW - 3 * 60 * MINUTE,
+      }),
+      session('a11y', {
+        source: 'codex',
+        agent: 'codex',
+        cwd: '/work/genaicode',
+        title: 'Vite overlay a11y pass',
+        ending: 'request',
+        lastReply: 'Please confirm that the overlay may trap focus while it is open.',
+        updatedAt: NOW - 26 * 60 * MINUTE,
+      }),
+    ],
+  };
+
+  it('the queue, light and dark', async () => {
+    const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
+    try {
+      const differing: string[] = [];
+      for (const [index, page] of pages.entries()) {
+        await page.route('**/api/sessions?*', (route) =>
+          route.fulfill({
+            json: new URL(route.request().url()).searchParams.has('own') ? { sessions: own, errors: [] } : listing,
+          }),
+        );
+        await page.goto(url!);
+        const needsYou = page.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
+        await needsYou.locator('.count', { hasText: '4' }).waitFor();
+        await needsYou.click();
+        const queue = page.getByRole('main', { name: 'Needs you' });
+        await queue.getByRole('article').nth(3).waitFor();
+        await page.getByRole('button', { name: 'Help', exact: true }).waitFor();
+        // The version differs between releases.
+        await page.evaluate(() => {
+          const version = document.getElementById('root')!.dataset.version!;
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            const text = node.nodeValue ?? '';
+            if (text.includes(version)) node.nodeValue = text.split(version).join('0.0.0');
+          }
+        });
+        await settle(page);
+        // The pointer rests where the click was: off the page, so no button is drawn hovered.
+        await page.mouse.move(640, 790);
+        await expectScreenshot(page, `page-needs-you-${THEMES[index]}`).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
+      }
+      expect(differing).toEqual([]);
+    } finally {
+      await Promise.all(pages.map((page) => page.context().close()));
+    }
+  });
+});

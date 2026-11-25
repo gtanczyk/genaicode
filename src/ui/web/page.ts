@@ -373,16 +373,40 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .sessions .tools select { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
 .sessions .count { color: var(--muted); font-size: 13px; }
 .sessions .errors { color: var(--err); font-size: 13px; margin-bottom: 8px; }
-.tower-inbox { width: 100%; max-width: 880px; margin: 0 auto; }
-.tower-inbox h1 { font-size: 24px; }
-.tower-inbox h2 { margin: 0 0 5px; font-size: 16px; }
-.tower-inbox article { padding: 14px 16px; overflow-wrap: anywhere; }
-.tower-inbox .recipient { color: var(--muted); font: 13px/1.5 var(--mono); }
-.tower-inbox pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32vh; overflow: auto; background: var(--bg); padding: 8px 12px; border-radius: 6px; }
-.tower-inbox .act { display: flex; gap: 8px; }
-.tower-inbox button { padding: 4px 12px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
-.tower-inbox button:first-child { background: var(--accent); color: var(--bg); }
-.tower-inbox [role=status]:empty { display: none; }
+/* Needs you: one queue in the chat's place (docs/design/desktop-layout.md, "Pages and sheets"). */
+.needs-page { flex: 1; overflow: auto; position: relative; z-index: 1; }
+.needs-in { max-width: 900px; margin: 0 auto; padding: 22px 28px 40px; }
+.needs-h { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.needs-h h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.needs-lead { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+.needs-page .pill.warn { background: var(--gc-color-warn-soft); color: var(--gc-color-warn); }
+.needs-page .errors { margin: 0 0 8px; font-size: 13px; color: var(--gc-color-err); }
+.needs-status { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+.needs-status:empty { display: none; }
+.needs-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.needs-page .chipf { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; height: 26px; padding: 0 9px; border-radius: 13px; border: 1px solid var(--gc-color-line-strong); background: transparent; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; cursor: pointer; }
+.needs-page .chipf span { overflow: hidden; text-overflow: ellipsis; max-width: 22em; }
+.needs-page .chipf:hover { color: var(--text); }
+.needs-page .chipf[aria-pressed='true'] { background: var(--text); color: var(--bg); border-color: var(--text); }
+.needs-page .chipf i { font-style: normal; font-weight: 600; }
+.needs-page .chipf:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.needs-card { display: flex; flex-direction: column; gap: 8px; padding: 13px 16px; font-size: 14px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow-wrap: anywhere; }
+.needs-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.needs-meta b { font-weight: 600; }
+.needs-origin { color: var(--muted); font-size: 13px; min-width: 0; }
+.needs-card pre { margin: 0; padding: 9px 11px; border-radius: 6px; background: var(--gc-color-sunken); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32vh; overflow: auto; }
+.needs-text { white-space: pre-wrap; max-height: 32vh; overflow: auto; }
+.needs-note { color: var(--muted); font-size: 12px; }
+.needs-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.needs-page .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--gc-color-on-accent); }
+.needs-page .btn.primary:hover { filter: brightness(1.06); }
+.needs-page .btn:disabled { opacity: .55; cursor: default; }
+.needs-card .session-reply { padding: 0; }
+.needs-none { color: var(--muted); }
+.needs-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 56px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.needs-empty .sg { width: 20px; height: 20px; }
+.needs-empty b { font-size: 16px; font-weight: 650; color: var(--text); }
+@media (max-width: 640px) { .needs-in { padding: 16px 14px 32px; } }
 .project { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; box-shadow: var(--shadow); }
 .project > summary { cursor: pointer; padding: 8px 12px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
 .project > summary::-webkit-details-marker { display: none; }
