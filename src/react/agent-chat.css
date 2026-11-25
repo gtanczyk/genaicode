@@ -1,5 +1,6 @@
 /*
- * genaicode/react: styles for <AgentChat>. Everything is scoped under .gc-chat.
+ * genaicode/react: styles for <AgentChat>. Every rule is scoped under .gc-chat; only the
+ * design tokens below (custom properties named --gc-color-*, --gc-type-* and so on) are on :root.
  *
  * Theme it with these custom properties, set on .gc-chat or any ancestor (unset ones keep
  * the defaults, which follow prefers-color-scheme unless the theme prop forces one). The soft
@@ -9,6 +10,126 @@
  *   --gc-ok --gc-warn --gc-warn-soft --gc-error --gc-error-soft --gc-code-bg
  *   --gc-font --gc-mono --gc-font-size --gc-radius --gc-shadow --gc-max-width
  */
+
+/*
+ * Design tokens (docs/design/desktop-layout.md, "Visual language"): one set of names for
+ * surface, line, text and state colors, the type scale, the 4px spacing grid, radii and
+ * elevation, in light and dark. They are set on :root (:host in a shadow tree), so the page around
+ * the chat can use them too, and again on a .gc-chat whose theme prop forces a theme.
+ *
+ * They are added beside the variables above and do not replace them: the chat still draws with
+ * its --_ variables, and --gc-bg and the others still theme it. Only --_mono reads a token so
+ * far (the value is the same, and stays its fallback). The names are internal until the layout that uses them ships.
+ */
+:root,
+:host,
+.gc-chat[data-theme='light'] {
+  --gc-color-bg: #fbfaf7;
+  --gc-color-side: #f3f1ec;
+  --gc-color-surface: #ffffff;
+  --gc-color-sunken: #f0eee8;
+  --gc-color-line: #e4e0d7;
+  --gc-color-line-strong: #cfc9bc;
+  --gc-color-text: #1e1c19;
+  --gc-color-muted: #57524a;
+  --gc-color-faint: #6a645a;
+  --gc-color-accent: #a04a14;
+  --gc-color-accent-soft: #f7e6d8;
+  --gc-color-on-accent: #ffffff;
+  /* State hues: done, needs you, failed, running, unmerged. */
+  --gc-color-ok: #276b43;
+  --gc-color-ok-soft: #e2f1e7;
+  --gc-color-warn: #855300;
+  --gc-color-warn-soft: #fbefd2;
+  --gc-color-err: #a83227;
+  --gc-color-err-soft: #fae3e0;
+  --gc-color-run: #2757b8;
+  --gc-color-run-soft: #e2ebfb;
+  --gc-color-merge: #6a3fb5;
+  --gc-color-merge-soft: #ece6fa;
+  /* Elevation: a hairline lift, and a floating surface (popover, palette, sheet). */
+  --gc-elevation-1: 0 1px 2px rgba(30, 28, 25, 0.06);
+  --gc-elevation-2: 0 1px 2px rgba(30, 28, 25, 0.06), 0 8px 28px rgba(30, 28, 25, 0.1);
+}
+:root,
+:host {
+  /* Type scale. 11px is for count badges, key hints and uppercase section labels only. */
+  --gc-type-11: 11px;
+  --gc-type-12: 12px;
+  --gc-type-13: 13px;
+  --gc-type-14: 14px;
+  --gc-type-16: 16px;
+  --gc-type-20: 20px;
+  --gc-type-24: 24px;
+  --gc-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+  --gc-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Spacing: steps of the 4px grid. */
+  --gc-space-1: 4px;
+  --gc-space-2: 8px;
+  --gc-space-3: 12px;
+  --gc-space-4: 16px;
+  --gc-space-5: 20px;
+  --gc-space-6: 24px;
+  --gc-space-8: 32px;
+  /* Radii: controls, cards. */
+  --gc-radius-control: 8px;
+  --gc-radius-card: 12px;
+}
+.gc-chat[data-theme='dark'] {
+  --gc-color-bg: #1a1917;
+  --gc-color-side: #141312;
+  --gc-color-surface: #222120;
+  --gc-color-sunken: #121110;
+  --gc-color-line: #2f2d2a;
+  --gc-color-line-strong: #45423d;
+  --gc-color-text: #ece9e3;
+  --gc-color-muted: #b9b3a8;
+  --gc-color-faint: #a19b90;
+  --gc-color-accent: #e8935a;
+  --gc-color-accent-soft: #3a2a1f;
+  --gc-color-on-accent: #1a1917;
+  --gc-color-ok: #6fc28c;
+  --gc-color-ok-soft: #1d3125;
+  --gc-color-warn: #e0b05a;
+  --gc-color-warn-soft: #372c15;
+  --gc-color-err: #f0958b;
+  --gc-color-err-soft: #3b1f1c;
+  --gc-color-run: #8fb1f4;
+  --gc-color-run-soft: #1c2740;
+  --gc-color-merge: #bda7f3;
+  --gc-color-merge-soft: #2a2440;
+  --gc-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --gc-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.5);
+}
+@media (prefers-color-scheme: dark) {
+  :root,
+  :host {
+    --gc-color-bg: #1a1917;
+    --gc-color-side: #141312;
+    --gc-color-surface: #222120;
+    --gc-color-sunken: #121110;
+    --gc-color-line: #2f2d2a;
+    --gc-color-line-strong: #45423d;
+    --gc-color-text: #ece9e3;
+    --gc-color-muted: #b9b3a8;
+    --gc-color-faint: #a19b90;
+    --gc-color-accent: #e8935a;
+    --gc-color-accent-soft: #3a2a1f;
+    --gc-color-on-accent: #1a1917;
+    --gc-color-ok: #6fc28c;
+    --gc-color-ok-soft: #1d3125;
+    --gc-color-warn: #e0b05a;
+    --gc-color-warn-soft: #372c15;
+    --gc-color-err: #f0958b;
+    --gc-color-err-soft: #3b1f1c;
+    --gc-color-run: #8fb1f4;
+    --gc-color-run-soft: #1c2740;
+    --gc-color-merge: #bda7f3;
+    --gc-color-merge-soft: #2a2440;
+    --gc-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --gc-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 32px rgba(0, 0, 0, 0.5);
+  }
+}
 .gc-chat {
   --_bg: var(--gc-bg, #f7f7f5);
   --_panel: var(--gc-panel, #ffffff);

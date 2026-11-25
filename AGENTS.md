@@ -19,6 +19,12 @@ scripts in `package.json`.
 - `npm run test:browser` runs the `genaicode/vite` overlay in headless Chromium through
   Playwright (`*.browser.test.ts`, not part of `npm test`/`check`); it needs
   `npx playwright install chromium` once.
+- `src/ui/visual.browser.test.ts` (part of `npm run test:browser`) compares screenshots of
+  `<AgentChat>` and the `genaicode ui` page, in both themes, with `src/ui/__screenshots__/<platform>/`.
+  A change to how they look must come with new baselines:
+  `GENAICODE_UPDATE_SCREENSHOTS=1 npm run test:browser -- visual` rewrites those of your platform;
+  take the other platform's from the `visual-screenshots` artifact of the `Lint and test` run
+  (the PNG files without `.diff`). Fonts differ per OS, so a platform without a directory is not compared.
 - `npm run test:e2e` hits real providers and is credential-gated: tests are skipped unless
   provider env vars are set (`OPENAI_API_KEY`/`OPENAI_MODEL`, `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`,
   `GEMINI_API_KEY`/`GEMINI_MODEL`). Without keys they skip (not fail), so this is not a blocker.
