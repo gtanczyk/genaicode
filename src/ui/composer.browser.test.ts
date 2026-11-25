@@ -236,7 +236,16 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
       .waitFor();
     await projects.getByLabel('Folder path').fill(knights);
     await projects.getByRole('button', { name: 'Open' }).click();
-    await projects.waitFor({ state: 'detached' });
+    // Closed once the chat runs there; a refusal would stay open and say why.
+    await vi.waitFor(
+      async () =>
+        expect({
+          open: await projects.count(),
+          said: await projects.getByRole('alert').allTextContents(),
+          chat: await log.locator('.gc-notice').allTextContents(),
+        }).toEqual({ open: 0, said: [], chat: expect.any(Array) }),
+      { timeout: 15_000, interval: 100 },
+    );
     await vi.waitFor(async () => expect(await project.textContent()).toContain('knights'));
     await vi.waitFor(async () => expect(await project.textContent()).toContain('main'));
     await vi.waitFor(async () => expect(await focused()).toBe(true));
