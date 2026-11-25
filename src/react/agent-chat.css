@@ -829,6 +829,17 @@
   gap: 8px;
   color: var(--_muted);
 }
+.gc-working-now {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--gc-font-mono, monospace);
+}
+.gc-working-now b {
+  font-family: inherit;
+  font-weight: 600;
+}
 .gc-notice {
   align-self: center;
   font-size: 0.87em;

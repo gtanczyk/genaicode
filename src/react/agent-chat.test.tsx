@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SessionState } from '../agents/session.js';
+import type { SessionEntry, SessionState } from '../agents/session.js';
 import {
   AgentChat,
   ArtifactPanel,
@@ -318,6 +318,19 @@ describe('AgentChat', () => {
     render({ ...props, state: { ...state, turns: [state.turns[0], next, ...state.turns.slice(2)] } });
     expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t1');
     expect($<HTMLTextAreaElement>('.gc-pack-detail textarea').value).toBe('check empty input');
+  });
+  it('names the step a running turn is on beside "is working", also below messages sent since', () => {
+    const state = fixture();
+    state.turns[1].entries.push(
+      { kind: 'tool', id: 't3', name: 'Bash', input: { command: 'npm test -- cart' }, done: false },
+      { kind: 'input', text: 'also check the docs' },
+    );
+    render({ state, foldSteps: true });
+    expect($('.gc-working-now')?.textContent).toBe('· Shell npm test -- cart');
+    expect($('.gc-working-now')?.getAttribute('title')).toBe('npm test -- cart');
+    state.turns[1].entries[3] = { ...state.turns[1].entries[3], done: true } as SessionEntry;
+    render({ state, foldSteps: true });
+    expect($('.gc-working-now')).toBeNull();
   });
   it('renders a session: turns, tools, edits, markdown, errors, queue, busy state', () => {
     render();

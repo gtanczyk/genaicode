@@ -960,6 +960,12 @@ function Turn({
     };
   };
   const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
+  const openTool = running
+    ? turn.entries.findLast(
+        (item): item is Extract<SessionEntry, { kind: 'tool' }> => item.kind === 'tool' && !item.done,
+      )
+    : undefined;
+  const openToolArgument = openTool ? toolArgument(openTool.input, cwd) : '';
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
   const visiblePackTasks = turn.pack ? turn.pack.tasks.filter((task) => !task.dismissed) : [];
   const packShown = !!turn.pack && (visiblePackTasks.length > 0 || pending.some((request) => request.subtaskId));
@@ -1031,6 +1037,12 @@ function Turn({
           <span className="gc-spin" /> {speaker} is working
           {/* The ticking time stays out of the transcript's live region. */}
           <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
+          {/* The step it is on, here at the bottom: the steps themselves sit above the messages sent since. */}
+          {openTool ? (
+            <span className="gc-working-now" title={openToolArgument || undefined}>
+              · <b>{toolName(openTool.name)}</b> {openToolArgument}
+            </span>
+          ) : null}
         </div>
       ) : (
         <div className={`gc-turn-footer${bad ? ' gc-bad' : ''}`}>
