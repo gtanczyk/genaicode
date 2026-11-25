@@ -914,7 +914,8 @@ function Turn({
   };
   const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
-  const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
+  const visiblePackTasks = turn.pack ? turn.pack.tasks.filter((task) => !task.dismissed) : [];
+  const packShown = !!turn.pack && (visiblePackTasks.length > 0 || pending.some((request) => request.subtaskId));
   const filteredEntries = turn.entries.filter((item) => {
     if (hasCustomFailure && item.kind === 'error') return false;
     // With the tasks in the host's panel, their approvals stay here in the transcript.
@@ -955,8 +956,8 @@ function Turn({
       ) : null}
       {packShown && onOpenTasks ? (
         <button type="button" className="gc-workline" onClick={() => onOpenTasks(turn)}>
-          <b>{packWorkCount(turn.pack!.tasks.length)}</b>
-          <span>{packWorkLine(turn.pack!.tasks, pending)}</span>
+          <b>{packWorkCount(visiblePackTasks.length)}</b>
+          <span>{packWorkLine(visiblePackTasks, pending)}</span>
           <span className="gc-workline-open">Open ›</span>
         </button>
       ) : packShown ? (

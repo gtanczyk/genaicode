@@ -147,6 +147,7 @@ export function workTasks(
     // Only a turn still running has approvals to answer.
     const pending = turn.result ? [] : (state?.approvals ?? []);
     for (const task of turn.pack.tasks) {
+      if (task.dismissed) continue;
       const asks = pending.filter((request) => request.subtaskId === task.id);
       const key = `${turn.id}:${task.id}`;
       const pullRequest = task.pullRequest ? pullRequests?.[key] : undefined;

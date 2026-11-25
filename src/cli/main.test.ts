@@ -246,10 +246,21 @@ describe('parseCli', () => {
       ['--pack', 'a:b', '-a', 'c'],
       ['--max-parallel', '2'],
       ['--pack', 'a:b', '--max-parallel', '0'],
+      ['--max-tasks', '10'],
+      ['--pack', 'a:b', '--max-tasks', '0'],
+      ['--delegate', '--max-tasks', '0'],
       ['--verify', 'npm test'],
       ['--pack', '--verify', '  '],
     ])
       expect(() => parseCli(['ui', ...args])).toThrow(UsageError);
+    expect(parseCli(['ui', '--pack', 'a:b', '--max-tasks', '12'])).toMatchObject({
+      pack: { lead: 'a', members: ['b'], maxTasksPerTurn: 12 },
+      maxTasksPerTurn: 12,
+    });
+    expect(parseCli(['ui', '--delegate', '--max-tasks', '15'])).toMatchObject({
+      delegate: true,
+      maxTasksPerTurn: 15,
+    });
     for (const spec of ['lead:unknown', 'worker:lead']) {
       expect(await main(environment({ argv: ['ui', '--pack', spec], agents, loadUi }).cli)).toBe(EXIT_USAGE);
     }

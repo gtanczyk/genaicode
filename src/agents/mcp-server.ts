@@ -74,14 +74,50 @@ export async function startScopedLocalMcpServer(
       }
       const available = toolsForRequest(target);
       if (!available) return reply(404);
-      handleMcpMessage(message, available, {
-        name: `genaicode-${name}`,
-        version: '1',
-        ...(instructions ? { instructions } : {}),
-        ...(skills ? { skills } : {}),
-      }).then(
-        (answer) => (answer === null ? reply(202) : reply(200, answer)),
-        () => reply(500),
+      const acceptsSse = /\btext\/event-stream\b/i.test(request.headers.accept ?? '');
+      let sse = false;
+      const writeEvent = (payload: object) => {
+        if (response.destroyed || response.writableEnded) return;
+        if (!sse) {
+          if (response.headersSent) return;
+          sse = true;
+          response.writeHead(200, {
+            'content-type': 'text/event-stream',
+            'cache-control': 'no-cache',
+            connection: 'keep-alive',
+          });
+          response.flushHeaders?.();
+        }
+        response.write(`event: message\ndata: ${JSON.stringify(payload)}\n\n`);
+      };
+      handleMcpMessage(
+        message,
+        available,
+        {
+          name: `genaicode-${name}`,
+          version: '1',
+          ...(instructions ? { instructions } : {}),
+          ...(skills ? { skills } : {}),
+        },
+        undefined,
+        acceptsSse ? writeEvent : undefined,
+      ).then(
+        (answer) => {
+          if (sse) {
+            if (answer !== null) writeEvent(answer);
+            if (!response.destroyed && !response.writableEnded) response.end();
+          } else {
+            if (answer === null) reply(202);
+            else reply(200, answer);
+          }
+        },
+        () => {
+          if (sse) {
+            if (!response.destroyed && !response.writableEnded) response.end();
+          } else {
+            reply(500);
+          }
+        },
       );
     });
   });

@@ -247,4 +247,49 @@ describe('tasks and input', () => {
     const legacy = (await send(asking, 'tools/call', { name: 'ask' })).result!;
     expect(legacy.isError).toBe(true);
   });
+
+  it('forwards notifications/progress when _meta.progressToken and onNotify are provided', async () => {
+    const notifications: object[] = [];
+    const seenProgress: boolean[] = [];
+    const waiter: McpTool = {
+      name: 'waiter',
+      description: 'Reports progress.',
+      inputSchema: { type: 'object' },
+      call: async (_args, context) => {
+        seenProgress.push(typeof context?.progress === 'function');
+        context?.progress?.(15, 240, 'still waiting');
+        return 'done';
+      },
+    };
+    const answer = await handleMcpMessage(
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: { name: 'waiter', arguments: {}, _meta: { progressToken: 'tok-1' } },
+      },
+      [waiter],
+      { name: 't', version: '1' },
+      undefined,
+      (note) => notifications.push(note),
+    );
+    expect(answer).toEqual({ jsonrpc: '2.0', id: 2, result: { content: [{ type: 'text', text: 'done' }] } });
+    expect(notifications).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: { progressToken: 'tok-1', progress: 15, total: 240, message: 'still waiting' },
+      },
+    ]);
+    // Without a progressToken, context.progress is omitted.
+    await handleMcpMessage(
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'waiter', arguments: {} } },
+      [waiter],
+      { name: 't', version: '1' },
+      undefined,
+      (note) => notifications.push(note),
+    );
+    expect(seenProgress).toEqual([true, false]);
+    expect(notifications).toHaveLength(1);
+  });
 });

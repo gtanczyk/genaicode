@@ -216,8 +216,9 @@ export function packTaskTitle(task: Pick<PackTask, 'title' | 'prompt'>): string 
  */
 export function packMetrics(turn: SessionTurn): string {
   const pack = turn.pack!;
-  const count = pack.tasks.length;
-  const running = pack.tasks.filter((task) => task.status === 'running').length;
+  const visible = pack.tasks.filter((task) => !task.dismissed);
+  const count = visible.length;
+  const running = visible.filter((task) => task.status === 'running').length;
   const budget = budgetStatus(pack.budget, turn.usage ?? {}, turn.costUsd)
     .filter((row) => row.kind === 'tokens')
     .map((row) => `budget ${formatTokens(row.used)}/${formatTokens(row.limit)} tokens`);
@@ -233,10 +234,11 @@ export function packWorkCount(count: number): string {
 
 /** Where a turn's delegated tasks stand, for its line in the chat: "1 needs you · 2 running · 3 finished". */
 export function packWorkLine(tasks: readonly PackTask[], pending: readonly { subtaskId?: string }[] = []): string {
-  const asking = tasks.filter((task) => pending.some((request) => request.subtaskId === task.id)).length;
-  const running = tasks.filter((task) => task.status === 'running').length;
-  const failed = tasks.filter((task) => task.status === 'failed' || task.status === 'timeout').length;
-  const finished = tasks.length - running - failed;
+  const visible = tasks.filter((task) => !task.dismissed);
+  const asking = visible.filter((task) => pending.some((request) => request.subtaskId === task.id)).length;
+  const running = visible.filter((task) => task.status === 'running').length;
+  const failed = visible.filter((task) => task.status === 'failed' || task.status === 'timeout').length;
+  const finished = visible.length - running - failed;
   return [
     asking ? `${asking} ${asking === 1 ? 'needs' : 'need'} you` : '',
     running ? `${running} running` : '',
@@ -452,7 +454,10 @@ export function packTaskList(
   options: { asking?: (task: PackTask) => boolean; keep?: string; expanded?: boolean } = {},
 ): { shown: PackTask[]; hidden: number } {
   const asking = options.asking ?? (() => false);
-  const newest = tasks.slice().reverse();
+  const newest = tasks
+    .filter((task) => !task.dismissed)
+    .slice()
+    .reverse();
   // Ended tasks: the one that ended last first. A report without an end time goes before them, in
   // delegation order (the sort is stable).
   const end = (task: PackTask) => task.endedAt ?? Infinity;

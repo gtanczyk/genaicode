@@ -227,28 +227,44 @@ for await (const event of run) {
 The lead decides what to delegate and to whom; genaicode adds the tools, not a loop or a router of
 its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server named `pack`:
 
-| Tool       | What it does                                                                                    |
-| ---------- | ----------------------------------------------------------------------------------------------- |
-| `agents`   | Members: installed or not, tasks running, the plan limits each reported, its last failure kind  |
-| `delegate` | Starts `prompt` on a member and returns a task id at once                                       |
-| `wait`     | Blocks until tasks end (or `timeoutSeconds`), then reports status, final message, changed files |
-| `steer`    | More input for a running task, where the member has `steer()`                                   |
-| `stop`     | Stops a running task                                                                            |
-| `diff`     | A worktree task's changes as a unified diff                                                     |
-| `review`   | A read-only second opinion on the full patch, attached to the worker's task                     |
-| `merge`    | Applies a finished task's changes to the lead's directory (`threeWay` for conflict markers)     |
-| `discard`  | Drops a finished task's changes                                                                 |
+| Tool       | What it does                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `agents`   | Members: installed or not, tasks running, `steer` and `resume` support, the plan limits each reported, its last failure kind   |
+| `delegate` | Starts `prompt` on a member and returns a task id at once (capped per lead turn by `maxTasksPerTurn`)                          |
+| `wait`     | Blocks until tasks end (or `timeoutSeconds`, capped at 240 s with MCP progress updates), reporting prompt once and title later |
+| `steer`    | More input for a running task (`steer`), or continues a finished task in its existing session and worktree/cwd (`resume`)      |
+| `stop`     | Stops a running task                                                                                                           |
+| `diff`     | A worktree task's changes as a unified diff                                                                                    |
+| `review`   | A read-only second opinion on the full patch, attached to the worker's task                                                    |
+| `merge`    | Applies a finished task's changes to the lead's directory (`threeWay` for conflict markers)                                    |
+| `discard`  | Drops a finished worktree task's changes, or dismisses a finished `shared` task from the task list                             |
 
 - A delegated task runs in its own git worktree under `.genaicode/worktrees/` (git-ignored): a
   copy of the files as they are, uncommitted and untracked ones included. Nothing reaches the
   working directory until the lead merges it, and a merge stages and commits nothing. Files git
   ignores (`node_modules`, build output) are not in a worktree; `prepareWorktree(dir, repo)` can
   link or install them. Mode `shared` runs a task in the lead's directory instead, for reviews and
-  for directories that are not git repositories.
+  for directories that are not git repositories. Calling `discard` on a finished `shared` task
+  dismisses it (`PackTask.dismissed: true`) and hides it from the task list for the lead and the
+  UI; a running `shared` task is still refused.
+- Calling `steer` on a finished task (whose worktree is still unmerged, or an undismissed `shared`
+  task) resumes that worker's session (`AgentTask.resume`, using the driver's native resume flag or
+  protocol: Claude `--resume`, Codex `exec resume` / `thread/resume`, Antigravity, Copilot, Cursor,
+  opencode, live Muse, managed drivers) in the same worktree/cwd, keeping the same task id and
+  appending the follow-up to `steers`. Its status returns to `running` and `wait` reports it as
+  usual. Drivers without resume support (`gemini`, `vibe`, headless `muse`) or tasks that produced
+  no session id are refused with a clear reason (`cannot-resume`).
 - Events are the lead's, plus `subtask-start`, `subtask` (a delegated task's own event; its `done`
   ends the task) and `subtask-update` (`merged` or `discarded`). A merge also emits `file-change`.
 - `usage` events and `result.usage` add up the lead and every delegated task, and `task.budget`
-  caps the sum. `maxParallel` (default 4) caps how many tasks run at once.
+  caps the sum. `maxParallel` (default 4) caps how many tasks run at once; `maxTasksPerTurn`
+  (default 25, `--max-tasks` on the CLI) caps how many new tasks `delegate` may start in one lead
+  turn before telling the lead to reuse workers with `steer` or ask the person.
+- `wait` includes a task's full `prompt` only the first time it reports that task; later `wait`
+  calls return a short `title` instead so polling does not bloat the lead's context. Its effective
+  `timeoutSeconds` is capped at 240 seconds (safely under MCP clients' ~300 s idle timeout), and
+  while waiting it emits MCP `notifications/progress` updates over SSE whenever the client accepts
+  `text/event-stream` and sends `_meta.progressToken`.
 - Delegated tasks get the run's `env`, `permissions` and `onApproval`; their request ids are
   prefixed with the task id and the summary names the agent. A request to run a command that only
   reads inside the task's directory (`ls`, `cat`, `rg`, `git log`/`diff`/`status`, `sed -n '1,20p'`,
