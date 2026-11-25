@@ -262,7 +262,11 @@ its own. The lead needs `capabilities.mcp` and sees these tools on an MCP server
 - `resume`, `steer()` and `result.sessionId` are the lead's. Tasks still running when the lead
   finishes are stopped. Unmerged worktrees stay for the next turn; `agent.close()` removes them.
 
-In a live chat, `turn.pack.tasks` holds the delegated work under its original turn.
+In a live chat, `turn.pack.tasks` holds the delegated work under its original turn. A task whose
+final reply links to a GitHub pull request carries it as `pullRequest: { url, number }` (the last
+such link of the whole reply). The reply may only refer to it: whether the task opened it is the
+host's to check (the `genaicode ui` page asks `gh` and git whether the task's worktree is on the pull
+request's head branch).
 `session.actOnPackTask?.(turn.id, id, { type: 'diff' })` returns the unified patch.
 The same method accepts `merge`, `discard`, `stop` and `{ type: 'steer', text }`.
 Each run also exposes these controls as `run.pack`. A chat can still review and merge

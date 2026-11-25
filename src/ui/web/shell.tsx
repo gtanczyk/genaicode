@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { ownEscape } from '../../react/escape.js';
 import { paletteCommands } from '../palette.js';
@@ -73,6 +73,21 @@ export interface ShellProps {
   usage?: string;
   /** The right end of the bar: the session menu and what has no panel yet. */
   actions?: ReactNode;
+  /**
+   * The work panel, beside the chat. With `workFull` it is a view in the chat's place, under the
+   * top bar: `onBack` then closes it.
+   */
+  work?: ReactNode;
+  workFull?: boolean;
+  /** ⌘⌥B: opens and closes the work panel. */
+  onToggleWork?(): void;
+  /** Stop in the top bar: the turn runs while the full-width work view covers the composer. */
+  onStop?(): void;
+  /**
+   * The width the chat and the work panel share (the window without the sidebar) and the window's
+   * own, whenever either changes: what `workPanelLayout()` decides from.
+   */
+  onRoom?(sizes: { room: number; window: number }): void;
   /** For tests: where the collapsed state is kept. Default `localStorage`. */
   store?: Store;
   children: ReactNode;
@@ -120,7 +135,11 @@ export function Shell(props: ShellProps) {
     setSearching(false);
     const from = searchFrom.current;
     searchFrom.current = null;
-    if (restore && from instanceof HTMLElement && from.isConnected) from.focus();
+    if (!restore) return;
+    if (from instanceof HTMLElement && from.isConnected) from.focus();
+    // What had the focus is gone (the sidebar took the work panel's room, say): the message field
+    // takes it, so the next keys are not lost.
+    else document.querySelector<HTMLElement>('.gc-composer textarea')?.focus();
   };
   const mac = /Mac|iPhone|iPad/.test(navigator.platform);
   const { side } = props;
@@ -181,8 +200,16 @@ export function Shell(props: ShellProps) {
         }
         return;
       }
-      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) || event.altKey || event.shiftKey)
+      if (!(mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) || event.shiftKey) return;
+      if (event.altKey) {
+        // By its place on the keyboard: with Option held, macOS types another letter there.
+        // Not under Search: it keeps the focus until Escape gives it back where it was.
+        if (event.code === 'KeyB' && now.onToggleWork && !searchingRef.current) {
+          event.preventDefault();
+          now.onToggleWork();
+        }
         return;
+      }
       const key = event.key.toLowerCase();
       if (key === 'b') {
         event.preventDefault();
@@ -211,8 +238,27 @@ export function Shell(props: ShellProps) {
     };
   }, []);
 
+  // The room beside the sidebar: it changes with the window and with the sidebar's own width.
+  const shell = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = shell.current;
+    if (!el) return;
+    const report = () => {
+      const side = el.querySelector<HTMLElement>('.side');
+      latest.current.onRoom?.({ room: el.clientWidth - (side?.offsetWidth ?? 0), window: el.clientWidth });
+    };
+    report();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [collapsed]);
+
   return (
-    <div className={`shell${collapsed ? ' side-collapsed' : ''}`}>
+    <div
+      ref={shell}
+      className={`shell${collapsed ? ' side-collapsed' : ''}${props.work ? ' has-work' : ''}${props.work && props.workFull ? ' work-full' : ''}`}
+    >
       <Sidebar
         {...props.side}
         collapsed={collapsed}
@@ -266,10 +312,22 @@ export function Shell(props: ShellProps) {
               {props.usage}
             </span>
           ) : null}
+          {props.onStop ? (
+            <button
+              type="button"
+              className="btn sm danger"
+              title="Stop the agent"
+              data-tauri-drag-region="false"
+              onClick={props.onStop}
+            >
+              Stop
+            </button>
+          ) : null}
           {props.actions}
         </header>
         {props.children}
       </div>
+      {props.work}
       {searching && source && search ? (
         <Palette
           source={source}

@@ -15,7 +15,28 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
 import { personText } from './host-text.js';
-import { delegationBrief, pack, PackActionError, type PackTask as PackReport } from './pack.js';
+import {
+  clipReview,
+  delegationBrief,
+  pack,
+  PackActionError,
+  replyPullRequest,
+  type PackTask as PackReport,
+} from './pack.js';
+
+describe('clipReview', () => {
+  it('keeps the lines that decide a long review after the clip', () => {
+    const long = `${'Looked at the importer. '.repeat(900)}\n- BLOCKER: drops rows without an id\n\nVERDICT: CHANGES REQUESTED`;
+    const kept = clipReview(long);
+    expect(kept.length).toBeLessThan(long.length);
+    expect(kept).toContain('BLOCKER: drops rows without an id');
+    expect(kept.endsWith('VERDICT: CHANGES REQUESTED')).toBe(true);
+    expect(clipReview('Short.\nVERDICT: LGTM')).toBe('Short.\nVERDICT: LGTM');
+    // The verdict quoted inline earlier does not hide the final one the clip cut off.
+    const quoted = `Expect a line like VERDICT: CHANGES REQUESTED at the end.\n${'More notes here. '.repeat(1200)}\n[P1] drops rows\nVERDICT: CHANGES REQUESTED`;
+    expect(clipReview(quoted).endsWith('\nVERDICT: CHANGES REQUESTED')).toBe(true);
+  });
+});
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -597,6 +618,33 @@ describe('pack', () => {
     expect(task!.endedAt!).toBeGreaterThanOrEqual(task!.startedAt!);
   });
 
+  it('reports the pull request a task ended in: the last one its whole reply links', async () => {
+    const cwd = repo();
+    const reply = [
+      'Builds on https://github.com/acme/app/pull/349.',
+      'x'.repeat(5_000),
+      'Opened https://github.com/acme/app/pull/351 for review.',
+    ].join('\n');
+    const worker = fake('worker', async () => ({ text: reply }));
+    const quiet = fake('quiet', async () => ({ text: 'Done, see https://example.com/pull/7.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'ship it', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'quiet', prompt: 'look', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker, quiet] });
+    await team.run({ prompt: 'go', cwd }).result;
+    const [shipped, looked] = team.tasks();
+    expect(shipped!.text).not.toContain('pull/351');
+    expect(shipped!.pullRequest).toEqual({ url: 'https://github.com/acme/app/pull/351', number: 351 });
+    expect(looked!.pullRequest).toBeUndefined();
+    expect(replyPullRequest('no link here')).toBeUndefined();
+  });
+
   it('reads the verdict from the whole reply, outside quotations and code, before clipping it', async () => {
     const cwd = repo();
     const reply = [
@@ -974,6 +1022,487 @@ describe('pack chat turns', () => {
       session.adopt([first]);
       expect(session.get().turns.at(-1)?.pack?.interactive).toBe(false);
       await expect(session.actOnPackTask!(3, 't1', { type: 'discard' })).rejects.toThrow('No pack task');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('refuses to discard a worktree shown as unchanged once it has changes, and its diff lists them', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      // Someone edits the retained worktree after the task ended.
+      writeFileSync(join(task()!.cwd, 'late.txt'), 'kept\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+        publicMessage: 'The worktree has changes now. Open its diff first.',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      expect(existsSync(join(task()!.cwd, 'late.txt'))).toBe(true);
+      // Reading the diff also lists what changed since.
+      rmSync(join(task()!.cwd, 'late.txt'));
+      writeFileSync(join(task()!.cwd, 'other.txt'), 'x\n');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain('+x');
+      expect(task()?.changes).toEqual(['A\tother.txt']);
+      // Clean again, it discards as before.
+      rmSync(join(task()!.cwd, 'other.txt'));
+      expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
+      expect(task()?.state).toBe('discarded');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('refuses to discard as unchanged a worktree with staged work, and a stale diff still lists the files', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      const revision = task()!.checks?.revision;
+      expect(revision).toBeTruthy();
+      // A file added after the task ended: a diff asked for the old revision is stale, and the task
+      // lists the file already, so the detail does not keep saying it changed nothing.
+      writeFileSync(join(dir, 'late.txt'), 'late\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'diff', revision })).rejects.toMatchObject({
+        reason: 'stale',
+      });
+      expect(task()?.changes).toEqual(['A\tlate.txt']);
+      expect(task()?.checks?.revision).not.toBe(revision);
+      // Staged in the worktree's own index, then deleted from the working copy: still work.
+      execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+      rmSync(join(dir, 'late.txt'));
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      expect(existsSync(dir)).toBe(true);
+      // Reading the diff keeps the staged file listed and says where it is: the worktree is not empty.
+      expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain(
+        "Staged in the worktree's index only: late.txt.",
+      );
+      expect(task()?.changes).toEqual(['A\tlate.txt']);
+      execFileSync('git', ['reset', '-q'], { cwd: dir });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it.each([
+    [
+      'staged, then deleted',
+      (dir: string) => {
+        writeFileSync(join(dir, 'late.txt'), 'late\n');
+        execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+        rmSync(join(dir, 'late.txt'));
+      },
+    ],
+    [
+      'committed, then deleted',
+      (dir: string) => {
+        writeFileSync(join(dir, 'late.txt'), 'late\n');
+        execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'late'], { cwd: dir });
+        rmSync(join(dir, 'late.txt'));
+      },
+    ],
+  ])('keeps a worktree whose snapshot shows nothing but which holds a file %s', async (_, edit) => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      edit(dir);
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      // The patch is empty, but merging must not remove the worktree and the work in it.
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()?.state).toBe('unmerged');
+      expect(existsSync(dir)).toBe(true);
+      expect(execFileSync('git', ['show', ':late.txt'], { cwd: dir, encoding: 'utf8' })).toBe('late\n');
+      expect(existsSync(join(cwd, 'late.txt'))).toBe(false);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('does not merge a patch that leaves out a file staged in the worktree and gone from its working copy', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['M\ta.txt'] });
+      const dir = task()!.cwd;
+      writeFileSync(join(dir, 'notes.txt'), 'notes\n');
+      execFileSync('git', ['add', 'notes.txt'], { cwd: dir });
+      rmSync(join(dir, 'notes.txt'));
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      // Nothing applied, and the only copy of notes.txt is still staged in the kept worktree.
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(task()?.state).toBe('unmerged');
+      expect(execFileSync('git', ['show', ':notes.txt'], { cwd: dir, encoding: 'utf8' })).toBe('notes\n');
+      // Staging everything the working copy has makes the index match the snapshot: it merges.
+      execFileSync('git', ['add', '-A'], { cwd: dir });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
+      expect(existsSync(join(cwd, 'notes.txt'))).toBe(false);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('does not discard as unchanged a worktree whose edit git status hides (assume-unchanged)', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      execFileSync('git', ['update-index', '--assume-unchanged', 'a.txt'], { cwd: dir });
+      writeFileSync(join(dir, 'a.txt'), 'edited\n');
+      expect(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' })).toBe('');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['M\ta.txt'] });
+      expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('edited\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('keeps a worktree whose submodule holds an edit the patch cannot carry', async () => {
+    const cwd = repo();
+    const dep = repo();
+    const file = ['-c', 'protocol.file.allow=always'];
+    execFileSync('git', [...file, 'submodule', 'add', '-q', dep, 'dep'], { cwd });
+    git(cwd, 'commit', '-q', '-m', 'dep');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['M\ta.txt'] });
+      const dir = task()!.cwd;
+      execFileSync('git', [...file, 'submodule', 'update', '-q', '--init'], { cwd: dir });
+      writeFileSync(join(dir, 'dep', 'a.txt'), 'edited in the submodule\n');
+      // The parent's patch carries a.txt only: merging it would remove the worktree and the edit.
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(readFileSync(join(dir, 'dep', 'a.txt'), 'utf8')).toBe('edited in the submodule\n');
+      // A new commit of the submodule, staged in the parent: Merge locally cannot apply it either.
+      git(join(dir, 'dep'), 'commit', '-q', '-am', 'dep work');
+      // With the parent's a.txt staged too, the index matches the snapshot: only the gitlink stops it.
+      git(dir, 'add', 'a.txt', 'dep');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()?.state).toBe('unmerged');
+      // Back to the parent's edit alone: it merges.
+      execFileSync('git', ['reset', '-q', '--hard', 'HEAD~1'], { cwd: join(dir, 'dep') });
+      execFileSync('git', ['reset', '-q', '--', 'dep'], { cwd: dir });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('lists the files of the revision a check ran on, and merges a mix of staged and unstaged edits', async () => {
+    const cwd = repo();
+    writeFileSync(join(cwd, 'b.txt'), 'b\n');
+    git(cwd, 'add', 'b.txt');
+    git(cwd, 'commit', '-q', '-m', 'b');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker], verification: { label: 'ok', run: () => ({ ok: true }) } });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()?.changes).toEqual(['M\ta.txt']);
+      const dir = task()!.cwd;
+      // Staged, then deleted from the working copy: the snapshot does not move, the list does.
+      writeFileSync(join(dir, 'notes.txt'), 'notes\n');
+      git(dir, 'add', 'notes.txt');
+      rmSync(join(dir, 'notes.txt'));
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tnotes.txt']);
+      git(dir, 'reset', '-q', '--', 'notes.txt');
+      // A file added after the task ended: the check's revision has it, and so does the list.
+      writeFileSync(join(dir, 'c.txt'), 'c\n');
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt']);
+      // Another one while the check's result is shown: the watched worktree moves the revision on,
+      // and the list with it.
+      const checked = task()!.checks!.revision;
+      writeFileSync(join(dir, 'd.txt'), 'd\n');
+      await vi.waitFor(() => expect(task()!.checks!.revision).not.toBe(checked), { timeout: 5000 });
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt', 'A\td.txt']);
+      // A merge refused as stale shows the files of the revision it found.
+      const seen = task()!.checks!.revision;
+      writeFileSync(join(dir, 'e.txt'), 'e\n');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge', revision: seen })).rejects.toMatchObject({
+        reason: 'stale',
+      });
+      expect(task()!.checks!.revision).not.toBe(seen);
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\tc.txt', 'A\td.txt', 'A\te.txt']);
+      // a.txt staged, b.txt edited and not: the patch carries both, so it merges.
+      writeFileSync(join(dir, 'b.txt'), 'b changed\n');
+      git(dir, 'add', 'a.txt');
+      await session.actOnPackTask!(1, 't1', { type: 'verify' });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge', revision: task()!.checks!.revision })).toContain(
+        'Merged t1',
+      );
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
+      expect(readFileSync(join(cwd, 'b.txt'), 'utf8')).toBe('b changed\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('lists a file the worker staged and then deleted when the task ends', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'late.txt'), 'late\n');
+      execFileSync('git', ['add', 'late.txt'], { cwd: task.cwd });
+      rmSync(join(task.cwd, 'late.txt'));
+      return { text: 'Staged a file.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(session.get().turns[0]?.pack?.tasks[0]).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
+      const ended = session.get().turns[0]!.pack!.tasks[0]!;
+      expect(ended.worktree).toBe(ended.cwd);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('merged without a diff or check first, a task lists the files of the revision merged', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      const before = task()!.checks?.revision;
+      writeFileSync(join(task()!.cwd, 'e.txt'), 'e\n');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\te.txt']);
+      expect(task()!.checks?.revision).not.toBe(before);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it("merges the task's change where it was made, whatever the person's diff settings say", async () => {
+    const cwd = repo();
+    git(cwd, 'config', 'diff.noprefix', 'true');
+    git(cwd, 'config', 'diff.context', '0');
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\ninserted\nthree\n');
+      mkdirSync(join(task.cwd, 'lib'));
+      writeFileSync(join(task.cwd, 'lib', 'thing'), 'thing\n');
+      return { text: 'Inserted a line and added lib/thing.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\ninserted\nthree\n');
+      expect(readFileSync(join(cwd, 'lib', 'thing'), 'utf8')).toBe('thing\n');
+      expect(existsSync(join(cwd, 'thing'))).toBe(false);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('keeps a worktree with a repository cloned into it, whose files the patch cannot carry', async () => {
+    const cwd = repo();
+    const dep = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      execFileSync('git', ['clone', '-q', dep, 'vendor'], { cwd: task.cwd });
+      writeFileSync(join(task.cwd, 'vendor', 'a.txt'), 'patched in the clone\n');
+      return { text: 'Added a line and patched the vendored copy.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged' });
+      const dir = task()!.cwd;
+      // Also where git is told to leave submodules out of its diffs.
+      git(dir, 'config', 'diff.ignoreSubmodules', 'all');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(readFileSync(join(dir, 'vendor', 'a.txt'), 'utf8')).toBe('patched in the clone\n');
+      expect(task()?.state).toBe('unmerged');
     } finally {
       session.close();
       await team.close();

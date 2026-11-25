@@ -47,6 +47,7 @@ import { NoticeView, TurnView } from './tui/transcript.js';
 import { CHOOSE_FOLDER_LINE, loadAssets, runChat, runWeb, startEmbeddedWeb } from './index.js';
 import { uiRelease } from './web/release.js';
 import { inspectFolder, parseCommand, startWebUi } from './web/server.js';
+import { PullRequestBusy } from './pull-requests.js';
 
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
@@ -1728,6 +1729,206 @@ describe('web UI server', () => {
     for (const action of [{ type: 'delegate' }, { type: 'steer', text: '  ' }, { type: 'merge', revision: 2 }, 'merge'])
       expect(parseCommand({ ...base, action })).toBeUndefined();
     expect(parseCommand({ ...base, turnId: 0, action: { type: 'discard' } })).toBeUndefined();
+    // The conversation it was pressed in goes with it.
+    expect(parseCommand({ ...base, action: { type: 'discard' }, conversation: 'c1' })).toEqual({
+      ...base,
+      action: { type: 'discard' },
+      conversation: 'c1',
+    });
+    expect(parseCommand({ ...base, action: { type: 'discard' }, conversation: 7 })).toBeUndefined();
+    expect(parseCommand({ type: 'stop', conversation: 'c1', turn: 3 })).toEqual({
+      type: 'stop',
+      conversation: 'c1',
+      turn: 3,
+    });
+    expect(parseCommand({ type: 'stop', turn: 0 })).toBeUndefined();
+    expect(parseCommand({ type: 'stop', conversation: 1 })).toBeUndefined();
+  });
+
+  /** `chat`, showing a conversation `s1` whose turn 1 delegated t1 (linking a pull request) and t2. */
+  function withTasks(chat: ReturnType<typeof createChatController>, running = false): typeof chat {
+    const pack = {
+      lead: 'claude',
+      maxParallel: 2,
+      interactive: true,
+      tasks: [
+        {
+          id: 't1',
+          agent: 'codex',
+          prompt: 'Open a pull request.',
+          // Delegated into a folder of the project: the worktree's root is what Discard removes.
+          cwd: '/w/.genaicode/worktrees/t1/pkg',
+          worktree: '/w/.genaicode/worktrees/t1',
+          mode: 'worktree' as const,
+          status: 'completed' as const,
+          state: 'unmerged' as const,
+          pullRequest: { url: 'https://github.com/acme/app/pull/351', number: 351 },
+        },
+        { id: 't2', agent: 'codex', prompt: 'Look.', cwd: '/w', mode: 'shared' as const, status: 'completed' as const },
+      ],
+    };
+    return {
+      ...chat,
+      get: () => {
+        const view = chat.get();
+        return {
+          ...view,
+          session: {
+            ...view.session,
+            sessionId: 's1',
+            turns: [
+              {
+                id: 1,
+                agent: 'claude',
+                prompt: 'go',
+                startedAt: 0,
+                entries: [],
+                pack,
+                ...(running ? {} : { result: { status: 'completed' as const, ok: true, exitCode: 0, signal: null } }),
+              },
+            ],
+          },
+        };
+      },
+    };
+  }
+
+  it('looks up only the pull requests of the tasks of the conversation shown, a few at a time', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const asked: Array<[string, string | undefined]> = [];
+    let busy = false;
+    const ui = await startWebUi({
+      controller: withTasks(chat),
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+      pullRequest: async (url, worktree) => {
+        if (busy) throw new PullRequestBusy();
+        asked.push([url, worktree]);
+        return { state: 'merged', ours: true };
+      },
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const get = (query: Record<string, string>, token = 't0k') =>
+      fetch(`${base}api/pull-request?${new URLSearchParams(query)}`, { headers: { 'x-genaicode-token': token } });
+    try {
+      const found = await get({ conversation: 's1', turn: '1', task: 't1' });
+      expect(found.status).toBe(200);
+      expect(await found.json()).toEqual({ state: 'merged', ours: true });
+      // The task's worktree (its root, not the folder it worked in) goes with the address: whether it
+      // opened the pull request is read there.
+      expect(asked).toEqual([['https://github.com/acme/app/pull/351', '/w/.genaicode/worktrees/t1']]);
+      expect((await get({ conversation: 's1', turn: '1', task: 't1' }, 'wrong')).status).toBe(403);
+      // Another conversation, another turn, a task without a pull request, an address: nothing is asked.
+      const elsewhere: Array<Record<string, string>> = [
+        { conversation: 'other', turn: '1', task: 't1' },
+        { conversation: 's1', turn: '2', task: 't1' },
+        { conversation: 's1', turn: '1', task: 't2' },
+        { url: 'https://github.com/acme/app/pull/9' },
+      ];
+      for (const query of elsewhere) expect((await get(query)).status).toBe(404);
+      expect(asked).toHaveLength(1);
+      busy = true;
+      expect((await get({ conversation: 's1', turn: '1', task: 't1' })).status).toBe(429);
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
+  it('refuses a task action or a Stop pressed in a conversation the window has left', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const acted: string[] = [];
+    chat.session.actOnPackTask = async (_turn, id) => {
+      acted.push(id);
+      return 'Discarded';
+    };
+    const stop = vi.spyOn(chat, 'stop');
+    const ui = await startWebUi({
+      controller: withTasks(chat, true),
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const post = (body: object) =>
+      fetch(`${base}api/command`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': 't0k' },
+        body: JSON.stringify(body),
+      });
+    const discard = { type: 'pack-task', turnId: 1, id: 't1', action: { type: 'discard' } };
+    try {
+      const left = await post({ ...discard, conversation: 'chat-a' });
+      expect(left.status).toBe(409);
+      expect(await left.json()).toMatchObject({ ok: false, reason: 'conversation' });
+      expect(acted).toEqual([]);
+      expect((await post({ ...discard, conversation: 's1' })).status).toBe(200);
+      expect(acted).toEqual(['t1']);
+
+      expect((await post({ type: 'stop', conversation: 'chat-a', turn: 1 })).status).toBe(409);
+      expect((await post({ type: 'stop', conversation: 's1', turn: 2 })).status).toBe(409);
+      expect(stop).not.toHaveBeenCalled();
+      expect((await post({ type: 'stop', conversation: 's1', turn: 1 })).status).toBe(200);
+      expect(stop).toHaveBeenCalledOnce();
+    } finally {
+      await ui.close();
+      chat.close();
+    }
+  });
+
+  it('discards a worktree offered as held by its pull request only after checking it again now', async () => {
+    const chat = createChatController({ agents: [echoAgent()], cwd: '/w', env });
+    const acted: string[] = [];
+    const actions: unknown[] = [];
+    chat.session.actOnPackTask = async (_turn, id, action) => {
+      acted.push(id);
+      actions.push(action);
+      return 'Discarded';
+    };
+    let ours = false;
+    const asked: Array<{ fresh?: boolean } | undefined> = [];
+    const ui = await startWebUi({
+      controller: withTasks(chat),
+      clientScript: '',
+      title: { version: '1', cwd: '/w' },
+      token: 't0k',
+      pullRequest: async (_url, _worktree, options) => {
+        asked.push(options);
+        return { state: 'merged', ours };
+      },
+    });
+    const base = ui.url.replace(/\?.*$/, '');
+    const post = (body: object) =>
+      fetch(`${base}api/command`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': 't0k' },
+        body: JSON.stringify(body),
+      });
+    const discard = { type: 'pack-task', turnId: 1, id: 't1', action: { type: 'discard' }, conversation: 's1' };
+    try {
+      // The pull request merged, then the worktree got an edit it does not have: nothing is lost.
+      const refused = await post({ ...discard, pullRequest: true });
+      expect(refused.status).toBe(409);
+      expect(await refused.json()).toMatchObject({ ok: false, reason: 'stale' });
+      expect(acted).toEqual([]);
+      expect(asked).toEqual([{ fresh: true }]);
+      ours = true;
+      expect((await post({ ...discard, pullRequest: true })).status).toBe(200);
+      expect(acted).toEqual(['t1']);
+      // A task without a pull request of its own is discarded as asked: the page confirmed it.
+      ours = false;
+      expect((await post(discard)).status).toBe(200);
+      expect(acted).toEqual(['t1', 't1']);
+      // A discard of a worktree shown as unchanged reaches the pack with `empty`, for it to check.
+      expect((await post({ ...discard, action: { type: 'discard', empty: true } })).status).toBe(200);
+      expect(actions.at(-1)).toEqual({ type: 'discard', empty: true });
+      expect((await post({ ...discard, action: { type: 'discard', empty: 'yes' } })).status).toBe(200);
+      expect(actions.at(-1)).toEqual({ type: 'discard' });
+    } finally {
+      await ui.close();
+      chat.close();
+    }
   });
 
   it('returns public pack action reasons and keeps internal diagnostics local', async () => {
@@ -1762,13 +1963,18 @@ describe('web UI server', () => {
 
       const missing = await post('missing');
       expect(missing.status).toBe(404);
-      expect(await missing.json()).toEqual({ ok: false, error: 'This pack task could not be found.' });
+      expect(await missing.json()).toEqual({
+        ok: false,
+        error: 'This pack task could not be found.',
+        reason: 'missing',
+      });
 
       const conflict = await post('conflict');
       expect(conflict.status).toBe(409);
       expect(await conflict.json()).toEqual({
         ok: false,
         error: 'These changes do not apply cleanly; nothing was changed.',
+        reason: 'conflict',
       });
 
       const unexpected = await post('unexpected');

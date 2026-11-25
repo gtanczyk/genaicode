@@ -179,6 +179,50 @@ describe('AgentChat', () => {
     });
     expect(onPackAction).toHaveBeenCalledWith(turn.id, 't2', { type: 'discard' });
   });
+  it('says what the person can do without a reviewer or a test command, and keeps Merge locally beside a linked pull request', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1];
+    const task = {
+      id: 't1',
+      agent: 'codex',
+      prompt: 'Change it.',
+      mode: 'worktree' as const,
+      cwd: '/work/app/.genaicode/worktrees/t1',
+      status: 'completed' as const,
+      state: 'unmerged' as const,
+      changes: ['M\ta.ts'],
+      checks: {},
+    };
+    turn.pack = { lead: 'claude', maxParallel: 4, interactive: true, tasks: [task] };
+    render({ state, onPackAction: vi.fn(async () => '') });
+    const notes = $$('.gc-pack-checks small').map((item) => item.textContent);
+    expect(notes[0]).toMatch(/^No second agent can review these changes: .*Read the changes yourself with Show diff/);
+    expect(notes[1]).toMatch(
+      /^No test command is set for this chat, .*Run them yourself in \.genaicode\/worktrees\/t1/,
+    );
+    expect($('.gc-pack').textContent).not.toMatch(/Requires another agent|Choose the test command/);
+    const merge = $$('.gc-pack-detail button').find((item) => item.textContent === 'Merge locally')!;
+    expect(merge.getAttribute('title')).toMatch(
+      /^Merge locally copies this task’s changes from its worktree into your project folder\./,
+    );
+
+    turn.pack = {
+      ...turn.pack,
+      tasks: [{ ...task, pullRequest: { url: 'https://github.com/acme/app/pull/351', number: 351 } }],
+    };
+    render({ state, onPackAction: vi.fn(async () => '') });
+    const link = $<HTMLAnchorElement>('.gc-pack-pr a');
+    expect(link.textContent).toBe('PR #351');
+    expect(link.getAttribute('href')).toBe('https://github.com/acme/app/pull/351');
+    // The card does not look up whether the task opened it: the link is only a link, and the worktree
+    // keeps Merge locally, so a reply that merely mentions a pull request cannot hide the only copy.
+    expect($('.gc-pack-pr').textContent).not.toContain('there is nothing to merge here');
+    expect($$('.gc-pack-detail button').map((item) => item.textContent)).toEqual([
+      'Show diff',
+      'Merge locally',
+      'Discard',
+    ]);
+  });
   it('shows delegated tasks plainly: count, outcomes, the running command, no dollar figure, older ones folded', () => {
     const state = fixture({ approvals: [] });
     const turn = state.turns[1];

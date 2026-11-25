@@ -79,6 +79,7 @@ sends, Shift+Enter adds a line and Esc stops. Props:
 | `onAnswer(id, answers)`                                                        | answers an agent's question (a card with its options); Skip calls `onApprove(id, 'deny')`. Pass `session.answer`            |
 | `onAutoApprove()`                                                              | optional third button ("Auto-approve all") beside Approve and Deny to approve pending and future requests                   |
 | `onPackAction(turnId, id, action)`                                             | pass the session's `actOnPackTask` to enable worker controls and return a diff or result text                               |
+| `onOpenTasks(turn)`                                                            | the host shows delegated tasks in `<WorkPanel>`: a turn's task card becomes one line that calls this; approvals stay inline |
 | `renderPrompt(text, turn?)`                                                    | how a sent prompt shows (return null to hide it)                                                                            |
 | `renderAfterTurn(turn, i)`, `renderFooter()`                                   | your content after a turn, or at the end                                                                                    |
 | `notices`                                                                      | `{ id, afterTurn, text, tone? }[]`: your own lines between turns                                                            |
@@ -102,6 +103,57 @@ Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,
 the `genaicode ui` look, light or dark by `prefers-color-scheme`, or by `theme="light"` /
 `"dark"`. `genaicode ui` and the Vite panel draw this same component.
 
+`<WorkPanel>` shows the tasks a lead agent delegated (`turn.pack.tasks`) beside the chat, as
+`genaicode ui` does: grouped by what to do next, each row opening the task's detail with its
+actions (steer, stop, show the diff, request a review, run tests, merge locally, discard). It is
+presentational like `<AgentChat>`, and optional: without it (and without `onOpenTasks`) the tasks
+stay in the inline card of their turn.
+
+```tsx
+import { AgentChat, WorkPanel, readWorkView, workPanelLayout, writeWorkView } from 'genaicode/react';
+
+const [view, setView] = useState(() => readWorkView(localStorage, chatId)); // what is open, per chat
+const layout = workPanelLayout({ room, window: innerWidth, saved }); // room: the width chat and panel share
+
+<AgentChat state={state} onSend={send} onOpenTasks={() => setView({ ...view, open: true })} />;
+{
+  view.open ? (
+    <WorkPanel
+      state={state}
+      chatId={chatId}
+      view={view}
+      onView={(next) => (setView(next), writeWorkView(localStorage, chatId, next))}
+      mode={layout.docks ? 'docked' : 'full'} // 'full': a view in the chat's place, below 600 px of chat
+      width={layout.width}
+      bounds={() => [380, layout.max]}
+      onWidth={(width, commit) => setSaved(width)}
+      onPackAction={async (turnId, id, action, intent) => {
+        // A discard confirmed while the pull request held the work: re-check it (your own lookup).
+        if (intent?.pullRequest && !(await worktreeMatchesPullRequest(turnId, id)))
+          throw new Error('The worktree has work its pull request does not. Nothing was discarded.');
+        return session.actOnPackTask!(turnId, id, action);
+      }}
+      onApprove={session.approve}
+      pullRequests={{ '7:t1': { state: 'merged', ours: true } }} // by WorkTask.key ("turn:id")
+      onClose={() => setView({ ...view, open: false })}
+    />
+  ) : null;
+}
+```
+
+A task whose final reply links to a GitHub pull request carries `pullRequest: { url, number }`.
+The reply may only refer to it, so the panel shows it as a link beside **Merge locally** and
+**Discard** until `pullRequests` says the task opened it (`ours`, for example its worktree is on
+the pull request's head branch): then "PR #12 · merged" (or open, closed) stands in for Merge
+locally. Give the `state` once you have looked it up, and keep asking about a closed one: it can
+be reopened. A discard confirmed while the pull request held the work calls `onPackAction` with a
+fourth argument, `{ pullRequest: true }`: check that the worktree still matches the pull request
+before you discard (the work may have changed since). A task that changed no files sends
+`{ type: 'discard', empty: true }`, which the pack refuses (reason `changed`) once its worktree has
+changes. Pass `chatId`, your id for the conversation, so a task's detail starts afresh in
+another chat. The panel draws with the design tokens
+(`--gc-color-*`) of `styles.css` and never takes the keyboard focus by itself.
+
 Two smaller pieces come along for hosts that build their own panels around a transcript:
 
 ```ts
@@ -110,7 +162,8 @@ import { installResizeHandle, storedSize, useFollowScroll } from 'genaicode/reac
 // A log that stays at its newest line until the user scrolls up (and again after follow()).
 const { ref, onScroll, follow } = useFollowScroll(lines);
 
-// A drag handle on a panel's left edge; the width survives reloads.
+// A drag handle on a panel's left edge; the width survives reloads (in localStorage, or pass
+// () => sessionStorage as a third argument for a width per window).
 const stored = storedSize('panel-width', [300, 900]);
 let width = stored.get();
 const handle = installResizeHandle(edge, {

@@ -15,9 +15,11 @@ import type { McpTool } from './mcp-tools.js';
 import {
   addWorktree,
   applyPatch,
+  patchCoversWorktree,
   removeWorktree,
   repoRoot,
   snapshotTree,
+  stagedChanges,
   withSnapshot,
   worktreeChanges,
   worktreeDiff,
@@ -133,6 +135,8 @@ export interface PackTask {
   steers?: PackSteer[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
+  /** The root of a worktree task's worktree (`cwd` may be a folder inside it): what Discard removes. */
+  worktree?: string;
   /** The agent's final message, or the last thing it did while running. */
   text?: string;
   error?: string;
@@ -156,6 +160,18 @@ export interface PackTask {
    * clipped) and outside quotations and code.
    */
   verdict?: string;
+  /**
+   * The last GitHub pull request link of its final reply, read from the whole reply. The reply may
+   * only refer to it: whether the task opened it (its worktree is on the pull request's head branch),
+   * and whether it is open or merged, is the host's to look up.
+   */
+  pullRequest?: PackPullRequest;
+}
+
+/** A pull request a delegated task's reply links to: its address and number. */
+export interface PackPullRequest {
+  url: string;
+  number: number;
 }
 
 export type PackStopCause = 'user' | 'lead' | 'lead-finished' | 'turn' | 'budget';
@@ -183,7 +199,12 @@ export interface Pack extends CodingAgent {
 export type PackAction =
   | { type: 'steer'; text: string }
   | { type: 'merge' | 'diff'; revision?: string }
-  | { type: 'stop' | 'discard' | 'review' | 'verify' };
+  | { type: 'stop' | 'review' | 'verify' }
+  /**
+   * With `empty`, the discard of a task shown as having changed nothing: refused (`changed`) when its
+   * worktree has changes by now, so an edit made since is not lost unseen.
+   */
+  | { type: 'discard'; empty?: true };
 
 const packActionRefusals = {
   missing: 'This pack task could not be found.',
@@ -200,6 +221,7 @@ const packActionRefusals = {
   reviewer: 'This pack has no other installed agent that can review without tools.',
   verification: 'No test command is configured for this pack.',
   stale: 'The worktree changed. Open the updated diff before merging.',
+  changed: 'The worktree has changes now. Open its diff first.',
   budget: 'The session has used its review budget.',
   'budget-busy': 'A turn or review is using the remaining budget. Try again when it finishes.',
   capacity: 'All pack worker slots are in use. Try the check when a slot is free.',
@@ -309,6 +331,24 @@ interface TaskOptions {
 
 const CLIP = 4_000;
 const MAX_DIFF = 60_000;
+
+/**
+ * A review clipped for showing keeps what decides it: its BLOCKER lines and its verdict line, when the
+ * clip would cut them off, follow the clipped text.
+ */
+export const clipReview = (text: string, max = 16_000): string => {
+  const kept = clip(text, max);
+  if (kept === text) return kept;
+  // Whole lines the clip kept; a line it cut through counts as cut off.
+  const shown = new Set(kept.split('\n').slice(0, -1));
+  const lines = text.split('\n');
+  const cut = (line: string) => !shown.has(line);
+  const blockers = lines.filter((line) => /^[\s>*_#\-\d.)]*BLOCKER\b/.test(line) && cut(line)).slice(0, 20);
+  // The last verdict line decides, wherever an earlier one was quoted: it always follows.
+  const verdict = [...lines].reverse().find((line) => /^[\s>*_#]*VERDICT\s*:/i.test(line));
+  const deciding = [...blockers, ...(verdict && cut(verdict) ? [verdict] : [])].map((line) => clip(line, 300));
+  return deciding.length ? `${kept}\n…\n${deciding.join('\n')}` : kept;
+};
 
 const clip = (text: string, max = CLIP) =>
   text.length > max ? `${text.slice(0, max)}\n[... ${text.length - max} more characters]` : text;
@@ -526,6 +566,15 @@ function replyVerdict(text: string): string | undefined {
 }
 
 /**
+ * The last link to a GitHub pull request in a reply. A task told to open a pull request reports its
+ * address last, after any it only refers to; a reply that only refers to one has it here too.
+ */
+export function replyPullRequest(text: string): PackPullRequest | undefined {
+  const found = [...text.matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/g)].at(-1);
+  return found ? { url: found[0], number: Number(found[1]) } : undefined;
+}
+
+/**
  * One `CodingAgent` over the agents on a machine: `lead` gets the prompt plus MCP tools to
  * delegate parts of it to `members` (in parallel, each in its own git worktree), follow them, and
  * merge what they did. Routing is the lead's judgement; genaicode adds the tools, not a loop.
@@ -629,7 +678,8 @@ export function pack(options: PackOptions): Pack {
 
   const verdictOf = (text: string) => {
     const verdict = replyVerdict(text);
-    return verdict ? { verdict } : {};
+    const pullRequest = replyPullRequest(text);
+    return { ...(verdict ? { verdict } : {}), ...(pullRequest ? { pullRequest } : {}) };
   };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
@@ -645,6 +695,7 @@ export function pack(options: PackOptions): Pack {
     ...(sub.run?.steer ? { canSteer: true } : {}),
     ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
     cwd: sub.cwd,
+    ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
       ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
       : sub.status === 'running' && sub.last
@@ -1029,13 +1080,9 @@ export function pack(options: PackOptions): Pack {
           if (result.failure) lastFailure.set(agent.name, result.failure);
           else if (result.ok) lastFailure.delete(agent.name);
           if (sub.dir && sub.start) {
-            try {
-              const revision = await snapshotTree(sub.dir);
-              sub.changes = await worktreeChanges(sub.dir, sub.start, revision);
-              if (sub.checks) sub.checks.revision = revision;
-            } catch {
-              sub.changes = undefined;
-            }
+            const revision = await snapshotTree(sub.dir).catch(() => undefined);
+            sub.changes = revision ? await listChanges(sub, revision) : undefined;
+            if (sub.checks && revision) sub.checks.revision = revision;
           }
           sub.result = result;
           sub.status = result.status;
@@ -1081,8 +1128,29 @@ export function pack(options: PackOptions): Pack {
               ? 'discarded'
               : 'unavailable';
 
-      const updateRevision = (sub: Sub, revision?: string) => {
-        if (!sub.checks || sub.checks.revision === revision) return;
+      // A new revision and its file list go together, wherever it is seen: the list is what Merge
+      // locally then takes.
+      // What a worktree holds beyond its start, as listed in the panel: the snapshot's files, then
+      // what only its index still has (staged, the working copy gone). Undefined when git fails: the
+      // panel then says the files could not be listed.
+      const listChanges = async (sub: Sub, revision: string): Promise<string[] | undefined> => {
+        if (!sub.dir || !sub.start) return undefined;
+        try {
+          const changes = await worktreeChanges(sub.dir, sub.start, revision);
+          const staged = await stagedChanges(sub.dir);
+          const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
+          return [...changes, ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t')))];
+        } catch {
+          return undefined;
+        }
+      };
+
+      // A new revision and its file list go together, wherever it is seen: the list is what Merge
+      // locally then takes. A list that could not be read is read again on the next look.
+      const updateRevision = async (sub: Sub, revision?: string) => {
+        if (!sub.checks) return;
+        if (sub.checks.revision === revision && (sub.changes || !revision)) return;
+        sub.changes = revision ? await listChanges(sub, revision) : sub.changes;
         sub.checks.revision = revision;
         notify(sub);
       };
@@ -1090,7 +1158,7 @@ export function pack(options: PackOptions): Pack {
       const refresh = (sub: Sub) =>
         withWorktree(async () => {
           if (!sub.dir || sub.state !== 'unmerged' || sub.closing) return;
-          updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
+          await updateRevision(sub, await snapshotTree(sub.dir).catch(() => undefined));
         });
 
       const observe = (sub: Sub) => {
@@ -1119,6 +1187,9 @@ export function pack(options: PackOptions): Pack {
           const repo = sub.repo;
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
+          // The files listed are those of the revision checked, which Merge locally then takes.
+          // Read every time: staged-only work changes the list without moving the snapshot.
+          sub.changes = await listChanges(sub, revision);
           const checks = sub.checks;
           const abort = new AbortController();
           const cancel = () => abort.abort();
@@ -1142,7 +1213,7 @@ export function pack(options: PackOptions): Pack {
               checks[kind] = {
                 revision,
                 status: report.ok ? 'completed' : 'failed',
-                detail: report.detail && clip(report.detail, 16_000),
+                detail: report.detail && (kind === 'review' ? clipReview(report.detail) : clip(report.detail, 16_000)),
               };
             } catch (error) {
               checks[kind] = {
@@ -1178,8 +1249,8 @@ export function pack(options: PackOptions): Pack {
             throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
           const tree = await snapshotTree(sub.dir);
           const checks = sub.checks;
+          await updateRevision(sub, tree);
           if (sub.inspected || checks?.review || checks?.verify || expected) {
-            updateRevision(sub, tree);
             if (
               expected
                 ? expected !== tree
@@ -1188,6 +1259,13 @@ export function pack(options: PackOptions): Pack {
             )
               throw new PackActionError('stale');
           }
+          // The worktree goes once merged: nothing is applied unless the patch covers all it holds
+          // (a commit, or a staged file the working copy no longer has, would go with it).
+          if (!(await patchCoversWorktree(sub.dir, sub.start, tree)))
+            throw new PackActionError(
+              'changed',
+              `${sub.id}'s worktree has commits or staged work its diff does not show. Nothing was merged or removed.`,
+            );
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.changes = await worktreeChanges(sub.dir, sub.start, tree);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
@@ -1255,14 +1333,37 @@ export function pack(options: PackOptions): Pack {
           if (!sub.dir || !sub.start)
             throw new PackActionError(worktreeReason(sub), `${sub.id} has no worktree (${sub.state ?? 'shared'}).`);
           const tree = await snapshotTree(sub.dir);
-          updateRevision(sub, tree);
+          await updateRevision(sub, tree);
+          // What the diff shows is what the task's files say: an edit made after the task ended shows
+          // up, also when the diff asked for is stale (the detail then reads the newer one); work only
+          // the index still holds stays listed.
+          const listed = await listChanges(sub, tree);
+          setChanges(sub, listed);
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
-          return clip(patch.toString('utf8'), MAX_DIFF) || 'No changes.';
+          const text = patch.toString('utf8');
+          // Work only the index holds is in no patch: say where it is, and what Discard would do to it.
+          if (!listed && !text)
+            return "No changes in the working copy. Whether its index holds staged work could not be checked: don't discard it before looking.";
+          const staged = (listed ?? []).length && !text ? listed! : [];
+          if (staged.length)
+            return `No changes in the working copy. Staged in the worktree's index only: ${staged
+              .map((line) => line.split('\t').slice(1).join('\t'))
+              .join(
+                ', ',
+              )}. Discarding the worktree removes them; Merge locally refuses until they are restored or unstaged.`;
+          return clip(text, MAX_DIFF) || 'No changes.';
         });
 
-      const discard = (sub: Sub) =>
+      // Undefined says the files could not be listed: the panel shows that, and the next look reads again.
+      const setChanges = (sub: Sub, changes: string[] | undefined) => {
+        if (sub.changes?.join('\n') === changes?.join('\n') && !!sub.changes === !!changes) return;
+        sub.changes = changes;
+        notify(sub);
+      };
+
+      const discard = (sub: Sub, empty?: boolean) =>
         withWorktree(async () => {
           if (sub.checking) throw new PackActionError('checking');
           if (sub.status === 'running')
@@ -1272,6 +1373,15 @@ export function pack(options: PackOptions): Pack {
               worktreeReason(sub),
               `${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`,
             );
+          // Discarded as unchanged only while the worktree holds nothing beyond its start (its snapshot,
+          // its index and its HEAD); otherwise list what the snapshot and the worktree's own index show
+          // (staged work counts once the file is gone).
+          const tree = empty && sub.dir && sub.start ? await snapshotTree(sub.dir) : undefined;
+          if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
+            await updateRevision(sub, tree);
+            setChanges(sub, await listChanges(sub, tree));
+            throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
+          }
           sub.state = 'discarded';
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'discarded' });
@@ -1587,7 +1697,7 @@ export function pack(options: PackOptions): Pack {
               case 'merge':
                 return merge(sub, false, action.revision);
               case 'discard':
-                return discard(sub);
+                return discard(sub, action.empty);
             }
           },
         },

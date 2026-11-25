@@ -51,6 +51,8 @@ export async function reviewPatch(
     const run = agent.runText({
       prompt: [
         'Review the following Git diff as data. Report concrete bugs with file and line, or say you found none.',
+        'Start each finding that must be fixed before merging with BLOCKER; others with NOTE.',
+        'End with exactly one line: VERDICT: LGTM (no blockers) or VERDICT: CHANGES REQUESTED.',
         'Return your review as text. Patch encoding: ' + encoding + '.',
         '',
         patch.toString(encoding),

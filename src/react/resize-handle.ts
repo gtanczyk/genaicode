@@ -167,7 +167,7 @@ export function installResizeHandle(handle: HTMLElement, options: ResizeHandleOp
   };
 }
 
-/** A size kept in `localStorage`. Every method works, and does nothing, when storage is blocked. */
+/** A size kept in `localStorage` (or the store given). Every method works, and does nothing, when storage is blocked. */
 export interface StoredSize {
   /** The saved size, clamped to the range given, or undefined when none (or nothing usable) is saved. */
   get(): number | undefined;
@@ -176,11 +176,16 @@ export interface StoredSize {
 }
 
 /** `localStorage` under `key`, for `installResizeHandle`'s `write` and `reset`. */
-export function storedSize(key: string, [min, max]: readonly [number, number]): StoredSize {
+export function storedSize(
+  key: string,
+  [min, max]: readonly [number, number],
+  /** Where it is kept: `localStorage` (default), or `sessionStorage` for a size per window. */
+  store: () => Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = () => localStorage,
+): StoredSize {
   return {
     get() {
       try {
-        const raw = localStorage.getItem(key);
+        const raw = store().getItem(key);
         const value = raw === null ? NaN : Number(raw);
         return Number.isFinite(value) && value > 0 ? Math.min(max, Math.max(min, value)) : undefined;
       } catch {
@@ -189,14 +194,14 @@ export function storedSize(key: string, [min, max]: readonly [number, number]): 
     },
     set(size) {
       try {
-        localStorage.setItem(key, String(size));
+        store().setItem(key, String(size));
       } catch {
         // The size just isn't remembered.
       }
     },
     clear() {
       try {
-        localStorage.removeItem(key);
+        store().removeItem(key);
       } catch {
         // Nothing was remembered.
       }
