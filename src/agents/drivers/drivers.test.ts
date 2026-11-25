@@ -390,6 +390,10 @@ describe('codex driver', () => {
 });
 
 describe('muse driver', () => {
+  it('keeps a prompt that starts with a dash positional', () => {
+    expect(museArgs({ prompt: '- Review the diff', cwd: '.' }).slice(-2)).toEqual(['--', '- Review the diff']);
+  });
+
   it('maps task options to exec flags', () => {
     expect(museArgs({ prompt: 'go', cwd: '.', model: 'm', effort: 'low', maxTurns: 9 })).toEqual([
       'exec',

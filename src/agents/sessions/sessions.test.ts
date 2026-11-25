@@ -5,6 +5,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { EXIT_OK, main as runCli } from '../../cli/main.js';
 import { recordHook } from './live.js';
 import type { SessionInfo } from './types.js';
+import { withBriefing } from '../host-text.js';
+import { delegationBrief } from '../pack.js';
 import {
   claudeSessions,
   codexSessions,
@@ -123,6 +125,36 @@ describe('session sources', () => {
     );
     const [session] = await claudeSessions({ dir }).list();
     expect(session).toMatchObject({ title: 'Release plan', firstPrompt: 'Plan the release' });
+  });
+
+  it('names a session after the person, not a briefing genaicode put in its first message', async () => {
+    const dir = join(root, 'claude-briefed');
+    const brief = delegationBrief([{ name: 'codex', installed: true, running: 0, steer: false }]);
+    const done = assistant([{ type: 'text', text: 'Done.' }]);
+    file(
+      join(dir, 'projects', '-work-app', 'old.jsonl'),
+      lines(user(`${brief}\n\nMake the header calm`), done, { type: 'ai-title', aiTitle: 'Coding agents via pack' }),
+      30,
+    );
+    file(
+      join(dir, 'projects', '-work-app', 'named.jsonl'),
+      lines(user(`${brief}\n\nFix the title`), done, { type: 'custom-title', customTitle: 'Title fix' }),
+      40,
+    );
+    file(
+      join(dir, 'projects', '-work-app', 'tagged.jsonl'),
+      lines(user(withBriefing('Review the diff', brief)), done, { type: 'ai-title', aiTitle: 'Review the diff' }),
+      50,
+    );
+    const [old, named, tagged] = await claudeSessions({ dir }).list();
+    // Claude Code titled the old one after the briefing; the person's words name it instead.
+    expect(old).toMatchObject({ firstPrompt: 'Make the header calm', lastPrompt: 'Make the header calm' });
+    expect(old!.title).toBeUndefined();
+    expect(named).toMatchObject({ title: 'Title fix', firstPrompt: 'Fix the title' });
+    // Claude Code titled the tagged one from the person's words: that title stays.
+    expect(tagged).toMatchObject({ title: 'Review the diff', firstPrompt: 'Review the diff' });
+    const turns = await claudeSessions({ dir }).read!(old!);
+    expect(turns[0]!.prompt).toBe('Make the header calm');
   });
 
   it('names a Claude Code session nobody typed into by what it was sent', async () => {

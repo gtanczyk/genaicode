@@ -30,6 +30,7 @@ import {
   type PackVerification,
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
+import { withBriefing } from './host-text.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -60,7 +61,8 @@ export interface PackOptions {
   /** Let the lead draft a message for the tower operator to review. */
   sessionProposalTool?: McpTool;
   /**
-   * Replaces the briefing put in front of the lead's first prompt. `mcpServers` names the
+   * Replaces the briefing the lead gets after the person's words on its first run, in a tagged block
+   * (`<genaicode-briefing>`) that titles and previews leave out. `mcpServers` names the
    * servers the lead can pass on to a task (`delegate`'s `mcpServers`).
    */
   brief?(members: readonly PackMember[], mcpServers?: readonly string[]): string;
@@ -1447,14 +1449,18 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
+          // The first run carries the briefing after the person's words, tagged as genaicode's, so
+          // titles and previews come from those words; a resumed session has it already.
           const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
           const passable = (await shareable).map((server) => server.name);
           const brief = task.resume
             ? ''
-            : `${options.brief ? options.brief(roster, passable) : defaultBrief(roster, options.operatorMerge, passable)}\n\n`;
+            : options.brief
+              ? options.brief(roster, passable)
+              : defaultBrief(roster, options.operatorMerge, passable);
           const run = startRun(lead, {
             ...task,
-            prompt: `${brief}${task.prompt}`,
+            prompt: brief ? withBriefing(task.prompt, brief) : task.prompt,
             budget: undefined,
             mcpServers: [...(task.mcpServers ?? []), server.mcpServer],
           });

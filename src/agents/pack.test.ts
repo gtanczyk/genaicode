@@ -14,7 +14,8 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
-import { pack, PackActionError, type PackTask as PackReport } from './pack.js';
+import { personText } from './host-text.js';
+import { delegationBrief, pack, PackActionError, type PackTask as PackReport } from './pack.js';
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 
@@ -410,7 +411,7 @@ describe('pack', () => {
       'lead',
       async (task) => {
         expect(task.prompt).toContain('You lead a pack');
-        expect(task.prompt.endsWith('build it')).toBe(true);
+        expect(task.prompt.startsWith('build it\n\n<genaicode-briefing>')).toBe(true);
         const agents = JSON.parse(await tool(task, 'agents')) as Array<{ name: string; installed: boolean }>;
         expect(agents.map((agent) => [agent.name, agent.installed])).toEqual([
           ['b', true],
@@ -736,14 +737,25 @@ describe('pack', () => {
     expect(result).toMatchObject({ status: 'failed', failure: { kind: 'budget' }, costUsd: 5 });
   });
 
-  it('needs a lead that takes MCP servers, and keeps the briefing off resumed turns', async () => {
-    const cwd = repo();
-    const refused = await pack({ lead: fake('lead', async () => {}), members: [] }).run({ prompt: 'go', cwd }).result;
+  it('needs a lead that takes MCP servers', async () => {
+    const refused = await pack({ lead: fake('lead', async () => {}), members: [] }).run({ prompt: 'go', cwd: repo() })
+      .result;
     expect(refused.error).toContain('cannot attach MCP servers');
-    let prompt = '';
-    const lead = fake('lead', async (task) => void (prompt = task.prompt), { mcp: true });
-    await pack({ lead, members: [] }).run({ prompt: 'again', cwd, resume: 's1' }).result;
-    expect(prompt).toBe('again');
+  });
+
+  it("puts the briefing after the person's words, tagged, on the first turn only", async () => {
+    const cwd = repo();
+    const prompts: string[] = [];
+    const lead = fake('lead', async (task) => void prompts.push(task.prompt), { mcp: true });
+    const team = pack({ lead, members: [], brief: delegationBrief });
+    await team.run({ prompt: 'fix the header', cwd }).result;
+    await team.run({ prompt: 'again', cwd, resume: 's1' }).result;
+    expect(prompts[0]!.startsWith('fix the header\n\n<genaicode-briefing>')).toBe(true);
+    expect(prompts[0]).toContain('Other coding agents on this machine');
+    expect(prompts[0]!.endsWith('</genaicode-briefing>')).toBe(true);
+    // The resumed session has it from its first turn.
+    expect(prompts[1]).toBe('again');
+    expect(prompts.map(personText)).toEqual(['fix the header', 'again']);
   });
 });
 
@@ -845,7 +857,7 @@ describe('pack chat turns', () => {
     const lead = fake(
       'lead',
       async (task) => {
-        if (task.prompt.endsWith('next')) {
+        if (task.prompt.startsWith('next')) {
           await tool(task, 'discard', { id: 't2' });
           return;
         }

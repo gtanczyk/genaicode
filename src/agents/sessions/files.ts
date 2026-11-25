@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { SessionInfo, SessionQuery } from './types.js';
+import { personText } from '../host-text.js';
 
 export interface SessionFile {
   path: string;
@@ -193,6 +194,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function oneLine(text: string, max = 200): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/** A prompt as a one-line preview: the person's words, without a briefing genaicode added (`personText`). */
+export function promptLine(text: string, max = 200): string {
+  return oneLine(personText(text), max);
 }
 
 /** Keep previews on one terminal-safe line, including the ellipsis in the limit. */

@@ -1,7 +1,7 @@
 import { museSessions } from '../sessions/stores.js';
 import { cliAgent, type AgentOutcome, type AgentOutputParser } from '../cli-agent.js';
 import type { AgentEvent, AgentTask, CodingAgent } from '../types.js';
-import { isObject, stringField } from './json.js';
+import { isObject, positionalPrompt, stringField } from './json.js';
 import { withMuseMcp } from './muse-mcp.js';
 
 export interface MuseAgentOptions {
@@ -34,7 +34,8 @@ export function museArgs(task: AgentTask, options: MuseAgentOptions = {}): strin
   if (task.effort) args.push('--reasoning-effort', task.effort);
   if (task.maxTurns !== undefined) args.push('--max-model-steps', String(task.maxTurns));
   if (task.extraArgs) args.push(...task.extraArgs);
-  return [...args, task.prompt];
+  // A prompt that starts with a dash would read as a flag, and Muse's parser would exit 2.
+  return [...args, ...positionalPrompt(task.prompt)];
 }
 
 const TERMINAL = 'run.terminal.';
