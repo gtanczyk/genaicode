@@ -161,18 +161,27 @@ export function waitingSessions(sessions: readonly SessionInfo[], now = Date.now
     .sort((a, b) => asks(a) - asks(b) || b.updatedAt - a.updatedAt);
 }
 
+/**
+ * Where a session works, as the sessions list groups it: its directory, else the repository it
+ * works on, else (in the cloud) its platform. `key` is `''` for a session that names none of them.
+ */
+export function sessionPlace(
+  session: Pick<SessionInfo, 'cwd' | 'repository' | 'where' | 'source'>,
+): Pick<SessionProject, 'key' | 'name'> {
+  const place = session.cwd ?? session.repository;
+  // A cloud session that names no repository groups under its platform.
+  const key = place ?? (session.where === 'cloud' ? `cloud:${session.source}` : '');
+  const name = place ? lastSegment(place) || place : key ? session.source : '(no directory)';
+  return { key, name };
+}
+
 /** Group sessions by where they work, newest project first. */
 export function groupSessions(sessions: readonly SessionInfo[]): SessionProject[] {
   const projects = new Map<string, SessionProject>();
   for (const session of sessions) {
-    const place = session.cwd ?? session.repository;
-    // A cloud session that names no repository groups under its platform.
-    const key = place ?? (session.where === 'cloud' ? `cloud:${session.source}` : '');
+    const { key, name } = sessionPlace(session);
     let project = projects.get(key);
-    if (!project) {
-      const name = place ? lastSegment(place) || place : key ? session.source : '(no directory)';
-      projects.set(key, (project = { key, name, sessions: [], updatedAt: 0, agents: {} }));
-    }
+    if (!project) projects.set(key, (project = { key, name, sessions: [], updatedAt: 0, agents: {} }));
     project.sessions.push(session);
     project.updatedAt = Math.max(project.updatedAt, session.updatedAt);
     project.agents[session.agent] = (project.agents[session.agent] ?? 0) + 1;

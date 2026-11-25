@@ -73,7 +73,12 @@ function Popover({
         {button}
       </button>
       {open ? (
-        <div className={`pop${panelClassName ? ` ${panelClassName}` : ''}`} role="dialog" aria-label={panelLabel}>
+        <div
+          className={`pop${panelClassName ? ` ${panelClassName}` : ''}`}
+          data-popup
+          role="dialog"
+          aria-label={panelLabel}
+        >
           {children(() => setOpen(false))}
         </div>
       ) : null}

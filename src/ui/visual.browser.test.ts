@@ -596,8 +596,9 @@ describe('the genaicode ui page looks as its baseline', () => {
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
-  // One server and one conversation: the start page in both themes first, then a turn, then both again.
-  it('start page and a finished turn, light and dark', async () => {
+  // One server and one conversation: the start page in both themes first, then a turn, then both
+  // again, then Search open over it.
+  it('start page, a finished turn and Search, light and dark', async () => {
     const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
     try {
       for (const page of pages) {
@@ -606,7 +607,7 @@ describe('the genaicode ui page looks as its baseline', () => {
       }
       // How long the turn took differs between runs.
       const mask = (page: Page) => [page.locator('.gc-turn-footer')];
-      // All four are drawn before the test fails, so one CI run's artifact holds every new baseline.
+      // All of them are drawn before the test fails, so one CI run's artifact holds every new baseline.
       const differing: string[] = [];
       const shot = (page: Page, name: string) =>
         expectScreenshot(page, name, { mask: mask(page) }).catch((error: unknown) => {
@@ -637,6 +638,19 @@ describe('the genaicode ui page looks as its baseline', () => {
         await steady(page);
         await settle(page);
         await shot(page, `page-turn-${THEMES[index]}`);
+      }
+      // Search over the page: the chat, then the commands, the first row selected.
+      for (const [index, page] of pages.entries()) {
+        await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
+        await page.getByRole('dialog', { name: 'Search chats and sessions' }).waitFor();
+        await page.getByRole('option', { name: /Why is the cart total wrong/ }).waitFor();
+        // How long the turn took shows beside the palette: hidden here, as a mask would cover the palette too.
+        await page.addStyleTag({ content: '.gc-turn-footer { visibility: hidden; }' });
+        await steady(page);
+        await settle(page);
+        await expectScreenshot(page, `page-palette-${THEMES[index]}`).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
       }
       expect(differing).toEqual([]);
     } finally {
