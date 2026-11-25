@@ -10,6 +10,7 @@
   <b>Run your coding agents together.</b><br>
   Claude Code · Codex · Antigravity · Copilot CLI · Cursor · Gemini CLI · opencode · Muse · Mistral Vibe<br>
   A desktop app, a command line and a TypeScript API, on the logins you already have.<br>
+  <a href="docs/legal.md#your-agents-your-accounts">Runs on your machine</a> · <a href="docs/legal.md#what-genaicode-sends-over-the-network">No telemetry</a> · <a href="LICENSE">Free and open source</a>, nothing on top of your agents' plans.<br>
   <a href="https://grzegorz.tanczyk.pl/genaicode/"><b>Homepage</b></a> · <a href="https://www.npmjs.com/package/genaicode">npm</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href="docs/SUPPORT.md">Help and bug reports</a> · <a href="docs/legal.md">Terms and privacy</a>
 </p>
 
