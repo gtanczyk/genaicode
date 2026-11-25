@@ -21,11 +21,14 @@ import type {
   ApprovalRequest,
   Artifact,
   CodingAgent,
+  InputDelivery,
   McpServer,
   QuestionAnswers,
   QuestionHandler,
   RateLimit,
 } from './types.js';
+
+export type { InputDelivery } from './types.js';
 
 /** One item of a turn's transcript, built from the run's `AgentEvent`s. */
 export type SessionEntry =
@@ -53,7 +56,8 @@ export type SessionEntry =
       /** A question's answers (`request.kind === 'question'`), secrets masked. */
       answers?: QuestionAnswers;
     }
-  | { kind: 'input'; text: string }
+  /** Input the user sent while the turn ran; `delivery` says whether it reached the agent. */
+  | { kind: 'input'; text: string; delivery?: InputDelivery }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
@@ -92,6 +96,12 @@ export interface SessionState {
   agent: string;
   cwd: string;
   model?: string;
+  /**
+   * The model the agent reported running this agent session (`session` events). Cleared when `model`,
+   * the agent or its session changes, when a turn starts a new session, and when a backup agent takes over,
+   * so it never names a model the next turn will not run while `model` is unset.
+   */
+  reportedModel?: string | undefined;
   effort?: string;
   /** Planning mode for the next turn (`setMode()`). Absent: default. */
   mode?: AgentMode;
@@ -304,7 +314,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let state: SessionState = {
     agent: agent.name,
     cwd: options.cwd,
-    model: options.model,
+    // An empty setting (`--model=`) is the agent's default, as no setting is.
+    model: options.model || undefined,
     effort: options.effort,
     ...(options.mode !== undefined ? { mode: options.mode } : {}),
     sessionId: options.resume,
@@ -350,6 +361,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let runningEffort: string | undefined;
   /** The mode the running turn started with (or inherited from a resumed session). */
   let runningMode: AgentMode | undefined;
+  /** The model setting the running turn was given. */
+  let runningModel: string | undefined;
   /** Whether the caller changed `mode` since the running turn started. */
   let modeChangedDuringTurn = false;
   /** Set when `setMode(undefined)` explicitly clears an active or saved Plan mode. */
@@ -427,6 +440,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   let pastCost: number | undefined;
 
   const set = (patch: Partial<SessionState>) => {
+    // A reported model belongs to the agent session that reported it: a new or replaced one starts without.
+    if ('sessionId' in patch && patch.sessionId !== state.sessionId && !('reportedModel' in patch))
+      patch = { ...patch, reportedModel: undefined };
     state = { ...state, ...patch };
     for (const listener of [...listeners]) {
       try {
@@ -489,9 +505,16 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         if (child.type === 'approval-request') addApproval(turnId, packApproval(event.id, event.agent, child.request));
         if (child.type === 'approval-resolved') onEvent(turnId, { ...child, id: `${event.id}:${child.id}` }, own);
         if (
-          ['message', 'tool-start', 'file-change', 'error', 'approval-request', 'approval-resolved', 'done'].includes(
-            child.type,
-          )
+          [
+            'message',
+            'tool-start',
+            'tool-end',
+            'file-change',
+            'error',
+            'approval-request',
+            'approval-resolved',
+            'done',
+          ].includes(child.type)
         )
           syncPackTask(turnId, event.id);
         return;
@@ -510,6 +533,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'session':
         if (!forgetAfterTurn && own()) {
           const patch: Partial<SessionState> = { sessionId: event.sessionId };
+          // Not when the model setting changed after this turn started: the next turn runs another.
+          // A routing setting (`auto`, `Auto`, `auto-gemini-3`) is not a model: the one before it no longer runs.
+          // `model: undefined` given on purpose: the agent cannot name one model for this turn.
+          if ('model' in event && state.model === runningModel)
+            patch.reportedModel = event.model && !ROUTING_ALIAS.test(event.model) ? event.model : undefined;
           if (event.mode && agent.capabilities.plan) {
             if (runningAgent === agent) runningMode = event.mode;
             if (state.mode === undefined && !modeChangedDuringTurn) patch.mode = event.mode;
@@ -609,8 +637,11 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       case 'error':
         addEntry(turnId, { kind: 'error', message: event.message });
         return;
-      case 'budget-warning':
       case 'failover':
+        // The backup agent may not say which model it runs; the one before it no longer does.
+        if (!forgetAfterTurn && own()) set({ reportedModel: undefined });
+        return;
+      case 'budget-warning':
       case 'stderr':
       case 'raw':
       case 'done':
@@ -739,7 +770,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             : undefined;
     const mode = state.mode !== undefined && next.capabilities.plan ? state.mode : undefined;
     modeCleared = false;
-    set({ agent: next.name, sessionId, rateLimits: [], effort, mode, canAsk: agentCanAsk(next) });
+    set({
+      agent: next.name,
+      sessionId,
+      reportedModel: undefined,
+      rateLimits: [],
+      effort,
+      mode,
+      canAsk: agentCanAsk(next),
+    });
   };
 
   /** After a turn: switch agents and return true when the failure is one another agent can get past. */
@@ -776,7 +815,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     takeover = did.length
       ? `${agent.name} stopped part-way through this request (${result.failure!.kind}). ${did.join('\n')}\n\n`
       : undefined;
-    const steered = failed.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : []));
+    // Input queued as its own turn runs there; the takeover repeats only what the agent heard.
+    const steered = failed.entries.flatMap((entry) =>
+      entry.kind === 'input' && entry.delivery !== 'queued' ? [entry.text] : [],
+    );
     steeredBefore = steered.length
       ? `\n\nWhile ${agent.name} worked on it, the user added:\n${steered.map((text) => `- ${text}`).join('\n')}`
       : undefined;
@@ -874,6 +916,9 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       turns: nextTurns,
       truncatedReason,
       canSteer: false,
+      // Each turn says its model again: until then the last one may not be what runs (a new session,
+      // or a backup taking over without a failover event).
+      reportedModel: undefined,
     });
     const leavingPlan =
       turnMode === undefined &&
@@ -937,7 +982,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         ...(taskMode ? { mode: taskMode } : {}),
         prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
         cwd: state.cwd,
-        model: state.model,
+        model: (runningModel = state.model),
         effort: turnEffort,
         resume,
         signal: turnController.signal,
@@ -1104,18 +1149,33 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
         if (steerContext) turnContext.push(steerContext);
-        addEntry(turnId, { kind: 'input', text: prompt });
-        current.steer(steerText).catch(() => {
-          // The turn ended before the agent took the input: run it as the next turn instead,
-          // unless the user stopped that turn.
-          if (closed || turnController?.signal.aborted) return;
-          if (steerContext) restoreContext([steerContext]);
-          enqueue(prompt, wantedMode, wantedLeavePlan);
-          if (state.status === 'idle' && !budgetInReview()) {
-            const next = takeNext();
-            if (next !== undefined) startTurn(next.prompt, false, next.pinnedMode);
-          }
-        });
+        let sent: Extract<SessionEntry, { kind: 'input' }> = { kind: 'input', text: prompt, delivery: 'sending' };
+        addEntry(turnId, sent);
+        const deliver = (delivery: InputDelivery) => {
+          const next = { ...sent, delivery };
+          const was = sent;
+          sent = next;
+          updateTurn(turnId, (turn) => ({
+            ...turn,
+            entries: turn.entries.map((entry) => (entry === was ? next : entry)),
+          }));
+        };
+        current.steer(steerText).then(
+          (receipt) => deliver(receipt === 'taken' ? 'delivered' : 'sent'),
+          () => {
+            // The turn ended before the agent took the input: run it as the next turn instead,
+            // unless the user stopped that turn.
+            if (closed) return;
+            if (turnController?.signal.aborted) return deliver('dropped');
+            deliver('queued');
+            if (steerContext) restoreContext([steerContext]);
+            enqueue(prompt, wantedMode, wantedLeavePlan);
+            if (state.status === 'idle' && !budgetInReview()) {
+              const next = takeNext();
+              if (next !== undefined) startTurn(next.prompt, false, next.pinnedMode);
+            }
+          },
+        );
         return;
       }
       enqueue(prompt, wantedMode, wantedLeavePlan);
@@ -1231,8 +1291,10 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       fallback = agents ?? [];
       set({ fallback: fallback.length ? fallback.map((candidate) => candidate.name) : undefined });
     },
-    setModel(model) {
-      set({ model });
+    setModel(given) {
+      const model = given || undefined;
+      // What the agent reported ran under the old setting.
+      if (model !== state.model) set({ model, reportedModel: undefined });
     },
     setEffort(effort) {
       const levels = agent.capabilities.effort ?? [];
@@ -1274,7 +1336,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       known.clear();
       missedAfter = carry && state.turns.length ? resetAt : undefined;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ cwd, sessionId: undefined });
+      set({ cwd, sessionId: undefined, reportedModel: undefined });
       return true;
     },
     reset() {
@@ -1285,7 +1347,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       missedAfter = undefined;
       resetAt = state.turns.at(-1)?.id ?? 0;
       if (state.status === 'running') forgetAfterTurn = true;
-      set({ sessionId: undefined });
+      set({ sessionId: undefined, reportedModel: undefined });
     },
     clear(clearOptions) {
       if (state.status === 'running' || closed) return false;
@@ -1298,6 +1360,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       queue = [];
       set({
         sessionId: undefined,
+        reportedModel: undefined,
         turns: [],
         queued: [],
         notes: [],
@@ -1365,6 +1428,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
               : {}),
         ...(cwdChanged ? { cwd: nextCwd } : {}),
         ...(inheritedMode ? { mode: inheritedMode } : {}),
+        // The adopted turns may have run another model, even in this same session.
+        ...(adopted.length || replace ? { reportedModel: undefined } : {}),
       });
       return true;
     },
@@ -1432,6 +1497,9 @@ function failedRun(message: string): AgentRun {
     },
   };
 }
+
+/** Routing settings that pick a model per request (Copilot `auto`, Cursor `Auto`, Gemini `auto-gemini-3`), not model ids. */
+const ROUTING_ALIAS = /^auto(?:-gemini-\d+(?:\.\d+)*)?$/i;
 
 /** The reply still streaming: the last entry, or the last one before progress reports. -1 for none. */
 function openText(entries: SessionEntry[]): number {

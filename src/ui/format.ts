@@ -17,7 +17,9 @@ export {
 /** Status line: agent, model, session, usage. */
 export function statusParts(state: SessionState): string[] {
   const parts = [state.agent];
-  if (state.model) parts.push(state.model);
+  // An empty setting (`--model=`) is no setting.
+  const model = state.model || state.reportedModel;
+  if (model) parts.push(model);
   if (state.effort) parts.push(`effort ${state.effort}`);
   if (state.mode === 'plan') parts.push('plan');
   if (state.fallback?.length) parts.push(`fallback ${state.fallback.join(',')}`);

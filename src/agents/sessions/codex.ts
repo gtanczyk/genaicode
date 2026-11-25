@@ -14,10 +14,12 @@ import {
   isWithin,
   mapLimited,
   oneLine,
+  promptLine,
   select,
   timeOf,
   type SessionFile,
 } from './files.js';
+import { personText } from '../host-text.js';
 import type { SessionTurn } from '../session.js';
 import type { AgentMode } from '../types.js';
 import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
@@ -207,8 +209,8 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       }
       if (prompt) {
         conversed = true;
-        if (first && !info.firstPrompt) info.firstPrompt = oneLine(prompt);
-        if (!first) info.lastPrompt = oneLine(prompt);
+        if (first && !info.firstPrompt) info.firstPrompt = promptLine(prompt);
+        if (!first) info.lastPrompt = promptLine(prompt);
         agentLast = false;
       }
       if (reply) {
@@ -331,7 +333,8 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
     const created =
       number(row.created_at_ms) ?? (number(row.created_at) === undefined ? undefined : number(row.created_at)! * 1000);
     const first = text(row.first_user_message);
-    const named = text(row.name) ?? text(row.title);
+    // Codex stores the first user message as `title`: a briefing an older pack() put there is not a name.
+    const named = text(row.name) ?? (text(row.title) ? personText(text(row.title)!) || undefined : undefined);
     const tokens = number(row.tokens_used);
     const rollout = text(row.rollout_path);
     return [
@@ -346,7 +349,7 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
         ...(text(row.git_branch) ? { branch: text(row.git_branch)! } : {}),
         ...(text(row.git_origin_url) ? { repository: text(row.git_origin_url)! } : {}),
         ...(named ? { title: oneLine(named, 120) } : {}),
-        ...(first ? { firstPrompt: oneLine(first), lastPrompt: oneLine(first) } : {}),
+        ...(first ? { firstPrompt: promptLine(first), lastPrompt: promptLine(first) } : {}),
         ...(created !== undefined ? { startedAt: created } : {}),
         ...(text(row.model) ? { model: text(row.model)! } : {}),
         ...(tokens ? { usage: { totalTokens: tokens } } : {}),

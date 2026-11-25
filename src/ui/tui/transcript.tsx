@@ -13,7 +13,15 @@ import {
 } from '../format.js';
 import type { Notice } from '../controller.js';
 import { plainSessionText } from '../controller.js';
-import { packMetrics, packTaskStatus, packTaskTitle } from '../../react/format.js';
+import {
+  inputDeliveryText,
+  packMetrics,
+  packTaskElapsed,
+  packTaskList,
+  packTaskOutcome,
+  packTaskStatus,
+  packTaskTitle,
+} from '../../react/format.js';
 import { relayProjectName } from '../../react/session-relay.js';
 import type { ApprovalRequest } from '../../agents/types.js';
 
@@ -112,7 +120,18 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
   }
 }
 
-export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; outputLines: number; cwd?: string }) {
+export function EntryView({
+  entry,
+  outputLines,
+  cwd,
+  agent,
+}: {
+  entry: SessionEntry;
+  outputLines: number;
+  cwd?: string;
+  /** The agent the turn talks to, named in an input's delivery. */
+  agent?: string;
+}) {
   switch (entry.kind) {
     case 'progress':
       return (
@@ -200,7 +219,10 @@ export function EntryView({ entry, outputLines, cwd }: { entry: SessionEntry; ou
         <Text>
           <Text color="cyan">› </Text>
           {entry.text}
-          <Text color="gray"> (sent while working)</Text>
+          <Text color={entry.delivery === 'dropped' ? 'red' : entry.delivery === 'delivered' ? 'green' : 'gray'}>
+            {' '}
+            ({inputDeliveryText(entry.delivery, agent ?? '').replace(/^\w/, (first) => first.toLowerCase())})
+          </Text>
         </Text>
       );
     case 'error':
@@ -259,32 +281,55 @@ export function TurnView({
         {entries.map((entry, i) => (
           // Tool steps stack tightly; prose gets a blank line around it.
           <Box key={i + hidden} marginTop={i > 0 && (entry.kind === 'text' || entries[i - 1].kind === 'text') ? 1 : 0}>
-            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} />
+            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} agent={turn.pack?.lead ?? turn.agent} />
           </Box>
         ))}
       </Box>
       {turn.pack && (turn.pack.tasks.length || approvals.some((request) => request.subtaskId)) ? (
         <Box flexDirection="column" paddingLeft={2} marginTop={1}>
           <Text bold>
-            Pack tasks{' '}
-            <Text color="gray">
-              {turn.pack.lead} leads · {packMetrics(turn)}
-            </Text>
+            Delegated tasks <Text color="gray">{packMetrics(turn)}</Text>
           </Text>
-          {turn.pack.tasks.map((task) => {
-            const waiting = approvals.some((request) => request.subtaskId === task.id);
+          {(() => {
+            // Older finished tasks fold into one line; Tab still browses every task.
+            const { shown, hidden: earlier } = packTaskList(turn.pack.tasks, {
+              asking: (task) => approvals.some((request) => request.subtaskId === task.id),
+              keep: selectedTask,
+            });
             return (
-              <Text key={task.id} wrap="truncate-end">
-                <Text color={waiting ? 'yellow' : 'cyan'}>
-                  {selectedTask === task.id ? '›' : '·'} {task.id} {task.agent}
-                </Text>
-                {' · '}
-                {packTaskStatus(task, waiting)}
-                {' · '}
-                {plainSessionText(packTaskTitle(task))}
-              </Text>
+              <>
+                {shown.map((task) => {
+                  const waiting = approvals.some((request) => request.subtaskId === task.id);
+                  const elapsed = packTaskElapsed(task, now);
+                  const outcome = packTaskOutcome(task);
+                  // The title gets a line of its own, so a long one cannot push the status and
+                  // outcome off a narrow terminal.
+                  return (
+                    <Box key={task.id} flexDirection="column">
+                      <Text wrap="truncate-end">
+                        <Text color={waiting ? 'yellow' : 'cyan'}>{selectedTask === task.id ? '›' : '·'}</Text>{' '}
+                        {plainSessionText(packTaskTitle(task))}
+                      </Text>
+                      <Box paddingLeft={2}>
+                        <Text wrap="truncate-end">
+                          <Text color={waiting ? 'yellow' : 'cyan'}>{task.agent}</Text>
+                          {' · '}
+                          {packTaskStatus(task, waiting)}
+                          {elapsed ? ` · ${elapsed}` : ''}
+                          {outcome ? <Text color="gray"> · {plainSessionText(outcome)}</Text> : null}
+                        </Text>
+                      </Box>
+                    </Box>
+                  );
+                })}
+                {earlier ? (
+                  <Text color="gray">
+                    · {earlier} earlier finished {earlier === 1 ? 'task' : 'tasks'} (Tab to browse)
+                  </Text>
+                ) : null}
+              </>
             );
-          })}
+          })()}
         </Box>
       ) : null}
       {turn.result ? (

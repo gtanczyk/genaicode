@@ -179,6 +179,102 @@ describe('AgentChat', () => {
     });
     expect(onPackAction).toHaveBeenCalledWith(turn.id, 't2', { type: 'discard' });
   });
+  it('shows delegated tasks plainly: count, outcomes, the running command, no dollar figure, older ones folded', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1];
+    turn.usage = { inputTokens: 25_000, outputTokens: 5_000 };
+    turn.costUsd = 43.35;
+    const base = { agent: 'codex', cwd: '/work/app', mode: 'shared' as const, status: 'completed' as const };
+    const now = Date.now();
+    turn.pack = {
+      lead: 'claude',
+      maxParallel: 4,
+      interactive: true,
+      tasks: [
+        ...[1, 2, 3, 4, 5].map((n) => ({
+          ...base,
+          id: `t${n}`,
+          prompt: `Review part ${n}.`,
+          text: `Read it.\n\n**VERDICT: ${n === 5 ? 'CHANGES' : 'LGTM'}**`,
+          verdict: `**VERDICT: ${n === 5 ? 'CHANGES' : 'LGTM'}**`,
+          startedAt: n * 1000,
+          endedAt: n * 1000 + 65_000,
+        })),
+        {
+          ...base,
+          id: 't6',
+          prompt: 'Finish the redesign.',
+          status: 'aborted' as const,
+          error: 'codex was stopped.',
+          stoppedBy: 'user' as const,
+        },
+        {
+          ...base,
+          id: 't7',
+          prompt: 'Run the tests.',
+          status: 'running' as const,
+          canSteer: true,
+          text: 'tool shell: npm test -- --run',
+          startedAt: now - 3_000,
+        },
+      ],
+    };
+    render({ state, onPackAction: vi.fn(async () => 'ok') });
+    const card = $('.gc-pack');
+    expect(card.getAttribute('aria-label')).toBe('Delegated tasks');
+    expect($('.gc-pack-head').textContent).toBe('Delegated tasks7 tasks delegated · 1 running');
+    expect(card.textContent).not.toMatch(/\$|Pack tasks|leads|slots|shared directory/);
+    const rows = $$('.gc-pack-list button:not(.gc-pack-more)');
+    expect(rows.map((row) => row.querySelector('strong')!.textContent)).toEqual([
+      'Run the tests.',
+      'Finish the redesign.',
+      'Review part 5.',
+      'Review part 4.',
+    ]);
+    // The running row itself shows the command it runs now, not only the detail pane.
+    expect(rows[0].querySelector('.gc-pack-live')!.textContent).toBe('Shell npm test -- --run');
+    expect(rows[0].querySelector('.gc-pack-live code')!.textContent).toBe('npm test -- --run');
+    expect(rows[1].textContent).toContain('Stopped by you');
+    expect(rows[2].textContent).toContain('codex · Completed · 1m 05s');
+    expect(rows[2].querySelector('.gc-pack-outcome')!.textContent).toBe('VERDICT: CHANGES');
+    expect($('.gc-pack-now').textContent).toBe('Now Shell npm test -- --run');
+    expect($('.gc-pack-now code').textContent).toBe('npm test -- --run');
+    expect(button('Steer')).toBeTruthy();
+    expect(button('Stop task')).toBeTruthy();
+    click(button('Show 3 earlier')!);
+    expect($$('.gc-pack-list button:not(.gc-pack-more)')).toHaveLength(7);
+    click(button('Show fewer')!);
+    click(rows[1]);
+    expect($('.gc-pack-stopped').textContent).toBe('Stopped by you.');
+    expect($('.gc-pack-detail .gc-err')).toBeNull();
+  });
+  it('keeps the task someone steers selected when another task starts, with the draft', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1];
+    const running = (id: string, prompt: string) => ({
+      id,
+      prompt,
+      agent: 'codex',
+      cwd: '/work/app',
+      mode: 'shared' as const,
+      status: 'running' as const,
+      canSteer: true,
+    });
+    turn.pack = { lead: 'claude', maxParallel: 4, interactive: true, tasks: [running('t1', 'First.')] };
+    const props = render({ state, onPackAction: vi.fn(async () => 'ok') });
+    click(button('Steer')!);
+    const box = $<HTMLTextAreaElement>('.gc-pack-detail textarea');
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+    act(() => {
+      setter.call(box, 'check empty input');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // A newer task would be the default selection; the one being steered stays.
+    const next = { ...turn, pack: { ...turn.pack, tasks: [...turn.pack.tasks, running('t2', 'Second.')] } };
+    render({ ...props, state: { ...state, turns: [state.turns[0], next, ...state.turns.slice(2)] } });
+    expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t1');
+    expect($<HTMLTextAreaElement>('.gc-pack-detail textarea').value).toBe('check empty input');
+  });
   it('renders a session: turns, tools, edits, markdown, errors, queue, busy state', () => {
     render();
     expect(text('.gc-prompt')).toEqual(['CONTEXT: x\n\nOperator: fix the build', 'CONTEXT: x\n\nOperator: clean up']);
@@ -969,6 +1065,82 @@ describe('AgentChat', () => {
     render({ state, foldSteps: true });
     expect(active().lastElementChild?.textContent).toBe('Fixed.');
     expect(active().querySelector(':scope > .gc-progress')).toBeNull();
+  });
+
+  it('says whether input sent while the agent worked reached it', () => {
+    const state = fixture();
+    const turn = state.turns[1]!;
+    turn.agent = 'claude';
+    turn.entries = [
+      { kind: 'input', text: 'one', delivery: 'sending' },
+      { kind: 'input', text: 'two', delivery: 'delivered' },
+      { kind: 'input', text: 'three', delivery: 'sent' },
+      { kind: 'input', text: 'four', delivery: 'queued' },
+      { kind: 'input', text: 'five', delivery: 'dropped' },
+      { kind: 'input', text: 'six' },
+    ];
+    render({ state });
+    const labels = $$('.gc-steer small').map((el) => [el.textContent, el.getAttribute('aria-label')]);
+    expect(labels).toEqual([
+      ['Sending…', 'Your message: Sending'],
+      ['Seen by claude', 'Your message: Seen by claude'],
+      ['Sent to claude', 'Your message: Sent to claude'],
+      ['Queued for the next turn', 'Your message: Queued for the next turn'],
+      ['Not delivered: stopped first', 'Your message: Not delivered: stopped first'],
+      ['Sent while working', 'Your message: Sent while working'],
+    ]);
+    expect($$('.gc-steer').map((el) => el.getAttribute('data-delivery'))).toEqual([
+      'sending',
+      'delivered',
+      'sent',
+      'queued',
+      'dropped',
+      null,
+    ]);
+  });
+
+  it('shows input sent to a delegated task in its detail and the latest one on its row', () => {
+    const state = fixture({ approvals: [] });
+    const turn = state.turns[1]!;
+    turn.pack = {
+      lead: 'claude',
+      maxParallel: 4,
+      interactive: true,
+      tasks: [
+        {
+          id: 't1',
+          agent: 'codex',
+          cwd: '/work/a',
+          prompt: 'Write CSV',
+          mode: 'shared',
+          status: 'running',
+          canSteer: true,
+          steers: [
+            { text: 'use commas', from: 'lead', at: 1, delivery: 'delivered' },
+            { text: 'and quote fields', from: 'user', at: 2, delivery: 'sending' },
+          ],
+        },
+      ],
+    };
+    render({ state });
+    const detail = $$('.gc-pack-steers li').map((el) => [
+      el.querySelector('p')?.textContent,
+      el.querySelector('.gc-pack-steer')?.textContent,
+    ]);
+    expect(detail).toEqual([
+      ['use commas', 'Lead’s message: Seen by codex'],
+      ['and quote fields', 'Your message: Sending…'],
+    ]);
+    expect(document.querySelector('.gc-pack-steers')?.getAttribute('aria-label')).toBe('Messages sent while it ran');
+
+    turn.pack.tasks[0]!.steers![1]!.delivery = 'dropped';
+    turn.pack.tasks.push({ ...turn.pack.tasks[0]!, id: 't2', prompt: 'Write docs' });
+    render({ state });
+    const rows = $$('.gc-pack-list button .gc-pack-steer').map((el) => el.textContent);
+    expect(rows).toEqual([
+      'Your message: Not delivered: the task ended first',
+      'Your message: Not delivered: the task ended first',
+    ]);
   });
 
   it('keeps a steering input above the update that answers it, and the reply element when the turn ends', () => {

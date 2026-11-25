@@ -1,9 +1,39 @@
 /** Display helpers shared by the chat front ends (`genaicode/react`, the terminal UI). No React here. */
 import type { SessionState, SessionTurn } from '../agents/session.js';
-import type { AgentBudget, RateLimit } from '../agents/types.js';
+import type { AgentBudget, InputDelivery, RateLimit } from '../agents/types.js';
 import type { TokenUsage } from '../core/types.js';
-import type { PackTask } from '../agents/pack.js';
+import type { PackSteer, PackStopCause, PackTask } from '../agents/pack.js';
 import type { PackTaskChecks } from '../agents/pack-checks.js';
+
+/**
+ * Plain words for what became of input sent while an agent worked ("Seen by claude"). Input
+ * recorded before delivery was tracked reads "Sent while working".
+ */
+export function inputDeliveryText(delivery: InputDelivery | undefined, agent: string): string {
+  const who = agent || 'the agent';
+  switch (delivery) {
+    case 'sending':
+      return 'Sending…';
+    case 'delivered':
+      return `Seen by ${who}`;
+    case 'sent':
+      return `Sent to ${who}`;
+    case 'queued':
+      return 'Queued for the next turn';
+    case 'dropped':
+      return 'Not delivered: stopped first';
+    default:
+      return 'Sent while working';
+  }
+}
+
+/** Who sent input to a delegated task and what became of it: "Your message: Seen by codex". */
+export function packSteerText(steer: PackSteer, agent: string): string {
+  const who = steer.from === 'lead' ? 'Lead’s message' : 'Your message';
+  const delivery =
+    steer.delivery === 'dropped' ? 'Not delivered: the task ended first' : inputDeliveryText(steer.delivery, agent);
+  return `${who}: ${delivery}`;
+}
 
 export function packQuotaText(agent: string, hint: NonNullable<PackTask['quotaHint']>): string {
   const time = (ms: number) =>
@@ -49,14 +79,145 @@ export function packTaskTitle(task: Pick<PackTask, 'title' | 'prompt'>): string 
   return sentence.length > 80 ? `${sentence.slice(0, 79).trimEnd()}…` : sentence;
 }
 
+/**
+ * The card's summary line: how many tasks were delegated, how many still run, and the pack's token
+ * budget when one is set. No usage or dollar figure: the turn's cost is the lead's, priced at API
+ * rates, and says nothing about what the delegated tasks cost on a subscription.
+ */
 export function packMetrics(turn: SessionTurn): string {
   const pack = turn.pack!;
+  const count = pack.tasks.length;
   const running = pack.tasks.filter((task) => task.status === 'running').length;
-  const limits = limitChips({ budget: pack.budget, usage: turn.usage ?? {}, costUsd: turn.costUsd });
-  const usage = limits.length
-    ? limits.map((chip) => chip.text).join(' · ')
-    : formatUsage(turn.usage ?? {}, turn.costUsd);
-  return [`${running}/${pack.maxParallel} slots`, usage].filter(Boolean).join(' · ');
+  const budget = budgetStatus(pack.budget, turn.usage ?? {}, turn.costUsd)
+    .filter((row) => row.kind === 'tokens')
+    .map((row) => `budget ${formatTokens(row.used)}/${formatTokens(row.limit)} tokens`);
+  return [`${count} ${count === 1 ? 'task' : 'tasks'} delegated`, running ? `${running} running` : '', ...budget]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** One line of Markdown as plain text: no heading, quote or list marker, no emphasis or code ticks. */
+function plainLine(line: string, max = 160): string {
+  const text = line
+    .replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, '')
+    .replace(/(\*\*|__|`)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/**
+ * What a running task is doing, from its latest activity line: a tool call split into the tool's
+ * name and its argument (the command, path, pattern...), else the line as plain text.
+ */
+export function packActivity(text: string): { tool?: string; argument?: string; text: string } {
+  const call = /^tool (\S+)(?:: ([\s\S]+))?$/.exec(text.trim());
+  if (call) {
+    const tool = toolLabel(call[1]!);
+    const argument = call[2]?.replace(/\s+/g, ' ').trim();
+    return argument ? { tool, argument, text: `${tool}: ${argument}` } : { tool, text: `Running ${tool}` };
+  }
+  const first = text.split('\n').find((line) => line.trim()) ?? '';
+  const plain = plainLine(first);
+  return { text: plain.charAt(0).toUpperCase() + plain.slice(1) };
+}
+
+const STOPPED_BY: Record<PackStopCause, string> = {
+  user: 'Stopped by you',
+  lead: 'Stopped by the lead agent',
+  'lead-finished': 'Stopped when the lead agent finished',
+  turn: 'Stopped with the turn',
+  budget: 'Stopped: over budget',
+};
+
+/** The runtime's own message for a stopped task ("codex was stopped."), which says nothing the status does not. */
+function isStopNotice(task: PackTask, line: string): boolean {
+  return task.status === 'aborted' && line.trim() === `${task.agent} was stopped.`;
+}
+
+/** A diagnostic on one line, shortened but otherwise verbatim (no Markdown is stripped from it). */
+function diagnosticLine(line: string, max = 160): string {
+  const text = line.replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/**
+ * Why a stopped task stopped ("Stopped by you"), or undefined for a task that was not stopped.
+ * Without a recorded cause it is plain "Stopped".
+ */
+export function packTaskStopped(task: PackTask): string | undefined {
+  if (task.status !== 'aborted') return undefined;
+  return task.stoppedBy ? STOPPED_BY[task.stoppedBy] : 'Stopped';
+}
+
+/** A task's error worth showing: none for the runtime's "<agent> was stopped." a stopped task carries. */
+export function packTaskError(task: PackTask): string | undefined {
+  return task.error && !isStopNotice(task, task.error) ? task.error : undefined;
+}
+
+/**
+ * A task's outcome on one line: its latest activity while it runs; once it ended, the changed-file
+ * count of a worktree task, then why it was stopped, its error (verbatim, only shortened), the
+ * verdict pack read from its whole final message ("VERDICT: LGTM"), or the first line of that
+ * message. The runtime's "<agent> was stopped." of a stopped task says nothing the status does
+ * not, so it is left out.
+ */
+export function packTaskOutcome(task: PackTask): string {
+  if (task.status === 'running') return task.text ? packActivity(task.text).text : '';
+  const parts: string[] = [];
+  if (task.mode === 'worktree' && task.changes) {
+    const count = task.changes.length;
+    parts.push(count ? `${count} ${count === 1 ? 'file' : 'files'} changed` : 'No file changes');
+  }
+  const said = (text?: string) => (text ?? '').split('\n').filter((line) => line.trim() && !isStopNotice(task, line));
+  const stop = task.status === 'aborted' && task.stoppedBy ? STOPPED_BY[task.stoppedBy] : undefined;
+  const error = said(task.error)[0];
+  const line =
+    stop ?? (error ? diagnosticLine(error) : undefined) ?? plainLine(task.verdict ?? said(task.text)[0] ?? '');
+  if (line) parts.push(line);
+  return parts.join(' · ');
+}
+
+/** How long a task ran, or has been running at `now`; empty when the task carries no start time. */
+export function packTaskElapsed(task: PackTask, now = Date.now()): string {
+  if (task.startedAt === undefined) return '';
+  const end = task.endedAt ?? (task.status === 'running' ? now : undefined);
+  return end === undefined ? '' : formatDuration(end - task.startedAt);
+}
+
+/** A task that still wants attention: it runs, waits for an approval, or has changes to merge. */
+export function packTaskActive(task: PackTask, waiting = false): boolean {
+  return waiting || task.status === 'running' || (task.status === 'completed' && task.state === 'unmerged');
+}
+
+/** Finished tasks a compact task list shows before folding the older ones away. */
+export const PACK_FINISHED_SHOWN = 3;
+
+/**
+ * Delegated tasks in the order a compact list shows them: tasks asking for approval or running,
+ * then tasks with changes to merge, then finished tasks. Running tasks come newest delegated
+ * first, ended ones latest ended first (reports without `endedAt` before them, in delegation order). Unless
+ * `expanded`, finished tasks past the newest `PACK_FINISHED_SHOWN` fold away (`hidden` counts
+ * them), except `keep` (the selected task). Folding one task alone saves nothing, so it never does.
+ */
+export function packTaskList(
+  tasks: readonly PackTask[],
+  options: { asking?: (task: PackTask) => boolean; keep?: string; expanded?: boolean } = {},
+): { shown: PackTask[]; hidden: number } {
+  const asking = options.asking ?? (() => false);
+  const newest = tasks.slice().reverse();
+  // Ended tasks: the one that ended last first. A report without an end time goes before them, in
+  // delegation order (the sort is stable).
+  const end = (task: PackTask) => task.endedAt ?? Infinity;
+  const latestEnd = (a: PackTask, b: PackTask) => (end(a) === end(b) ? 0 : end(a) < end(b) ? 1 : -1);
+  const urgent = newest.filter((task) => task.status === 'running' || asking(task));
+  const ready = newest.filter((task) => !urgent.includes(task) && packTaskActive(task)).sort(latestEnd);
+  const finished = newest.filter((task) => !urgent.includes(task) && !ready.includes(task)).sort(latestEnd);
+  const fold = !options.expanded && finished.length > PACK_FINISHED_SHOWN + 1;
+  const kept = fold
+    ? finished.filter((task, index) => index < PACK_FINISHED_SHOWN || task.id === options.keep)
+    : finished;
+  return { shown: [...urgent, ...ready, ...kept], hidden: finished.length - kept.length };
 }
 
 const INPUT_KEYS = ['command', 'cmd', 'file_path', 'filePath', 'path', 'pattern', 'query', 'url', 'description'];

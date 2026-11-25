@@ -16,6 +16,7 @@ import type {
   ApprovalRequest,
   CodingAgent,
   QuestionAnswers,
+  SteerReceipt,
 } from './types.js';
 import type { SessionSource } from './sessions/types.js';
 
@@ -38,8 +39,11 @@ export interface LiveSession {
   ask(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalOutcome>;
   /** Aborts once the task is over: its process exited, or it was stopped. */
   readonly signal: AbortSignal;
-  /** Make `AgentRun.steer` send input, or pass undefined once the task stops accepting it. */
-  setSteer(steer: ((text: string) => Promise<void>) | undefined): void;
+  /**
+   * Make `AgentRun.steer` send input, or pass undefined once the task stops accepting it. Resolve
+   * with `taken` only when the agent confirmed the input is in its running turn.
+   */
+  setSteer(steer: ((text: string) => Promise<SteerReceipt | void>) | undefined): void;
 }
 
 /**
@@ -95,7 +99,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     keepRunLimit(definition.name, limit, task.env),
   );
   const iterate = () => recorder.events.iterate();
-  let steer: ((text: string) => Promise<void>) | undefined;
+  let steer: ((text: string) => Promise<SteerReceipt | void>) | undefined;
   // A consumer that falls behind pauses the agent's output. A steer awaited from inside the
   // loop needs its reply read, so output keeps flowing while one is in flight.
   let pressure = false;
@@ -106,7 +110,7 @@ function runLiveAgent(definition: LiveAgentDefinition, task: AgentTask): AgentRu
     steering++;
     flow();
     try {
-      await steer(text);
+      return await steer(text);
     } finally {
       steering--;
       flow();

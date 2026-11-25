@@ -10,6 +10,7 @@ import {
   isRecord,
   mapLimited,
   oneLine,
+  promptLine,
   readJson,
   select,
   timeOf,
@@ -44,7 +45,7 @@ const title = (value: unknown) => {
 };
 const prompt = (value: unknown) => {
   const found = text(value);
-  return found ? oneLine(found) : undefined;
+  return found ? promptLine(found) : undefined;
 };
 
 /** Drop undefined fields, so sources can build sessions with plain object literals. */
@@ -413,8 +414,8 @@ async function copilotEvents(info: SessionInfo): Promise<void> {
       if (typeof line.agentId === 'string' || typeof line.data.parentToolCallId === 'string') continue;
       const content = text(line.data.content);
       if (line.type === 'user.message' && content) {
-        if (first) info.firstPrompt ??= oneLine(content);
-        info.lastPrompt = oneLine(content);
+        if (first) info.firstPrompt ??= promptLine(content);
+        info.lastPrompt = promptLine(content);
         agentLast = false;
       }
       if (line.type === 'assistant.message') {
@@ -601,8 +602,8 @@ export function geminiSessions(options: StoreOptions = {}): SessionSource {
                 .join('\n')
                 .trim();
               if (said) {
-                if (first) info.firstPrompt ??= oneLine(said);
-                info.lastPrompt = oneLine(said);
+                if (first) info.firstPrompt ??= promptLine(said);
+                info.lastPrompt = promptLine(said);
                 agentLast = false;
               }
             }

@@ -30,6 +30,7 @@ import {
   type PackVerification,
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
+import { withBriefing } from './host-text.js';
 import type {
   AgentEvent,
   AgentFailure,
@@ -40,6 +41,7 @@ import type {
   ApprovalRequest,
   BudgetWarning,
   CodingAgent,
+  InputDelivery,
   McpServer,
   RateLimit,
 } from './types.js';
@@ -60,7 +62,8 @@ export interface PackOptions {
   /** Let the lead draft a message for the tower operator to review. */
   sessionProposalTool?: McpTool;
   /**
-   * Replaces the briefing put in front of the lead's first prompt. `mcpServers` names the
+   * Replaces the briefing the lead gets after the person's words on its first run, in a tagged block
+   * (`<genaicode-briefing>`) that titles and previews leave out. `mcpServers` names the
    * servers the lead can pass on to a task (`delegate`'s `mcpServers`).
    */
   brief?(members: readonly PackMember[], mcpServers?: readonly string[]): string;
@@ -126,6 +129,8 @@ export interface PackTask {
   status: PackTaskStatus;
   /** This running task accepts steering input. */
   canSteer?: boolean;
+  /** Input sent to the task while it ran, oldest first. */
+  steers?: PackSteer[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
   /** The agent's final message, or the last thing it did while running. */
@@ -137,6 +142,35 @@ export interface PackTask {
   /** What became of a worktree task's changes. */
   state?: 'unmerged' | 'merged' | 'discarded';
   checks?: PackTaskChecks;
+  /** When the task started and, once it ended, when it ended (epoch milliseconds). */
+  startedAt?: number;
+  endedAt?: number;
+  /**
+   * Who stopped a stopped task: a person through `act` (`user`), the lead with its `stop` tool,
+   * the lead finishing its turn while the task ran (`lead-finished`), the pack's turn being stopped
+   * (`turn`), or the pack going over its budget.
+   */
+  stoppedBy?: PackStopCause;
+  /**
+   * The verdict line of the final reply ("VERDICT: LGTM"), read from the whole reply (`text` may be
+   * clipped) and outside quotations and code.
+   */
+  verdict?: string;
+}
+
+export type PackStopCause = 'user' | 'lead' | 'lead-finished' | 'turn' | 'budget';
+
+/**
+ * Input sent to a running delegated task: by the lead's `steer` tool or a person through `act`.
+ * `delivery` is `sending`, then `delivered` (the agent confirmed it took it), `sent` (handed over
+ * without confirmation) or `dropped` (the task ended first).
+ */
+export interface PackSteer {
+  text: string;
+  from: 'lead' | 'user';
+  /** When it was sent (epoch milliseconds). */
+  at: number;
+  delivery: Exclude<InputDelivery, 'queued'>;
 }
 
 export interface Pack extends CodingAgent {
@@ -241,9 +275,15 @@ interface Sub {
   dir?: string;
   start?: string;
   status: PackTaskStatus;
+  startedAt: number;
+  endedAt?: number;
+  stoppedBy?: PackStopCause;
   run?: AgentRun;
   result?: AgentResult;
   last?: string;
+  steers?: PackSteer[];
+  /** The tool call `last` is about, and the line shown before it started. */
+  tool?: { id?: string; name: string; before?: string };
   usage?: TokenUsage;
   costUsd?: number;
   changes?: string[];
@@ -357,13 +397,51 @@ function startRun(agent: CodingAgent, task: AgentTask): AgentRun {
   }
 }
 
+/** Aborts a running task, remembering the first reason it was stopped for. */
+function halt(sub: Sub, cause: PackStopCause): void {
+  if (!sub.run) return;
+  sub.stoppedBy ??= cause;
+  sub.run.abort();
+}
+
+const TOOL_INPUT_KEYS = [
+  'command',
+  'commands',
+  'cmd',
+  'file_path',
+  'filePath',
+  'path',
+  'pattern',
+  'query',
+  'url',
+  'description',
+];
+
+/** The one argument worth showing for a tool call (its command, path, pattern...), on one line. */
+function toolInputSummary(input: unknown): string {
+  const value =
+    typeof input === 'string'
+      ? input
+      : input && typeof input === 'object' && !Array.isArray(input)
+        ? TOOL_INPUT_KEYS.map((key) => (input as Record<string, unknown>)[key]).find(
+            (field) => typeof field === 'string' || Array.isArray(field),
+          )
+        : undefined;
+  // An array is shown only when it holds strings alone (`commands: ['npm test']`); else the tool name.
+  const words = Array.isArray(value) && value.every((item) => typeof item === 'string') ? value.join(' ') : value;
+  const text = (typeof words === 'string' ? words : '').replace(/\s+/g, ' ').trim();
+  return text.length > 200 ? `${text.slice(0, 199)}…` : text;
+}
+
 /** A short line on what a running task is doing, from its latest event. */
-function activity(event: AgentEvent): string | undefined {
+function describe(event: AgentEvent): string | undefined {
   switch (event.type) {
     case 'message':
       return clip(event.text, 300);
-    case 'tool-start':
-      return `tool ${event.name}`;
+    case 'tool-start': {
+      const argument = toolInputSummary(event.input);
+      return argument ? `tool ${event.name}: ${argument}` : `tool ${event.name}`;
+    }
     case 'file-change':
       return `edited ${event.paths.join(', ')}`;
     case 'approval-request':
@@ -373,6 +451,78 @@ function activity(event: AgentEvent): string | undefined {
     default:
       return undefined;
   }
+}
+
+/** `describe`, which never throws: an event it cannot read is shown by its tool name, or not at all. */
+function activity(event: AgentEvent): string | undefined {
+  try {
+    return describe(event);
+  } catch {
+    return event.type === 'tool-start' && typeof event.name === 'string' ? `tool ${event.name}` : undefined;
+  }
+}
+
+/**
+ * Follows what a running task is doing: its latest activity line and the tool call that line is
+ * about, so the call's `tool-end` takes the line back to what was shown before the call.
+ */
+function track(sub: Sub, event: AgentEvent): void {
+  if (event.type === 'approval-resolved') {
+    sub.last = undefined;
+    sub.tool = undefined;
+    return;
+  }
+  if (event.type === 'tool-end') {
+    const tool = sub.tool;
+    const same =
+      event.id !== undefined && tool?.id !== undefined
+        ? event.id === tool.id
+        : event.name === undefined || event.name === tool?.name;
+    if (tool && same) {
+      sub.last = tool.before;
+      sub.tool = undefined;
+    }
+    return;
+  }
+  const line = activity(event);
+  if (line === undefined) return;
+  sub.tool =
+    event.type === 'tool-start'
+      ? {
+          ...(event.id !== undefined ? { id: event.id } : {}),
+          name: event.name,
+          before: sub.tool ? sub.tool.before : sub.last,
+        }
+      : undefined;
+  sub.last = line;
+}
+
+/** Fenced code: an opening line of three or more backticks or tildes. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * The verdict line of a reply ("VERDICT: LGTM"): its last line that starts with "verdict", outside
+ * quotations, fenced code and indented code, so a quoted or sample verdict is not taken for the
+ * reply's own. Read from the whole reply, before it is clipped for the report.
+ */
+function replyVerdict(text: string): string | undefined {
+  let fence: string | undefined;
+  let verdict: string | undefined;
+  for (const line of text.split('\n')) {
+    const open = FENCE.exec(line);
+    if (fence) {
+      if (open && open[1]![0] === fence[0] && open[1]!.length >= fence.length && !line.slice(open[0].length).trim())
+        fence = undefined;
+      continue;
+    }
+    if (open) {
+      fence = open[1];
+      continue;
+    }
+    if (/^( {4}|\t)/.test(line) || /^\s*>/.test(line)) continue;
+    if (/^[\W_]*verdict\b/i.test(line.trim())) verdict = line.trim();
+  }
+  return verdict && verdict.length > 200 ? `${verdict.slice(0, 199)}…` : verdict;
 }
 
 /**
@@ -477,6 +627,10 @@ export function pack(options: PackOptions): Pack {
     });
   };
 
+  const verdictOf = (text: string) => {
+    const verdict = replyVerdict(text);
+    return verdict ? { verdict } : {};
+  };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
     agent: sub.agent.name,
@@ -489,9 +643,10 @@ export function pack(options: PackOptions): Pack {
     mode: sub.mode,
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
+    ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
     cwd: sub.cwd,
     ...(sub.result?.text !== undefined
-      ? { text: clip(sub.result.text) }
+      ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
       : sub.status === 'running' && sub.last
         ? { text: sub.last }
         : {}),
@@ -500,6 +655,9 @@ export function pack(options: PackOptions): Pack {
     ...(sub.changes ? { changes: sub.changes } : {}),
     ...(sub.state ? { state: sub.state } : {}),
     ...(sub.checks ? { checks: { ...sub.checks } } : {}),
+    startedAt: sub.startedAt,
+    ...(sub.endedAt !== undefined ? { endedAt: sub.endedAt } : {}),
+    ...(sub.stoppedBy && sub.status === 'aborted' ? { stoppedBy: sub.stoppedBy } : {}),
   });
 
   const drop = async (sub: Sub) => {
@@ -524,7 +682,7 @@ export function pack(options: PackOptions): Pack {
       for (const sub of all) sub.closing = true;
       await withWorktree(async () => {});
       for (const sub of all) {
-        sub.run?.abort();
+        halt(sub, 'turn');
         sub.checking?.abort.abort();
       }
       await Promise.allSettled(all.flatMap((sub) => [sub.ended, sub.checking?.done]));
@@ -591,10 +749,10 @@ export function pack(options: PackOptions): Pack {
         return { ...(usage ? { usage } : {}), ...(costUsd !== undefined ? { costUsd } : {}) };
       };
 
-      const stopAll = () => {
+      const stopAll = (cause: PackStopCause) => {
         leadRun?.abort();
         leadReviews.abort();
-        for (const sub of mine) sub.run?.abort();
+        for (const sub of mine) halt(sub, cause);
       };
 
       /** Report the pack's usage so far and enforce `task.budget` against it. */
@@ -616,7 +774,7 @@ export function pack(options: PackOptions): Pack {
                 ? `The pack went over its token budget (${check.used} of ${check.limit}).`
                 : `The pack went over its cost budget ($${check.used.toFixed(4)} of $${check.limit}).`;
             events.push({ type: 'error', message: overBudget });
-            stopAll();
+            stopAll('budget');
             return;
           }
           if (check.used >= check.limit * (budget.warnAt ?? 0.8) && !warned.has(check.kind)) {
@@ -745,6 +903,7 @@ export function pack(options: PackOptions): Pack {
           ...(effectiveMode !== undefined ? { agentMode: effectiveMode } : {}),
           cwd: base === leadCwd ? task.cwd : base,
           status: 'running',
+          startedAt: Date.now(),
           ended: new Promise<void>((resolve) => (settle = resolve)),
         };
         if (mode === 'worktree' && repo) {
@@ -817,12 +976,12 @@ export function pack(options: PackOptions): Pack {
             : {}),
         });
         sub.run = run;
-        if (stopped || ended.signal.aborted) run.abort();
+        if (stopped || ended.signal.aborted) halt(sub, stopped ? 'turn' : 'lead-finished');
         void (async () => {
           let result: AgentResult;
           try {
             for await (const event of run) {
-              sub.last = event.type === 'approval-resolved' ? undefined : (activity(event) ?? sub.last);
+              track(sub, event);
               const reading = observeAgent(agent.name, event, extra.model);
               if (reading?.window === 'quota' && reading.name === extra.model) priorRefusal = reading;
               if (
@@ -880,6 +1039,7 @@ export function pack(options: PackOptions): Pack {
           }
           sub.result = result;
           sub.status = result.status;
+          sub.endedAt = Date.now();
           sub.run = undefined;
           events.push({ type: 'subtask', id, agent: agent.name, event: { type: 'done', result } });
           usageChanged();
@@ -1057,7 +1217,7 @@ export function pack(options: PackOptions): Pack {
         });
       };
 
-      const steer = async (sub: Sub, text: unknown) => {
+      const steer = async (sub: Sub, text: unknown, from: PackSteer['from']) => {
         if (sub.status !== 'running' || !sub.run) throw new PackActionError('not-running', `${sub.id} is not running.`);
         if (!sub.run.steer)
           throw new PackActionError(
@@ -1065,13 +1225,27 @@ export function pack(options: PackOptions): Pack {
             `${sub.agent.name} cannot take input while it runs. Stop it and delegate again.`,
           );
         if (typeof text !== 'string' || !text.trim()) throw new PackActionError('input', '`text` is required.');
-        await sub.run.steer(text);
-        return `Sent to ${sub.id}.`;
+        const record: PackSteer = { text, from, at: Date.now(), delivery: 'sending' };
+        sub.steers = [...(sub.steers ?? []), record];
+        notify(sub);
+        const settle = (delivery: PackSteer['delivery']) => {
+          record.delivery = delivery;
+          notify(sub);
+        };
+        let receipt: unknown;
+        try {
+          receipt = await sub.run.steer(text);
+        } catch (error) {
+          settle('dropped');
+          throw error;
+        }
+        settle(receipt === 'taken' ? 'delivered' : 'sent');
+        return receipt === 'taken' ? `${sub.id} took the input.` : `Sent to ${sub.id}.`;
       };
 
-      const stop = async (sub: Sub) => {
+      const stop = async (sub: Sub, cause: PackStopCause) => {
         if (sub.status !== 'running') return `${sub.id} already ended (${sub.status}).`;
-        sub.run?.abort();
+        halt(sub, cause);
         await sub.ended;
         return `Stopped ${sub.id}.`;
       };
@@ -1212,14 +1386,14 @@ export function pack(options: PackOptions): Pack {
             const sub = find(args.id);
             if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
               throw new Error(`Cannot steer ${sub.id} while in Plan mode: it is running outside Plan mode.`);
-            return steer(sub, args.text);
+            return steer(sub, args.text, 'lead');
           },
         },
         {
           name: 'stop',
           description: 'Stop a running task. What it changed so far stays in its worktree.',
           inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
-          call: (args) => stop(find(args.id)),
+          call: (args) => stop(find(args.id), 'lead'),
         },
         {
           name: 'diff',
@@ -1307,14 +1481,18 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
+          // The first run carries the briefing after the person's words, tagged as genaicode's, so
+          // titles and previews come from those words; a resumed session has it already.
           const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
           const passable = (await shareable).map((server) => server.name);
           const brief = task.resume
             ? ''
-            : `${options.brief ? options.brief(roster, passable) : defaultBrief(roster, options.operatorMerge, passable)}\n\n`;
+            : options.brief
+              ? options.brief(roster, passable)
+              : defaultBrief(roster, options.operatorMerge, passable);
           const run = startRun(lead, {
             ...task,
-            prompt: `${brief}${task.prompt}`,
+            prompt: brief ? withBriefing(task.prompt, brief) : task.prompt,
             budget: undefined,
             mcpServers: [...(task.mcpServers ?? []), server.mcpServer],
           });
@@ -1345,7 +1523,7 @@ export function pack(options: PackOptions): Pack {
           leadReviews.abort();
           // A delegation still setting up sees the run ended and removes its worktree.
           await Promise.allSettled([...settingUp]);
-          for (const sub of mine) sub.run?.abort();
+          for (const sub of mine) halt(sub, stopped ? 'turn' : 'lead-finished');
           await Promise.all([...mine].map((sub) => sub.ended));
           await server.close();
         }
@@ -1398,9 +1576,9 @@ export function pack(options: PackOptions): Pack {
             if (!mine.has(sub)) throw new PackActionError('missing', `Task ${id} belongs to another turn.`);
             switch (action.type) {
               case 'steer':
-                return steer(sub, action.text);
+                return steer(sub, action.text, 'user');
               case 'stop':
-                return stop(sub);
+                return stop(sub, 'user');
               case 'diff':
                 return diff(sub, action.revision);
               case 'review':
@@ -1415,7 +1593,7 @@ export function pack(options: PackOptions): Pack {
         },
         abort() {
           stopped = true;
-          stopAll();
+          stopAll('turn');
         },
         ...(lead.capabilities.steer
           ? {

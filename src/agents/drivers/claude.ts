@@ -233,13 +233,19 @@ export function claude(options: ClaudeAgentOptions = {}): CodingAgent {
     prepare: (task, context) => prepareClaude(task, options, context, steer, sessionModes),
     createParser: () => {
       const parser = createClaudeParser();
+      // The first session event of a run says its mode (none: default); a later one, such as a
+      // fallback's model report, changes it only when it names one.
+      let modeSeen = false;
       return {
         outcome: () => parser.outcome?.(),
         ...(parser.input ? { input: (value: unknown) => parser.input!(value) } : {}),
         event(value) {
           const events = parser.event(value);
           for (const event of events) {
-            if (event.type === 'session') rememberMode(event.sessionId, event.mode ?? 'default');
+            if (event.type !== 'session') continue;
+            if (event.mode !== undefined) rememberMode(event.sessionId, event.mode);
+            else if (!modeSeen) rememberMode(event.sessionId, 'default');
+            modeSeen = true;
           }
           return events;
         },
@@ -483,6 +489,7 @@ export function createClaudeParser(): AgentOutputParser {
   const toolNames = new Map<string, string>();
   let outcome: AgentOutcome | undefined;
   let sessionSent = false;
+  let sentModel: string | undefined;
   let lastMessage: string | undefined;
 
   return {
@@ -498,7 +505,16 @@ export function createClaudeParser(): AgentOutputParser {
       const sessionId = stringField(value, 'session_id');
       if (sessionId && !sessionSent) {
         sessionSent = true;
+        sentModel = modelOf(value).model;
         events.push({ type: 'session', sessionId, ...modelOf(value), ...modeOf(value) });
+      }
+      // A configured fallback answers with another model: the top-level reply names it.
+      if (sessionId && value.type === 'assistant' && !stringField(value, 'parent_tool_use_id')) {
+        const answered = isObject(value.message) ? stringField(value.message, 'model') : undefined;
+        if (answered && answered !== '<synthetic>' && answered !== sentModel) {
+          sentModel = answered;
+          events.push({ type: 'session', sessionId, model: answered });
+        }
       }
 
       switch (value.type) {

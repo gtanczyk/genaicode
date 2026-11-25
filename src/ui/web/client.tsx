@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
+import { personText } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
@@ -901,7 +902,9 @@ function App() {
   };
   const convTopic = conversation?.topic?.name;
   const convTitle =
-    conversation?.title || (session?.turns.length ? firstLine(session.turns[0]!.prompt) : undefined) || convTopic;
+    conversation?.title ||
+    (session?.turns.length ? firstLine(personText(session.turns[0]!.prompt)) : undefined) ||
+    convTopic;
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
@@ -1061,9 +1064,13 @@ function App() {
         )}
         <input
           aria-label="Model"
-          title="The model id, or empty for the agent's default"
-          placeholder="model"
-          size={Math.max(5, (model ?? session.model ?? '').length)}
+          title={
+            !session.model && session.reportedModel
+              ? `The model id, or empty for the agent's default. It last ran ${session.reportedModel}.`
+              : "The model id, or empty for the agent's default"
+          }
+          placeholder={(!session.model && session.reportedModel) || 'model'}
+          size={Math.max(5, (model ?? session.model ?? session.reportedModel ?? '').length)}
           value={model ?? session.model ?? ''}
           onChange={(event) => setModel(event.target.value)}
           onBlur={() => {
@@ -1081,7 +1088,7 @@ function App() {
             value={session.effort ?? 'default'}
             onChange={(event) => control(`/effort ${event.target.value}`)}
           >
-            <option value="default">effort</option>
+            <option value="default">default effort</option>
             {efforts.map((level) => (
               <option key={level} value={level}>
                 {level}

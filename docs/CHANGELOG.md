@@ -10,6 +10,20 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- The chat composer and terminal status line show the model the agent reports when none is set (`SessionState.reportedModel`) (#335)
+- A message sent while the agent works says whether it reached the agent: "Sending…", then "Seen by claude" (the agent confirmed it took it), "Sent to …" (handed over, no confirmation), "Queued for the next turn" or "Not delivered", in the desktop, browser and terminal chat (`SessionEntry` input `delivery`). Messages steered into a delegated task, by the lead or by you, show the same in the task's detail and the latest one on its row (`PackTask.steers`). `AgentRun.steer` may resolve with `'taken'` (Claude, Codex, Muse, Antigravity) or `'sent'` (`SteerReceipt`) (#347)
+
+### Fixed
+
+- Antigravity, Claude, Copilot and Gemini report the model that answered a turn, not the one configured at its start (#342)
+- The delegated-work card in the desktop, browser and terminal chat is now **Delegated tasks** ("3 tasks delegated · 1 running") instead of "Pack tasks" with slots and the lead turn's dollar figure. Running tasks come first and show the command or message they are on now in their row; finished ones show their outcome (verdict line, first line of the reply, changed files, error, or who stopped them) and how long they took; older finished tasks fold behind "Show N earlier". `PackTask` gains `startedAt`, `endedAt`, `stoppedBy` and `verdict` (the reply's verdict line, read from the whole reply outside quotes and code) (#345)
+- A chat started with `genaicode ui --delegate` is titled after what you asked, not the first line of genaicode's delegation briefing: the briefing now follows your words in a tagged `<genaicode-briefing>` block on the lead's first turn, and is left out of session titles (also Codex's indexed titles), prompt previews and taken-over transcripts, also for older sessions. Muse takes a prompt that starts with a dash (#344)
+
+## 3.3.0 — 2026-11-24
+
+### Added
+
+- [Terms and privacy](legal.md): Apache-2.0 with no separate EULA, agents run on your own accounts under their providers' terms, Auto-approve and YOLO are at your own risk, and every request GenAIcode itself makes (updates only, no telemetry). Linked from the README and **Help → Terms and Privacy** in the desktop app
 - `genaicode mcp install --send` (`sessions mcp --send`) lets an agent message your other sessions from its own chat: `sessions_send` asks you through the agent's client first (MCP elicitation) and returns the other session's answer, as an MCP task where the client takes tasks. For your own MCP tools: `ToolOutput.task`, `McpInputRequired`, `McpCallContext` and `createMcpState()` (#340)
 - `genaicode sessions --cloud` (and `sessions mcp --cloud`) also lists cloud sessions GitHub knows of: your recent pull requests grouped by the claude.ai project thread, Claude Code cloud session or Codex Cloud task they link (through `gh`), and Codex Cloud tasks from `codex cloud list`; `githubCloudSessions()`, `codexCloudSessions()` and `joinedCloudSessions()` in code (#339)
 - `genaicode sessions mcp` and `chat --sessions` let an agent read what the other agents remember about a project: `memory_list` names their instruction and note files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor rules, Claude Code's own notes) and `memory_read` returns one; `memoryTools()` and `agentMemoryFiles()` in code (#338)
