@@ -25,8 +25,10 @@
 ## Desktop app
 
 One window for all your agents: give one prompt, a lead agent splits the work, the others take
-a task each, and you review the changes and merge. Topics, plan limits and approvals sit in
-the menu bar. Free, signed and notarized, and it updates itself.
+a task each, and you review the changes and merge. Your chats are on the left, the conversation
+in the middle and the agents' work on the right: what each task does now, its changes and its
+artifacts. Topics, plan limits and approvals sit in the menu bar. Free, signed and notarized, and
+it updates itself.
 
 | Download                                                                                                                          | For                                  |
 | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |

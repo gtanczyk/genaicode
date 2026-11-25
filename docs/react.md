@@ -104,6 +104,22 @@ Theme it with CSS custom properties on the component or any ancestor: `--gc-bg`,
 the `genaicode ui` look, light or dark by `prefers-color-scheme`, or by `theme="light"` /
 `"dark"`. `genaicode ui` and the Vite panel draw this same component.
 
+`genaicode ui` and the desktop app put the chat in a window of three parts
+([design](design/desktop-layout.md)): a sidebar, the chat, and the work panel on the right. The
+chat (`<AgentChat composerLayout="card">`), the work panel (`<WorkPanel>`) and the mission strip
+(`<MissionStrip>`, or `<AgentChat missionStrip>`) are the exports described here; the sidebar,
+Search, Needs you and Settings are the app's own pages and are not exported. `<AgentChat>` alone
+keeps its props and its look: the header, the inline card of delegated tasks and
+`<ArtifactPanel>` are what a host gets that renders none of the new pieces.
+
+`<WorkPanel>` and `<MissionStrip>` draw with the design tokens `styles.css` sets on `:root`, in
+light and dark: `--gc-color-*` (`bg`, `side`, `surface`, `sunken`, `line`, `line-strong`, `text`,
+`muted`, `faint`, `accent`, `accent-soft`, `on-accent`, and `ok`, `warn`, `err`, `run`, `merge`
+each with a `-soft` shade), `--gc-type-11` to `--gc-type-24`, `--gc-space-1` to `--gc-space-8`,
+`--gc-radius-control`, `--gc-radius-card`, `--gc-elevation-1` and `--gc-elevation-2`. Set them on
+an ancestor to theme the two; the `--gc-bg` family above still themes the chat. `theme="light"` /
+`"dark"` on either forces a theme, as on the chat.
+
 `<WorkPanel>` shows the tasks a lead agent delegated (`turn.pack.tasks`) beside the chat, as
 `genaicode ui` does: grouped by what to do next, each row opening the task's detail with its
 actions (steer, stop, show the diff, request a review, run tests, merge locally, discard). It is

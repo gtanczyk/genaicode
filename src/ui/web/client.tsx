@@ -2084,7 +2084,6 @@ function App() {
                       limits={allLimits}
                       loading={loadingAgents}
                       checking={checkingAgents}
-                      setup={true}
                       onCheckAgain={() => checkAgents({ env: true })}
                     />
                   ) : (

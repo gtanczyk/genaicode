@@ -279,7 +279,17 @@ npx genaicode ui --pack            # saved project team, or all installed agents
 npx genaicode chat --pack claude:codex,gemini --web
 ```
 
-In the browser, **All sessions** in the sidebar shows what every agent on this machine has going on:
+The browser page (and the desktop app, which shows the same page) is one window in three parts.
+The **sidebar** on the left has **New chat**, **Search** (⌘K, Ctrl+K elsewhere: this app's chats,
+other agents' sessions and commands, by title and prompt), **Needs you**, **All sessions**, this
+app's chats by project, each agent's plan limits, **Settings** and **Help**. The **chat** is in the
+middle under a slim top bar with its title, topic and folder. The **work panel** on the right shows
+what the agents do: the tabs **Tasks**, **Live**, **Changes** and **Artifacts**. **Needs you** (one
+queue of every approval and question, with filters), **All sessions** and **Settings** (General,
+Agents, Team, Artifacts, Usage, About; ⌘,) open as pages in the chat's place, and Escape goes back
+to the chat.
+
+**All sessions** in the sidebar shows what every agent on this machine has going on:
 the same list as `genaicode sessions`, by project, with search over titles, prompts, directories
 and branches, and filters by agent, state and period. A local session gives the command that
 continues it in a terminal, and **Continue here** when it is from this directory; a cloud session
@@ -289,7 +299,8 @@ your sessions, the view groups them by topic instead (those that ask for you fir
 
 The bottom of the sidebar shows each agent's worst window (`claude 62% · 5h`), and the line under
 the composer names an agent above 80% of its plan: what the session's runs
-report, and before that what `genaicode limits` last saw. With a plan limit known, the price of
+report, and before that what `genaicode limits` last saw. **Settings › Usage** has every window of
+every agent and, with a session index, where each agent's work went in the last 7 days by topic. With a plan limit known, the price of
 the session's tokens is left out: on a plan it would be an estimate nobody pays.
 
 The terminal and the browser can show one session. `/web` in the terminal chat opens it in
@@ -338,8 +349,12 @@ row opens the task: what it was asked, its agent and model, when it started and 
 what it does now, the messages sent to it and whether they arrived, its result, its changed files
 and the actions that apply. A task whose reply ends with a GitHub pull request link shows
 "PR #12 · merged" (or open, closed; looked up with `gh` when it is installed and signed in) with
-the link in place of **Merge locally**. The panel's width is remembered for the window, and whether
-it is open and which task shows for each chat. In the terminal, press Tab on an empty
+the link in place of **Merge locally**. **Live** shows what everybody does now: the approvals that
+wait, the lead's plan, up to three running tasks and one feed over all of them. **Changes** lists
+the files the lead and the tasks changed, and **Artifacts** what was published. While delegated
+work runs, the **mission strip** above the message box has the count of tasks per state and the
+next approval with **Approve** and **Deny**, at every width and with the panel closed. The panel's
+width is remembered for the window, and whether it is open and which task shows for each chat. In the terminal, press Tab on an empty
 prompt, use ↑/↓ to select a task, and press `q` for the shared approval queue. The inspector
 shows which keys are available. You can steer a live worker, stop it, inspect a finished
 worktree's diff, merge the changes into the lead's directory, or discard the worktree.
@@ -442,9 +457,10 @@ them. `--agent-mcp` keeps both. A Codex too old to list its servers (`codex mcp 
 them too, with a note.
 The agent can publish artifacts: a report, chart or mockup as a self-contained HTML page, an
 image, audio, video, PDF or Markdown document. The browser UI opens both artifacts and project files
-in one resizable side panel beside the chat (with full-size toggle, version switcher, download,
-session **Artifacts** list, line jumping for `:line` / `#L12-L20` links, and rich viewers for
-Markdown, images, audio, video, PDF and sandboxed HTML); the terminal shows a line, and `/web` opens
+in the viewer of the work panel beside the chat (with a back button to where it was opened from,
+**Expand** over the chat area and **Dock**, version switcher, download, the panel's **Artifacts**
+tab, a diff first for a file the agent patched, line jumping for `:line` / `#L12-L20` links, and
+rich viewers for Markdown, images, audio, video, PDF and sandboxed HTML); the terminal shows a line, and `/web` opens
 the browser on the same session. Pages run in a sandboxed frame with no network and no access to the
 UI by default (see [agents.md](agents.md#artifacts)); `--artifact-cdn <host>[,<host>]` opts in to
 specific CDN hosts for scripts, stylesheets and fonts while keeping fetch, images and forms blocked
@@ -477,7 +493,7 @@ plan limits, and **Check again** (also polling every few seconds), while the pro
 disabled ("Connect an agent to start") and the Sessions view keeps working. `GET /api/agents`
 reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
 binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
-(or installed), the onboarding collapses into the normal home; **Connect another agent** stays in the
+(or installed), the onboarding collapses into the normal home; **Settings › Agents** lists every agent with its state, and **Connect another agent** stays in the
 agent chip's popover alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
 a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
 **Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
@@ -489,7 +505,7 @@ the home screen runs in the neutral home `~/.genaicode/home`). In the neutral ho
 directory cannot be resolved, the agent gets an `open_project` tool that asks for confirmation via a
 question card before moving the conversation into a project directory (or creating a missing one).
 The top bar shows the conversation's title, its topic and the folder's name; hover the folder or type
-`/where` to see the directory, and the file panel follows the active conversation's directory. When
+`/where` to see the directory, and the viewer follows the active conversation's directory. When
 Codex works in a directory for the first time, it asks to trust it through a question card instead
 of failing. `genaicode ui --cwd <dir>` keeps single-folder behaviour unchanged. With `--sessions
 --no-project` the page names no project and suggests questions about the work of every agent while

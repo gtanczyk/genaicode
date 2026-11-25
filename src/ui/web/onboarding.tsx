@@ -92,38 +92,17 @@ export interface OnboardingProps {
   loading: boolean;
   /** True while an explicit Check again is in flight. */
   checking: boolean;
-  /** True when no usable agent is connected yet. */
-  setup: boolean;
-  /** Agent name to scroll to and highlight (when opened from the agent picker). */
-  focusAgent?: string;
   onCheckAgain(): Promise<AgentInspection[] | undefined>;
-  onSelectAgent?(name: string): void;
-  onClose?(): void;
 }
 
 /**
- * Onboarding and agent-management view: one card per supported agent showing its local state
- * (Not installed, Installed not signed in, Ready, Installed, or Needs reinstall) with exact
- * copyable Terminal commands, vendor install link, plan limits, and Check again.
+ * The first-run screen, in the chat's place while no agent is usable: one card per supported agent
+ * showing its local state (Not installed, Installed not signed in, Ready, Installed, or Needs
+ * reinstall) with exact copyable Terminal commands, vendor install link, plan limits, and Check
+ * again. Once an agent is connected, Settings › Agents lists them.
  */
-export function Onboarding({
-  agents,
-  limits,
-  loading,
-  checking,
-  setup,
-  focusAgent,
-  onCheckAgain,
-  onSelectAgent,
-  onClose,
-}: OnboardingProps) {
+export function Onboarding({ agents, limits, loading, checking, onCheckAgain }: OnboardingProps) {
   const [note, setNote] = useState<string>();
-  const focusedRef = useRef<HTMLLIElement>(null);
-
-  useEffect(() => {
-    if (!focusAgent) return;
-    focusedRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-  }, [focusAgent]);
 
   const now = Date.now();
   const handleCheck = async () => {
@@ -133,7 +112,7 @@ export function Onboarding({
       setNote('Could not reach genaicode to check agents.');
       return;
     }
-    if (setup && !updated.some(isUsable)) {
+    if (!updated.some(isUsable)) {
       const signedOut = updated.filter((item) => item.installed && !item.broken && item.auth === 'signed-out');
       if (signedOut.length) {
         const names = signedOut.map((item) => item.guide.title).join(', ');
@@ -146,38 +125,19 @@ export function Onboarding({
 
   return (
     <section className="onboarding" aria-label="Connect a coding agent">
-      {setup ? (
-        <div className="onboarding-hero">
-          <div className="wolf wolf-compact" role="img" aria-label="genaicode wolf" />
-          <h1>Connect a coding agent</h1>
-          <p>
-            genaicode works through the coding-agent CLIs you already have — it brings no model of its own and never
-            handles your credentials. Install one in Terminal, sign in, and click Check again.
-          </p>
-        </div>
-      ) : (
-        <div className="onboarding-head">
-          <div>
-            <h1>Coding agents</h1>
-            <p>genaicode drives the agent CLIs installed on this machine using your own subscriptions or keys.</p>
-          </div>
-          {onClose ? (
-            <button type="button" className="chip" onClick={onClose}>
-              ← Chat
-            </button>
-          ) : null}
-        </div>
-      )}
+      <div className="onboarding-hero">
+        <div className="wolf wolf-compact" role="img" aria-label="genaicode wolf" />
+        <h1>Connect a coding agent</h1>
+        <p>
+          genaicode works through the coding-agent CLIs you already have — it brings no model of its own and never
+          handles your credentials. Install one in Terminal, sign in, and click Check again.
+        </p>
+      </div>
 
       <div className="onboarding-actions">
         <button type="button" className="btn-primary" disabled={checking} onClick={() => void handleCheck()}>
           {checking ? 'Checking…' : 'Check again'}
         </button>
-        {setup && onClose ? (
-          <button type="button" className="chip" onClick={onClose}>
-            ← Back to conversation
-          </button>
-        ) : null}
         {note ? (
           <span className="onboarding-note" role="status">
             {note}
@@ -193,15 +153,8 @@ export function Onboarding({
           const account = agent.name.replace(/Live$/, '');
           const agentLimits = limits.filter((limit) => limit.agent === account);
           const chips = agentLimits.length ? limitChips({ usage: {}, rateLimits: agentLimits }, now) : [];
-          const isFocused = focusAgent === agent.name;
           return (
-            <li
-              key={agent.name}
-              ref={isFocused ? focusedRef : undefined}
-              className={`agent-card${isFocused ? ' focused' : ''}`}
-              data-agent={agent.name}
-              data-state={cardState}
-            >
+            <li key={agent.name} className="agent-card" data-agent={agent.name} data-state={cardState}>
               <div className="card-top">
                 <div className="card-title">
                   <strong>{guide.title}</strong>
@@ -294,11 +247,6 @@ export function Onboarding({
                       </div>
                     ) : null}
                   </div>
-                  {!setup && onSelectAgent ? (
-                    <button type="button" className="btn-use" onClick={() => onSelectAgent(agent.name)}>
-                      Use {guide.title}
-                    </button>
-                  ) : null}
                 </div>
               ) : null}
             </li>

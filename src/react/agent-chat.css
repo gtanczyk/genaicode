@@ -18,8 +18,9 @@
  * the chat can use them too, and again on a .gc-chat whose theme prop forces a theme.
  *
  * They are added beside the variables above and do not replace them: the chat still draws with
- * its --_ variables, and --gc-bg and the others still theme it. Only --_mono reads a token so
- * far (the value is the same, and stays its fallback). The names are internal until the layout that uses them ships.
+ * its --_ variables, and --gc-bg and the others still theme it; only its --_mono reads a token
+ * (the value is the same, and stays its fallback). <WorkPanel>, <MissionStrip> and the page of
+ * `genaicode ui` draw with the tokens.
  */
 :root,
 :host,
