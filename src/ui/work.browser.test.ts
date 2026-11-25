@@ -279,6 +279,14 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     await work.getByRole('button', { name: 'Approve for t4' }).click();
     await expect.poll(() => decisions).toEqual(['approve']);
     await expect.poll(() => toggle.textContent()).toBe('Work');
+    // The row keeps the keyboard and stays where it was pressed, now as a running task...
+    const approved = work.locator('[data-task="1:t4"] .gc-work-row');
+    await expect.poll(() => approved.locator('.gc-work-sr').textContent()).toBe('Running');
+    expect(await approved.evaluate((element) => element === document.activeElement)).toBe(true);
+    expect(await work.locator('.gc-work-group-head button').first().textContent()).toBe('Needs you 1');
+    // ...and joins the running ones once the focus and the pointer have left it.
+    await composer.focus();
+    await page.mouse.move(0, 0);
     await expect
       .poll(() => work.locator('.gc-work-group-head button').allTextContents())
       .toEqual(['Failed 1', 'Running 2', 'Unmerged 1', 'Done 1']);

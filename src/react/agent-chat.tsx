@@ -84,6 +84,12 @@ export interface AgentChatProps {
    */
   state: SessionState | null | undefined;
   /**
+   * Your id for the conversation `state` is of. What the inline task card remembers (its filter,
+   * its cleared tasks, the task it shows) belongs to one conversation and turn: with another
+   * `chatId` it starts afresh. Without it a conversation is told apart by when its first turn started.
+   */
+  chatId?: string;
+  /**
    * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
    * files go with it: `files` is there when `attachments` is on and the user attached some.
    * A promise that resolves to false says the message was not sent: the composer takes the
@@ -438,11 +444,13 @@ export function AgentChat(props: AgentChatProps) {
       );
     }
   };
+  // Turn ids start again in each conversation: what a turn remembers is kept per conversation.
+  const conversation = props.chatId ?? String(state.turns[0]?.startedAt ?? '');
   state.turns.forEach((turn, index) => {
     flush(index);
     items.push(
       <Turn
-        key={turn.id}
+        key={`${conversation}:${turn.id}`}
         turn={turn}
         now={now}
         cwd={state.cwd}

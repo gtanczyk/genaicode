@@ -1785,6 +1785,67 @@ img.gc-artifact-view {
   color: var(--_accent);
   font-size: 0.85em;
 }
+/* A long list of delegated tasks: a summary, a filter, one-line rows. */
+.gc-chat .gc-pack-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--_border);
+}
+.gc-chat .gc-pack-tools .gc-pack-summary {
+  flex: 1 1 100%;
+  color: var(--_muted);
+}
+.gc-chat .gc-pack-tools input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--_border);
+  border-radius: var(--_radius);
+  background: var(--_bg);
+  font: inherit;
+  font-size: 0.9em;
+  color: inherit;
+}
+.gc-chat .gc-pack-list[data-dense] {
+  max-height: 32rem;
+  overflow-y: auto;
+}
+.gc-chat .gc-pack-list[data-dense] button {
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+}
+.gc-chat .gc-pack-list[data-dense] .gc-pack-dot {
+  margin-top: 0;
+}
+.gc-chat .gc-pack-list[data-dense] .gc-pack-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 0.5rem;
+}
+.gc-chat .gc-pack-list[data-dense] strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.gc-chat .gc-pack-list[data-dense] .gc-pack-row > small {
+  white-space: nowrap;
+}
+/* One line a task: what it does now and how it ended are in its detail. */
+.gc-chat .gc-pack-list[data-dense] .gc-pack-live,
+.gc-chat .gc-pack-list[data-dense] .gc-pack-outcome,
+.gc-chat .gc-pack-list[data-dense] .gc-pack-steer {
+  display: none;
+}
+.gc-chat .gc-pack-none {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  color: var(--_muted);
+}
 .gc-chat .gc-pack .gc-pack-label {
   margin: 0.6rem 0 0.2rem;
   font-weight: 600;
@@ -2676,6 +2737,168 @@ body[data-resizing='true'] iframe {
   gap: 4px;
   padding-right: 6px;
   flex: none;
+}
+/* The list at scale: filters above it, one-line rows, groups cut to their first rows. */
+.gc-work-tools {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--gc-color-line);
+}
+.gc-work[data-mode='full'] .gc-work-tools > * {
+  width: 100%;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.gc-work-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.gc-work-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 13px;
+  border: 1px solid var(--gc-color-line-strong);
+  background: transparent;
+  font-size: var(--gc-type-12);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gc-work .gc-work-chip {
+  color: var(--gc-color-muted);
+}
+.gc-work .gc-work-chip[aria-pressed='true'] {
+  background: var(--gc-color-text);
+  border-color: var(--gc-color-text);
+  color: var(--gc-color-bg);
+}
+.gc-work-chip i {
+  font-style: normal;
+  font-weight: 600;
+}
+.gc-work-tools .gc-work-acts {
+  margin: 0;
+  flex-wrap: nowrap;
+}
+.gc-work-field.gc-work-filter {
+  height: 28px;
+  font-size: var(--gc-type-12);
+}
+.gc-work-seg {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border-radius: var(--gc-radius-control);
+  background: var(--gc-color-sunken);
+}
+.gc-work-seg button {
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: var(--gc-type-12);
+  font-weight: 500;
+  cursor: pointer;
+}
+.gc-work .gc-work-seg button {
+  color: var(--gc-color-muted);
+}
+.gc-work .gc-work-seg button[aria-pressed='true'] {
+  background: var(--gc-color-bg);
+  color: var(--gc-color-text);
+  box-shadow: 0 0 0 1px var(--gc-color-line);
+}
+.gc-work-group-head {
+  gap: 6px;
+}
+.gc-work-group-head > button:first-child {
+  flex: none;
+}
+.gc-work-group-head > button:first-child:disabled {
+  cursor: default;
+}
+.gc-work-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-faint);
+}
+.gc-work-group-head .gc-work-btn {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--gc-type-12);
+  font-weight: 500;
+  padding: 0 7px;
+}
+.gc-work-more {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 6px 8px 6px 28px;
+  border-radius: var(--gc-radius-control);
+  text-align: left;
+  font-size: var(--gc-type-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+.gc-work .gc-work-more {
+  color: var(--gc-color-muted);
+}
+.gc-work .gc-work-more:hover {
+  background: var(--gc-color-surface);
+  color: var(--gc-color-text);
+}
+.gc-work-foot {
+  margin-top: 14px;
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-faint);
+}
+.gc-work-foot span {
+  display: block;
+}
+/* The clear button shows with the pointer or the keyboard on its row. */
+.gc-work-row-clear {
+  padding-right: 2px;
+}
+.gc-work-task:not(:hover):not(:focus-within) .gc-work-row-clear {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.gc-work-row-clear .gc-work-btn.gc-work-icon {
+  width: 22px;
+  height: 22px;
+}
+.gc-work-scroll[data-dense] .gc-work-task {
+  position: relative;
+  height: 28px;
+}
+.gc-work-scroll[data-dense] .gc-work-row {
+  grid-template-columns: 12px auto minmax(0, 3fr) minmax(0, 2fr) auto;
+  gap: 0 8px;
+  height: 28px;
+  padding: 0 8px;
+}
+.gc-work-scroll[data-dense] .gc-work-line {
+  grid-column: 4;
+  grid-row: 1;
+}
+.gc-work-scroll[data-dense] .gc-work-who {
+  grid-column: 5;
+  grid-row: 1;
 }
 /* Task detail */
 .gc-work-back {
