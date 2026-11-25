@@ -43,9 +43,19 @@ update does not lose it. `--sessions` gives the agent the session index as tools
 about what goes on in a project is answered from it and not by searching the disk; in the neutral
 home, `open_project` lets the agent offer to move the conversation into a project directory after
 your confirmation. The empty chat opens on your topics: those that wait for you, those agents work
-on, recent topics, and each agent's plan limits; a topic opens its sessions or starts a new chat in
-that topic's directory. The page gets no Tauri commands; it is the page a browser would load.
-Quitting the app stops the server.
+on and recent topics; a topic opens its sessions or starts a new chat in that topic's directory.
+The page gets no Tauri commands; it is the page a browser would load. Quitting the app stops the
+server.
+
+The window has three parts ([design](../../docs/design/desktop-layout.md)). The **sidebar** on the
+left has New chat, Search (⌘K), Needs you, All sessions, the chats by project, each agent's plan
+limits, Settings and Help; ⌘B folds it to a rail. The **chat** is in the middle under a slim top
+bar, with the composer and, while delegated work runs, the mission strip above it. The **work
+panel** on the right (⌘⌥B) has the tabs Tasks, Live, Changes and Artifacts, and opens files and
+artifacts in its viewer. Needs you, All sessions and Settings (General, Agents, Team, Artifacts,
+Usage, About) are pages in the chat's place; Escape goes back to the chat. On macOS the sidebar's
+top strip and the top bar drag the window. [docs/cli.md](../../docs/cli.md#chat-with-an-agent-terminal-and-browser)
+describes each part.
 
 Open **File → Session** to copy the current session ID, file path, Markdown transcript or raw JSON state, or to save the transcript as Markdown or JSON. The `⋯` menu in the chat’s top bar and on each row in **All sessions** also offer these actions.
 

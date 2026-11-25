@@ -1,7 +1,11 @@
 # Desktop window layout with sidebars
 
-Status: design proposal, revision 2 (after three design reviews and the owner's direction; see
-[Changes after review](#changes-after-review)). Nothing in `src/` changes with this document.
+Status: implemented. All 13 steps of the [PR breakdown](#proposed-pr-breakdown) are merged; the
+text below is revision 2 of the proposal (after three design reviews and the owner's direction; see
+[Changes after review](#changes-after-review)) and is kept as the record of the design. Where the
+code and this document differ, the code and `docs/cli.md` are right. Not built: the **To** chip and
+`@t9` in the composer, bulk **Approve all** / **Merge all**, the "Open the work panel when work
+starts" and "Auto-approve all by default" settings; the open questions at the end stay open.
 
 Mockup: [`desktop-layout.html`](./desktop-layout.html), one self-contained file. Open it from disk;
 the dark bar at the bottom switches states and is not part of the design. A state can be linked:
