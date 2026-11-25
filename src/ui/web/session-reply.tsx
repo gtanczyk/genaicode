@@ -2,21 +2,36 @@ import { useState, type FormEvent } from 'react';
 import type { SandboxPolicy } from '../../agents/types.js';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 
+/** A reply being written: its text and the sandbox chosen for it (`''`: the driver's default). */
+export interface SessionReplyDraft {
+  prompt: string;
+  sandbox: string;
+}
+const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
+
 export function SessionReply({
   session,
   token,
   sandboxes,
   onSent,
   onClose,
+  draft,
+  onDraft,
 }: {
   session: SessionInfo;
   token: string;
   sandboxes: readonly SandboxPolicy[];
   onSent(reply: string): void;
   onClose(): void;
+  /** What is typed, kept by the caller so it outlives this editor. Default: kept here. */
+  draft?: SessionReplyDraft;
+  onDraft?(draft: SessionReplyDraft): void;
 }) {
-  const [prompt, setPrompt] = useState('');
-  const [sandbox, setSandbox] = useState('');
+  const [own, setOwn] = useState<SessionReplyDraft>(EMPTY_DRAFT);
+  const { prompt, sandbox } = draft ?? own;
+  const keep = (next: SessionReplyDraft) => (onDraft ? onDraft(next) : setOwn(next));
+  const setPrompt = (value: string) => keep({ prompt: value, sandbox });
+  const setSandbox = (value: string) => keep({ prompt, sandbox: value });
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
   const submit = async (event: FormEvent) => {

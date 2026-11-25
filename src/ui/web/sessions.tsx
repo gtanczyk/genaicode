@@ -94,6 +94,7 @@ export function Sessions({
   nativeSave,
   onStatus,
   onAnswered,
+  onReplied,
 }: {
   token: string;
   /** Where the chat works: sessions from here can be taken over. */
@@ -104,6 +105,8 @@ export function Sessions({
   onContinue(session: SessionInfo): void;
   /** A question a session held open was answered here (or already elsewhere): the window's other lists drop it. */
   onAnswered?(ask: string): void;
+  /** A reply went to a session from here: the window's other lists stop offering one. */
+  onReplied?(session: SessionInfo): void;
   /** Start a new conversation in the resolved directory of a topic (`--home` mode). */
   onNewTopicChat?(topicId: string): void;
   /** Show only this topic (its id), as picked on the start screen. */
@@ -514,6 +517,7 @@ export function Sessions({
                         current?.source === session.source && current.id === session.id ? undefined : current,
                       );
                       setRound((value) => value + 1);
+                      onReplied?.(session);
                     }}
                   />
                 ) : null,

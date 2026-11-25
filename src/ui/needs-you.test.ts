@@ -3,6 +3,7 @@ import type { PendingAsk } from '../agents/sessions/answer.js';
 import type { TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import {
+  chatsWithoutAnswered,
   needsFilters,
   needsItems,
   needsSessions,
@@ -364,4 +365,22 @@ it('drops what was answered from here from a listing read before, until it is re
   expect(withoutAnswered([cloud], asks, new Set(['abc'])).sessions[0]).toBe(cloud);
   // Nothing answered: the listing as it is.
   expect(withoutAnswered(sessions, asks, new Set()).sessions).toBe(sessions);
+});
+
+it('drops what was answered from here from an own chat every agent’s list leaves out, too', () => {
+  // An automated Codex chat of this app: only the app's own listing has it.
+  const bot = session('bot', { source: 'codex', agent: 'codex', waitingFor: 'approval', title: 'Nightly bump' });
+  const ask: PendingAsk = { ...asks[0]!, id: 'bot-1', session: 'bot' };
+  const before = { sessions: [], own: [bot], asks: [ask], senders: input.senders, now };
+  expect(needsItems(before).map((one) => one.key)).toEqual(['session:codex:bot:bot-1']);
+  expect(count(before)).toBe(1);
+  // Without the question alone, the row still waits on a tool: a card that sends you to codex.
+  expect(needsItems({ ...before, asks: [] })).toHaveLength(1);
+  const after = chatsWithoutAnswered([bot], [], [ask], new Set(['bot-1']));
+  expect(after.own[0]).toMatchObject({ state: 'active', waitingFor: undefined });
+  expect(after.asks).toEqual([]);
+  // Neither a card that says to answer it elsewhere, nor a count.
+  const shown = { ...before, own: after.own, sessions: after.sessions, asks: after.asks };
+  expect(needsItems(shown)).toEqual([]);
+  expect(count(shown)).toBe(0);
 });

@@ -159,6 +159,20 @@ export function withoutAnswered(
 }
 
 /**
+ * `withoutAnswered` for both lists the window reads: every agent's sessions and this app's own
+ * chats. An own chat every agent's list leaves out (an automated one) asks too, so an answer given
+ * from here settles it as well.
+ */
+export function chatsWithoutAnswered(
+  own: SessionInfo[],
+  sessions: SessionInfo[],
+  asks: PendingAsk[],
+  answered: ReadonlySet<string>,
+): { own: SessionInfo[]; sessions: SessionInfo[]; asks: PendingAsk[] } {
+  return { own: withoutAnswered(own, asks, answered).sessions, ...withoutAnswered(sessions, asks, answered) };
+}
+
+/**
  * The question a hook holds open for this session, where no tower answers it: hooks run beside
  * local sessions, so a cloud row is never the one that asks. Nothing when another local row has
  * the same agent and id: an answer could reach the wrong one.

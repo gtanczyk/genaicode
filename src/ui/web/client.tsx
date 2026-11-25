@@ -43,7 +43,7 @@ import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
-import { needsItems, needsSessions, withoutAnswered, type NeedsDecision } from '../needs-you.js';
+import { chatsWithoutAnswered, needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
 import { NeedsYouPage, useFirstSeen } from './needs-you.js';
 import { chatLimits, SettingsPage, type SettingsSection } from './settings.js';
 import { applyTheme, readTheme, useTheme } from './theme.js';
@@ -256,11 +256,11 @@ function useChats(enabled: boolean, stamp: string): Chats {
     };
   }, [enabled, stamp, round]);
   return useMemo(() => {
-    const { sessions: all, asks } = withoutAnswered(listing.sessions ?? NO_SESSIONS, listing.asks ?? [], gone);
+    const shown = chatsWithoutAnswered(own, listing.sessions ?? NO_SESSIONS, listing.asks ?? [], gone);
     return {
-      own,
-      all,
-      asks,
+      own: shown.own,
+      all: shown.sessions,
+      asks: shown.asks,
       senders: listing.senders ?? [],
       refresh: () => setRound((value) => value + 1),
       answered: (ask) => {
@@ -1574,6 +1574,7 @@ function App() {
             // The chat says what happened, also when it could not.
             onContinue={takeOverChat}
             onAnswered={chats.answered}
+            onReplied={chats.replied}
           />
         ) : null}
         {panel === 'needs' ? (

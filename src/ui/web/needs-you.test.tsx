@@ -294,3 +294,23 @@ it('says what the tower last did also after a reply was sent from here', async (
   expect(status()).toContain('Sent to claude');
   expect(host.querySelector('[data-from="tower"]')?.textContent).toBe('Could not send the message to codex / flaky.');
 });
+
+it('keeps an unsent reply when a filter hides its card for a while', async () => {
+  render(props());
+  const chips = () => Array.from(host.querySelectorAll('.chipf'));
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  const field = () => card('Gate verdict retries').querySelector('textarea')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field(), 'On 502 too.');
+    field().dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  // Approvals only: the question's card goes, and comes back under All with what was typed.
+  await click(chips()[4]!);
+  expect(cards().some((one) => one.textContent?.includes('Gate verdict retries'))).toBe(false);
+  await click(chips()[0]!);
+  expect(field().value).toBe('On 502 too.');
+  // Cancel drops it: the next reply starts empty.
+  await click(button(card('Gate verdict retries'), 'Cancel'));
+  await click(button(card('Gate verdict retries'), 'Reply'));
+  expect(field().value).toBe('');
+});
