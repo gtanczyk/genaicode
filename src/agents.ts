@@ -122,6 +122,7 @@ export type {
   PackOptions,
   PackPullRequest,
   PackSteer,
+  PackStep,
   PackTask,
   PackTaskStatus,
 } from './agents/pack.js';

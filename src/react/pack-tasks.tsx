@@ -66,29 +66,30 @@ export function PackTasks({
   approval(request: ApprovalRequest): ReactNode;
 }) {
   const pack = turn.pack!;
+  const visibleTasks = pack.tasks.filter((item) => !item.dismissed);
   const [selected, select] = useState<string>();
   const [expanded, setExpanded] = useState(false);
   const asking = (task: PackTask) => pending.some((request) => request.subtaskId === task.id);
   // A long list: one-line rows, a filter, the first rows only, and finished tasks that can be cleared.
-  const dense = pack.tasks.length > PACK_DENSE_ABOVE;
+  const dense = visibleTasks.length > PACK_DENSE_ABOVE;
   const [query, setQuery] = useState('');
   const [more, setMore] = useState(0);
   const [cleared, setCleared] = useState<string[]>([]);
   // A cleared task is not picked by itself; one that runs again or asks is back.
   const gone = (task: PackTask) => dense && cleared.includes(task.id) && packTaskClearable(task, asking(task));
   const first = packTaskList(
-    pack.tasks.filter((task) => !gone(task)),
+    visibleTasks.filter((task) => !gone(task)),
     { asking },
   ).shown[0]?.id;
   const id = selected ?? first ?? (pending.length ? 'queue' : undefined);
-  const long = dense ? packDenseList(pack.tasks, { asking, keep: id, query, more, cleared }) : undefined;
-  const list = long ?? packTaskList(pack.tasks, { asking, keep: id, expanded });
-  const foldable = !dense && packTaskList(pack.tasks, { asking }).hidden > 0;
-  const task = pack.tasks.find((item) => item.id === id);
+  const long = dense ? packDenseList(visibleTasks, { asking, keep: id, query, more, cleared }) : undefined;
+  const list = long ?? packTaskList(visibleTasks, { asking, keep: id, expanded });
+  const foldable = !dense && packTaskList(visibleTasks, { asking }).hidden > 0;
+  const task = visibleTasks.find((item) => item.id === id);
   const waiting = pending.filter((request) => request.subtaskId === id);
-  const now = useNow(pack.tasks.some((item) => item.status === 'running'));
+  const now = useNow(visibleTasks.some((item) => item.status === 'running'));
   // One task needs no list beside it: its card takes the whole width.
-  const single = pack.tasks.length === 1 && id !== 'queue';
+  const single = visibleTasks.length === 1 && id !== 'queue';
   const row = (item: PackTask) => {
     const asks = asking(item);
     const status = statusKey(item, asks);
@@ -157,7 +158,7 @@ export function PackTasks({
       </div>
       {long ? (
         <div className="gc-pack-tools">
-          <small className="gc-pack-summary">{packWorkLine(pack.tasks, pending)}</small>
+          <small className="gc-pack-summary">{packWorkLine(visibleTasks, pending)}</small>
           <input
             type="search"
             value={query}
@@ -190,7 +191,7 @@ export function PackTasks({
           ) : null}
         </div>
       ) : null}
-      {pack.tasks.length || id === 'queue' ? (
+      {visibleTasks.length || id === 'queue' ? (
         <div className={single ? 'gc-pack-work gc-pack-single' : 'gc-pack-work'}>
           {single ? null : (
             <div className="gc-pack-list" role="group" aria-label="Task list" data-dense={dense ? 'true' : undefined}>

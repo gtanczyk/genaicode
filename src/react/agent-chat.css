@@ -299,18 +299,31 @@
   font-size: 0.93em;
 }
 .gc-prompt.gc-steer small {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   color: var(--_muted);
   font-size: 0.75em;
+  font-weight: 600;
 }
-.gc-prompt.gc-steer[data-delivery='delivered'] small {
+.gc-prompt.gc-steer small time {
+  margin-left: auto;
+  font-weight: 400;
+}
+.gc-prompt.gc-steer small[data-receipt='delivered'] {
+  color: var(--_accent);
+}
+.gc-prompt.gc-steer small[data-receipt='answered'] {
   color: var(--_ok);
 }
-.gc-prompt.gc-steer[data-delivery='queued'] small {
+.gc-prompt.gc-steer small[data-receipt='queued'] {
   color: var(--_warn);
 }
-.gc-prompt.gc-steer[data-delivery='dropped'] small {
+.gc-prompt.gc-steer small[data-receipt='failed'] {
   color: var(--_error);
+}
+.gc-prompt.gc-steer small[data-receipt] time {
+  color: var(--_muted);
 }
 .gc-agent-row {
   display: flex;
@@ -3034,30 +3047,132 @@ body[data-resizing='true'] iframe {
   font-weight: 650;
   margin-bottom: 6px;
 }
-.gc-work-steers {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 6px;
+.gc-work-line.gc-work-doing {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
 }
-.gc-work-steers li {
-  padding: 7px 10px;
-  border-radius: var(--gc-radius-control);
-  background: var(--gc-color-sunken);
-  border: 1px dashed var(--gc-color-line-strong);
+.gc-work-doing b {
+  font-weight: 600;
+  color: var(--gc-color-run);
+  flex: none;
 }
-.gc-work-steers p {
-  white-space: pre-wrap;
+.gc-work-doing code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gc-work-dt {
+  flex: none;
+  white-space: pre;
+}
+.gc-work-card .gc-work-say {
+  margin-top: 6px;
+  font-size: var(--gc-type-13);
+  border-left: 2px solid var(--gc-color-run);
+  padding-left: 8px;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
-.gc-work-steers small {
+.gc-work-say small {
+  display: block;
   font-size: var(--gc-type-12);
   color: var(--gc-color-muted);
 }
-.gc-work-steers small[data-delivery='delivered'] {
+.gc-work-tl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gc-work-tl li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  font-size: var(--gc-type-13);
+}
+.gc-work-tl-icon {
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--gc-color-faint);
+}
+.gc-work-tl li[data-kind='steer'] .gc-work-tl-icon,
+.gc-work-tl li[data-kind='message'] .gc-work-tl-icon {
+  align-self: start;
+  margin-top: 9px;
+}
+.gc-work-tl-x {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-work-tl-x b {
+  font-weight: 600;
+}
+.gc-work-tl-x span,
+.gc-work-tl time {
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-muted);
+  white-space: nowrap;
+}
+.gc-work-tl li[data-failed] .gc-work-tl-x span,
+.gc-work-tl li[data-failed] .gc-work-tl-icon {
+  color: var(--gc-color-err);
+}
+.gc-work-bubble {
+  grid-column: 2 / 4;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--gc-radius-control);
+  background: var(--gc-color-surface);
+  border: 1px solid var(--gc-color-line);
+}
+.gc-work-bubble[data-from] {
+  background: var(--gc-color-sunken);
+  border-style: dashed;
+  border-color: var(--gc-color-line-strong);
+}
+.gc-work-bubble p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.gc-work-by {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-muted);
+  margin-bottom: 2px;
+}
+/* A message's receipt: where it stands, in words and a hue. */
+.gc-receipt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--gc-type-12);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--gc-color-muted);
+}
+.gc-receipt[data-state='delivered'] {
+  color: var(--gc-color-run);
+}
+.gc-receipt[data-state='answered'] {
   color: var(--gc-color-ok);
 }
-.gc-work-steers small[data-delivery='dropped'] {
+.gc-receipt[data-state='queued'] {
+  color: var(--gc-color-warn);
+}
+.gc-receipt[data-state='failed'] {
   color: var(--gc-color-err);
 }
 .gc-work-pr {

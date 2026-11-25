@@ -24,10 +24,11 @@ import { PendingAttachments, TurnAttachments, useAttachments, type ChatAttachmen
 import { useEscape } from './escape.js';
 import { useFollowScroll } from './follow-scroll.js';
 import {
+  clockTime,
   formatBytes,
   formatDuration,
   formatUsage,
-  inputDeliveryText,
+  messageReceipt,
   limitChips,
   packWorkCount,
   packWorkLine,
@@ -910,6 +911,8 @@ function Turn({
       onApprove: live ? onApprove : undefined,
       onAutoApprove: live ? onAutoApprove : undefined,
       prompt: item.kind === 'input' ? prompt : undefined,
+      // Answered: the agent began a message after it took this one (the session records when).
+      answered: item.kind === 'input' && item.delivery === 'delivered' && item.answeredAt !== undefined,
       toolLabel: item.kind === 'tool' ? toolName(item.name) : undefined,
       artifactUrl: item.kind === 'artifact' ? artifactUrl : undefined,
       onOpenArtifact: item.kind === 'artifact' ? onOpenArtifact : undefined,
@@ -919,7 +922,8 @@ function Turn({
   };
   const entry = (item: SessionEntry, i: number) => <Entry key={i} {...entryProps(item)} />;
   // A pack turn that delegated nothing reads like any other turn (`--delegate` makes every turn one).
-  const packShown = !!turn.pack && (turn.pack.tasks.length > 0 || pending.some((request) => request.subtaskId));
+  const visiblePackTasks = turn.pack ? turn.pack.tasks.filter((task) => !task.dismissed) : [];
+  const packShown = !!turn.pack && (visiblePackTasks.length > 0 || pending.some((request) => request.subtaskId));
   const filteredEntries = turn.entries.filter((item) => {
     if (hasCustomFailure && item.kind === 'error') return false;
     // With the tasks in the host's panel, their approvals stay here in the transcript.
@@ -960,8 +964,8 @@ function Turn({
       ) : null}
       {packShown && onOpenTasks ? (
         <button type="button" className="gc-workline" onClick={() => onOpenTasks(turn)}>
-          <b>{packWorkCount(turn.pack!.tasks.length)}</b>
-          <span>{packWorkLine(turn.pack!.tasks, pending)}</span>
+          <b>{packWorkCount(visiblePackTasks.length)}</b>
+          <span>{packWorkLine(visiblePackTasks, pending)}</span>
           <span className="gc-workline-open">Open ›</span>
         </button>
       ) : packShown ? (
@@ -1089,6 +1093,7 @@ function Entry({
   onApprove,
   onAutoApprove,
   prompt,
+  answered,
   toolLabel,
   artifactUrl,
   onOpenArtifact,
@@ -1106,6 +1111,8 @@ function Entry({
   onApprove?: AgentChatProps['onApprove'];
   onAutoApprove?: AgentChatProps['onAutoApprove'];
   prompt?: AgentChatProps['renderPrompt'];
+  /** An input entry the agent answered: it said something after taking it. */
+  answered?: boolean;
   /** A tool's display name, worked out by the turn: a kept step must not hold the formatter. */
   toolLabel?: string;
 }) {
@@ -1274,13 +1281,19 @@ function Entry({
     case 'input': {
       const shown = prompt ? prompt(entry.text) : entry.text;
       if (shown === null || shown === undefined || shown === false) return null;
+      const receipt = messageReceipt(entry, agent, { answered });
       return (
         <div className="gc-prompt gc-steer" data-delivery={entry.delivery}>
           <small
             role="status"
-            aria-label={`Your message: ${inputDeliveryText(entry.delivery, agent).replace(/…$/, '')}`}
+            data-receipt={receipt.state}
+            title={receipt.title}
+            aria-label={`Your message: ${receipt.spoken}`}
           >
-            {inputDeliveryText(entry.delivery, agent)}
+            {receipt.text}
+            {entry.at !== undefined ? (
+              <time dateTime={new Date(entry.at).toISOString()}>{clockTime(entry.at)}</time>
+            ) : null}
           </small>
           {shown}
         </div>

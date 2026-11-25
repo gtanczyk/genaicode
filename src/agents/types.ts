@@ -261,8 +261,11 @@ export type AgentEvent =
   | { type: 'message'; text: string }
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
-  /** `diff`: what changed, as a unified patch, when the agent says. */
-  | { type: 'file-change'; paths: string[]; diff?: string }
+  /**
+   * `diff`: what changed, as a unified patch, when the agent says. `toolId`: the tool call making the
+   * change, when it is announced as the call starts: the change did not happen if that call fails.
+   */
+  | { type: 'file-change'; paths: string[]; diff?: string; toolId?: string }
   | { type: 'approval-request'; request: ApprovalRequest }
   /** `automatic`: decided by `permissions.approval`, without asking anyone. */
   | {

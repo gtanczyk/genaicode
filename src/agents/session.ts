@@ -56,8 +56,19 @@ export type SessionEntry =
       /** A question's answers (`request.kind === 'question'`), secrets masked. */
       answers?: QuestionAnswers;
     }
-  /** Input the user sent while the turn ran; `delivery` says whether it reached the agent. */
-  | { kind: 'input'; text: string; delivery?: InputDelivery }
+  /**
+   * Input the user sent while the turn ran; `delivery` says whether it reached the agent, `at` when
+   * it was sent, `settledAt` when `delivery` left `sending` and `answeredAt` when the agent started
+   * its first message after it took the input (epoch milliseconds).
+   */
+  | {
+      kind: 'input';
+      text: string;
+      delivery?: InputDelivery;
+      at?: number;
+      settledAt?: number;
+      answeredAt?: number;
+    }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
@@ -484,12 +495,53 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     if (!task) return;
     updateTurn(turnId, (turn) => {
       if (!turn.pack) return turn;
+      if (task.dismissed) {
+        const tasks = turn.pack.tasks.filter((known) => known.id !== id);
+        if (tasks.length === turn.pack.tasks.length) return turn;
+        return { ...turn, pack: { ...turn.pack, tasks } };
+      }
       const tasks = turn.pack.tasks.slice();
       const index = tasks.findIndex((known) => known.id === id);
       if (index < 0) tasks.push(task);
       else tasks[index] = task;
       return { ...turn, pack: { ...turn.pack, tasks } };
     });
+  };
+
+  // The agent's replies in each turn so far (`seq`), and whether the latest still streams (`open`).
+  // An input entry closes the streaming text entry before it, but not the reply: its next deltas
+  // and its final message still belong to the reply that began before the input.
+  const replies = new Map<number, { seq: number; open: boolean }>();
+  const REPLY_ENDS = new Set<AgentEvent['type']>([
+    'message',
+    'tool-start',
+    'tool-end',
+    'file-change',
+    'approval-request',
+    'error',
+  ]);
+  const noteReply = (turnId: number, event: AgentEvent) => {
+    let reply = replies.get(turnId);
+    if (!reply) {
+      for (const id of replies.keys()) if (!state.turns.some((turn) => turn.id === id)) replies.delete(id);
+      replies.set(turnId, (reply = { seq: 0, open: false }));
+    }
+    if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
+    if (event.type === 'text-delta') reply.open = true;
+    else if (REPLY_ENDS.has(event.type)) reply.open = false;
+  };
+  // Input the agent took and has not answered yet, with the reply that was the latest when it took
+  // it: that reply began before and so is no answer.
+  let unanswered: Array<{ turnId: number; takenIn: number; answer(at: number): void }> = [];
+  // A text event in a reply begun after the input was taken: that is its answer.
+  const noteAnswer = (turnId: number) => {
+    if (!unanswered.length) return;
+    const seq = replies.get(turnId)?.seq ?? 0;
+    const answered = unanswered.filter((wait) => wait.turnId === turnId && seq > wait.takenIn);
+    if (!answered.length) return;
+    unanswered = unanswered.filter((wait) => !answered.includes(wait));
+    const at = Date.now();
+    for (const wait of answered) wait.answer(at);
   };
 
   const addEntry = (id: number, entry: SessionEntry) =>
@@ -504,6 +556,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     text === undefined || text.length <= maxToolOutput ? text : `${text.slice(0, maxToolOutput)}\n… (truncated)`;
 
   const onEvent = (turnId: number, event: AgentEvent, own: () => boolean) => {
+    noteReply(turnId, event);
     switch (event.type) {
       case 'subtask-start':
         syncPackTask(turnId, event.id);
@@ -523,8 +576,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
             'approval-resolved',
             'done',
           ].includes(child.type)
-        )
-          syncPackTask(turnId, event.id);
+        ) {
+          if (packRuns.get(turnId)?.controls.task(event.id)) {
+            syncPackTask(turnId, event.id);
+          } else {
+            const origin = packRuns.get(turnId);
+            for (const [id, packRun] of packRuns) {
+              if (packRun.agent === origin?.agent && packRun.controls.task(event.id)) {
+                syncPackTask(id, event.id);
+                break;
+              }
+            }
+          }
+        }
         return;
       }
       case 'subtask-update': {
@@ -555,6 +619,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         }
         return;
       case 'text-delta':
+        noteAnswer(turnId);
         updateTurn(turnId, (turn) => {
           const at = openText(turn.entries);
           const open = turn.entries[at];
@@ -567,6 +632,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       case 'message':
+        noteAnswer(turnId);
         updateTurn(turnId, (turn) => {
           const at = openText(turn.entries);
           const entry: SessionEntry = { kind: 'text', text: event.text, streaming: false };
@@ -1157,16 +1223,29 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
         if (steerContext) turnContext.push(steerContext);
-        let sent: Extract<SessionEntry, { kind: 'input' }> = { kind: 'input', text: prompt, delivery: 'sending' };
+        let sent: Extract<SessionEntry, { kind: 'input' }> = {
+          kind: 'input',
+          text: prompt,
+          delivery: 'sending',
+          at: Date.now(),
+        };
         addEntry(turnId, sent);
-        const deliver = (delivery: InputDelivery) => {
-          const next = { ...sent, delivery };
+        const change = (patch: Partial<Extract<SessionEntry, { kind: 'input' }>>) => {
+          const next = { ...sent, ...patch };
           const was = sent;
           sent = next;
           updateTurn(turnId, (turn) => ({
             ...turn,
             entries: turn.entries.map((entry) => (entry === was ? next : entry)),
           }));
+        };
+        const deliver = (delivery: InputDelivery) => {
+          change({ delivery, settledAt: Date.now() });
+          if (delivery !== 'delivered') return;
+          unanswered = [
+            ...unanswered.filter((wait) => state.turns.some((turn) => turn.id === wait.turnId)),
+            { turnId, takenIn: replies.get(turnId)?.seq ?? 0, answer: (at) => change({ answeredAt: at }) },
+          ];
         };
         current.steer(steerText).then(
           (receipt) => deliver(receipt === 'taken' ? 'delivered' : 'sent'),

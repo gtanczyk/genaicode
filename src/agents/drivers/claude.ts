@@ -528,7 +528,8 @@ export function createClaudeParser(): AgentOutputParser {
               if (id) toolNames.set(id, block.name);
               events.push({ type: 'tool-start', ...(id ? { id } : {}), name: block.name, input: block.input });
               const path = stringField(block.input, 'file_path') ?? stringField(block.input, 'notebook_path');
-              if (EDIT_TOOLS.has(block.name) && path) events.push({ type: 'file-change', paths: [path] });
+              if (EDIT_TOOLS.has(block.name) && path)
+                events.push({ type: 'file-change', paths: [path], ...(id ? { toolId: id } : {}) });
             }
           }
           break;

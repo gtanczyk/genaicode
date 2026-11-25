@@ -3,7 +3,9 @@ import { normalizeScriptHosts } from '../agents/media.js';
 import { isSandboxPolicy } from '../agents/permissions.js';
 import type { AgentBudget, McpServer, SandboxPolicy } from '../agents/types.js';
 
-export type PackSpec = { auto: true; maxParallel?: number } | { lead: string; members: string[]; maxParallel?: number };
+export type PackSpec =
+  | { auto: true; maxParallel?: number; maxTasksPerTurn?: number }
+  | { lead: string; members: string[]; maxParallel?: number; maxTasksPerTurn?: number };
 
 export type CliCommand =
   | { kind: 'help' }
@@ -91,6 +93,8 @@ export type CliCommand =
       pack?: PackSpec;
       /** `--delegate`: each agent may hand work to the other installed agents. */
       delegate?: true;
+      /** `--max-tasks`: most delegated tasks started in one lead turn (with --pack or --delegate). */
+      maxTasksPerTurn?: number;
       verify?: string;
       cwd?: string;
       model?: string;
@@ -550,6 +554,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       pack: { type: 'string' as const },
       delegate: { type: 'boolean' as const },
       'max-parallel': { type: 'string' as const },
+      'max-tasks': { type: 'string' as const },
       verify: { type: 'string' as const },
       cwd: { type: 'string' as const, short: 'C' },
       model: { type: 'string' as const, short: 'm' },
@@ -596,10 +601,16 @@ export function parseCli(argv: readonly string[]): CliCommand {
       restore?: boolean;
     };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
+    const maxTasksPerTurn = optionalNumber(values['max-tasks'], '--max-tasks');
+    if (maxTasksPerTurn === 0) throw new UsageError('--max-tasks must be at least 1.');
     let pack: PackSpec | undefined;
     if (barePack) {
       if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
-      pack = { auto: true, ...(maxParallel !== undefined ? { maxParallel } : {}) };
+      pack = {
+        auto: true,
+        ...(maxParallel !== undefined ? { maxParallel } : {}),
+        ...(maxTasksPerTurn !== undefined ? { maxTasksPerTurn } : {}),
+      };
     } else if (typeof values.pack === 'string') {
       const [lead, list, ...extraParts] = values.pack.split(':');
       const members = list?.split(',').map((name) => name.trim());
@@ -610,8 +621,15 @@ export function parseCli(argv: readonly string[]): CliCommand {
       if (values.agent !== undefined && values.agent !== lead.trim())
         throw new UsageError('--pack already chooses the lead agent. Use the same name with --agent or omit it.');
       if (maxParallel === 0) throw new UsageError('--max-parallel must be at least 1.');
-      pack = { lead: lead.trim(), members: [...new Set(members)], maxParallel };
+      pack = {
+        lead: lead.trim(),
+        members: [...new Set(members)],
+        maxParallel,
+        ...(maxTasksPerTurn !== undefined ? { maxTasksPerTurn } : {}),
+      };
     } else if (maxParallel !== undefined) throw new UsageError('--max-parallel requires --pack.');
+    if (maxTasksPerTurn !== undefined && !pack && !values.delegate)
+      throw new UsageError('--max-tasks requires --pack or --delegate.');
     if (pack && values.delegate)
       throw new UsageError('--delegate and --pack do not go together: a pack already delegates.');
     if (values.verify !== undefined && (!pack || !values.verify.trim()))
@@ -628,6 +646,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       kind: command,
       ...(pack ? { pack } : {}),
       ...(values.delegate === true ? { delegate: true as const } : {}),
+      ...(maxTasksPerTurn !== undefined ? { maxTasksPerTurn } : {}),
       ...(values.verify !== undefined ? { verify: values.verify } : {}),
       agent: values.agent,
       cwd: values.cwd,

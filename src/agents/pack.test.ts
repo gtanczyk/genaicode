@@ -18,11 +18,14 @@ import { personText } from './host-text.js';
 import {
   clipReview,
   delegationBrief,
+  MAX_WAIT_SECONDS,
   pack,
   PackActionError,
   replyPullRequest,
   type PackTask as PackReport,
+  PACK_STEPS_KEPT,
 } from './pack.js';
+import { claude } from './drivers/claude.js';
 
 describe('clipReview', () => {
   it('keeps the lines that decide a long review after the clip', () => {
@@ -891,6 +894,8 @@ describe('pack chat turns', () => {
       pendingSteers[0]!.resolve('taken');
       await expect(leadSteer).resolves.toBe('t1 took the input.');
       await vi.waitFor(() => expect(steers()[0]!.delivery).toBe('delivered'));
+      // The receipt has its times: sent, then taken.
+      expect(steers()[0]!.settledAt).toBeGreaterThanOrEqual(steers()[0]!.at);
 
       const user = session.actOnPackTask!(1, 't1', { type: 'steer', text: 'from you' });
       await vi.waitFor(() => expect(steers()[1]).toMatchObject({ from: 'user', delivery: 'sending' }));
@@ -905,6 +910,242 @@ describe('pack chat turns', () => {
       await vi.waitFor(() => expect(steers()[2]).toMatchObject({ text: 'too late', delivery: 'dropped' }));
       expect(steers().map((steer) => steer.delivery)).toEqual(['delivered', 'sent', 'dropped']);
     } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('keeps the latest steps of a task with their outcome, and marks a steer its next message answers', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'npm test' } });
+      emit({ type: 'tool-start', id: 'c2', name: 'Read', input: { file_path: '/work/a.ts' } });
+      emit({ type: 'tool-end', id: 'c1', isError: true });
+      emit({ type: 'file-change', paths: ['src/a.ts', 'src/b.ts'] });
+      emit({ type: 'error', message: 'rate limited,\nretrying' });
+      await step();
+      emit({ type: 'message', text: 'Skipping them.' });
+      await step();
+      for (let i = 0; i < 40; i += 1) emit({ type: 'message', text: `note ${i}` });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => ({ ...base.run(task), steer: async () => 'taken' as const }),
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(4));
+      expect(task()!.steps).toEqual([
+        {
+          kind: 'tool',
+          name: 'Bash',
+          text: 'npm test',
+          at: expect.any(Number),
+          endedAt: expect.any(Number),
+          failed: true,
+        },
+        { kind: 'tool', name: 'Read', text: '/work/a.ts', at: expect.any(Number) },
+        { kind: 'edit', text: 'src/a.ts, src/b.ts', at: expect.any(Number) },
+        { kind: 'error', text: 'rate limited, retrying', at: expect.any(Number) },
+      ]);
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Skip the snapshot tests.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered', settledAt: expect.any(Number) });
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+      next();
+      // Only the latest are kept, and never without the call that still runs.
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('note 39'));
+      expect(task()!.steps).toHaveLength(PACK_STEPS_KEPT);
+      expect(task()!.steps![0]).toMatchObject({ kind: 'tool', name: 'Read' });
+      expect(task()!.steps![0]!.endedAt).toBeUndefined();
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('takes back the live line of an edit whose call failed', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'message', text: 'Looking.' });
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      await step();
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      await step();
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e2' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.text).toBe('edited src/a.ts'));
+      next();
+      await vi.waitFor(() => expect(task()?.steps?.at(-1)).toMatchObject({ kind: 'tool', failed: true }));
+      expect(task()!.text).toBe('Looking.');
+      expect(task()!.steps!.some((item) => item.kind === 'edit')).toBe(false);
+      next();
+      // A call that succeeded keeps its edit.
+      await vi.waitFor(() =>
+        expect(task()?.steps?.find((item) => item.kind === 'tool' && item.text === 'src/b.ts')?.endedAt).toBeTypeOf(
+          'number',
+        ),
+      );
+      expect(task()!.text).toBe('edited src/b.ts');
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('does not take the end of a reply that streamed when a steer was taken for its answer', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'text-delta', text: 'Running npm' });
+      await step();
+      emit({ type: 'message', text: 'Running npm install' });
+      await step();
+      emit({ type: 'message', text: 'Switching to pnpm.' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    // The pack asks for the event after the delta once it has followed the delta.
+    let streamed = () => {};
+    const deltaFollowed = new Promise<void>((resolve) => (streamed = resolve));
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => {
+        const inner = base.run(task);
+        return {
+          ...inner,
+          [Symbol.asyncIterator]: () => {
+            const events = inner[Symbol.asyncIterator]();
+            let asked = 0;
+            return {
+              next: () => {
+                if (++asked === 2) streamed();
+                return events.next();
+              },
+            };
+          },
+          steer: async () => 'taken' as const,
+        };
+      },
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await deltaFollowed;
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Use pnpm.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered' });
+      next();
+      await vi.waitFor(() => expect(task()!.steps?.at(-1)?.text).toBe('Running npm install'));
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('hides credentials in tool arguments, drops edits of failed calls and keeps a long call that just ended', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({
+        type: 'tool-start',
+        id: 'curl',
+        name: 'Bash',
+        input: { command: `curl -H "Authorization: Bearer ${'a'.repeat(190)}" https://api.example.com` },
+      });
+      emit({
+        type: 'tool-start',
+        id: 'env',
+        name: 'Bash',
+        input: { command: 'GITHUB_TOKEN=ghp_abcdefghijkl12 gh pr list' },
+      });
+      emit({ type: 'tool-end', id: 'env' });
+      // An edit announced as its call starts, and the call fails: nothing was edited.
+      emit({ type: 'tool-start', id: 'e1', name: 'Edit', input: { file_path: 'src/a.ts' } });
+      emit({ type: 'file-change', paths: ['src/a.ts'], toolId: 'e1' });
+      emit({ type: 'tool-start', id: 'e2', name: 'Edit', input: { file_path: 'src/b.ts' } });
+      emit({ type: 'file-change', paths: ['src/b.ts'], toolId: 'e2' });
+      emit({ type: 'tool-end', id: 'e1', isError: true });
+      emit({ type: 'tool-end', id: 'e2' });
+      await step();
+      // Many messages while the curl call runs, then it fails: it stays, older and shorter steps go.
+      for (let i = 0; i < PACK_STEPS_KEPT; i += 1) emit({ type: 'message', text: `note ${i}` });
+      emit({ type: 'tool-end', id: 'curl', isError: true });
+      emit({ type: 'message', text: 'after' });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    // Every event a millisecond after the one before.
+    let clock = Date.now();
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1));
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(5));
+      const steps = task()!.steps!;
+      expect(steps[0]!.text).toBe('curl -H "Authorization: ***" https://api.example.com');
+      expect(steps[1]!.text).toBe('GITHUB_TOKEN=*** gh pr list');
+      expect(JSON.stringify(task())).not.toMatch(/aaaaaaaa|ghp_abcdef/);
+      expect(steps.filter((item) => item.kind === 'edit').map((item) => item.text)).toEqual(['src/b.ts']);
+      expect(steps.find((item) => item.text === 'src/a.ts')).toMatchObject({ kind: 'tool', failed: true });
+      next();
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('after'));
+      const kept = task()!.steps!;
+      expect(kept).toHaveLength(PACK_STEPS_KEPT);
+      expect(kept[0]).toMatchObject({ kind: 'tool', failed: true, text: expect.stringContaining('curl') });
+      expect(kept.some((item) => item.text === 'note 0')).toBe(false);
+    } finally {
+      now.mockRestore();
       session.close();
       await session.idle();
     }
@@ -936,12 +1177,23 @@ describe('pack chat turns', () => {
     try {
       session.send('go');
       await vi.waitFor(() => expect(task()).toMatchObject({ status: 'running', text: 'tool search' }));
+      // Its steps, oldest first: what it said, and the call that runs now with when it started.
+      expect(task()!.steps).toEqual([
+        { kind: 'message', text: 'Reading the code', at: expect.any(Number) },
+        { kind: 'tool', name: 'search', at: expect.any(Number) },
+      ]);
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('Reading the code'));
+      expect(task()!.steps![1]).toMatchObject({ kind: 'tool', name: 'search', endedAt: expect.any(Number) });
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('tool shell: npm test'));
+      expect(task()!.steps![2]).toEqual({ kind: 'tool', name: 'shell', text: 'npm test', at: expect.any(Number) });
       await session.actOnPackTask!(1, 't1', { type: 'stop' });
       expect(task()).toMatchObject({ status: 'aborted', stoppedBy: 'user' });
+      // A call the task never ended is over with the task, and says it was cut short.
+      expect(task()!.steps![2]!.endedAt).toBe(task()!.endedAt);
+      expect(task()!.steps![2]!.interrupted).toBe(true);
+      expect(task()!.steps![1]!.interrupted).toBeUndefined();
     } finally {
       session.close();
       await session.idle();
@@ -1673,6 +1925,384 @@ describe('pack chat turns', () => {
       expect((await editRun.result).ok).toBe(true);
     } finally {
       await sharedPack.close();
+    }
+  });
+
+  it('continues a finished task via steer in the same session and worktree, and refuses non-resumable drivers', async () => {
+    const cwd = repo();
+    const seen: Array<{ prompt: string; resume?: string; cwd: string }> = [];
+    const worker = fake(
+      'worker',
+      async (task, emit) => {
+        seen.push({ prompt: task.prompt, resume: task.resume, cwd: task.cwd });
+        emit({ type: 'session', sessionId: 'worker-sess-1' });
+        if (!task.resume) {
+          writeFileSync(join(task.cwd, 'first.txt'), 'round 1\n');
+          return { text: 'round 1 done', sessionId: 'worker-sess-1', usage: { inputTokens: 10, outputTokens: 5 } };
+        }
+        writeFileSync(join(task.cwd, 'second.txt'), 'round 2\n');
+        return { text: 'round 2 done', sessionId: 'worker-sess-1', usage: { inputTokens: 20, outputTokens: 10 } };
+      },
+      { resume: true },
+    );
+    const noResume = fake('noresume', async () => ({ text: 'done', sessionId: 'ignored' }), { resume: false });
+    const noSessionId = fake('nosess', async () => ({ text: 'done' }), { resume: true });
+    let firstCwd = '';
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const listed = JSON.parse(await tool(task, 'agents')) as Array<{ name: string; resume?: boolean }>;
+        expect(listed.map((m) => [m.name, m.resume])).toEqual([
+          ['worker', true],
+          ['noresume', undefined],
+          ['nosess', true],
+        ]);
+        const started = JSON.parse(
+          await tool(task, 'delegate', { agent: 'worker', prompt: 'write first file', title: 'Files' }),
+        ) as { id: string; cwd: string };
+        firstCwd = started.cwd;
+        const [r1] = JSON.parse(await tool(task, 'wait', { ids: [started.id] })) as [PackReport];
+        expect(r1).toMatchObject({ id: 't1', status: 'completed', text: 'round 1 done', changes: ['A\tfirst.txt'] });
+
+        const continued = await tool(task, 'steer', { id: 't1', text: 'now write second file' });
+        expect(continued).toContain('Continued t1');
+
+        const [r2] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(r2).toMatchObject({
+          id: 't1',
+          status: 'completed',
+          text: 'round 2 done',
+          cwd: firstCwd,
+          changes: ['A\tfirst.txt', 'A\tsecond.txt'],
+        });
+        expect(r2.steers).toMatchObject([{ text: 'now write second file', from: 'lead', delivery: 'delivered' }]);
+        await tool(task, 'merge', { id: 't1' });
+        // Cannot continue after its worktree was merged.
+        await expect(tool(task, 'steer', { id: 't1', text: 'too late' })).rejects.toThrow(/already merged/);
+
+        // Refuses driver without capabilities.resume.
+        await tool(task, 'delegate', { agent: 'noresume', prompt: 'once', mode: 'shared' });
+        await tool(task, 'wait', { ids: ['t2'] });
+        await expect(tool(task, 'steer', { id: 't2', text: 'again' })).rejects.toThrow(/cannot resume/);
+
+        // Refuses task whose first run never reported a session id.
+        await tool(task, 'delegate', { agent: 'nosess', prompt: 'once', mode: 'shared' });
+        await tool(task, 'wait', { ids: ['t3'] });
+        await expect(tool(task, 'steer', { id: 't3', text: 'again' })).rejects.toThrow(/no session id/);
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker, noResume, noSessionId] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 15 });
+      expect(seen).toEqual([
+        { prompt: 'write first file', resume: undefined, cwd: firstCwd },
+        { prompt: 'now write second file', resume: 'worker-sess-1', cwd: firstCwd },
+      ]);
+      expect(readFileSync(join(cwd, 'first.txt'), 'utf8')).toBe('round 1\n');
+      expect(readFileSync(join(cwd, 'second.txt'), 'utf8')).toBe('round 2\n');
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('resumes a real driver (claude --resume) in the same worktree when continuing a finished task', async () => {
+    const cwd = repo();
+    const binDir = mkdtempSync(join(root, 'claude-resume-'));
+    const logFile = join(binDir, 'calls.jsonl');
+    const script = join(binDir, 'fake-claude.mjs');
+    writeFileSync(
+      script,
+      `import { appendFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(logFile)}, JSON.stringify({ cwd: process.cwd(), args }) + '\\n');
+const resumed = args.includes('--resume');
+writeFileSync(join(process.cwd(), resumed ? 'round2.txt' : 'round1.txt'), resumed ? 'r2\\n' : 'r1\\n');
+console.log(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'claude-sess-42' }));
+console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: 'claude-sess-42', result: resumed ? 'fixed' : 'initial' }));
+`,
+    );
+    const bin = join(binDir, 'claude');
+    writeFileSync(bin, `#!${process.execPath}\nimport(${JSON.stringify(script)});\n`, { mode: 0o755 });
+    const worker = claude({ command: bin, steer: false });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'claude', prompt: 'round one' });
+        const [first] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(first).toMatchObject({ id: 't1', status: 'completed', text: 'initial', changes: ['A\tround1.txt'] });
+        await tool(task, 'steer', { id: 't1', text: 'round two' });
+        const [second] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(second).toMatchObject({
+          id: 't1',
+          status: 'completed',
+          text: 'fixed',
+          changes: ['A\tround1.txt', 'A\tround2.txt'],
+        });
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      const calls = readFileSync(logFile, 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as { cwd: string; args: string[] });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]!.args).not.toContain('--resume');
+      expect(calls[1]!.cwd).toBe(calls[0]!.cwd);
+      expect(calls[1]!.args.slice(-3)).toEqual(['--resume', 'claude-sess-42', 'round two']);
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('dismisses finished shared tasks via discard and hides them from lead and UI, while refusing running ones', async () => {
+    const cwd = repo();
+    let release!: () => void;
+    const blocking = new Promise<void>((resolve) => (release = resolve));
+    const worker = fake(
+      'worker',
+      async (task) => {
+        if (task.prompt === 'slow') await blocking;
+        return { text: `done:${task.prompt}`, sessionId: 's-shared' };
+      },
+      { resume: true },
+    );
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'slow', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'fast', mode: 'shared' });
+        // Running shared task cannot be discarded.
+        await expect(tool(task, 'discard', { id: 't1' })).rejects.toThrow(/still running/);
+        await tool(task, 'wait', { ids: ['t2'] });
+        // Finished shared task is dismissed.
+        expect(await tool(task, 'discard', { id: 't2' })).toBe('Dismissed t2.');
+        // Dismissing twice or continuing a dismissed shared task is refused.
+        await expect(tool(task, 'discard', { id: 't2' })).rejects.toThrow(/already dismissed/);
+        await expect(tool(task, 'steer', { id: 't2', text: 'more' })).rejects.toThrow(/already dismissed/);
+        release();
+        const remaining = JSON.parse(await tool(task, 'wait')) as PackReport[];
+        expect(remaining.map((r) => r.id)).toEqual(['t1']);
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(team.tasks().map((t) => t.id)).toEqual(['t1']);
+      expect(session.get().turns[0]?.pack?.tasks.map((t) => t.id)).toEqual(['t1']);
+    } finally {
+      release();
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('caps total delegated tasks per turn via maxTasksPerTurn while still allowing steer to reuse tasks', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => ({ text: task.prompt, sessionId: `s-${task.prompt}` }), {
+      resume: true,
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        if (task.prompt.startsWith('turn 2')) {
+          const started = JSON.parse(
+            await tool(task, 'delegate', { agent: 'worker', prompt: 'fresh turn', mode: 'shared' }),
+          ) as { id: string };
+          expect(started.id).toBe('t3');
+          await tool(task, 'wait');
+          return;
+        }
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'one', mode: 'shared' });
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'two', mode: 'shared' });
+        await tool(task, 'wait');
+        // Dismissing a shared task does not bypass the per-turn cap.
+        await tool(task, 'discard', { id: 't2' });
+        await expect(tool(task, 'delegate', { agent: 'worker', prompt: 'three', mode: 'shared' })).rejects.toThrow(
+          /limit of 2 delegated tasks.*steer.*ask the person/i,
+        );
+        // Reusing an existing finished task via steer still works after reaching the cap.
+        expect(await tool(task, 'steer', { id: 't1', text: 'follow up' })).toContain('Continued t1');
+        const [reused] = JSON.parse(await tool(task, 'wait')) as [PackReport];
+        expect(reused).toMatchObject({ id: 't1', status: 'completed', text: 'follow up' });
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker], maxTasksPerTurn: 2 });
+    try {
+      expect((await team.run({ prompt: 'turn 1', cwd }).result).ok).toBe(true);
+      expect((await team.run({ prompt: 'turn 2', cwd }).result).ok).toBe(true);
+    } finally {
+      await team.close();
+    }
+  });
+
+  it('omits full prompt on repeated wait calls and returns a short title instead', async () => {
+    const cwd = repo();
+    let finish!: () => void;
+    const blocking = new Promise<void>((resolve) => (finish = resolve));
+    const longPrompt =
+      `Investigate the flaky test suite in src/agents. ${'Extra detailed context. '.repeat(30)}`.trim();
+    const worker = fake('worker', async (_task, _emit, signal) => {
+      await Promise.race([
+        blocking,
+        new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })),
+      ]);
+      return { text: 'all green' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: longPrompt, mode: 'shared' });
+        const [first] = JSON.parse(await tool(task, 'wait', { timeoutSeconds: 0 })) as [Record<string, unknown>];
+        expect(first.prompt).toBe(longPrompt);
+        expect(first.status).toBe('running');
+
+        const [second] = JSON.parse(await tool(task, 'wait', { timeoutSeconds: 0 })) as [Record<string, unknown>];
+        expect(second.prompt).toBeUndefined();
+        expect(second.title).toBe('Investigate the flaky test suite in src/agents.');
+        expect(second.status).toBe('running');
+
+        finish();
+        const [third] = JSON.parse(await tool(task, 'wait')) as [Record<string, unknown>];
+        expect(third.prompt).toBeUndefined();
+        expect(third.title).toBe('Investigate the flaky test suite in src/agents.');
+        expect(third.status).toBe('completed');
+        expect(third.text).toBe('all green');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+      // Full prompt is still kept on PackTask for the UI and pack.tasks().
+      expect(team.tasks()[0]!.prompt).toBe(longPrompt);
+    } finally {
+      finish();
+      await team.close();
+    }
+  });
+
+  it('caps wait timeout below 300s and streams MCP progress notifications over SSE when accepted', async () => {
+    const cwd = repo();
+    let finish!: () => void;
+    const blocking = new Promise<void>((resolve) => (finish = resolve));
+    const worker = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', name: 'shell', input: { command: 'npm test' } });
+      await Promise.race([
+        blocking,
+        new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true })),
+      ]);
+      return { text: 'finished' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        const server = task.mcpServers?.find((candidate) => candidate.name === 'pack') as Extract<
+          McpServer,
+          { url: string }
+        >;
+        // Check wait tool description advertises the cap below 300s.
+        const listRes = await fetch(server.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...server.headers },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+        });
+        const listed = (await listRes.json()) as {
+          result: {
+            tools: Array<{
+              name: string;
+              description: string;
+              inputSchema: { properties: Record<string, { description?: string }> };
+            }>;
+          };
+        };
+        const waitTool = listed.result.tools.find((t) => t.name === 'wait')!;
+        expect(waitTool.description).toContain(String(MAX_WAIT_SECONDS));
+        expect(waitTool.inputSchema.properties.timeoutSeconds?.description).toContain(String(MAX_WAIT_SECONDS));
+
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'run tests', mode: 'shared' });
+
+        // Call wait with Accept: text/event-stream and _meta.progressToken -> receives progress events then result.
+        const sseRes = await fetch(server.url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...server.headers,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'wait',
+              arguments: { timeoutSeconds: 0.25 },
+              _meta: { progressToken: 'wait-tok' },
+            },
+          }),
+        });
+        expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
+        const body = await sseRes.text();
+        const messages = body
+          .split('\n\n')
+          .map((chunk) =>
+            chunk
+              .split('\n')
+              .find((line) => line.startsWith('data: '))
+              ?.slice(6),
+          )
+          .filter((line): line is string => !!line)
+          .map(
+            (line) =>
+              JSON.parse(line) as {
+                id?: number;
+                method?: string;
+                params?: Record<string, unknown>;
+                result?: { content: [{ text: string }] };
+              },
+          );
+        const progress = messages.filter((m) => m.method === 'notifications/progress');
+        expect(progress.length).toBeGreaterThanOrEqual(1);
+        expect(progress[0]!.params).toMatchObject({ progressToken: 'wait-tok', total: 0.25 });
+        const final = messages.find((m) => m.id === 2);
+        expect(final?.result?.content[0].text).toContain('"status": "running"');
+
+        // Verify timeoutSeconds > MAX_WAIT_SECONDS is capped at MAX_WAIT_SECONDS (240s).
+        const timeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        try {
+          const longWait = tool(task, 'wait', { timeoutSeconds: 600 });
+          await vi.waitFor(() =>
+            expect(timeoutSpy.mock.calls.some((call) => call[1] === MAX_WAIT_SECONDS * 1000)).toBe(true),
+          );
+          expect(timeoutSpy.mock.calls.some((call) => call[1] === 600_000)).toBe(false);
+          finish();
+          const [done] = JSON.parse(await longWait) as [PackReport];
+          expect(done).toMatchObject({ id: 't1', status: 'completed', text: 'finished' });
+        } finally {
+          timeoutSpy.mockRestore();
+        }
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    try {
+      const result = await team.run({ prompt: 'go', cwd }).result;
+      expect(result.ok, result.error).toBe(true);
+    } finally {
+      finish();
+      await team.close();
     }
   });
 });

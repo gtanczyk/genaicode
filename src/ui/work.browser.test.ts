@@ -45,6 +45,18 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       canSteer: true,
       cwd: join(project, '.genaicode', 'worktrees', 't1'),
       text: 'tool shell: npm test -- cart',
+      // What it did so far, and the call it is in.
+      steps: [
+        {
+          kind: 'tool',
+          name: 'Read',
+          text: join(project, '.genaicode', 'worktrees', 't1', 'src', 'cart.ts'),
+          at: started,
+          endedAt: started + 300,
+        },
+        { kind: 'message', text: 'The total skips discounts.', at: started + 400 },
+        { kind: 'tool', name: 'shell', text: 'npm test -- cart', at: started + 500 },
+      ],
     },
     {
       ...base,
@@ -138,7 +150,13 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
               patch(id, {
                 steers: [
                   ...(found.steers ?? []),
-                  { text: action.text, from: 'user', at: Date.now(), delivery: 'delivered' },
+                  {
+                    text: action.text,
+                    from: 'user',
+                    at: Date.now() - 400,
+                    settledAt: Date.now(),
+                    delivery: 'delivered',
+                  },
                 ],
               });
             if (action.type === 'stop')
@@ -250,7 +268,10 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       .toEqual(['Needs you 1', 'Failed 1', 'Running 1', 'Unmerged 1', 'Done 1']);
     expect(await work.locator('.gc-work-row .gc-work-id').allTextContents()).toEqual(['t4', 't3', 't1', 't2']);
     expect(await work.locator('[data-task="1:t4"] .gc-work-line').textContent()).toBe('npm install left-pad');
-    expect(await work.locator('[data-task="1:t1"] .gc-work-line').textContent()).toBe('Shell npm test -- cart');
+    // A running task says what it does in words, with how long that call has run.
+    expect(await work.locator('[data-task="1:t1"] .gc-work-line').textContent()).toMatch(
+      /^Running npm test -- cart · \d+s so far$/,
+    );
     // No money and no pack wording anywhere in the panel.
     expect(await work.textContent()).not.toMatch(/\$|Pack tasks/);
 
@@ -308,11 +329,58 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     await work.locator('[data-task="1:t1"] .gc-work-row').click();
     const live = work.getByRole('region', { name: 'Task t1' });
     await live.waitFor();
-    expect(await live.locator('.gc-work-now').textContent()).toMatch(/^Shell npm test -- cart/);
+    expect(await live.locator('.gc-work-now').textContent()).toMatch(/^Running npm test -- cart\d+s so far$/);
+    expect(await live.locator('.gc-work-say').textContent()).toBe('Latest message · workerThe total skips discounts.');
+    // Its timeline, newest first: what it said, what it read, its start. The call that runs is in the card above.
+    const timeline = live.getByRole('list', { name: 'Timeline' });
+    const rows = () =>
+      timeline
+        .locator('li')
+        .evaluateAll((items) =>
+          items.map((item) => (item.querySelector('.gc-work-tl-x, .gc-work-bubble p') as HTMLElement).innerText),
+        );
+    expect(await rows()).toEqual([
+      'The total skips discounts.',
+      expect.stringMatching(/^Read src\/cart\.ts (<1s|\d+s)$/),
+      'Started by helper in .genaicode/worktrees/t1',
+    ]);
+    // The time of the running call goes on by itself.
+    const before = await live.locator('.gc-work-now .gc-work-elapsed').textContent();
+    await page.clock.fastForward(5_000);
+    await expect.poll(() => live.locator('.gc-work-now .gc-work-elapsed').textContent()).not.toBe(before);
+    // The call returns and the next one starts: the card and the timeline follow, live.
+    const t1 = () => tasks.find((item) => item.id === 't1')!;
+    // A second after it returned is after the task's message (its steps are timed from the start).
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, started + 1_500 - Date.now())));
+    patch('t1', {
+      text: 'tool edit: src/cart.test.ts',
+      steps: [
+        ...t1().steps!.slice(0, 2),
+        // It returned a second ago, after 14 seconds.
+        { ...t1().steps![2]!, at: Date.now() - 15_000, endedAt: Date.now() - 1_000, failed: true },
+        { kind: 'tool', name: 'edit', text: 'src/cart.test.ts', at: Date.now() },
+      ],
+    });
+    await expect.poll(() => live.locator('.gc-work-now').textContent()).toMatch(/^Editing src\/cart\.test\.ts/);
+    await expect.poll(async () => (await rows())[0]).toBe('Ran npm test -- cart failed · 14s');
+    expect(await timeline.locator('li[data-failed]').count()).toBe(1);
+
+    // A message to the task: its receipt with how long delivery took, in the timeline, on top.
     await work.getByRole('textbox', { name: 'Message to worker' }).fill('Skip the snapshot tests.');
     await page.keyboard.press('Enter');
-    await live.locator('.gc-work-steers small').getByText('Your message: Seen by worker').waitFor();
-    expect(await live.locator('.gc-work-steers p').textContent()).toBe('Skip the snapshot tests.');
+    const receipt = timeline.getByRole('status', { name: /^Your message:/ });
+    await receipt.getByText('✓ Delivered · 0.4s').waitFor();
+    expect(await receipt.getAttribute('data-state')).toBe('delivered');
+    expect((await rows())[0]).toBe('Skip the snapshot tests.');
+    expect(await timeline.locator('li').first().locator('time').count()).toBe(1);
+    // The task's next message is its answer, shown right above.
+    patch('t1', {
+      steps: [...t1().steps!, { kind: 'message', text: 'Skipping them.', at: Date.now() + 1 }],
+      steers: t1().steers!.map((steer) => ({ ...steer, answeredAt: Date.now() + 1 })),
+    });
+    await receipt.getByText('✓✓ Delivered · answered').waitFor();
+    expect((await rows()).slice(0, 2)).toEqual(['Skipping them.', 'Skip the snapshot tests.']);
+    expect(await live.locator('.gc-work-say').textContent()).toBe('Latest message · workerSkipping them.');
     await work.getByRole('button', { name: 'Stop task' }).click();
     expect(actions).toEqual(['t2 diff', 't2 review', 't2 merge', 't1 steer: Skip the snapshot tests.']);
     await work.getByRole('button', { name: 'Confirm stop' }).click();
