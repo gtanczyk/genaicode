@@ -163,6 +163,17 @@ export async function stagedChanges(dir: string): Promise<string[]> {
   return (await must(dir, ['diff', '--cached', '--name-status', '--no-renames', 'HEAD'])).split('\n').filter(Boolean);
 }
 
+/**
+ * Whether the worktree at `dir` holds nothing beyond its start: HEAD is still `start` and
+ * `git status` lists nothing (index against HEAD, working copy against index, untracked files).
+ * A snapshot alone misses work that is only staged, or only committed, once the file is gone from disk.
+ */
+export async function worktreeAtStart(dir: string, start: string): Promise<boolean> {
+  const head = (await must(dir, ['rev-parse', '--verify', 'HEAD'])).trim();
+  if (head !== start) return false;
+  return !(await must(dir, ['status', '--porcelain', '--untracked-files=all'])).trim();
+}
+
 /** The worktree's changes since `start` as a patch `git apply` takes. */
 export function worktreeDiff(dir: string, start: string, tree: string): Promise<Buffer> {
   return mustBytes(dir, [

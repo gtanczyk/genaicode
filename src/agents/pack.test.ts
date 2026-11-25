@@ -1030,7 +1030,7 @@ describe('pack chat turns', () => {
       await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
         name: 'PackActionError',
         reason: 'changed',
-        publicMessage: 'The worktree has changes now. Open its diff before discarding it.',
+        publicMessage: 'The worktree has changes now. Open its diff first.',
       });
       expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
       expect(existsSync(join(task()!.cwd, 'late.txt'))).toBe(true);
@@ -1089,6 +1089,63 @@ describe('pack chat turns', () => {
       expect(existsSync(dir)).toBe(true);
       execFileSync('git', ['reset', '-q'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it.each([
+    [
+      'staged, then deleted',
+      (dir: string) => {
+        writeFileSync(join(dir, 'late.txt'), 'late\n');
+        execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+        rmSync(join(dir, 'late.txt'));
+      },
+    ],
+    [
+      'committed, then deleted',
+      (dir: string) => {
+        writeFileSync(join(dir, 'late.txt'), 'late\n');
+        execFileSync('git', ['add', 'late.txt'], { cwd: dir });
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'late'], { cwd: dir });
+        rmSync(join(dir, 'late.txt'));
+      },
+    ],
+  ])('keeps a worktree whose snapshot shows nothing but which holds a file %s', async (_, edit) => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      edit(dir);
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      // The patch is empty, but merging must not remove the worktree and the work in it.
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()?.state).toBe('unmerged');
+      expect(existsSync(dir)).toBe(true);
+      expect(execFileSync('git', ['show', ':late.txt'], { cwd: dir, encoding: 'utf8' })).toBe('late\n');
+      expect(existsSync(join(cwd, 'late.txt'))).toBe(false);
     } finally {
       session.close();
       await team.close();

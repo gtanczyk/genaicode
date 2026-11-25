@@ -19,6 +19,7 @@ import {
   repoRoot,
   snapshotTree,
   stagedChanges,
+  worktreeAtStart,
   withSnapshot,
   worktreeChanges,
   worktreeDiff,
@@ -218,7 +219,7 @@ const packActionRefusals = {
   reviewer: 'This pack has no other installed agent that can review without tools.',
   verification: 'No test command is configured for this pack.',
   stale: 'The worktree changed. Open the updated diff before merging.',
-  changed: 'The worktree has changes now. Open its diff before discarding it.',
+  changed: 'The worktree has changes now. Open its diff first.',
   budget: 'The session has used its review budget.',
   'budget-busy': 'A turn or review is using the remaining budget. Try again when it finishes.',
   capacity: 'All pack worker slots are in use. Try the check when a slot is free.',
@@ -1238,6 +1239,13 @@ export function pack(options: PackOptions): Pack {
               return `Merged ${sub.id} with conflicts. Resolve the conflict markers in:\n${clip(applied.error)}`;
             }
           }
+          // An empty patch merges nothing: keep the worktree unless it holds nothing beyond its start
+          // (a commit or staged file the snapshot no longer shows would go with it).
+          if (!patch.length && !(await worktreeAtStart(sub.dir, sub.start)))
+            throw new PackActionError(
+              'changed',
+              `${sub.id}'s worktree has commits or staged work its diff does not show. Nothing was merged or removed.`,
+            );
           sub.state = 'merged';
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
@@ -1310,20 +1318,19 @@ export function pack(options: PackOptions): Pack {
               worktreeReason(sub),
               `${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`,
             );
-          if (empty && sub.dir && sub.start) {
+          // Discarded as unchanged only while the worktree holds nothing beyond its start; otherwise list
+          // what the snapshot and the worktree's own index show (staged work counts once the file is gone).
+          if (empty && sub.dir && sub.start && !(await worktreeAtStart(sub.dir, sub.start))) {
             const tree = await snapshotTree(sub.dir);
             const changes = await worktreeChanges(sub.dir, sub.start, tree);
-            // Work staged in the worktree's own index counts too, also once the file is gone from disk.
             const staged = await stagedChanges(sub.dir);
-            if (changes.length || staged.length) {
-              updateRevision(sub, tree);
-              const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
-              setChanges(sub, [
-                ...changes,
-                ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t'))),
-              ]);
-              throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
-            }
+            updateRevision(sub, tree);
+            const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
+            setChanges(sub, [
+              ...changes,
+              ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t'))),
+            ]);
+            throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
           }
           sub.state = 'discarded';
           await drop(sub);
