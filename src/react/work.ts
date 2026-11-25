@@ -77,13 +77,19 @@ export interface WorkTask {
 }
 
 /**
- * A review that stands in the way of a merge: one on the current revision that failed, or whose
- * notes have a line that starts with BLOCKER.
+ * A review that stands in the way of a merge: one on the current revision that failed, whose notes
+ * have a line that starts with BLOCKER, or whose verdict line asks for changes (the reviewer is
+ * asked to end with `VERDICT: LGTM` or `VERDICT: CHANGES REQUESTED`).
  */
 export function reviewBlocker(checks: PackTaskChecks | undefined): boolean {
   const review = checks?.review;
   if (!review || review.status === 'running' || review.revision !== checks.revision) return false;
-  return review.status === 'failed' || /^[\s>*_#\-\d.)]*BLOCKER\b/m.test(review.detail ?? '');
+  const detail = review.detail ?? '';
+  return (
+    review.status === 'failed' ||
+    /^[\s>*_#\-\d.)]*BLOCKER\b/m.test(detail) ||
+    /^[\s>*_#]*VERDICT\s*:\s*[*_]*\s*(?:CHANGES REQUESTED|REQUEST CHANGES|BLOCK)/im.test(detail)
+  );
 }
 
 /**

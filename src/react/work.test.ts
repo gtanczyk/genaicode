@@ -163,6 +163,10 @@ describe('reviewBlocker', () => {
     expect(review('1. BLOCKER the migration drops a column')).toBe(true);
     expect(review('LGTM. No BLOCKER found.\nFOLLOW-UP: rename it')).toBe(false);
     expect(review('could not start', 'failed')).toBe(true);
+    // The verdict line the reviewer is asked to end with decides too.
+    expect(review('[P1] Merge deletes user data\n\nVERDICT: CHANGES REQUESTED')).toBe(true);
+    expect(review('**VERDICT:** changes requested')).toBe(true);
+    expect(review('Looks fine.\nVERDICT: LGTM')).toBe(false);
     // A review of an earlier revision says nothing about what is there now.
     expect(review('BLOCKER: x', 'completed', 'old')).toBe(false);
     expect(reviewBlocker(undefined)).toBe(false);
