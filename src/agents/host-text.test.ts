@@ -52,4 +52,11 @@ describe('personText', () => {
     ].join('\n');
     expect(personText(`${brief}\n\nship it\n\nthen tag it`)).toBe('ship it\n\nthen tag it');
   });
+  it('returns at once for a legacy briefing cut off before its blank line', () => {
+    const cut = delegationBrief([]).split('\n').slice(0, 12).join('\n');
+    const started = performance.now();
+    personText(cut);
+    personText(delegationBrief([]));
+    expect(performance.now() - started).toBeLessThan(200);
+  });
 });

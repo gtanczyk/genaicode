@@ -1309,9 +1309,8 @@ export function pack(options: PackOptions): Pack {
         const server = await startLocalMcpServer({ name: 'pack', tools });
         let own: AgentResult;
         try {
-          // Every run, resumed ones too, carries the briefing after the person's words, tagged as
-          // genaicode's, so titles and previews come from those words.
-          // A resumed session has the briefing from its first turn already.
+          // The first run carries the briefing after the person's words, tagged as genaicode's, so
+          // titles and previews come from those words; a resumed session has it already.
           const roster = task.resume ? [] : await describeMembers(await rosterAt(leadCwd), task.env);
           const passable = (await shareable).map((server) => server.name);
           const brief = task.resume
