@@ -61,3 +61,13 @@ jobs:
           done
           exit 1
       - run: npm run test:browser
+      # What the visual baseline test drew (src/ui/visual.browser.test.ts), to look at a mismatch
+      # or to take new Linux baselines from.
+      - name: Keep the screenshots of the visual baseline test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-screenshots
+          path: node_modules/.genaicode-test/visual-screenshots
+          include-hidden-files: true
+          if-no-files-found: ignore
