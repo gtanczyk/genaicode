@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { TranscriptFormat, TranscriptMeta } from '../transcript.js';
 
 export interface TranscriptMenuProps {
@@ -16,6 +16,8 @@ export interface TranscriptMenuProps {
   title?: string;
   buttonClassName?: string;
   onStatus?(message: string, isError?: boolean): void;
+  /** More items at the end of the menu; called with a function that closes it. */
+  extra?(close: () => void): ReactNode;
 }
 
 /** Synchronous clipboard write with a hidden-textarea fallback when the Clipboard API is unavailable. */
@@ -101,6 +103,7 @@ export function TranscriptMenu({
   title,
   buttonClassName,
   onStatus,
+  extra,
 }: TranscriptMenuProps) {
   const [open, setOpen] = useState(false);
   const [up, setUp] = useState(false);
@@ -312,6 +315,7 @@ export function TranscriptMenu({
           <button type="button" role="menuitem" onClick={() => saveTranscript('json')}>
             {nativeSave ? 'Save JSON…' : 'Download JSON (.json)'}
           </button>
+          {extra?.(() => setOpen(false))}
         </div>
       ) : null}
     </div>

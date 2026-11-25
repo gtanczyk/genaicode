@@ -145,20 +145,25 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     const page = await browser.newPage();
     await page.goto(opened!);
 
-    // 1. Home screen: no folder name in header, Knights topic card visible, "co tam?" runs in ~/.genaicode/home.
+    // 1. Home screen: no folder name in the top bar, Knights topic card visible, "co tam?" runs in ~/.genaicode/home.
     await page.getByRole('button', { name: 'New chat in Knights' }).waitFor();
-    expect(await page.locator('header.bar .cwd').count()).toBe(0);
-    expect(await page.locator('header.bar').textContent()).not.toContain('knights');
+    expect(await page.locator('header.topbar .crumb').count()).toBe(0);
+    expect(await page.locator('header.topbar').textContent()).not.toContain('knights');
 
     const chat = page.getByRole('log');
     const composer = page.locator('textarea');
     await composer.fill('co tam?');
-    const support = page.getByRole('navigation', { name: 'Support' });
-    expect(await support.getByRole('link', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
+    // Help in the sidebar holds the support links; opening it leaves the draft alone.
+    await page
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('button', { name: 'Help', exact: true })
+      .click();
+    const support = page.getByRole('menu', { name: 'Help' });
+    expect(await support.getByRole('menuitem', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
     await page.context().route(BUG_REPORT_URL, (route) => route.fulfill({ body: 'Bug report' }), { times: 1 });
     const [report] = await Promise.all([
       page.waitForEvent('popup'),
-      support.getByRole('link', { name: 'Report a bug' }).click(),
+      support.getByRole('menuitem', { name: 'Report a bug' }).click(),
     ]);
     expect(report.url()).toBe(BUG_REPORT_URL);
     await report.close();
@@ -170,11 +175,15 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     expect(runs[0]!.servers).toContain('genaicode_project');
 
     // 2. Topic card -> New chat runs in the Knights directory without any folder step; file panel follows cwd.
-    await page.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await page
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('button', { name: 'New chat', exact: true })
+      .click();
     await page.getByRole('button', { name: 'New chat in Knights' }).click();
     await chat.getByText('What should helper work on in Knights?').waitFor();
-    expect(await page.locator('header.bar .conv-head').getAttribute('title')).toBe(knights);
-    expect(await page.locator('header.bar').textContent()).not.toContain(knights);
+    expect(await page.locator('header.topbar .crumb').getAttribute('title')).toBe(knights);
+    expect(await page.locator('header.topbar .crumb').textContent()).toBe('knights');
+    expect(await page.locator('header.topbar').textContent()).not.toContain(knights);
 
     await composer.fill('Zmień README');
     await composer.press('Enter');
@@ -190,7 +199,10 @@ it('runs home questions in neutral home, topic New chat in topic dir, and moves 
     await chat.getByText(`Working directory: ${knights} · topic: Knights`).waitFor();
 
     // 3. "w ~/src/x" -> open_project question card -> Yes -> next turn runs in ~/src/x with recap and file root.
-    await page.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await page
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('button', { name: 'New chat', exact: true })
+      .click();
     await chat.getByText('What should helper look into?').waitFor();
 
     await composer.fill('w ~/src/x sprawdź notatki');
@@ -265,8 +277,8 @@ it('keeps genaicode ui --cwd showing the project folder in the header as before'
     await vi.waitFor(() => expect(opened).toBeTruthy());
     const page = await browser.newPage();
     await page.goto(opened!);
-    await page.locator('header.bar .cwd').waitFor();
-    expect(await page.locator('header.bar .cwd').textContent()).toBe('my-project');
+    await page.locator('header.topbar .crumb').waitFor();
+    expect(await page.locator('header.topbar .crumb').textContent()).toBe('my-project');
   } finally {
     stop.abort();
     await browser.close();

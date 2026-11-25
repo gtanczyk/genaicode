@@ -150,7 +150,10 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
       expect(page.url()).toBe(new URL('/', opened!).href);
       await page.reload();
       expect(page.url()).toBe(new URL('/', opened!).href);
-      await page.getByRole('button', { name: 'Tower inbox · 5' }).click();
+      // Needs you counts the tower's five drafts and what this chat itself asks.
+      const needsYou = page.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
+      expect(Number(await needsYou.locator('.count').textContent())).toBeGreaterThanOrEqual(5);
+      await needsYou.click();
       await page.getByText('Pack task t1').waitFor();
     }
     const draft = desktop.getByRole('article').filter({ hasText: message.split('\n')[0] });
@@ -185,7 +188,7 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(await hook).toEqual({ behavior: 'allow' });
     expect(received.map((t) => [t.resume, t.cwd, t.prompt])).toEqual([[row.id, project, message]]);
     expect(decisions).toEqual(['session approve', 'worker deny']);
-    await desktop.getByRole('button', { name: 'Sessions' }).click();
+    await desktop.getByRole('button', { name: 'All sessions', exact: true }).click();
     await desktop.locator('main.sessions').getByText('catalog', { exact: true }).waitFor();
     expect(apiUrls.some((url) => url.endsWith('/api/events'))).toBe(true);
     expect(apiUrls.some((url) => url.includes('/api/sessions'))).toBe(true);
@@ -365,8 +368,8 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     await page.goto(opened!);
     await page.getByText('Observed answer for: Something weird happened here').waitFor();
 
-    // Header session chip opens the developer/transcript menu.
-    const chip = page.getByRole('button', { name: /session …ve123456/ });
+    // The top bar's ⋯ opens the session and transcript menu.
+    const chip = page.getByRole('button', { name: 'Session menu' });
     await chip.click();
     await page.getByText(activeSessionPath).waitFor();
 
@@ -410,7 +413,7 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     expect(mdDownload.suggestedFilename()).toBe('genaicode-reporter-ve123456.md');
 
     // Sessions view row menu copies ID & downloads stored session transcript.
-    await page.getByRole('button', { name: 'Sessions' }).click();
+    await page.getByRole('button', { name: 'All sessions', exact: true }).click();
     const row = page.locator('.session-row').filter({ hasText: 'Observed conversation' });
     await row.waitFor();
     await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
@@ -523,7 +526,8 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
   };
   try {
     const home = await start(root, ['ui', '--sessions', '--delegate', '--home', '--no-artifacts']);
-    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByRole('button', { name: 'Settings', exact: true }).click();
+    await home.getByRole('menuitem', { name: 'Project team' }).click();
     await home.getByLabel('Project folder').fill(project);
     await home.getByRole('button', { name: 'Open', exact: true }).click();
     await home.getByLabel('Lead', { exact: true }).selectOption('backup');
@@ -541,10 +545,14 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
     expect(ran).toEqual(['worker']);
     expect(rosters).toEqual([['worker', 'backup']]);
-    await home.locator('header.bar').getByRole('button', { name: 'New chat' }).click();
+    await home
+      .getByRole('complementary', { name: 'Sidebar' })
+      .getByRole('button', { name: 'New chat', exact: true })
+      .click();
     await home.getByRole('button', { name: 'New chat in Catalog' }).click();
     await home.getByText('What should backup work on in Catalog?').waitFor();
-    await home.getByRole('button', { name: 'Project team' }).click();
+    await home.getByRole('button', { name: 'Settings', exact: true }).click();
+    await home.getByRole('menuitem', { name: 'Project team' }).click();
     expect(await home.getByLabel('Lead', { exact: true }).inputValue()).toBe('backup');
     expect(await home.getByLabel('Project folder').count()).toBe(0);
     await home.close();
@@ -552,7 +560,8 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await running;
     const scoped = await start(project, ['ui', '--pack', '--no-artifacts']);
     await scoped.getByText('Project pack: backup leads · members: worker, backup.').waitFor();
-    await scoped.getByRole('button', { name: 'Project team' }).click();
+    await scoped.getByRole('button', { name: 'Settings', exact: true }).click();
+    await scoped.getByRole('menuitem', { name: 'Project team' }).click();
     expect(await scoped.getByRole('checkbox', { name: 'spare' }).isChecked()).toBe(false);
     expect(await scoped.getByRole('checkbox', { name: 'backup' }).isChecked()).toBe(true);
   } finally {

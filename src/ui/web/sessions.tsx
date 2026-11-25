@@ -89,6 +89,7 @@ export function Sessions({
   onAllTopics,
   own,
   onAllSessions,
+  initialState,
   nativeSave,
   onStatus,
 }: {
@@ -109,6 +110,8 @@ export function Sessions({
   own?: boolean;
   /** Back to every agent's sessions. */
   onAllSessions?(): void;
+  /** The State filter the view opens with (`now`: what needs you). The person can change it. */
+  initialState?: string;
   /** Desktop host handles Save File dialogs natively. */
   nativeSave?: boolean;
   /** Brief feedback after copying or downloading a session's ID or transcript. */
@@ -121,7 +124,7 @@ export function Sessions({
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
   const [agent, setAgent] = useState('');
-  const [state, setState] = useState('');
+  const [state, setState] = useState(initialState ?? '');
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [copied, setCopied] = useState<string>();
   const [round, setRound] = useState(0);

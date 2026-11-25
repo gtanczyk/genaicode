@@ -94,9 +94,11 @@ it('shows onboarding with no agents, moves through signed-out to Ready on Check 
     // Onboarding screen is shown and prompt box is disabled with the setup hint in both tabs.
     await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
     await secondTab.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
-    const support = page.getByRole('navigation', { name: 'Support' });
-    expect(await support.getByRole('link', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
-    expect(await support.getByRole('link', { name: 'Report a bug' }).getAttribute('href')).toBe(BUG_REPORT_URL);
+    await page.getByRole('button', { name: 'Help', exact: true }).click();
+    const support = page.getByRole('menu', { name: 'Help' });
+    expect(await support.getByRole('menuitem', { name: 'Get help' }).getAttribute('href')).toBe(SUPPORT_URL);
+    expect(await support.getByRole('menuitem', { name: 'Report a bug' }).getAttribute('href')).toBe(BUG_REPORT_URL);
+    await page.keyboard.press('Escape');
     const claudeCard = page.locator('li[data-agent="claude"]');
     await claudeCard.waitFor();
     expect(await claudeCard.getAttribute('data-state')).toBe('missing');
@@ -108,9 +110,9 @@ it('shows onboarding with no agents, moves through signed-out to Ready on Check 
     expect(await page.getByRole('button', { name: 'Send' }).isDisabled()).toBe(true);
 
     // Session view still works while in setup state.
-    await page.getByRole('button', { name: 'Sessions' }).click();
+    await page.getByRole('button', { name: 'All sessions', exact: true }).click();
     await page.locator('main.sessions').waitFor();
-    await page.getByRole('button', { name: '← Chat' }).click();
+    await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).click();
     await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
 
     // Fake signed-out claude appears on PATH -> Check again -> Installed, not signed in.
@@ -231,7 +233,7 @@ if [ "$1" = "login" ] && [ "$2" = "status" ]; then echo "Not logged in" >&2; exi
     await codexCard.waitFor();
     expect(await codexCard.textContent()).toContain('Installed, not signed in');
     expect(await codexCard.textContent()).toContain('codex login');
-    await page.getByRole('button', { name: '← Chat' }).click();
+    await page.locator('header.topbar').getByRole('button', { name: 'Chat', exact: true }).click();
 
     // Switch to Gemini CLI (unknown auth) and send a prompt -> auth error becomes a Sign-in card instead of raw stderr.
     await page.getByRole('button', { name: 'Agent' }).click();
@@ -327,10 +329,12 @@ it('keeps onboarding accessible after continuing an existing session during setu
     await page.getByRole('heading', { name: 'Connect a coding agent' }).waitFor();
 
     // Open Sessions and continue the previous conversation while still in setup mode.
-    await page.getByRole('button', { name: 'Sessions' }).click();
+    await page.getByRole('button', { name: 'All sessions', exact: true }).click();
     await page.locator('main.sessions').waitFor();
-    await page.getByText('Fix billing retry').waitFor();
-    await page.getByRole('button', { name: 'Continue here' }).click();
+    // The sidebar lists it too, under the other agents' sessions: the row meant is the page's.
+    const listed = page.locator('main.sessions');
+    await listed.getByText('Fix billing retry').waitFor();
+    await listed.getByRole('button', { name: 'Continue here' }).click();
 
     // The loaded turn is visible, and onboarding + Check again remain accessible without clearing history.
     await page.getByText('Found the missing backoff guard.').waitFor();

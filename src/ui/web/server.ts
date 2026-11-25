@@ -212,6 +212,8 @@ export type WebCommand =
   | { type: 'continue'; id: string }
   /** Start a new conversation in the resolved directory of this topic (`--home` mode). */
   | { type: 'topic-chat'; topic: string }
+  /** Start a new conversation in this directory, an absolute path (`--home` mode). */
+  | { type: 'project-chat'; cwd: string }
   /** Start a new conversation back in the neutral home (`--home` mode). */
   | { type: 'home-chat' }
   | { type: 'agent'; name: string }
@@ -317,6 +319,10 @@ export function parseCommand(value: unknown): WebCommand | undefined {
     case 'topic-chat': {
       const topic = text('topic', 200);
       return topic ? { type: 'topic-chat', topic } : undefined;
+    }
+    case 'project-chat': {
+      const cwd = text('cwd', 4096);
+      return cwd ? { type: 'project-chat', cwd } : undefined;
     }
     case 'home-chat':
       return { type: 'home-chat' };
@@ -1149,6 +1155,8 @@ async function run(
       return controller.continueSession(command.id);
     case 'topic-chat':
       return controller.startTopicChat(command.topic);
+    case 'project-chat':
+      return controller.startProjectChat(command.cwd);
     case 'home-chat':
       return controller.startHomeChat();
     case 'agent':

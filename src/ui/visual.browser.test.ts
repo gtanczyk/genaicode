@@ -577,7 +577,8 @@ describe('the genaicode ui page looks as its baseline', () => {
       // How long the turn took differs between runs.
       const mask = (page: Page) => [page.locator('.gc-turn-footer')];
       for (const [index, page] of pages.entries()) {
-        await page.getByRole('button', { name: /What’s new/ }).waitFor();
+        // The sidebar's last piece: Help, where What's new is.
+        await page.getByRole('button', { name: 'Help', exact: true }).waitFor();
         // The mascot is a background image: drawn only once it has loaded.
         await page.evaluate(() =>
           Promise.all(

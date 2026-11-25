@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { supportHelp } from '../support.js';
 import { detectAgents } from '../agents/discovery.js';
@@ -216,6 +218,11 @@ export interface ChatController {
   continueSession(id: string): Promise<boolean>;
   /** Start a new conversation in the resolved directory of `topicId` (`--home` mode). */
   startTopicChat(topicId: string): Promise<boolean>;
+  /**
+   * Start a new conversation in `cwd`, an existing directory given by its absolute path (`--home`
+   * mode): the sidebar's "new chat here" on a project. Resolves false, with a notice, when it cannot.
+   */
+  startProjectChat(cwd: string): Promise<boolean>;
   /** Start a new conversation back in the neutral home (or current dir in `--cwd` mode). */
   startHomeChat(): boolean;
   /** Move the active conversation into `target.cwd` (used by `open_project` after user confirmation). */
@@ -679,6 +686,45 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(`Could not start a chat for that topic: ${errorText(error)}`, 'error');
       return false;
     }
+  };
+
+  const startProjectChat = async (cwd: string): Promise<boolean> => {
+    if (!homeMode) return false;
+    if (isSameDir(cwd, homeDir)) return startHomeChat();
+    let found = false;
+    try {
+      found = isAbsolute(cwd) && statSync(cwd).isDirectory();
+    } catch {
+      found = false;
+    }
+    if (!found) {
+      notice(`No folder ${cwd} to start a chat in.`, 'error');
+      return false;
+    }
+    const savedLead = await options.projectLead?.(cwd)?.catch(() => undefined);
+    const lead = savedLead ? byName.get(savedLead) : undefined;
+    batching++;
+    let ok = false;
+    try {
+      ok = session.clear({ cwd });
+      if (ok) {
+        conversationEpoch += 1;
+        contextEpoch += 1;
+        relayNotices.clear();
+        if (lead) session.setAgent(lead, { handoff: false });
+        notices = [];
+        conversation = { id: randomUUID(), cwd, origin: 'project' };
+        lastSavedKey = '';
+      }
+    } finally {
+      batching--;
+    }
+    if (!ok) {
+      notice('Stop the running turn before starting another chat.', 'error');
+      return false;
+    }
+    publish();
+    return true;
   };
 
   const continueSession = async (id: string): Promise<boolean> => {
@@ -1183,6 +1229,7 @@ export function createChatController(options: ChatOptions): ChatController {
     updateAgents,
     continueSession,
     startTopicChat,
+    startProjectChat,
     startHomeChat,
     moveProject,
     setModel(model) {

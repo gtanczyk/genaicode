@@ -1,0 +1,190 @@
+import { describe, expect, it } from 'vitest';
+import type { SessionInfo } from '../agents/sessions/group.js';
+import {
+  chatProjects,
+  chatTitle,
+  escapeAction,
+  HOME_FOLDER,
+  liveGlyph,
+  needsYou,
+  OPEN_CHAT_SOURCE,
+  otherSessions,
+  quotaRows,
+  sessionGlyph,
+  startsCollapsed,
+  withOpenChat,
+} from './sidebar.js';
+
+const now = Date.parse('2026-11-25T10:00:00Z');
+const chat = (id: string, patch: Partial<SessionInfo> = {}): SessionInfo => ({
+  source: 'claude',
+  agent: 'claude',
+  id,
+  where: 'local',
+  cwd: '/work/app',
+  title: `Chat ${id}`,
+  updatedAt: now - 60_000,
+  ...patch,
+});
+
+describe('chatProjects', () => {
+  it('groups chats by directory, newest project and newest chat first', () => {
+    const projects = chatProjects([
+      chat('a', { updatedAt: now - 5_000 }),
+      chat('b', { cwd: '/work/site/', updatedAt: now - 1_000 }),
+      chat('c', { updatedAt: now - 2_000 }),
+      chat('d', { cwd: '/work/site', updatedAt: now - 9_000 }),
+    ]);
+    expect(projects.map((project) => [project.name, project.path, project.chats.map((one) => one.id)])).toEqual([
+      ['site', '/work/site', ['b', 'd']],
+      ['app', '/work/app', ['c', 'a']],
+    ]);
+  });
+
+  it('puts chats without a folder, and those in the app’s own home, under "Home folder"', () => {
+    const projects = chatProjects(
+      [chat('a', { cwd: undefined }), chat('b', { cwd: '/home/me/.genaicode/home' }), chat('c')],
+      { home: '/home/me/.genaicode/home/' },
+    );
+    const home = projects.find((project) => project.key === HOME_FOLDER)!;
+    expect(home.name).toBe('Home folder');
+    expect(home.path).toBe('/home/me/.genaicode/home');
+    expect(home.chats.map((one) => one.id).sort()).toEqual(['a', 'b']);
+    expect(projects).toHaveLength(2);
+  });
+
+  it('leaves archived chats out', () => {
+    expect(chatProjects([chat('a', { archived: true })])).toEqual([]);
+  });
+});
+
+describe('withOpenChat', () => {
+  const open = { id: 'new', agent: 'codex', cwd: '/work/app', title: 'Fix the build', updatedAt: now };
+
+  it('adds the open chat while no store lists it', () => {
+    const rows = withOpenChat([chat('a')], open);
+    expect(rows[0]).toMatchObject({ source: OPEN_CHAT_SOURCE, id: 'new', agent: 'codex', title: 'Fix the build' });
+    expect(rows).toHaveLength(2);
+    // Before the agent named its session there is no id yet.
+    expect(withOpenChat([], { ...open, id: undefined })[0]).toMatchObject({ source: OPEN_CHAT_SOURCE, id: '' });
+  });
+
+  it('keeps one row for a listed chat, with the title and time of the open one', () => {
+    const rows = withOpenChat([chat('new', { title: 'old title', updatedAt: now - 90_000 }), chat('a')], open);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ source: 'claude', id: 'new', title: 'Fix the build', updatedAt: now });
+  });
+
+  it('changes nothing without an open chat', () => {
+    expect(withOpenChat([chat('a')], undefined).map((one) => one.id)).toEqual(['a']);
+  });
+});
+
+describe('glyphs', () => {
+  it('reads a listed session: asking beats running, an ended turn is done, the rest is idle', () => {
+    expect(sessionGlyph(chat('a', { state: 'active' }), now)).toBe('run');
+    expect(sessionGlyph(chat('a', { state: 'waiting', waitingFor: 'approval' }), now)).toBe('ask');
+    expect(sessionGlyph(chat('a', { state: 'waiting', ending: 'question' }), now)).toBe('ask');
+    expect(sessionGlyph(chat('a', { state: 'waiting' }), now)).toBe('ok');
+    expect(sessionGlyph(chat('a', { state: 'unfinished' }), now)).toBe('idle');
+    expect(sessionGlyph(chat('a'), now)).toBe('idle');
+  });
+
+  it('reads the open chat from its live state', () => {
+    expect(liveGlyph({ status: 'running', approvals: 1, turns: 1 })).toBe('ask');
+    expect(liveGlyph({ status: 'running', approvals: 0, turns: 1 })).toBe('run');
+    expect(liveGlyph({ status: 'idle', approvals: 0, turns: 2, failed: true })).toBe('err');
+    expect(liveGlyph({ status: 'idle', approvals: 0, turns: 2 })).toBe('ok');
+    expect(liveGlyph({ status: 'idle', approvals: 0, turns: 0 })).toBeUndefined();
+  });
+});
+
+it('titles a row with the title, else a prompt, on one line', () => {
+  expect(chatTitle(chat('a', { title: 'First\nsecond' }))).toBe('First');
+  expect(chatTitle(chat('a', { title: undefined, firstPrompt: 'Add CSV export' }))).toBe('Add CSV export');
+  expect(chatTitle(chat('', { title: undefined }))).toBe('New chat');
+});
+
+it('lists the other agents’ sessions: not this app’s, asking first, then the latest, capped', () => {
+  const own = [chat('mine')];
+  const all = [
+    chat('mine'),
+    // The same session read through another source is still this app's.
+    chat('mine', { source: 'claude-app' }),
+    chat('old', { agent: 'codex', source: 'codex', updatedAt: now - 9_000_000 }),
+    chat('new', { agent: 'gemini', source: 'gemini', updatedAt: now - 1_000 }),
+    chat('asks', {
+      agent: 'codex',
+      source: 'codex',
+      state: 'waiting',
+      waitingFor: 'approval',
+      updatedAt: now - 5_000_000,
+    }),
+    chat('gone', { archived: true }),
+  ];
+  const { shown, total } = otherSessions(all, own, 2, now);
+  expect(shown.map((one) => one.id)).toEqual(['asks', 'new']);
+  expect(total).toBe(3);
+});
+
+it('counts what needs you across projects and in the open chat, the open session once', () => {
+  const sessions = [
+    chat('open', { state: 'waiting', waitingFor: 'approval' }),
+    chat('other', { state: 'waiting', ending: 'question', updatedAt: now - 3_600_000 }),
+    chat('ended', { state: 'waiting' }),
+  ];
+  expect(needsYou({ approvals: 2, tower: 3, sessions, openId: 'open', now })).toEqual({
+    total: 6,
+    here: 2,
+    title: 'Needs you: 6 across all projects, 2 in this chat',
+  });
+  expect(needsYou({ approvals: 0, now }).title).toBe('Nothing needs you now');
+});
+
+describe('quotaRows', () => {
+  it('shows each agent’s worst window, the closest to its limit first', () => {
+    const rows = quotaRows(
+      [
+        { agent: 'claude', window: '5h', status: 'ok', usedPercent: 62 },
+        { agent: 'claude', window: '7d', status: 'ok', usedPercent: 12 },
+        { agent: 'gemini', window: 'quota', status: 'exceeded', resetsAt: now + 6 * 3_600_000 },
+        // The same account as codex.
+        { agent: 'codexLive', window: '5h', status: 'warning', usedPercent: 88.4 },
+        // Rolled over since it was reported.
+        { agent: 'cursor', window: '5h', status: 'exceeded', resetsAt: now - 1 },
+      ],
+      ['agy', 'codexLive'],
+      now,
+    );
+    expect(rows.map((row) => [row.agent, row.text, row.level])).toEqual([
+      ['gemini', 'out · 6h', 'exceeded'],
+      ['codex', '88% · 5h', 'warning'],
+      ['claude', '62% · 5h', 'ok'],
+      ['agy', 'no limits', 'ok'],
+      ['cursor', 'no limits', 'ok'],
+    ]);
+    expect(rows[0]!.percent).toBe(100);
+    expect(rows[3]!.percent).toBeUndefined();
+  });
+});
+
+describe('escapeAction', () => {
+  it('closes the innermost open thing first', () => {
+    expect(escapeAction({ menu: true, viewer: true, page: true, inComposer: true, running: true })).toBe('menu');
+    expect(escapeAction({ viewer: true, page: true, inComposer: true, running: true })).toBe('viewer');
+    expect(escapeAction({ page: true, running: true })).toBe('page');
+  });
+
+  it('stops a running turn only when nothing is open and the focus is in the message field', () => {
+    expect(escapeAction({ inComposer: true, running: true })).toBe('stop');
+    expect(escapeAction({ running: true })).toBeUndefined();
+    expect(escapeAction({ inComposer: true })).toBeUndefined();
+  });
+});
+
+it('starts as the rail below 980 px unless the person chose', () => {
+  expect(startsCollapsed(null, 900)).toBe(true);
+  expect(startsCollapsed(null, 980)).toBe(false);
+  expect(startsCollapsed('0', 900)).toBe(false);
+  expect(startsCollapsed('1', 1440)).toBe(true);
+});

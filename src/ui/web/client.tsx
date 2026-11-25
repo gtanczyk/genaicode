@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
-import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { personText } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
@@ -9,6 +8,7 @@ import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { formatBytes } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
+import type { SessionInfo } from '../../agents/sessions/group.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
 import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
@@ -19,12 +19,24 @@ import {
   limitChips,
   needsAttention,
   parseSlash,
-  shortId,
   SLASH_COMMANDS,
   splitAttached,
 } from '../format.js';
 import type { UiRelease } from './release.js';
-import type { WebCommand } from './server.js';
+import type { WebCommand, WebSessionListing } from './server.js';
+import {
+  chatProjects,
+  folderName,
+  HOME_FOLDER,
+  liveGlyph,
+  needsYou,
+  OPEN_CHAT_SOURCE,
+  otherSessions,
+  quotaRows,
+  sessionKey,
+  withOpenChat,
+} from '../sidebar.js';
+import { Shell } from './shell.js';
 import { AgentPicker } from './agent-picker.js';
 import { Sessions } from './sessions.js';
 import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
@@ -135,38 +147,74 @@ function promptBubble(text: string) {
   );
 }
 
-/** How often the limits last seen are asked for again. */
+/** How often the limits last seen, and the lists of the sidebar, are asked for again. */
 const LIMITS_EVERY_MS = 60_000;
 
 /**
- * The limits last seen of `agent`'s plan (`/api/limits`): asked when the agent changes, when a turn
- * ends, and every minute. `codexLive` and `codex` draw on one account.
+ * The limits last seen of every agent's plan (`/api/limits`): asked when the page opens, when a
+ * turn starts or ends, and every minute. The sidebar shows each agent's worst window.
  */
-function usePlanLimits(agent: string | undefined, running: boolean): RateLimit[] {
-  const [limits, setLimits] = useState<RateLimit[]>([]);
+function useAllLimits(running: boolean): Array<RateLimit & { agent: string }> {
+  const [limits, setLimits] = useState<Array<RateLimit & { agent: string }>>([]);
   useEffect(() => {
-    if (!agent || !token) return;
+    if (!token) return;
     let current = true;
-    const account = agent.replace(/Live$/, '');
     const ask = () =>
       fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
         .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
         .then(
           (found: { limits?: Array<RateLimit & { agent: string }> }) => {
-            if (!current) return;
-            setLimits((found.limits ?? []).filter((limit) => limit.agent === account));
+            if (current) setLimits(found.limits ?? []);
           },
           () => undefined,
         );
-    setLimits([]);
     void ask();
     const timer = window.setInterval(ask, LIMITS_EVERY_MS);
     return () => {
       current = false;
       window.clearInterval(timer);
     };
-  }, [agent, running]);
+  }, [running]);
   return limits;
+}
+
+const NO_SESSIONS: SessionInfo[] = [];
+
+/**
+ * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
+ * agent's sessions of the last 7. Asked again when `stamp` changes (a turn ended, another chat was
+ * opened), every minute, and when the window is looked at again.
+ */
+function useChats(enabled: boolean, stamp: string): { own: SessionInfo[]; all: SessionInfo[] } {
+  const [own, setOwn] = useState<SessionInfo[]>(NO_SESSIONS);
+  const [all, setAll] = useState<SessionInfo[]>(NO_SESSIONS);
+  useEffect(() => {
+    if (!enabled || !token) return;
+    let current = true;
+    const list = (query: string, keep: (sessions: SessionInfo[]) => void) =>
+      fetch(`/api/sessions?${query}`, { headers: { 'x-genaicode-token': token } })
+        .then((res) => (res.ok ? (res.json() as Promise<WebSessionListing>) : undefined))
+        .then(
+          (found) => {
+            if (current && found) keep(found.sessions ?? []);
+          },
+          () => undefined,
+        );
+    const ask = () => {
+      if (document.visibilityState !== 'visible') return;
+      void list('days=30&own=1', setOwn);
+      void list('days=7', setAll);
+    };
+    ask();
+    const timer = window.setInterval(ask, LIMITS_EVERY_MS);
+    document.addEventListener('visibilitychange', ask);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', ask);
+    };
+  }, [enabled, stamp]);
+  return { own, all };
 }
 
 interface PageConfig {
@@ -307,26 +355,6 @@ function useAgents(
     inspectedAt,
     checkAgain,
   };
-}
-
-function useAllLimits(active: boolean): Array<RateLimit & { agent: string }> {
-  const [limits, setLimits] = useState<Array<RateLimit & { agent: string }>>([]);
-  useEffect(() => {
-    if (!active || !token) return;
-    let current = true;
-    fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
-      .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
-      .then(
-        (found: { limits?: Array<RateLimit & { agent: string }> }) => {
-          if (current) setLimits(found.limits ?? []);
-        },
-        () => undefined,
-      );
-    return () => {
-      current = false;
-    };
-  }, [active]);
-  return limits;
 }
 
 function useView(onToast?: (text: string) => void): {
@@ -778,41 +806,59 @@ const IDEAS = ['Explain how this project is organized', 'Find and fix a failing 
 /** Without a project the chat is about the work of every agent. */
 const IDEAS_ANYWHERE = ['What is waiting for me?', 'What are my agents working on?', 'Sum up what got done today'];
 
-function WhatsNew({ release }: { release: UiRelease }) {
+/** Where the version whose notes were opened is kept: the dot on Help shows until then. */
+const WHATS_NEW_KEY = 'genaicode-whatsnew';
+
+/** The release notes, opened from Help › What's new, and by itself once after an update. */
+function WhatsNewDialog({ release, ref, onSeen }: { release: UiRelease; ref: Ref<HTMLDialogElement>; onSeen(): void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (release.announce && !dialog.current?.open) dialog.current?.showModal();
   }, [release]);
+  // Opened either way, the notes count as seen.
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    const watch = new MutationObserver(() => {
+      if (element.open) onSeen();
+    });
+    watch.observe(element, { attributes: true, attributeFilter: ['open'] });
+    if (element.open) onSeen();
+    return () => watch.disconnect();
+  }, [release.version]);
 
   return (
-    <>
-      <button className="chip off" aria-haspopup="dialog" onClick={() => dialog.current?.showModal()}>
-        What’s new · {release.version}
-      </button>
-      <dialog ref={dialog} className="release-dialog" aria-labelledby="release-heading">
-        <div className="release-heading">
-          <h2 id="release-heading">What’s new in Genaicode {release.version}</h2>
-          <form method="dialog">
-            <button className="chip" autoFocus>
-              Close
-            </button>
-          </form>
-        </div>
-        {release.previous && (
-          <p>
-            Updated from {release.previous} to <strong>{release.version}</strong>.
-          </p>
-        )}
-        {release.notes ? <Markdown text={release.notes} /> : <p>No release notes bundled for this version.</p>}
-        <a
-          href={`https://github.com/gtanczyk/genaicode/releases/tag/v${encodeURIComponent(release.version)}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          View release on GitHub
-        </a>
-      </dialog>
-    </>
+    <dialog
+      ref={(element) => {
+        dialog.current = element;
+        if (typeof ref === 'function') ref(element);
+        else if (ref) ref.current = element;
+      }}
+      className="release-dialog"
+      aria-labelledby="release-heading"
+    >
+      <div className="release-heading">
+        <h2 id="release-heading">What’s new in Genaicode {release.version}</h2>
+        <form method="dialog">
+          <button className="chip" autoFocus>
+            Close
+          </button>
+        </form>
+      </div>
+      {release.previous && (
+        <p>
+          Updated from {release.previous} to <strong>{release.version}</strong>.
+        </p>
+      )}
+      {release.notes ? <Markdown text={release.notes} /> : <p>No release notes bundled for this version.</p>}
+      <a
+        href={`https://github.com/gtanczyk/genaicode/releases/tag/v${encodeURIComponent(release.version)}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        View release on GitHub
+      </a>
+    </dialog>
   );
 }
 
@@ -847,8 +893,16 @@ function App() {
   const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
   const showAgents = panel === 'agents';
-  // Only the conversations this chat had itself, not every agent's sessions.
-  const [own, setOwn] = useState(false);
+  // All sessions opened from Needs you: only the ones that ask now.
+  const [needsOnly, setNeedsOnly] = useState(false);
+  const whatsNew = useRef<HTMLDialogElement>(null);
+  const [seenRelease, setSeenRelease] = useState(() => {
+    try {
+      return localStorage.getItem(WHATS_NEW_KEY) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  });
   // The topic picked on the start screen: the Sessions view shows only it.
   const [topic, setTopic] = useState<string>();
   const session = view?.session;
@@ -864,7 +918,7 @@ function App() {
     inspectedAt,
     checkAgain: checkAgents,
   } = useAgents(hasAgentsApi, view?.agents, inSetup || showAgents, inSetup);
-  const allLimits = useAllLimits(inSetup || showAgents);
+  const allLimits = useAllLimits(running);
   // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
   const seenAuthFail = useRef(new Set<number>());
   useEffect(() => {
@@ -908,7 +962,13 @@ function App() {
   root.classList.toggle('has-turns', !!session?.turns.length);
   // The Mac app draws the window's buttons over the page: the header leaves them room.
   root.classList.toggle('mac-app', '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform));
-  const plan = usePlanLimits(session?.agent, running);
+  // `codexLive` and `codex` draw on one account.
+  const account = session?.agent.replace(/Live$/, '');
+  const plan = useMemo(() => allLimits.filter((limit) => limit.agent === account), [allLimits, account]);
+  const chats = useChats(
+    hasSessions,
+    `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
+  );
   // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
   const rateLimits = session?.rateLimits?.length ? session.rateLimits : plan;
   // On a plan the measure is the plan's own: a price there would be an estimate nobody pays.
@@ -1126,199 +1186,502 @@ function App() {
       </div>
     ) : null;
 
+  const backToChat = () => {
+    setPanel('chat');
+    // Back from a page, the next key goes to the message field.
+    window.requestAnimationFrame(() =>
+      document.querySelector<HTMLTextAreaElement>('.workspace .gc-box textarea')?.focus(),
+    );
+  };
+  const openSessions = (needsYouOnly: boolean) => {
+    setTopic(undefined);
+    setNeedsOnly(needsYouOnly);
+    setPanel('sessions');
+  };
+  // Needs you is one place: the tower's drafts while it has any, else the sessions that ask now.
+  const openNeedsYou = () => {
+    if (view?.tower && (view.tower.items.length || !hasSessions)) setPanel('inbox');
+    else if (hasSessions) openSessions(true);
+    else backToChat();
+  };
+  const pageTitle =
+    panel === 'sessions'
+      ? needsOnly
+        ? 'Needs you'
+        : 'All sessions'
+      : panel === 'inbox'
+        ? 'Needs you'
+        : panel === 'agents'
+          ? 'Agents'
+          : undefined;
+  const lastTurn = session?.turns.at(-1);
+  const openChat = useMemo(
+    () =>
+      session && lastTurn
+        ? {
+            id: session.sessionId,
+            agent: session.agent,
+            cwd: activeCwd,
+            title: convTitle,
+            updatedAt: lastTurn.endedAt ?? lastTurn.startedAt,
+          }
+        : undefined,
+    [session?.sessionId, session?.agent, activeCwd, convTitle, lastTurn?.endedAt, lastTurn?.startedAt],
+  );
+  const ownChats = useMemo(() => withOpenChat(chats.own, openChat), [chats.own, openChat]);
+  const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
+  const openRow = openChat
+    ? ownChats.find((chat) => (openChat.id ? chat.id === openChat.id : chat.source === OPEN_CHAT_SOURCE))
+    : undefined;
+  const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
+  const needs = needsYou({
+    approvals: session?.approvals.length ?? 0,
+    tower: view?.tower?.items.length,
+    sessions: chats.all,
+    openId: session?.sessionId,
+  });
+  // One row per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
+  const quota = useMemo(
+    () =>
+      session
+        ? quotaRows(
+            [
+              ...allLimits.filter((limit) => limit.agent.replace(/Live$/, '') !== account),
+              ...rateLimits.map((limit) => ({ ...limit, agent: session.agent })),
+            ],
+            [session.agent],
+          )
+        : [],
+    [allLimits, rateLimits, session?.agent, account],
+  );
+  const settingsItems = [
+    ...(hasAgentsApi ? [{ label: 'Agents', onSelect: () => openSetup() }] : []),
+    ...(config?.projectTeams ? [{ label: 'Project team', onSelect: () => setShowTeam(true) }] : []),
+    ...(config?.canConfigureCdn
+      ? [
+          {
+            label: 'HTML artifact CDNs',
+            ...(config.artifactCdn?.length ? { detail: String(config.artifactCdn.length) } : {}),
+            onSelect: () => {
+              setArtifactsOpen(false);
+              setSettingsOpen(true);
+            },
+          },
+        ]
+      : []),
+  ];
+
   return (
     <>
-      {/* In the desktop app the header is the window's title bar: it moves the window. */}
-      <header className="bar" data-tauri-drag-region="deep">
-        <div className="brand">
-          <img src="/assets/wolf-64.png" alt="" /> genaicode{' '}
-          {release ? <WhatsNew release={release} /> : <small>{root.dataset.version}</small>}
-        </div>
-        {cwd && hasProject ? (
-          <span className="cwd" title={cwd}>
-            {cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd}
-          </span>
-        ) : !hasProject && (convTitle || convTopic) ? (
-          <div className="conv-head" title={activeCwd || undefined}>
-            <span className="conv-title">{convTitle ?? convTopic}</span>
-            {convTopic && convTopic !== convTitle ? <small className="conv-topic">{convTopic}</small> : null}
-          </div>
-        ) : null}
-        <span className="spacer" />
-        {view && session ? (
-          <>
-            {session.sessionId || session.turns.length ? (
-              <TranscriptMenu
-                token={token}
-                endpoint="/api/transcript"
-                sessionId={session.sessionId}
-                nativeSave={config?.nativeSave}
-                label={session.sessionId ? `session ${shortId(session.sessionId)} ▾` : 'Transcript ▾'}
-                title={
-                  session.sessionId
-                    ? `Session ${session.sessionId} — copy ID, file path or transcript`
-                    : 'Copy or save conversation transcript'
-                }
-                buttonClassName="chip"
-                onStatus={showToast}
-              />
-            ) : null}
-            {usage ? <span className="chip">{usage}</span> : null}
-            {inSetup && (session.turns.length > 0 || showAgents) ? (
-              <button
-                className={`chip${showAgents ? '' : ' waits'}`}
-                title="Install or sign in to a coding agent to continue"
-                aria-pressed={showAgents}
-                onClick={() => {
-                  setFocusAgent(undefined);
-                  setPanel(showAgents ? 'chat' : 'agents');
-                }}
-              >
-                {showAgents ? '← Chat' : 'Connect agent'}
-              </button>
-            ) : null}
-            {sessionArtifacts.length && !showSessions ? (
-              <div className="popover-anchor">
-                <button
-                  className={`chip${artifactsOpen ? '' : ' off'}`}
-                  aria-expanded={artifactsOpen}
-                  title="Artifacts published in this conversation"
-                  onClick={() => {
-                    setSettingsOpen(false);
-                    setArtifactsOpen((v) => !v);
-                  }}
-                >
-                  Artifacts · {sessionArtifacts.length}
-                </button>
-                {artifactsOpen ? (
-                  <div className="popover artifacts-popover" role="menu" aria-label="Session artifacts">
-                    {sessionArtifacts.map((group) => (
-                      <button
-                        key={group.id}
-                        type="button"
-                        role="menuitem"
-                        className={`artifact-list-item${viewer?.kind === 'artifact' && viewer.id === group.id ? ' active' : ''}`}
-                        onClick={() => openArtifactInPanel(group.latest)}
-                      >
-                        <span className="artifact-list-icon" aria-hidden="true">
-                          ◆
-                        </span>
-                        <span className="artifact-list-title">{group.latest.title}</span>
-                        <small className="artifact-list-meta">
-                          {artifactKindLabel(group.latest)} · {formatBytes(group.latest.bytes)}
-                          {group.latest.version > 1 ? ` · v${group.latest.version}` : ''}
-                        </small>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+      <Shell
+        title={pageTitle ?? convTitle ?? 'New chat'}
+        subtitle={!pageTitle && convTopic && convTopic !== convTitle ? convTopic : undefined}
+        project={
+          !pageTitle && activeCwd && (hasProject || (isHome && conversation && conversation.origin !== 'home'))
+            ? { name: folderName(activeCwd), path: activeCwd }
+            : undefined
+        }
+        onBack={panel === 'chat' ? undefined : backToChat}
+        usage={!pageTitle && usage ? usage : undefined}
+        actions={
+          view && session && panel === 'chat' ? (
+            <>
+              {sessionArtifacts.length ? (
+                <div className="popover-anchor" data-tauri-drag-region="false">
+                  <button
+                    className="btn ghost sm"
+                    aria-expanded={artifactsOpen}
+                    aria-pressed={artifactsOpen}
+                    title="Artifacts published in this conversation"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      setArtifactsOpen((v) => !v);
+                    }}
+                  >
+                    Artifacts · {sessionArtifacts.length}
+                  </button>
+                  {artifactsOpen ? (
+                    <div className="popover artifacts-popover" role="menu" aria-label="Session artifacts">
+                      {sessionArtifacts.map((group) => (
+                        <button
+                          key={group.id}
+                          type="button"
+                          role="menuitem"
+                          className={`artifact-list-item${viewer?.kind === 'artifact' && viewer.id === group.id ? ' active' : ''}`}
+                          onClick={() => openArtifactInPanel(group.latest)}
+                        >
+                          <span className="artifact-list-icon" aria-hidden="true">
+                            ◆
+                          </span>
+                          <span className="artifact-list-title">{group.latest.title}</span>
+                          <small className="artifact-list-meta">
+                            {artifactKindLabel(group.latest)} · {formatBytes(group.latest.bytes)}
+                            {group.latest.version > 1 ? ` · v${group.latest.version}` : ''}
+                          </small>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {session.sessionId || session.turns.length ? (
+                <TranscriptMenu
+                  token={token}
+                  endpoint="/api/transcript"
+                  sessionId={session.sessionId}
+                  nativeSave={config?.nativeSave}
+                  label="⋯"
+                  ariaLabel="Session menu"
+                  title={
+                    session.sessionId
+                      ? `Session ${session.sessionId}: copy ID, file path or transcript`
+                      : 'Copy or save conversation transcript'
+                  }
+                  buttonClassName="btn ghost icon sm"
+                  onStatus={showToast}
+                  extra={
+                    config?.projectTeams
+                      ? (close) => (
+                          <>
+                            <hr />
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                close();
+                                setShowTeam(true);
+                              }}
+                            >
+                              Team for this project…
+                            </button>
+                          </>
+                        )
+                      : undefined
+                  }
+                />
+              ) : null}
+            </>
+          ) : null
+        }
+        side={{
+          page:
+            panel === 'chat'
+              ? 'chat'
+              : panel === 'agents'
+                ? 'settings'
+                : pageTitle === 'Needs you'
+                  ? 'inbox'
+                  : 'sessions',
+          onNewChat: startHomeChat,
+          // The palette comes with a later step; ⌘K and the button are wired to this.
+          onSearch: () => undefined,
+          needs,
+          onNeedsYou: openNeedsYou,
+          onAllSessions: hasSessions ? () => openSessions(false) : undefined,
+          projects,
+          selectedChat: openRow ? sessionKey(openRow) : undefined,
+          selectedGlyph: session
+            ? liveGlyph({
+                status: session.status,
+                approvals: session.approvals.length,
+                failed: lastTurn?.result?.status === 'failed',
+                turns: session.turns.length,
+              })
+            : undefined,
+          onOpenChat: (chat) => {
+            if (openRow && sessionKey(chat) === sessionKey(openRow)) return backToChat();
+            // What still waits here was meant for the conversation that is left.
+            dropWaiting();
+            setViewer(undefined);
+            void command({ type: 'continue', id: chat.id });
+            setPanel('chat');
+          },
+          onNewChatIn: (project) => {
+            if (!isHome || project.key === HOME_FOLDER) return startHomeChat();
+            dropWaiting();
+            setViewer(undefined);
+            void command({ type: 'project-chat', cwd: project.key });
+            setPanel('chat');
+          },
+          // Outside --home the chat has one folder: a new chat starts there and nowhere else.
+          canNewChatIn: (project) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
+          others,
+          update: config?.update,
+          relaunching,
+          onRelaunch: () => {
+            setRelaunching(true);
+            fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
+              .then((reply) => reply.ok || setRelaunching(false))
+              .catch(() => setRelaunching(false));
+          },
+          quota,
+          onQuota: hasAgentsApi ? () => openSetup() : undefined,
+          settings: settingsItems,
+          settingsPopover:
+            settingsOpen && config?.canConfigureCdn ? (
+              <div className="popover-anchor side-popover">
+                <CdnSettingsPopover hosts={config.artifactCdn ?? []} onClose={() => setSettingsOpen(false)} />
               </div>
-            ) : null}
-            {(session.turns.length || (isHome && conversation && conversation.origin !== 'home')) && !showSessions ? (
-              <button
-                className="chip off"
-                title="Start a new conversation: a fresh agent session and an empty screen. This one stays in the list."
-                onClick={startHomeChat}
-              >
-                New chat
-              </button>
-            ) : null}
-            {hasSessions && !hasProject && !showSessions ? (
-              <button
-                className="chip off"
-                title="The conversations you had in this app"
-                onClick={() => {
-                  setTopic(undefined);
-                  setOwn(true);
-                  setPanel('sessions');
-                }}
-              >
-                Chats
-              </button>
-            ) : null}
-            {hasSessions ? (
-              <button
-                className={`chip${showSessions ? '' : ' off'}`}
-                title="What every agent on this machine has going on, by project"
-                aria-pressed={showSessions}
-                onClick={() => {
-                  setTopic(undefined);
-                  setOwn(false);
-                  setPanel(showSessions ? 'chat' : 'sessions');
-                }}
-              >
-                {showSessions ? '← Chat' : 'Sessions'}
-              </button>
-            ) : null}
-            {view.tower && (
-              <button
-                className={`chip${view.tower.items.length ? ' waits' : ''}`}
-                aria-pressed={panel === 'inbox'}
-                onClick={() => setPanel(panel === 'inbox' ? 'chat' : 'inbox')}
-              >
-                {panel === 'inbox' ? '← Chat' : `Tower inbox · ${view.tower.items.length}`}
-              </button>
-            )}
-          </>
-        ) : null}
-        {config?.projectTeams && (
-          <button type="button" className="chip off" aria-haspopup="dialog" onClick={() => setShowTeam(true)}>
-            Project team
-          </button>
-        )}
-        {config?.canConfigureCdn ? (
-          <div className="popover-anchor">
-            <button
-              className={`chip${settingsOpen ? '' : ' off'}`}
-              aria-expanded={settingsOpen}
-              title="Settings (HTML artifact CDNs)"
-              onClick={() => {
-                setArtifactsOpen(false);
-                setSettingsOpen((v) => !v);
-              }}
-            >
-              {config.artifactCdn?.length ? `Settings · CDN (${config.artifactCdn.length})` : 'Settings'}
-            </button>
-            {settingsOpen ? (
-              <CdnSettingsPopover hosts={config.artifactCdn ?? []} onClose={() => setSettingsOpen(false)} />
-            ) : null}
-          </div>
-        ) : null}
-        {config?.update ? (
-          <button
-            className="chip update"
-            disabled={!config.update.ready || relaunching}
-            title={
-              config.update.installing
-                ? `Version ${config.update.version} is being installed. The app starts again in a moment.`
-                : config.update.ready
-                  ? `Version ${config.update.version} is downloaded. Relaunching installs it and stops the agents this app runs.`
-                  : `Version ${config.update.version} is downloading. Nothing installs before you choose it.`
-            }
-            onClick={() => {
-              setRelaunching(true);
-              fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
-                .then((reply) => reply.ok || setRelaunching(false))
-                .catch(() => setRelaunching(false));
+            ) : null,
+          version: release?.version ?? root.dataset.version,
+          whatsNewUnread: !!release && seenRelease !== release.version,
+          onWhatsNew: release ? () => whatsNew.current?.showModal() : undefined,
+          onCommands: () => {
+            control('/help');
+            backToChat();
+          },
+          connected,
+        }}
+      >
+        {showSessions ? (
+          <Sessions
+            key={needsOnly ? 'needs' : 'all'}
+            token={token}
+            cwd={activeCwd}
+            home={isHome}
+            topic={topic}
+            onAllTopics={() => setTopic(undefined)}
+            initialState={needsOnly ? 'now' : undefined}
+            nativeSave={config?.nativeSave}
+            onStatus={showToast}
+            onNewTopicChat={isHome ? startTopicChat : undefined}
+            onContinue={(found) => {
+              // The chat says what happened, also when it could not.
+              // What still waits here was meant for the conversation that is left.
+              dropWaiting();
+              setViewer(undefined);
+              void command({ type: 'continue', id: found.id });
+              setPanel('chat');
             }}
-          >
-            {relaunching || config.update.installing
-              ? 'Relaunching…'
-              : config.update.ready
-                ? `Install ${config.update.version} and relaunch`
-                : 'Downloading update…'}
-          </button>
+          />
         ) : null}
-        <nav className="support-links" aria-label="Support">
-          <a href={SUPPORT_URL} target="_blank" rel="noreferrer">
-            Get help
-          </a>
-          <a href={BUG_REPORT_URL} target="_blank" rel="noreferrer">
-            Report a bug
-          </a>
-        </nav>
-        <span className={`conn${connected ? '' : ' off'}`} title={connected ? 'Connected' : 'Disconnected'} />
-      </header>
+        {panel === 'inbox' && view?.tower && (
+          <TowerInboxPanel
+            view={view.tower}
+            connected={connected}
+            decide={(id, decision) => command({ type: 'tower', id, decision })}
+          />
+        )}
+        {showAgents ? (
+          <main className="agents-panel">
+            <Onboarding
+              agents={agentList}
+              limits={allLimits}
+              loading={loadingAgents}
+              checking={checkingAgents}
+              setup={inSetup}
+              focusAgent={focusAgent}
+              onCheckAgain={() => checkAgents({ env: true })}
+              onSelectAgent={(name) => {
+                dropWaiting();
+                void command({ type: 'agent', name });
+                setPanel('chat');
+              }}
+              onClose={() => setPanel('chat')}
+            />
+          </main>
+        ) : null}
+        <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
+          <AgentChat
+            state={session}
+            header={null}
+            // The work in one line that opens on click: a long run of tool calls buries the answer.
+            foldSteps
+            autoFocus={!inSetup}
+            disabled={!connected || inSetup}
+            placeholder={inSetup ? 'Connect an agent to start' : undefined}
+            notices={view?.notices}
+            artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+            onOpenArtifact={openArtifactInPanel}
+            imageUrl={imageUrl}
+            completions={SLASH_COMMANDS}
+            composerExtras={inSetup ? null : controls}
+            attachments={config?.uploads && !inSetup ? ATTACH : undefined}
+            onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
+            onRevealFile={config?.reveal ? revealFile : undefined}
+            renderPrompt={promptBubble}
+            renderFailure={(turn) =>
+              turn.result?.failure?.kind === 'auth' ? (
+                <SignInCard
+                  agent={turn.agent}
+                  inspection={agentList.find((item) => item.name === turn.agent)}
+                  inspectedAt={inspectedAt}
+                  failedAt={turn.endedAt ?? turn.startedAt}
+                  checking={checkingAgents}
+                  onCheckAgain={() => checkAgents({ env: true })}
+                  onRetry={
+                    turn.prompt
+                      ? () => {
+                          void submit(turn.prompt);
+                        }
+                      : undefined
+                  }
+                />
+              ) : undefined
+            }
+            renderFooter={() => {
+              const setupBanner =
+                inSetup && session && session.turns.length > 0 ? (
+                  <div className="setup-banner" role="region" aria-label="Connect a coding agent">
+                    <div className="setup-banner-copy">
+                      <strong>Connect an agent to continue this conversation</strong>
+                      <span>
+                        {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
+                          ? 'Sign in to an installed agent in Terminal, then click Check again.'
+                          : 'Install a supported agent CLI in Terminal, then click Check again.'}
+                      </span>
+                    </div>
+                    <div className="setup-banner-actions">
+                      <button type="button" className="btn-primary" onClick={() => openSetup()}>
+                        Connect agent
+                      </button>
+                      {hasAgentsApi ? (
+                        <button
+                          type="button"
+                          className="btn-use"
+                          disabled={checkingAgents}
+                          onClick={() => void checkAgents({ env: true })}
+                        >
+                          {checkingAgents ? 'Checking…' : 'Check again'}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null;
+              const unsentBox = unsent ? (
+                <div className="gc-notice gc-err">
+                  {unsent.problem}
+                  {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
+                </div>
+              ) : null;
+              if (!setupBanner && !unsentBox) return null;
+              return (
+                <>
+                  {setupBanner}
+                  {unsentBox}
+                </>
+              );
+            }}
+            onSend={submit}
+            onStop={() => {
+              dropWaiting();
+              void command({ type: 'stop' });
+            }}
+            canStop={!!view?.shells}
+            onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+            onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
+            onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
+            onPackAction={async (turnId, id, action) => {
+              const reply = await postCommand({ type: 'pack-task', turnId, id, action });
+              if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
+              return reply.text ?? '';
+            }}
+            hint={inSetup ? 'Connect an agent to start' : null}
+            composerTitle={
+              inSetup
+                ? 'Connect an agent to start'
+                : `Enter sends, Shift+Enter starts a new line, Esc here stops the agent. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
+            }
+            emptyState={
+              session ? (
+                inSetup ? (
+                  <Onboarding
+                    agents={agentList}
+                    limits={allLimits}
+                    loading={loadingAgents}
+                    checking={checkingAgents}
+                    setup={true}
+                    onCheckAgain={() => checkAgents({ env: true })}
+                  />
+                ) : (
+                  <div className="gc-empty">
+                    <div className="wolf" role="img" aria-label="genaicode wolf" />
+                    <h1>
+                      {hasProject
+                        ? `What should ${session.agent} work on?`
+                        : isHome && conversation?.topic
+                          ? conversation.origin === 'unresolved'
+                            ? `Where should ${session.agent} work for ${conversation.topic.name}?`
+                            : `What should ${session.agent} work on in ${conversation.topic.name}?`
+                          : isHome && conversation?.origin === 'project'
+                            ? `What should ${session.agent} work on?`
+                            : `What should ${session.agent} look into?`}
+                    </h1>
+                    <div>
+                      {hasProject
+                        ? `It works in ${cwd}, with its own login, tools and permissions.`
+                        : isHome && conversation?.topic
+                          ? conversation.origin === 'unresolved'
+                            ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
+                            : "Working in this topic's workspace. Hover the folder in the top bar or type /where to see the directory."
+                          : isHome && conversation?.origin === 'project'
+                            ? 'Hover the folder in the top bar or type /where to see the directory.'
+                            : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+                    </div>
+                    {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
+                      <Home
+                        token={token}
+                        onTopic={(id) => {
+                          setTopic(id);
+                          setNeedsOnly(false);
+                          setPanel('sessions');
+                        }}
+                        onNewTopicChat={isHome ? startTopicChat : undefined}
+                      />
+                    ) : null}
+                    <div className="ideas">
+                      {(hasProject || (isHome && conversation && conversation.origin !== 'home')
+                        ? IDEAS
+                        : IDEAS_ANYWHERE
+                      ).map((idea) => (
+                        <button key={idea} onClick={() => void submit(idea)}>
+                          {idea}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : rejected ? (
+                <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
+              ) : (
+                <div className="gc-empty">Connecting…</div>
+              )
+            }
+          />
+          {viewer ? (
+            <ViewerPanel
+              target={viewer}
+              token={token}
+              artifacts={sessionArtifacts}
+              canReveal={config?.reveal}
+              onReveal={revealFile}
+              onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
+              imageUrl={imageUrl}
+              onSelectArtifactVersion={(version) =>
+                setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
+              }
+              onArtifactSubmit={
+                connected && !inSetup ? (artifact, data) => void submit(artifactSubmission(artifact, data)) : undefined
+              }
+              onClose={() => setViewer(undefined)}
+            />
+          ) : null}
+        </div>
+      </Shell>
+      {release ? (
+        <WhatsNewDialog
+          ref={whatsNew}
+          release={release}
+          onSeen={() => {
+            setSeenRelease(release.version);
+            try {
+              localStorage.setItem(WHATS_NEW_KEY, release.version);
+            } catch {
+              // Storage blocked: the dot is back on the next load.
+            }
+          }}
+        />
+      ) : null}
       {showTeam && (
         <ProjectTeamDialog
           token={token}
@@ -1329,240 +1692,6 @@ function App() {
           onClose={() => setShowTeam(false)}
         />
       )}
-      {showSessions ? (
-        <Sessions
-          token={token}
-          cwd={activeCwd}
-          home={isHome}
-          topic={topic}
-          onAllTopics={() => setTopic(undefined)}
-          own={own}
-          onAllSessions={() => setOwn(false)}
-          nativeSave={config?.nativeSave}
-          onStatus={showToast}
-          onNewTopicChat={isHome ? startTopicChat : undefined}
-          onContinue={(found) => {
-            // The chat says what happened, also when it could not.
-            // What still waits here was meant for the conversation that is left.
-            dropWaiting();
-            setViewer(undefined);
-            void command({ type: 'continue', id: found.id });
-            setPanel('chat');
-          }}
-        />
-      ) : null}
-      {panel === 'inbox' && view?.tower && (
-        <TowerInboxPanel
-          view={view.tower}
-          connected={connected}
-          decide={(id, decision) => command({ type: 'tower', id, decision })}
-        />
-      )}
-      {showAgents ? (
-        <main className="agents-panel">
-          <Onboarding
-            agents={agentList}
-            limits={allLimits}
-            loading={loadingAgents}
-            checking={checkingAgents}
-            setup={inSetup}
-            focusAgent={focusAgent}
-            onCheckAgain={() => checkAgents({ env: true })}
-            onSelectAgent={(name) => {
-              dropWaiting();
-              void command({ type: 'agent', name });
-              setPanel('chat');
-            }}
-            onClose={() => setPanel('chat')}
-          />
-        </main>
-      ) : null}
-      <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
-        <AgentChat
-          state={session}
-          header={null}
-          // The work in one line that opens on click: a long run of tool calls buries the answer.
-          foldSteps
-          autoFocus={!inSetup}
-          disabled={!connected || inSetup}
-          placeholder={inSetup ? 'Connect an agent to start' : undefined}
-          notices={view?.notices}
-          artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
-          onOpenArtifact={openArtifactInPanel}
-          imageUrl={imageUrl}
-          completions={SLASH_COMMANDS}
-          composerExtras={inSetup ? null : controls}
-          attachments={config?.uploads && !inSetup ? ATTACH : undefined}
-          onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-          onRevealFile={config?.reveal ? revealFile : undefined}
-          renderPrompt={promptBubble}
-          renderFailure={(turn) =>
-            turn.result?.failure?.kind === 'auth' ? (
-              <SignInCard
-                agent={turn.agent}
-                inspection={agentList.find((item) => item.name === turn.agent)}
-                inspectedAt={inspectedAt}
-                failedAt={turn.endedAt ?? turn.startedAt}
-                checking={checkingAgents}
-                onCheckAgain={() => checkAgents({ env: true })}
-                onRetry={
-                  turn.prompt
-                    ? () => {
-                        void submit(turn.prompt);
-                      }
-                    : undefined
-                }
-              />
-            ) : undefined
-          }
-          renderFooter={() => {
-            const setupBanner =
-              inSetup && session && session.turns.length > 0 ? (
-                <div className="setup-banner" role="region" aria-label="Connect a coding agent">
-                  <div className="setup-banner-copy">
-                    <strong>Connect an agent to continue this conversation</strong>
-                    <span>
-                      {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
-                        ? 'Sign in to an installed agent in Terminal, then click Check again.'
-                        : 'Install a supported agent CLI in Terminal, then click Check again.'}
-                    </span>
-                  </div>
-                  <div className="setup-banner-actions">
-                    <button type="button" className="btn-primary" onClick={() => openSetup()}>
-                      Connect agent
-                    </button>
-                    {hasAgentsApi ? (
-                      <button
-                        type="button"
-                        className="btn-use"
-                        disabled={checkingAgents}
-                        onClick={() => void checkAgents({ env: true })}
-                      >
-                        {checkingAgents ? 'Checking…' : 'Check again'}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null;
-            const unsentBox = unsent ? (
-              <div className="gc-notice gc-err">
-                {unsent.problem}
-                {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
-              </div>
-            ) : null;
-            if (!setupBanner && !unsentBox) return null;
-            return (
-              <>
-                {setupBanner}
-                {unsentBox}
-              </>
-            );
-          }}
-          onSend={submit}
-          onStop={() => {
-            dropWaiting();
-            void command({ type: 'stop' });
-          }}
-          canStop={!!view?.shells}
-          onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-          onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
-          onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
-          onPackAction={async (turnId, id, action) => {
-            const reply = await postCommand({ type: 'pack-task', turnId, id, action });
-            if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
-            return reply.text ?? '';
-          }}
-          hint={inSetup ? 'Connect an agent to start' : null}
-          composerTitle={
-            inSetup
-              ? 'Connect an agent to start'
-              : `Enter sends, Shift+Enter starts a new line, Esc stops. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
-          }
-          emptyState={
-            session ? (
-              inSetup ? (
-                <Onboarding
-                  agents={agentList}
-                  limits={allLimits}
-                  loading={loadingAgents}
-                  checking={checkingAgents}
-                  setup={true}
-                  onCheckAgain={() => checkAgents({ env: true })}
-                />
-              ) : (
-                <div className="gc-empty">
-                  <div className="wolf" role="img" aria-label="genaicode wolf" />
-                  <h1>
-                    {hasProject
-                      ? `What should ${session.agent} work on?`
-                      : isHome && conversation?.topic
-                        ? conversation.origin === 'unresolved'
-                          ? `Where should ${session.agent} work for ${conversation.topic.name}?`
-                          : `What should ${session.agent} work on in ${conversation.topic.name}?`
-                        : isHome && conversation?.origin === 'project'
-                          ? `What should ${session.agent} work on?`
-                          : `What should ${session.agent} look into?`}
-                  </h1>
-                  <div>
-                    {hasProject
-                      ? `It works in ${cwd}, with its own login, tools and permissions.`
-                      : isHome && conversation?.topic
-                        ? conversation.origin === 'unresolved'
-                          ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
-                          : "Working in this topic's workspace. Hover the header or type /where to see the directory."
-                        : isHome && conversation?.origin === 'project'
-                          ? 'Hover the header or type /where to see the directory.'
-                          : 'It sees the sessions of your agents in every project, and can pass them a message.'}
-                  </div>
-                  {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
-                    <Home
-                      token={token}
-                      onTopic={(id) => {
-                        setTopic(id);
-                        setOwn(false);
-                        setPanel('sessions');
-                      }}
-                      onNewTopicChat={isHome ? startTopicChat : undefined}
-                    />
-                  ) : null}
-                  <div className="ideas">
-                    {(hasProject || (isHome && conversation && conversation.origin !== 'home')
-                      ? IDEAS
-                      : IDEAS_ANYWHERE
-                    ).map((idea) => (
-                      <button key={idea} onClick={() => void submit(idea)}>
-                        {idea}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            ) : rejected ? (
-              <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
-            ) : (
-              <div className="gc-empty">Connecting…</div>
-            )
-          }
-        />
-        {viewer ? (
-          <ViewerPanel
-            target={viewer}
-            token={token}
-            artifacts={sessionArtifacts}
-            canReveal={config?.reveal}
-            onReveal={revealFile}
-            onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-            imageUrl={imageUrl}
-            onSelectArtifactVersion={(version) =>
-              setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
-            }
-            onArtifactSubmit={
-              connected && !inSetup ? (artifact, data) => void submit(artifactSubmission(artifact, data)) : undefined
-            }
-            onClose={() => setViewer(undefined)}
-          />
-        ) : null}
-      </div>
       {toast ? (
         <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
           {toast.text}

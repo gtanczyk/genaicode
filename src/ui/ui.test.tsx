@@ -1767,6 +1767,12 @@ describe('web UI server', () => {
   });
   it('validates commands', () => {
     expect(parseCommand({ type: 'submit', text: 'hi' })).toEqual({ type: 'submit', text: 'hi' });
+    expect(parseCommand({ type: 'project-chat', cwd: '/work/app', more: 1 })).toEqual({
+      type: 'project-chat',
+      cwd: '/work/app',
+    });
+    expect(parseCommand({ type: 'project-chat' })).toBeUndefined();
+    expect(parseCommand({ type: 'project-chat', cwd: '' })).toBeUndefined();
     expect(parseCommand({ type: 'approve', id: 'a', decision: 'maybe' })).toBeUndefined();
     expect(parseCommand({ type: 'answer', id: 'q', answers: { q1: ['Blue'] }, more: 1 })).toEqual({
       type: 'answer',
@@ -2714,6 +2720,23 @@ describe('web UI server', () => {
       expect(chat.get().conversation?.topic).toBeUndefined();
       const afterHome = await readConversations(homeEnv);
       expect(afterHome.find((item) => item.sessionId === 'o1')).toMatchObject({ cwd: other, title: 'Other task' });
+
+      // The sidebar's "new chat here": a fresh conversation in that project's folder.
+      expect(await chat.startProjectChat(other)).toBe(true);
+      expect(chat.get().session.cwd).toBe(other);
+      expect(chat.get().session.turns).toEqual([]);
+      expect(chat.get().conversation).toMatchObject({ cwd: other, origin: 'project' });
+      expect(chat.get().conversation?.topic).toBeUndefined();
+      // The home folder is the neutral home again, and what is no folder starts nothing.
+      expect(await chat.startProjectChat(homeDir)).toBe(true);
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      expect(await chat.startProjectChat(join(root, 'src', 'missing'))).toBe(false);
+      expect(await chat.startProjectChat('src/other')).toBe(false);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().notices.at(-1)).toMatchObject({
+        tone: 'error',
+        text: 'No folder src/other to start a chat in.',
+      });
     } finally {
       chat.close();
     }

@@ -7,6 +7,6 @@
 ## Report a bug
 
 Include the steps that reproduce the problem, what you expected and what happened. Give your
-operating system and GenAIcode version. You can find the version in the desktop window header
+operating system and GenAIcode version. You can find the version at the bottom of the desktop window's sidebar
 or by running `genaicode --version`. GitHub issues are public, so remove credentials and private
 project details from any logs or screenshots you share. [Open a bug report](https://github.com/gtanczyk/genaicode/issues/new?template=bug_report.md).
