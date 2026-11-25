@@ -135,7 +135,7 @@ it('counts what needs you across projects and in the open chat, the open session
     chat('ended', { state: 'waiting' }),
   ];
   const tower = [{ id: 'draft-1' }, { id: 'draft-2' }, { id: 'draft-3' }];
-  expect(needsYou({ approvals: 2, tower, sessions, openId: 'open', now })).toEqual({
+  expect(needsYou({ approvals: 2, tower, sessions, open: { id: 'open', source: 'claude' }, now })).toEqual({
     total: 6,
     here: 2,
     sessions: 1,
@@ -161,7 +161,7 @@ it('counts a request once when the tower, the open chat and the sessions all lis
     { id: 'hook:2', sessionId: 'hooked' },
     { id: 'draft-1' },
   ];
-  expect(needsYou({ approvals: 1, tower, sessions, openId: 'open', now })).toMatchObject({
+  expect(needsYou({ approvals: 1, tower, sessions, open: { id: 'open', source: 'claude' }, now })).toMatchObject({
     // 1 here, 4 in the tower besides it, 1 session the tower does not know.
     total: 6,
     here: 1,
@@ -169,6 +169,29 @@ it('counts a request once when the tower, the open chat and the sessions all lis
   });
   // The tower's view of the turn alone adds nothing to the chat's own count.
   expect(needsYou({ approvals: 1, tower: [{ id: 'turn:1:approval-1' }], now }).total).toBe(1);
+});
+
+it('keeps sessions of two stores apart when they share an id', () => {
+  const question = { state: 'waiting', ending: 'question', updatedAt: now - 3_600_000 } as const;
+  const sessions = [
+    chat('same', { state: 'waiting', waitingFor: 'approval' }),
+    // Another store, the same id, another request: the tower's item is not for it.
+    chat('same', { source: 'codex', agent: 'codex', ...question }),
+  ];
+  const native = { id: 'native:["claude","same"]', agent: 'claude', sessionId: 'same', source: 'claude' };
+  expect(needsYou({ approvals: 0, tower: [native], sessions, now })).toMatchObject({ total: 2, sessions: 1 });
+  // A hook's question names the agent, not the store.
+  const hook = { id: 'hook:1', agent: 'claude', sessionId: 'same' };
+  expect(needsYou({ approvals: 0, tower: [hook], sessions, now })).toMatchObject({ total: 2, sessions: 1 });
+  expect(needsYou({ approvals: 0, tower: [{ ...hook, agent: 'gemini' }], sessions, now }).total).toBe(3);
+  // The open chat is the session of its agent's store; the other store's one still asks.
+  expect(needsYou({ approvals: 1, sessions, open: { id: 'same', source: 'claude' }, now })).toMatchObject({
+    total: 2,
+    sessions: 1,
+  });
+  expect(needsYou({ approvals: 1, sessions, open: { id: 'same', source: 'codex' }, now }).sessions).toBe(1);
+  // No store known for the open chat: the id alone, as before.
+  expect(needsYou({ approvals: 1, sessions, open: { id: 'same' }, now }).sessions).toBe(0);
 });
 
 it('opens the tower inbox from Needs you whenever there is a tower, also an empty one', () => {

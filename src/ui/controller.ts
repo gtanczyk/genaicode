@@ -61,6 +61,8 @@ export interface AgentChoice {
   installed: boolean;
   resume: boolean;
   steer: boolean;
+  /** The store its sessions are listed from (`SessionInfo.source`), when it has one. */
+  store?: string;
   /** Whether the agent can ask the person to choose (own tool, or `ask_user` over MCP). */
   canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
@@ -252,6 +254,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(path ? { path } : {}),
     resume: !!agent.capabilities.resume,
     steer: !!agent.capabilities.steer,
+    ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
     canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
     ...(agent.capabilities.plan ? { canPlan: true } : {}),
@@ -550,6 +553,7 @@ export function createChatController(options: ChatOptions): ChatController {
         installed: info ? info.installed : (prev?.installed ?? false),
         resume: !!agent.capabilities.resume,
         steer: !!agent.capabilities.steer,
+        ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
         canAsk: canAgentAsk(agent),
         ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
         ...(agent.capabilities.plan ? { canPlan: true } : {}),
@@ -583,7 +587,15 @@ export function createChatController(options: ChatOptions): ChatController {
     publish();
   };
 
+  /**
+   * Counts the requests to open another conversation. One that waited (for the stores, a saved
+   * team) acts only while it is still the last asked for: a slow "new chat here" must not take the
+   * window back from the chat that was opened after it.
+   */
+  let switchSeq = 0;
+
   const startHomeChat = (): boolean => {
+    switchSeq += 1;
     batching++;
     let ok = false;
     try {
@@ -637,12 +649,14 @@ export function createChatController(options: ChatOptions): ChatController {
       return false;
     }
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const mine = ++switchSeq;
     try {
       const [store, listing, codex] = await Promise.all([
         readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
         listSessions(sources, { env, readOnly: true, live: false }).catch(() => ({ sessions: [], errors: [] })),
         codexProjects({ env }).catch(() => []),
       ]);
+      if (mine !== switchSeq) return false;
       const topic = store.topics.find((candidate) => candidate.id === topicId);
       if (!topic) {
         notice(`No topic "${topicId}" found.`, 'error');
@@ -651,6 +665,7 @@ export function createChatController(options: ChatOptions): ChatController {
       const resolved = resolveTopicWorkspace(topic.id, listing.sessions, store, { env, codexProjects: codex });
       const savedLead = resolved.status === 'resolved' ? await options.projectLead?.(resolved.cwd) : undefined;
       const lead = savedLead ? byName.get(savedLead) : undefined;
+      if (mine !== switchSeq) return false;
       batching++;
       let ok = false;
       try {
@@ -718,6 +733,7 @@ export function createChatController(options: ChatOptions): ChatController {
   const startProjectChat = async (requested: string): Promise<boolean> => {
     if (!homeMode) return false;
     if (isSameDir(requested, homeDir)) return startHomeChat();
+    const mine = ++switchSeq;
     // The real path: what a symlink names is checked, and is where the chat then runs.
     let cwd: string | undefined;
     try {
@@ -730,7 +746,10 @@ export function createChatController(options: ChatOptions): ChatController {
       notice(`No folder ${requested} to start a chat in.`, 'error');
       return false;
     }
-    if (!(await isProjectDir(cwd))) {
+    const known = await isProjectDir(cwd);
+    // Another chat was opened meanwhile: this request is dropped, and says nothing in that chat.
+    if (mine !== switchSeq) return false;
+    if (!known) {
       notice(
         `${requested} is not a project folder: a chat starts in a folder one of your sessions worked in. Mention another directory in a chat to move there.`,
         'error',
@@ -739,6 +758,7 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     const savedLead = await options.projectLead?.(cwd)?.catch(() => undefined);
     const lead = savedLead ? byName.get(savedLead) : undefined;
+    if (mine !== switchSeq) return false;
     batching++;
     let ok = false;
     try {
@@ -765,8 +785,10 @@ export function createChatController(options: ChatOptions): ChatController {
 
   const continueSession = async (id: string): Promise<boolean> => {
     const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const mine = ++switchSeq;
     try {
       const found = await findSession(sources, id, { env });
+      if (mine !== switchSeq) return false;
       if (!found) {
         notice(`No session "${id}" found. \`genaicode sessions\` lists them.`, 'error');
         return false;
@@ -794,6 +816,7 @@ export function createChatController(options: ChatOptions): ChatController {
           return false;
         }
         const { turns, truncatedReason } = await readForAdopt();
+        if (mine !== switchSeq) return false;
         const agent = byName.get(session.get().agent);
         // Its own store and it can resume: no handoff needed (never treat an uninstalled setup placeholder as own).
         const own = !setup && !!agent?.capabilities.resume && agent.sessions?.name === theirs.source;
@@ -838,6 +861,7 @@ export function createChatController(options: ChatOptions): ChatController {
         readTopics(env).catch((): TopicStore => ({ topics: [], sessions: {} })),
         readConversations(env).catch(() => []),
       ]);
+      if (mine !== switchSeq) return false;
       const agent = byName.get(session.get().agent);
       const sameDir = resolved.status === 'resolved' && !!theirs.cwd && isSameDir(resolved.cwd, theirs.cwd);
       // Never treat an uninstalled setup placeholder as own.

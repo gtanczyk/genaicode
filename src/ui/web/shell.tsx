@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ownEscape } from '../../react/escape.js';
 import { escapeAction, RAIL_BELOW_PX, startsCollapsed } from '../sidebar.js';
 import { Icon, Sidebar, type SidebarProps } from './sidebar.js';
 
@@ -54,6 +55,9 @@ export function Shell(props: ShellProps) {
       }
       return !value;
     });
+
+  // The window is this app's alone: an Escape that a menu, popover or viewer took reaches nothing else.
+  useEffect(() => ownEscape(), []);
 
   useEffect(() => {
     // Until the person chooses, the width does: the rail below 980 px.

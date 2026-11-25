@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, it, vi } from 'vitest';
-import { claimEscape } from './escape.js';
+import { claimEscape, ownEscape } from './escape.js';
 
 const press = (key = 'Escape') => {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -18,7 +18,8 @@ afterEach(() => {
   for (const off of release.splice(0)) off();
 });
 
-it('gives one press to the surface opened last, and to nothing else', () => {
+it('gives one press to the surface opened last, and to nothing else in a window of its own', () => {
+  release.push(ownEscape());
   const viewer = vi.fn();
   const menu = vi.fn();
   // What a surface with a listener of its own would see: nothing, while a claim takes the key.
@@ -46,6 +47,37 @@ it('gives one press to the surface opened last, and to nothing else', () => {
   } finally {
     window.removeEventListener('keydown', other, true);
     window.removeEventListener('keydown', page);
+  }
+});
+
+it("leaves the key to the listeners a host page has on window, unless the window is the app's own", () => {
+  // A host of <AgentChat> listens on `window` itself, also in the capture phase and registered later.
+  const host = vi.fn();
+  const below = vi.fn();
+  const bubbling = vi.fn();
+  document.addEventListener('keydown', below);
+  window.addEventListener('keydown', bubbling);
+  try {
+    claim(() => undefined);
+    window.addEventListener('keydown', host, true);
+    const event = press();
+    expect(event.defaultPrevented).toBe(true);
+    expect(host).toHaveBeenCalledTimes(1);
+    // The key still goes no further down the page, nor back up to `window`.
+    expect(below).not.toHaveBeenCalled();
+    expect(bubbling).not.toHaveBeenCalled();
+
+    const disown = ownEscape();
+    press();
+    expect(host).toHaveBeenCalledTimes(1);
+    disown();
+    disown();
+    press();
+    expect(host).toHaveBeenCalledTimes(2);
+  } finally {
+    window.removeEventListener('keydown', host, true);
+    window.removeEventListener('keydown', bubbling);
+    document.removeEventListener('keydown', below);
   }
 });
 

@@ -51,6 +51,8 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
   const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'tower-'));
   const project = join(root, 'catalog');
   mkdirSync(project);
+  // A folder outside the chat's own: a session there is one of "Other agents' sessions" in the sidebar.
+  const elsewhere = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'tower-elsewhere-'));
   const env = { GENAICODE_HOME: root, HOME: root };
   const stop = new AbortController();
   const row: SessionInfo = {
@@ -78,12 +80,22 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     );
     decisions.push(`${task.resume ? 'session' : 'worker'} ${decision}`);
   });
+  // A session that waits on a tool in its agent's own dialog, until it is answered there.
+  let nativeWaits = true;
   const worker: CodingAgent = {
     ...workerDriver,
     sessions: {
       name: row.source,
       where: 'local',
-      list: async () => [row, { ...row, id: 'native-approval', waitingFor: 'approval', waitingTool: 'Read report' }],
+      // As the agents' stores do, it lists the sessions of one folder when asked for that folder's.
+      list: async (query) =>
+        [
+          row,
+          { ...row, id: 'ledger-audit', cwd: elsewhere },
+          nativeWaits
+            ? { ...row, id: 'native-approval', waitingFor: 'approval' as const, waitingTool: 'Read report' }
+            : { ...row, id: 'native-approval' },
+        ].filter((one) => !query?.cwd || one.cwd!.startsWith(query.cwd)),
     },
   };
   const message = 'Review the catalog.\nKeep all empty entries.';
@@ -153,11 +165,13 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
       // Needs you counts the tower's five items, each once: the pack task's approval is also this
       // chat's own, and the session that waits on a tool is also in the list of sessions.
       const needsYou = page.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
-      await page
-        .getByRole('complementary', { name: 'Sidebar' })
-        .getByRole('button', { name: 'All sessions' })
-        .waitFor();
-      await vi.waitFor(async () => expect(await needsYou.locator('.count').textContent()).toBe('5'));
+      const side = page.getByRole('complementary', { name: 'Sidebar' });
+      await side.getByRole('button', { name: 'All sessions' }).waitFor();
+      // The count is final only with the list of every agent's sessions: before it arrives the
+      // tower's items alone also come to five. A row of that list says it is here (hidden in the
+      // narrow window's rail, but in the page).
+      await side.locator('section.other').getByText('ledger-audit').waitFor({ state: 'attached' });
+      expect(await needsYou.locator('.count').textContent()).toBe('5');
       await needsYou.click();
       await page.getByText('Pack task t1').waitFor();
     }
@@ -167,6 +181,8 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(await draft.textContent()).toContain('worker-store / catalog-release');
     const native = desktop.getByRole('article').filter({ hasText: 'Answer in worker' });
     expect(await native.getByRole('button').count()).toBe(0);
+    // It is answered in the worker's own dialog: the tower's next reading of the stores drops it.
+    nativeWaits = false;
     await mobile
       .getByRole('article')
       .filter({ hasText: 'Discard this alternative.' })
@@ -195,12 +211,15 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(decisions).toEqual(['session approve', 'worker deny']);
     await desktop.getByRole('button', { name: 'All sessions', exact: true }).click();
     await desktop.locator('main.sessions').getByText('catalog', { exact: true }).waitFor();
-    // Needs you is the tower's inbox whatever it holds: what the last delivery came to is read there.
-    await desktop
-      .locator('.side-actions')
-      .getByRole('button', { name: /^Needs you/ })
-      .click();
+    // Everything is answered: nothing needs the person, in the tower or in any session.
+    const badge = desktop.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
+    await vi.waitFor(async () => expect(await badge.locator('.count').count()).toBe(0), { timeout: 10_000 });
+    expect(await badge.getAttribute('title')).toBe('Nothing needs you now');
+    // Needs you is the tower's inbox also when it is empty: what the last delivery came to is read there.
+    await badge.click();
     await desktop.getByRole('heading', { name: 'Tower inbox' }).waitFor();
+    await desktop.locator('main.tower-inbox').getByText('No pending items.').waitFor();
+    expect(await desktop.locator('main.tower-inbox').getByRole('article').count()).toBe(0);
     await desktop.locator('main.tower-inbox [role="status"]').getByText('worker-store / catalog-release').waitFor();
     await desktop
       .locator('main.tower-inbox')
@@ -218,8 +237,9 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     await hook;
     await running;
     rmSync(root, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
   }
-}, 30_000);
+}, 45_000);
 
 it('turns on auto-approve from a permission prompt and approves pending and follow-up requests', async () => {
   const browser = await chromium.launch();

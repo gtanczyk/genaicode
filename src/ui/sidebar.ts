@@ -159,29 +159,48 @@ export interface NeedsYou {
 /** A tower item as the count reads it (`TowerItem`). */
 export interface NeedsYouItem {
   id: string;
+  /** The session it stands for, in the store `source` or, from a hook, of the agent `agent`. */
   sessionId?: string;
+  source?: string;
+  agent?: string;
 }
 
 /** The tower lists the open chat's own approvals under ids that start so. */
 const TOWER_TURN_ITEM = 'turn:';
 
 /**
+ * Whether a tower item stands for this session. Two stores may hold the same id, so the id alone
+ * does not say: the item names the store, or (a hook's question) the agent of a local session.
+ */
+function itemIsFor(item: NeedsYouItem, session: SessionInfo): boolean {
+  if (!item.sessionId || item.sessionId !== session.id) return false;
+  if (item.source !== undefined) return item.source === session.source;
+  if (item.agent !== undefined) return session.where === 'local' && item.agent === session.agent;
+  return true;
+}
+
+/**
  * The count on "Needs you": the open chat's approvals and questions, the tower's items, and the
  * sessions of every agent that ask now. Each request is counted once: the tower repeats the open
  * chat's approvals, and its items for another agent's session stand for that session, so neither is
- * added again (nor is the open chat's own session: it counts as live).
+ * added again (nor is the open chat's own session: it counts as live). A session is the same one
+ * only in the same store: an id that two stores share is two sessions.
  */
 export function needsYou(input: {
   approvals: number;
   tower?: readonly NeedsYouItem[];
   sessions?: readonly SessionInfo[];
-  openId?: string;
+  /** The open chat's session: its id and the store of its agent (unknown: the id alone decides). */
+  open?: { id?: string; source?: string };
   now?: number;
 }): NeedsYou {
   const tower = (input.tower ?? []).filter((item) => !item.id.startsWith(TOWER_TURN_ITEM));
-  const inTower = new Set(tower.flatMap((item) => (item.sessionId ? [item.sessionId] : [])));
+  const open = input.open;
+  const isOpen = (session: SessionInfo) =>
+    !!open?.id && session.id === open.id && (open.source === undefined || session.source === open.source);
   const elsewhere = (input.sessions ?? []).filter(
-    (session) => session.id !== input.openId && !inTower.has(session.id) && attentionOf(session, input.now) === 'now',
+    (session) =>
+      !isOpen(session) && !tower.some((item) => itemIsFor(item, session)) && attentionOf(session, input.now) === 'now',
   ).length;
   const total = input.approvals + tower.length + elsewhere;
   const scope = `${total} across all projects${input.approvals ? `, ${input.approvals} in this chat` : ''}`;

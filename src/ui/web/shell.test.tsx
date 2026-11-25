@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/group.js';
+import { EscapeActive } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
 import { ViewerPanel } from './file-view.js';
@@ -364,6 +365,48 @@ describe('<Shell>', () => {
     render({ ...page(false), onBack: undefined });
     press('Escape', {}, host.querySelector('textarea')!);
     expect([onClose.mock.calls.length, onBack.mock.calls.length, onStop.mock.calls.length]).toEqual([1, 1, 1]);
+  });
+
+  it('passes Escape over a viewer hidden under a page: the page goes first, the viewer when it shows again', () => {
+    const onBack = vi.fn();
+    const onClose = vi.fn();
+    const artifact = {
+      id: 'a1',
+      name: 'report',
+      title: 'Report',
+      kind: 'file' as const,
+      mimeType: 'application/zip',
+      bytes: 10,
+      version: 1,
+    };
+    // As the window has it: the chat's workspace stays mounted, hidden, while a page is open.
+    const window = (page: boolean) =>
+      props({
+        title: page ? 'All sessions' : 'Chat',
+        onBack: page ? onBack : undefined,
+        children: (
+          <div className="workspace" style={page ? { display: 'none' } : undefined}>
+            <EscapeActive.Provider value={!page}>
+              <ViewerPanel
+                target={{ kind: 'artifact', id: 'a1' }}
+                token="t"
+                artifacts={[{ id: 'a1', latest: artifact, versions: [artifact] }]}
+                onClose={onClose}
+              />
+            </EscapeActive.Provider>
+          </div>
+        ),
+      });
+    // A viewer is open in the chat, then All sessions is clicked.
+    render(window(false));
+    render(window(true));
+    press('Escape');
+    expect([onClose.mock.calls.length, onBack.mock.calls.length]).toEqual([0, 1]);
+    // Back in the chat the viewer is still open, and the key is its own again.
+    render(window(false));
+    expect(host.querySelector('.viewer-panel')).not.toBeNull();
+    press('Escape');
+    expect([onClose.mock.calls.length, onBack.mock.calls.length]).toEqual([1, 1]);
   });
 
   it('ends the chat list with All chats, the way to the older and the archived ones', () => {

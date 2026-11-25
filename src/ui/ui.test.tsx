@@ -2663,10 +2663,15 @@ describe('web UI server', () => {
       { source: 'echo', agent: 'echo', id: 'o1', where: 'local', cwd: other, title: 'Other task', updatedAt: 4000 },
       { source: 'echo', agent: 'echo', id: 'c1', where: 'cloud', title: 'Remote idea', updatedAt: 3000 },
     ];
+    // Holds the store's answer back, for a request that is still looking when the next one comes.
+    let hold: Promise<void> = Promise.resolve();
     const source: SessionSource = {
       name: 'echo',
       where: 'local',
-      list: async () => sessions,
+      list: async () => {
+        await hold;
+        return sessions;
+      },
       read: async (s) => [{ id: 1, agent: 'echo', prompt: `From ${s.title}`, entries: [], startedAt: 1 }],
     };
     const agent = { ...echoAgent(), sessions: source };
@@ -2777,6 +2782,30 @@ describe('web UI server', () => {
       expect(await chat.startProjectChat(join(root, 'src', 'to-other'))).toBe(true);
       expect(chat.get().session.cwd).toBe(realpathSync(other));
       expect(chat.get().conversation).toMatchObject({ cwd: realpathSync(other), origin: 'project' });
+
+      // "New chat here" still looks its folder up when New chat is pressed: the chat asked for last
+      // stays, and the request it overtook changes nothing and says nothing.
+      let free = () => {};
+      hold = new Promise((resolve) => (free = resolve));
+      const overtaken = chat.startProjectChat(knights);
+      expect(chat.startHomeChat()).toBe(true);
+      free();
+      expect(await overtaken).toBe(false);
+      expect(chat.get().session.cwd).toBe(homeDir);
+      expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+      expect(chat.get().notices).toEqual([]);
+      // The same between two requests that both wait: a session opened, then a chat in a folder.
+      hold = new Promise((resolve) => (free = resolve));
+      const opening = chat.continueSession('k1');
+      const starting = chat.startProjectChat(other);
+      const topical = chat.startTopicChat('t1');
+      const last = chat.startProjectChat(other);
+      free();
+      expect(await Promise.all([opening, starting, topical, last])).toEqual([false, false, false, true]);
+      expect(chat.get().session.sessionId).toBeUndefined();
+      expect(chat.get().conversation).toMatchObject({ cwd: realpathSync(other), origin: 'project' });
+      expect(chat.get().conversation?.topic).toBeUndefined();
+      expect(chat.get().notices).toEqual([]);
       expect(chat.startHomeChat()).toBe(true);
     } finally {
       chat.close();

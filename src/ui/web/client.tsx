@@ -5,7 +5,7 @@ import { personText } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
-import { useEscape } from '../../react/escape.js';
+import { EscapeActive, useEscape } from '../../react/escape.js';
 import { formatBytes } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
@@ -1245,7 +1245,8 @@ function App() {
     approvals: session?.approvals.length ?? 0,
     tower: view?.tower?.items,
     sessions: chats.all,
-    openId: session?.sessionId,
+    // The store of the chat's agent: another store may hold a session with the same id.
+    open: { id: session?.sessionId, source: view?.agents.find((agent) => agent.name === session?.agent)?.store },
   });
   // One row per agent: for the chat's own agent, what its runs here reported wins over what was last seen.
   const quota = useMemo(
@@ -1506,190 +1507,195 @@ function App() {
           </main>
         ) : null}
         <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined}>
-          <AgentChat
-            state={session}
-            header={null}
-            // The work in one line that opens on click: a long run of tool calls buries the answer.
-            foldSteps
-            autoFocus={!inSetup}
-            disabled={!connected || inSetup || switching}
-            placeholder={inSetup ? 'Connect an agent to start' : undefined}
-            notices={view?.notices}
-            artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
-            onOpenArtifact={openArtifactInPanel}
-            imageUrl={imageUrl}
-            completions={SLASH_COMMANDS}
-            composerExtras={inSetup ? null : controls}
-            attachments={config?.uploads && !inSetup ? ATTACH : undefined}
-            onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-            onRevealFile={config?.reveal ? revealFile : undefined}
-            renderPrompt={promptBubble}
-            renderFailure={(turn) =>
-              turn.result?.failure?.kind === 'auth' ? (
-                <SignInCard
-                  agent={turn.agent}
-                  inspection={agentList.find((item) => item.name === turn.agent)}
-                  inspectedAt={inspectedAt}
-                  failedAt={turn.endedAt ?? turn.startedAt}
-                  checking={checkingAgents}
-                  onCheckAgain={() => checkAgents({ env: true })}
-                  onRetry={
-                    turn.prompt
-                      ? () => {
-                          void submit(turn.prompt);
-                        }
-                      : undefined
-                  }
-                />
-              ) : undefined
-            }
-            renderFooter={() => {
-              const setupBanner =
-                inSetup && session && session.turns.length > 0 ? (
-                  <div className="setup-banner" role="region" aria-label="Connect a coding agent">
-                    <div className="setup-banner-copy">
-                      <strong>Connect an agent to continue this conversation</strong>
-                      <span>
-                        {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
-                          ? 'Sign in to an installed agent in Terminal, then click Check again.'
-                          : 'Install a supported agent CLI in Terminal, then click Check again.'}
-                      </span>
-                    </div>
-                    <div className="setup-banner-actions">
-                      <button type="button" className="btn-primary" onClick={() => openSetup()}>
-                        Connect agent
-                      </button>
-                      {hasAgentsApi ? (
-                        <button
-                          type="button"
-                          className="btn-use"
-                          disabled={checkingAgents}
-                          onClick={() => void checkAgents({ env: true })}
-                        >
-                          {checkingAgents ? 'Checking…' : 'Check again'}
+          {/* Under a page the chat is hidden, and so is what is open in it: its Escape waits with it. */}
+          <EscapeActive.Provider value={panel === 'chat'}>
+            <AgentChat
+              state={session}
+              header={null}
+              // The work in one line that opens on click: a long run of tool calls buries the answer.
+              foldSteps
+              autoFocus={!inSetup}
+              disabled={!connected || inSetup || switching}
+              placeholder={inSetup ? 'Connect an agent to start' : undefined}
+              notices={view?.notices}
+              artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+              onOpenArtifact={openArtifactInPanel}
+              imageUrl={imageUrl}
+              completions={SLASH_COMMANDS}
+              composerExtras={inSetup ? null : controls}
+              attachments={config?.uploads && !inSetup ? ATTACH : undefined}
+              onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
+              onRevealFile={config?.reveal ? revealFile : undefined}
+              renderPrompt={promptBubble}
+              renderFailure={(turn) =>
+                turn.result?.failure?.kind === 'auth' ? (
+                  <SignInCard
+                    agent={turn.agent}
+                    inspection={agentList.find((item) => item.name === turn.agent)}
+                    inspectedAt={inspectedAt}
+                    failedAt={turn.endedAt ?? turn.startedAt}
+                    checking={checkingAgents}
+                    onCheckAgain={() => checkAgents({ env: true })}
+                    onRetry={
+                      turn.prompt
+                        ? () => {
+                            void submit(turn.prompt);
+                          }
+                        : undefined
+                    }
+                  />
+                ) : undefined
+              }
+              renderFooter={() => {
+                const setupBanner =
+                  inSetup && session && session.turns.length > 0 ? (
+                    <div className="setup-banner" role="region" aria-label="Connect a coding agent">
+                      <div className="setup-banner-copy">
+                        <strong>Connect an agent to continue this conversation</strong>
+                        <span>
+                          {agentList.some((agent) => agent.installed && !agent.broken && agent.auth === 'signed-out')
+                            ? 'Sign in to an installed agent in Terminal, then click Check again.'
+                            : 'Install a supported agent CLI in Terminal, then click Check again.'}
+                        </span>
+                      </div>
+                      <div className="setup-banner-actions">
+                        <button type="button" className="btn-primary" onClick={() => openSetup()}>
+                          Connect agent
                         </button>
-                      ) : null}
+                        {hasAgentsApi ? (
+                          <button
+                            type="button"
+                            className="btn-use"
+                            disabled={checkingAgents}
+                            onClick={() => void checkAgents({ env: true })}
+                          >
+                            {checkingAgents ? 'Checking…' : 'Check again'}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
+                  ) : null;
+                const unsentBox = unsent ? (
+                  <div className="gc-notice gc-err">
+                    {unsent.problem}
+                    {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
                   </div>
                 ) : null;
-              const unsentBox = unsent ? (
-                <div className="gc-notice gc-err">
-                  {unsent.problem}
-                  {unsent.text ? <blockquote className="unsent">{unsent.text}</blockquote> : null}
-                </div>
-              ) : null;
-              if (!setupBanner && !unsentBox) return null;
-              return (
-                <>
-                  {setupBanner}
-                  {unsentBox}
-                </>
-              );
-            }}
-            onSend={submit}
-            onStop={() => {
-              dropWaiting();
-              void command({ type: 'stop' });
-            }}
-            canStop={!!view?.shells}
-            onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
-            onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
-            onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
-            onPackAction={async (turnId, id, action) => {
-              const reply = await postCommand({ type: 'pack-task', turnId, id, action });
-              if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
-              return reply.text ?? '';
-            }}
-            hint={inSetup ? 'Connect an agent to start' : null}
-            composerTitle={
-              inSetup
-                ? 'Connect an agent to start'
-                : `Enter sends, Shift+Enter starts a new line, Esc here stops the agent. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
-            }
-            emptyState={
-              session ? (
-                inSetup ? (
-                  <Onboarding
-                    agents={agentList}
-                    limits={allLimits}
-                    loading={loadingAgents}
-                    checking={checkingAgents}
-                    setup={true}
-                    onCheckAgain={() => checkAgents({ env: true })}
-                  />
+                if (!setupBanner && !unsentBox) return null;
+                return (
+                  <>
+                    {setupBanner}
+                    {unsentBox}
+                  </>
+                );
+              }}
+              onSend={submit}
+              onStop={() => {
+                dropWaiting();
+                void command({ type: 'stop' });
+              }}
+              canStop={!!view?.shells}
+              onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
+              onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
+              onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
+              onPackAction={async (turnId, id, action) => {
+                const reply = await postCommand({ type: 'pack-task', turnId, id, action });
+                if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
+                return reply.text ?? '';
+              }}
+              hint={inSetup ? 'Connect an agent to start' : null}
+              composerTitle={
+                inSetup
+                  ? 'Connect an agent to start'
+                  : `Enter sends, Shift+Enter starts a new line, Esc here stops the agent. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
+              }
+              emptyState={
+                session ? (
+                  inSetup ? (
+                    <Onboarding
+                      agents={agentList}
+                      limits={allLimits}
+                      loading={loadingAgents}
+                      checking={checkingAgents}
+                      setup={true}
+                      onCheckAgain={() => checkAgents({ env: true })}
+                    />
+                  ) : (
+                    <div className="gc-empty">
+                      <div className="wolf" role="img" aria-label="genaicode wolf" />
+                      <h1>
+                        {hasProject
+                          ? `What should ${session.agent} work on?`
+                          : isHome && conversation?.topic
+                            ? conversation.origin === 'unresolved'
+                              ? `Where should ${session.agent} work for ${conversation.topic.name}?`
+                              : `What should ${session.agent} work on in ${conversation.topic.name}?`
+                            : isHome && conversation?.origin === 'project'
+                              ? `What should ${session.agent} work on?`
+                              : `What should ${session.agent} look into?`}
+                      </h1>
+                      <div>
+                        {hasProject
+                          ? `It works in ${cwd}, with its own login, tools and permissions.`
+                          : isHome && conversation?.topic
+                            ? conversation.origin === 'unresolved'
+                              ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
+                              : "Working in this topic's workspace. Hover the folder in the top bar or type /where to see the directory."
+                            : isHome && conversation?.origin === 'project'
+                              ? 'Hover the folder in the top bar or type /where to see the directory.'
+                              : 'It sees the sessions of your agents in every project, and can pass them a message.'}
+                      </div>
+                      {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
+                        <Home
+                          token={token}
+                          onTopic={(id) => {
+                            setTopic(id);
+                            setListed('all');
+                            setPanel('sessions');
+                          }}
+                          onNewTopicChat={isHome ? startTopicChat : undefined}
+                        />
+                      ) : null}
+                      <div className="ideas">
+                        {(hasProject || (isHome && conversation && conversation.origin !== 'home')
+                          ? IDEAS
+                          : IDEAS_ANYWHERE
+                        ).map((idea) => (
+                          <button key={idea} onClick={() => void submit(idea)}>
+                            {idea}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                ) : rejected ? (
+                  <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
                 ) : (
-                  <div className="gc-empty">
-                    <div className="wolf" role="img" aria-label="genaicode wolf" />
-                    <h1>
-                      {hasProject
-                        ? `What should ${session.agent} work on?`
-                        : isHome && conversation?.topic
-                          ? conversation.origin === 'unresolved'
-                            ? `Where should ${session.agent} work for ${conversation.topic.name}?`
-                            : `What should ${session.agent} work on in ${conversation.topic.name}?`
-                          : isHome && conversation?.origin === 'project'
-                            ? `What should ${session.agent} work on?`
-                            : `What should ${session.agent} look into?`}
-                    </h1>
-                    <div>
-                      {hasProject
-                        ? `It works in ${cwd}, with its own login, tools and permissions.`
-                        : isHome && conversation?.topic
-                          ? conversation.origin === 'unresolved'
-                            ? 'No local folder was found for this topic. Mention a directory (e.g. ~/src/…) to move there.'
-                            : "Working in this topic's workspace. Hover the folder in the top bar or type /where to see the directory."
-                          : isHome && conversation?.origin === 'project'
-                            ? 'Hover the folder in the top bar or type /where to see the directory.'
-                            : 'It sees the sessions of your agents in every project, and can pass them a message.'}
-                    </div>
-                    {hasSessions && (!isHome || !conversation || conversation.origin === 'home') ? (
-                      <Home
-                        token={token}
-                        onTopic={(id) => {
-                          setTopic(id);
-                          setListed('all');
-                          setPanel('sessions');
-                        }}
-                        onNewTopicChat={isHome ? startTopicChat : undefined}
-                      />
-                    ) : null}
-                    <div className="ideas">
-                      {(hasProject || (isHome && conversation && conversation.origin !== 'home')
-                        ? IDEAS
-                        : IDEAS_ANYWHERE
-                      ).map((idea) => (
-                        <button key={idea} onClick={() => void submit(idea)}>
-                          {idea}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <div className="gc-empty">Connecting…</div>
                 )
-              ) : rejected ? (
-                <div className="gc-empty">Open the link genaicode printed in your terminal (it carries a token).</div>
-              ) : (
-                <div className="gc-empty">Connecting…</div>
-              )
-            }
-          />
-          {viewer ? (
-            <ViewerPanel
-              target={viewer}
-              token={token}
-              artifacts={sessionArtifacts}
-              canReveal={config?.reveal}
-              onReveal={revealFile}
-              onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-              imageUrl={imageUrl}
-              onSelectArtifactVersion={(version) =>
-                setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
               }
-              onArtifactSubmit={
-                connected && !inSetup ? (artifact, data) => void submit(artifactSubmission(artifact, data)) : undefined
-              }
-              onClose={() => setViewer(undefined)}
             />
-          ) : null}
+            {viewer ? (
+              <ViewerPanel
+                target={viewer}
+                token={token}
+                artifacts={sessionArtifacts}
+                canReveal={config?.reveal}
+                onReveal={revealFile}
+                onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
+                imageUrl={imageUrl}
+                onSelectArtifactVersion={(version) =>
+                  setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
+                }
+                onArtifactSubmit={
+                  connected && !inSetup
+                    ? (artifact, data) => void submit(artifactSubmission(artifact, data))
+                    : undefined
+                }
+                onClose={() => setViewer(undefined)}
+              />
+            ) : null}
+          </EscapeActive.Provider>
         </div>
       </Shell>
       {release ? (
