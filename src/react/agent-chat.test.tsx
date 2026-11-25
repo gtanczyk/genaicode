@@ -333,7 +333,7 @@ describe('AgentChat', () => {
     ];
     render({ state, foldSteps: true });
     const turn = $$('.gc-turn')[1];
-    const order = [...turn.querySelectorAll('.gc-steps > *')].map((node) =>
+    const order = Array.from(turn.querySelectorAll('.gc-steps > *')).map((node) =>
       node.matches('.gc-fold')
         ? 'fold: ' + node.querySelector('summary')!.textContent
         : node.matches('.gc-steer')
