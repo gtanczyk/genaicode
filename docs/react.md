@@ -119,6 +119,7 @@ const layout = workPanelLayout({ room, window: innerWidth, saved }); // room: th
   view.open ? (
     <WorkPanel
       state={state}
+      chatId={chatId}
       view={view}
       onView={(next) => (setView(next), writeWorkView(localStorage, chatId, next))}
       mode={layout.docks ? 'docked' : 'full'} // 'full': a view in the chat's place, below 600 px of chat
@@ -127,16 +128,20 @@ const layout = workPanelLayout({ room, window: innerWidth, saved }); // room: th
       onWidth={(width, commit) => setSaved(width)}
       onPackAction={(turnId, id, action) => session.actOnPackTask!(turnId, id, action)}
       onApprove={session.approve}
-      pullRequests={{ 'https://github.com/acme/app/pull/12': 'merged' }} // by PackTask.pullRequest.url
+      pullRequests={{ '7:t1': { state: 'merged', ours: true } }} // by WorkTask.key ("turn:id")
       onClose={() => setView({ ...view, open: false })}
     />
   ) : null;
 }
 ```
 
-A task whose final reply ends with a GitHub pull request link carries `pullRequest: { url, number }`
-and shows "PR #12" with the link in place of **Merge locally**; give `pullRequests` the state
-(`open`, `merged`, `closed`) once you have looked it up. The panel draws with the design tokens
+A task whose final reply links to a GitHub pull request carries `pullRequest: { url, number }`.
+The reply may only refer to it, so the panel shows it as a link beside **Merge locally** and
+**Discard** until `pullRequests` says the task opened it (`ours`, for example its worktree is on
+the pull request's head branch): then "PR #12 · merged" (or open, closed) stands in for Merge
+locally. Give the `state` once you have looked it up, and keep asking about a closed one: it can
+be reopened. Pass `chatId`, your id for the conversation, so a task's detail starts afresh in
+another chat. The panel draws with the design tokens
 (`--gc-color-*`) of `styles.css` and never takes the keyboard focus by itself.
 
 Two smaller pieces come along for hosts that build their own panels around a transcript:
@@ -147,7 +152,8 @@ import { installResizeHandle, storedSize, useFollowScroll } from 'genaicode/reac
 // A log that stays at its newest line until the user scrolls up (and again after follow()).
 const { ref, onScroll, follow } = useFollowScroll(lines);
 
-// A drag handle on a panel's left edge; the width survives reloads.
+// A drag handle on a panel's left edge; the width survives reloads (in localStorage, or pass
+// () => sessionStorage as a third argument for a width per window).
 const stored = storedSize('panel-width', [300, 900]);
 let width = stored.get();
 const handle = installResizeHandle(edge, {

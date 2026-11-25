@@ -18,14 +18,7 @@ import {
   relativePath,
 } from './format.js';
 import { Markdown } from './markdown.js';
-import {
-  MERGE_LOCALLY_HELP,
-  mergesLocally,
-  PULL_REQUEST_HELP,
-  pullRequestLabel,
-  reviewHelp,
-  testsHelp,
-} from './work.js';
+import { MERGE_LOCALLY_HELP, mergesLocally, pullRequestLabel, reviewHelp, testsHelp } from './work.js';
 
 export type PackActionHandler = (turnId: number, id: string, action: PackAction) => Promise<string>;
 
@@ -226,7 +219,7 @@ function TaskDetail({
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const running = task.status === 'running';
   const worktree = task.state === 'unmerged';
-  // Changes that are in a pull request are merged there, not here.
+  // A worktree that changed no files has nothing to merge.
   const merges = mergesLocally(task);
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
@@ -330,12 +323,12 @@ function TaskDetail({
         <summary>Instructions given to {task.agent}</summary>
         <p>{task.prompt}</p>
       </details>
+      {/* Only linked: without a lookup the card cannot tell whether the task opened it. */}
       {task.pullRequest ? (
         <p className="gc-pack-pr">
           <a href={task.pullRequest.url} target="_blank" rel="noopener noreferrer">
             {pullRequestLabel(task.pullRequest)}
           </a>
-          {worktree && !running ? <small> {PULL_REQUEST_HELP}</small> : null}
         </p>
       ) : null}
       {task.changes?.length ? <small className="gc-pack-label">Changed files</small> : null}

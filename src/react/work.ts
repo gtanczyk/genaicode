@@ -34,6 +34,17 @@ export function workPanelLayout(sizes: { room: number; window: number; saved?: n
 /** Whether a pull request is still open, was merged, or was closed without a merge. */
 export type PullRequestState = 'open' | 'merged' | 'closed';
 
+/** What the host learned of the pull request a task's final reply links to (`PackTask.pullRequest`). */
+export interface PullRequestStatus {
+  state?: PullRequestState;
+  /**
+   * The task opened it: its worktree has the pull request's head branch checked out, so the work is
+   * in the pull request. Otherwise the reply only refers to it, and the worktree is merged or
+   * discarded as any other.
+   */
+  ours?: boolean;
+}
+
 /** The groups of the task list, in the order of what to do next. */
 export const WORK_GROUPS = ['ask', 'failed', 'blocked', 'running', 'unmerged', 'done'] as const;
 export type WorkGroup = (typeof WORK_GROUPS)[number];
@@ -61,6 +72,8 @@ export interface WorkTask {
   /** The lead that delegated it. */
   lead: string;
   group: WorkGroup;
+  /** What the host learned of the pull request its reply links to, once it looked. */
+  pullRequest?: PullRequestStatus;
 }
 
 /**
@@ -73,21 +86,54 @@ export function reviewBlocker(checks: PackTaskChecks | undefined): boolean {
   return review.status === 'failed' || /^[\s>*_#\-\d.)]*BLOCKER\b/m.test(review.detail ?? '');
 }
 
-/** A worktree task whose changes are neither merged nor discarded, and are in no pull request. */
-export function mergesLocally(task: PackTask): boolean {
-  return task.state === 'unmerged' && task.status !== 'running' && !task.pullRequest;
+/**
+ * Whether a pull request's state can no longer change: only a merge is final. A closed one can be
+ * reopened (and merged), so a host keeps asking about it while it shows.
+ */
+export function pullRequestSettled(status: PullRequestStatus | undefined): boolean {
+  return status?.state === 'merged';
 }
 
-function groupOf(task: PackTask, asks: number): WorkGroup {
+/** The pull request a task ended in: the one its reply links to, when the task opened it. */
+export function taskPullRequest(task: PackTask, status?: PullRequestStatus): PackPullRequest | undefined {
+  return task.pullRequest && status?.ours ? task.pullRequest : undefined;
+}
+
+/** A worktree task that is known to have changed no files: there is nothing to merge. */
+export function changedNothing(task: PackTask): boolean {
+  return task.mode === 'worktree' && !!task.changes && task.changes.length === 0;
+}
+
+/**
+ * A worktree task whose changes are neither merged nor discarded, and are in no pull request the
+ * task opened. A task that changed no files has nothing to merge; one whose files could not be
+ * listed still may.
+ */
+export function mergesLocally(task: PackTask, pullRequest?: PullRequestStatus): boolean {
+  return (
+    task.state === 'unmerged' &&
+    task.status !== 'running' &&
+    !taskPullRequest(task, pullRequest) &&
+    !changedNothing(task)
+  );
+}
+
+function groupOf(task: PackTask, asks: number, pullRequest?: PullRequestStatus): WorkGroup {
   if (asks) return 'ask';
   if (task.status === 'running') return 'running';
   if (task.status === 'failed' || task.status === 'timeout') return 'failed';
-  if (mergesLocally(task)) return reviewBlocker(task.checks) ? 'blocked' : 'unmerged';
+  if (mergesLocally(task, pullRequest)) return reviewBlocker(task.checks) ? 'blocked' : 'unmerged';
   return 'done';
 }
 
-/** Every delegated task of the session, oldest first, each with its group. */
-export function workTasks(state: SessionState | null | undefined): WorkTask[] {
+/**
+ * Every delegated task of the session, oldest first, each with its group. `pullRequests` is what
+ * the host learned of the pull requests the tasks' replies link to, by `WorkTask.key`.
+ */
+export function workTasks(
+  state: SessionState | null | undefined,
+  pullRequests?: Readonly<Record<string, PullRequestStatus | undefined>>,
+): WorkTask[] {
   const list: WorkTask[] = [];
   for (const turn of state?.turns ?? []) {
     if (!turn.pack) continue;
@@ -95,14 +141,17 @@ export function workTasks(state: SessionState | null | undefined): WorkTask[] {
     const pending = turn.result ? [] : (state?.approvals ?? []);
     for (const task of turn.pack.tasks) {
       const asks = pending.filter((request) => request.subtaskId === task.id);
+      const key = `${turn.id}:${task.id}`;
+      const pullRequest = task.pullRequest ? pullRequests?.[key] : undefined;
       list.push({
-        key: `${turn.id}:${task.id}`,
+        key,
         turnId: turn.id,
         task,
         asks,
         interactive: turn.pack.interactive,
         lead: turn.pack.lead,
-        group: groupOf(task, asks.length),
+        group: groupOf(task, asks.length, pullRequest),
+        ...(pullRequest ? { pullRequest } : {}),
       });
     }
   }
@@ -131,18 +180,21 @@ export function pullRequestLabel(pullRequest: PackPullRequest, state?: PullReque
 export type WorkTone = 'run' | 'ask' | 'err' | 'block' | 'merge' | 'ok' | 'idle';
 
 /** A task's status in words, and the tone of its glyph and pill. */
-export function workStatus(item: WorkTask, pullRequest?: PullRequestState): { text: string; tone: WorkTone } {
+export function workStatus(item: WorkTask): { text: string; tone: WorkTone } {
   const { task } = item;
   if (item.group === 'ask') return { text: 'Needs approval', tone: 'ask' };
   if (task.status === 'running') return { text: 'Running', tone: 'run' };
   if (task.status === 'failed') return { text: 'Failed', tone: 'err' };
   if (task.status === 'timeout') return { text: 'Timed out', tone: 'err' };
-  if (task.pullRequest) {
-    return { text: pullRequestLabel(task.pullRequest, pullRequest), tone: pullRequest === 'merged' ? 'ok' : 'idle' };
+  const pullRequest = taskPullRequest(task, item.pullRequest);
+  if (pullRequest) {
+    const state = item.pullRequest?.state;
+    return { text: pullRequestLabel(pullRequest, state), tone: state === 'merged' ? 'ok' : 'idle' };
   }
   if (task.state === 'merged') return { text: 'Merged locally', tone: 'ok' };
   if (task.state === 'discarded') return { text: 'Discarded', tone: 'idle' };
   if (item.group === 'blocked') return { text: 'Review blocker', tone: 'block' };
+  if (task.state === 'unmerged' && changedNothing(task)) return { text: 'No changes', tone: 'idle' };
   if (task.state === 'unmerged') return { text: 'Unmerged', tone: 'merge' };
   if (task.status === 'aborted') return { text: 'Stopped', tone: 'idle' };
   return { text: 'Done', tone: 'ok' };
@@ -187,6 +239,9 @@ export const MERGE_LOCALLY_HELP =
 /** What is left to do with a worktree whose work is in a pull request. */
 export const PULL_REQUEST_HELP =
   'The work is in the pull request, so there is nothing to merge here. Discard removes the local worktree copy only.';
+
+/** What is left to do with a worktree whose task changed no files. */
+export const NO_CHANGES_HELP = 'There is nothing to merge. Discard worktree removes the empty worktree.';
 
 // ---------------------------------------------------------------------------------------------
 // What is remembered

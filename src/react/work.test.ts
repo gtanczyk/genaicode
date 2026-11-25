@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { PackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import {
+  mergesLocally,
   pullRequestLabel,
+  pullRequestSettled,
   readWorkView,
   reviewBlocker,
   WORK_VIEW_KEY,
@@ -12,6 +14,7 @@ import {
   workStatus,
   workTasks,
   writeWorkView,
+  type PullRequestStatus,
 } from './work.js';
 
 const base = { agent: 'codex', prompt: 'Do it.', cwd: '/work/app', mode: 'worktree' as const };
@@ -75,12 +78,14 @@ describe('workTasks', () => {
     task('t7', { state: 'unmerged', pullRequest: { url: 'https://github.com/o/r/pull/7', number: 7 } }),
     task('t8', { status: 'aborted', stoppedBy: 'user' }),
   ];
+  // t7 opened the pull request its reply links to.
+  const opened = { '1:t7': { ours: true } };
   const state = session(tasks, [
     { id: 't5:ap-1', kind: 'command', subtaskId: 't5', summary: '[codex t5] npm install' },
   ]);
 
   it('groups by what to do next, newest first in a group', () => {
-    const list = workTasks(state);
+    const list = workTasks(state, opened);
     expect(workGroups(list).map(({ group, tasks }) => [group, tasks.map((item) => item.task.id)])).toEqual([
       ['ask', ['t5']],
       ['failed', ['t3']],
@@ -94,7 +99,7 @@ describe('workTasks', () => {
   });
 
   it('names each status with its tone', () => {
-    const status = Object.fromEntries(workTasks(state).map((item) => [item.task.id, workStatus(item)]));
+    const status = Object.fromEntries(workTasks(state, opened).map((item) => [item.task.id, workStatus(item)]));
     expect(status).toEqual({
       t1: { text: 'Done', tone: 'ok' },
       t2: { text: 'Unmerged', tone: 'merge' },
@@ -105,10 +110,41 @@ describe('workTasks', () => {
       t7: { text: 'PR #7', tone: 'idle' },
       t8: { text: 'Stopped', tone: 'idle' },
     });
-    const pr = workTasks(state).find((item) => item.task.id === 't7')!;
-    expect(workStatus(pr, 'merged')).toEqual({ text: 'PR #7 · merged', tone: 'ok' });
-    expect(workStatus(pr, 'open')).toEqual({ text: 'PR #7 · open', tone: 'idle' });
-    expect(pullRequestLabel(pr.task.pullRequest!, 'closed')).toBe('PR #7 · closed');
+    const pr = (status: PullRequestStatus) =>
+      workTasks(state, { '1:t7': status }).find((item) => item.task.id === 't7')!;
+    expect(workStatus(pr({ state: 'merged', ours: true }))).toEqual({ text: 'PR #7 · merged', tone: 'ok' });
+    expect(workStatus(pr({ state: 'open', ours: true }))).toEqual({ text: 'PR #7 · open', tone: 'idle' });
+    expect(pullRequestLabel(pr({}).task.pullRequest!, 'closed')).toBe('PR #7 · closed');
+  });
+
+  it('takes a linked pull request for the outcome only when the task opened it', () => {
+    const t7 = (status?: PullRequestStatus) =>
+      workTasks(state, status ? { '1:t7': status } : undefined).find((item) => item.task.id === 't7')!;
+    // "Fixed locally, see PR #7 for the original bug": the worktree is to merge or discard.
+    for (const status of [undefined, { state: 'merged' as const, ours: false }]) {
+      expect(t7(status).group).toBe('unmerged');
+      expect(workStatus(t7(status))).toEqual({ text: 'Unmerged', tone: 'merge' });
+      expect(mergesLocally(t7(status).task, status)).toBe(true);
+    }
+    expect(t7({ state: 'open', ours: true }).group).toBe('done');
+    expect(mergesLocally(t7().task, { ours: true })).toBe(false);
+  });
+
+  it('keeps asking about a closed pull request: only a merge is final', () => {
+    expect(pullRequestSettled({ state: 'merged', ours: true })).toBe(true);
+    expect(pullRequestSettled({ state: 'closed', ours: true })).toBe(false);
+    expect(pullRequestSettled({ state: 'open' })).toBe(false);
+    expect(pullRequestSettled(undefined)).toBe(false);
+  });
+
+  it('has nothing to merge for a task that changed no files, and keeps one whose files are unknown', () => {
+    const empty = task('t9', { state: 'unmerged', changes: [] });
+    const unknown = task('t9', { state: 'unmerged' });
+    expect(mergesLocally(empty)).toBe(false);
+    expect(mergesLocally(unknown)).toBe(true);
+    const [item] = workTasks(session([empty]));
+    expect(item!.group).toBe('done');
+    expect(workStatus(item!)).toEqual({ text: 'No changes', tone: 'idle' });
   });
 
   it('leaves approvals with the turn that still runs', () => {

@@ -74,6 +74,13 @@ const $$ = (selector: string) => Array.from(host.querySelectorAll<HTMLElement>(s
 const text = (selector: string) => $(selector)?.textContent ?? '';
 const button = (name: string) => $$('button').find((item) => item.textContent?.trim() === name);
 const click = (element: Element | undefined) => act(() => (element as HTMLElement).click());
+/** Types `value` into the field, as React hears it. */
+const type = (selector: string, value: string) =>
+  act(() => {
+    const field = $<HTMLInputElement>(selector);
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 const labels = () => $$('.gc-work-label').map((item) => item.firstChild?.textContent?.trim());
 
 beforeEach(() => {
@@ -241,7 +248,7 @@ describe('<WorkPanel> task detail', () => {
     expect($('.gc-work-result')).toBeNull();
   });
 
-  it('ended in a pull request: "PR #N · merged" with its link in place of Merge locally', async () => {
+  it('ended in a pull request it opened: "PR #N · merged" with its link in place of Merge locally', async () => {
     const onAction = vi.fn<PackActionHandler>(async () => 'Discarded');
     const task: PackTask = {
       ...base,
@@ -257,7 +264,7 @@ describe('<WorkPanel> task detail', () => {
       endedAt: t0 + 60_000,
     };
     show([task], {
-      props: { onPackAction: onAction, pullRequests: { 'https://github.com/acme/app/pull/351': 'merged' } },
+      props: { onPackAction: onAction, pullRequests: { '7:t5': { state: 'merged', ours: true } } },
     });
     expect(text('.gc-work-pill')).toBe('PR #351 · merged');
     expect($('.gc-work-pill').getAttribute('data-tone')).toBe('ok');
@@ -281,10 +288,134 @@ describe('<WorkPanel> task detail', () => {
       ['closed', 'PR #351 · closed'],
       [undefined, 'PR #351'],
     ] as const) {
-      show([task], { props: { pullRequests: { [task.pullRequest!.url]: state } } });
+      show([task], { props: { pullRequests: { '7:t5': { ...(state ? { state } : {}), ours: true } } } });
       expect(text('.gc-work-pill')).toBe(label);
       expect(text('.gc-work-pr a')).toBe(label);
     }
+  });
+
+  it('a pull request its reply only links to is a link: Merge locally and Discard stay as for any worktree', async () => {
+    const task: PackTask = {
+      ...base,
+      id: 't5',
+      prompt: 'Fix the importer locally.',
+      status: 'completed',
+      state: 'unmerged',
+      text: 'Fixed locally, see https://github.com/acme/app/pull/12 for the original bug.',
+      pullRequest: { url: 'https://github.com/acme/app/pull/12', number: 12 },
+      changes: ['M\tsrc/import.ts'],
+      checks: { revision: 'abc' },
+    };
+    // Not looked up yet, and looked up: the pull request's head is not the task's branch.
+    for (const pullRequests of [undefined, { '7:t5': { state: 'merged' as const, ours: false } }]) {
+      show([task], { props: { onPackAction: vi.fn(async () => ''), pullRequests } });
+      expect(text('.gc-work-pill')).toBe('Unmerged');
+      expect(button('Merge locally')).toBeDefined();
+      expect(button('Discard')).toBeDefined();
+      expect(labels()).toContain('Pull request in its reply');
+      expect(text('.gc-work-pr a')).toBe(pullRequests ? 'PR #12 · merged' : 'PR #12');
+      expect(text('.gc-work-detail')).not.toContain('The work is in the pull request');
+    }
+    show([task], { list: true, props: { pullRequests: { '7:t5': { state: 'merged', ours: false } } } });
+    expect($$('.gc-work-group').map((group) => group.getAttribute('aria-label'))).toEqual(['Unmerged']);
+  });
+
+  it('changed no files: nothing to merge, Discard worktree cleans up; files not listed: Show diff stays', async () => {
+    const onAction = vi.fn<PackActionHandler>(async () => '@@ -1 +1 @@\n-a\n+b');
+    const empty: PackTask = {
+      ...base,
+      id: 't4',
+      prompt: 'Look around.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: [],
+      checks: {},
+    };
+    show([empty], { props: { onPackAction: onAction } });
+    expect(text('.gc-work-pill')).toBe('No changes');
+    expect(button('Merge locally')).toBeUndefined();
+    expect(button('Discard worktree')).toBeDefined();
+    expect(text('.gc-work-detail')).toContain('It changed no files. There is nothing to merge.');
+    show([empty], { list: true });
+    expect($$('.gc-work-group').map((group) => group.getAttribute('aria-label'))).toEqual(['Done']);
+
+    // The files could not be listed: the diff is still there to read before a merge.
+    show([{ ...empty, changes: undefined, checks: { revision: 'abc' } }], { props: { onPackAction: onAction } });
+    expect(text('.gc-work-pill')).toBe('Unmerged');
+    expect(button('Merge locally')).toBeDefined();
+    expect(text('.gc-work-detail')).toContain('The changed files could not be listed.');
+    await actAsync(() => button('Show diff')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't4', { type: 'diff', revision: 'abc' });
+    expect($$('.gc-work-diff span')).toHaveLength(3);
+  });
+
+  it('merges the revision whose diff was read, through a review; a stale merge reloads the diff first', async () => {
+    const A = 'a'.repeat(40);
+    const B = 'b'.repeat(40);
+    const stale = Object.assign(new Error('The worktree changed. Open the updated diff before merging.'), {
+      reason: 'stale',
+    });
+    const onAction = vi.fn<PackActionHandler>(async (_turn, _id, action) => {
+      if (action.type === 'diff') return `diff of ${action.revision}`;
+      if (action.type === 'merge' && action.revision !== B) throw stale;
+      return action.type === 'merge' ? 'Merged t6' : '';
+    });
+    const task: PackTask = {
+      ...base,
+      id: 't6',
+      prompt: 'Change it.',
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta.ts'],
+      checks: { reviewer: 'claude', revision: A },
+    };
+    show([task], { props: { onPackAction: onAction } });
+    await actAsync(() => button('Show diff')!.click());
+    expect(text('.gc-work-diff')).toBe(`diff of ${A}`);
+    await actAsync(() => button('Request review')!.click());
+    // The review ran on a newer revision B: A is still what was read, and what Merge sends.
+    state.turns[0]!.pack!.tasks[0] = {
+      ...task,
+      checks: { reviewer: 'claude', revision: B, review: { revision: B, status: 'completed', detail: 'LGTM' } },
+    };
+    draw();
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenCalledWith(7, 't6', { type: 'merge', revision: A });
+    // Refused: the diff of B loads, and nothing merges until another click.
+    await actAsync(async () => undefined);
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'diff', revision: B });
+    expect(text('.gc-work-diff')).toBe(`diff of ${B}`);
+    expect(onAction.mock.calls.filter((call) => call[2].type === 'merge')).toHaveLength(1);
+    await actAsync(() => button('Merge locally')!.click());
+    expect(onAction).toHaveBeenLastCalledWith(7, 't6', { type: 'merge', revision: B });
+    expect(text('.gc-work-feedback')).toBe('Merged t6');
+  });
+
+  it("a task's detail belongs to its conversation: what was typed for one chat's 7:t1 is not in another's", () => {
+    const running: PackTask = { ...base, id: 't1', prompt: 'Go.', status: 'running', canSteer: true };
+    show([running], { props: { onPackAction: vi.fn(async () => ''), chatId: 'chat-a' } });
+    type('.gc-work-field', 'half a thought');
+    click(button('Stop task'));
+    expect(button('Confirm stop')).toBeDefined();
+    props = { ...props, chatId: 'chat-b' };
+    draw();
+    expect(button('Confirm stop')).toBeUndefined();
+    expect($<HTMLInputElement>('.gc-work-field').value).toBe('');
+  });
+
+  it('Escape in the message field clears what was typed, and the next one is left to the host', () => {
+    show([{ ...base, id: 't1', prompt: 'Go.', status: 'running', canSteer: true }], {
+      props: { onPackAction: vi.fn(async () => '') },
+    });
+    type('.gc-work-field', 'draft');
+    const escape = () => {
+      const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+      act(() => void $('.gc-work-field').dispatchEvent(event));
+      return event.defaultPrevented;
+    };
+    expect(escape()).toBe(true);
+    expect($<HTMLInputElement>('.gc-work-field').value).toBe('');
+    expect(escape()).toBe(false);
   });
 
   it('worktree with unmerged changes: diff, checks, and Merge locally with what it does', async () => {
@@ -474,7 +605,7 @@ describe('<WorkPanel> task list', () => {
     show(tasks, {
       list: true,
       state: { approvals },
-      props: { onApprove, pullRequests: { 'https://github.com/acme/app/pull/9': 'open' } },
+      props: { onApprove, pullRequests: { '7:t6': { state: 'open', ours: true } } },
     });
     expect(text('.gc-work-tab')).toBe('Tasks 6');
     expect($$('.gc-work-group').map((group) => group.getAttribute('aria-label'))).toEqual([

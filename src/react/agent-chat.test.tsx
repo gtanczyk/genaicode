@@ -179,7 +179,7 @@ describe('AgentChat', () => {
     });
     expect(onPackAction).toHaveBeenCalledWith(turn.id, 't2', { type: 'discard' });
   });
-  it('says what the person can do without a reviewer or a test command, and merges locally only what is in no pull request', () => {
+  it('says what the person can do without a reviewer or a test command, and keeps Merge locally beside a linked pull request', () => {
     const state = fixture({ approvals: [] });
     const turn = state.turns[1];
     const task = {
@@ -214,8 +214,14 @@ describe('AgentChat', () => {
     const link = $<HTMLAnchorElement>('.gc-pack-pr a');
     expect(link.textContent).toBe('PR #351');
     expect(link.getAttribute('href')).toBe('https://github.com/acme/app/pull/351');
-    expect($('.gc-pack-pr').textContent).toContain('there is nothing to merge here');
-    expect($$('.gc-pack-detail button').map((item) => item.textContent)).toEqual(['Show diff', 'Discard']);
+    // The card does not look up whether the task opened it: the link is only a link, and the worktree
+    // keeps Merge locally, so a reply that merely mentions a pull request cannot hide the only copy.
+    expect($('.gc-pack-pr').textContent).not.toContain('there is nothing to merge here');
+    expect($$('.gc-pack-detail button').map((item) => item.textContent)).toEqual([
+      'Show diff',
+      'Merge locally',
+      'Discard',
+    ]);
   });
   it('shows delegated tasks plainly: count, outcomes, the running command, no dollar figure, older ones folded', () => {
     const state = fixture({ approvals: [] });

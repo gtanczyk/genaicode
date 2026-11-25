@@ -191,8 +191,9 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
           opened = url;
         },
         clientScript: bundle.outputFiles[0]!.text,
-        // No `gh` in a test: the pull request is merged.
-        pullRequest: async (url) => (url === PR ? 'merged' : undefined),
+        // No `gh` in a test: t5 opened the pull request (its worktree is on the head branch), and it is merged.
+        pullRequest: async (url, worktree) =>
+          url === PR ? { state: 'merged', ours: worktree?.endsWith('/t5') === true } : undefined,
       });
     running = main({
       argv: ['ui', '--no-artifacts'],
@@ -330,6 +331,13 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     await page.reload();
     await work.getByRole('region', { name: 'Task t5' }).waitFor();
     expect((await boxes(page)).work!.width).toBe(436);
+    // Another window of the app keeps its own width.
+    const other = await context.newPage();
+    await other.goto(opened!);
+    await other.getByRole('region', { name: 'Task t5' }).waitFor();
+    expect((await boxes(other)).work!.width).toBe(420);
+    await other.close();
+    expect((await boxes(page)).work!.width).toBe(436);
 
     // Closed by hand (⌘⌥B) it stays closed for this chat, also after a reload; the button opens it again.
     const mod = (await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform))) ? 'Meta' : 'Control';
@@ -362,7 +370,21 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     // The chat under it keeps running, out of reach of the keyboard.
     expect(await page.locator('.workspace').getAttribute('inert')).not.toBeNull();
     expect(await page.locator('.topbar').getByRole('button', { name: 'Chat' }).count()).toBe(1);
+    // In a running task's message field the first Escape clears what was typed, the next one goes back.
+    patch('t4', { canSteer: true });
+    await work.locator('[data-task="1:t4"] .gc-work-row').click();
+    const field = work.getByRole('textbox', { name: 'Message to worker' });
+    await field.fill('Use date-fns');
+    await page.keyboard.press('Escape');
+    await expect.poll(() => field.inputValue()).toBe('');
+    expect(await work.count()).toBe(1);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => work.count()).toBe(0);
+    await expect.poll(() => composer.evaluate((element) => element === document.activeElement)).toBe(true);
     // Escape closes it and the message field has the keyboard again.
+    await toggle.click();
+    await expect.poll(() => work.getAttribute('data-mode')).toBe('full');
+    await work.getByRole('button', { name: 'Tasks', exact: true }).click();
     await page.keyboard.press('Escape');
     await expect.poll(() => work.count()).toBe(0);
     await expect.poll(() => composer.evaluate((element) => element === document.activeElement)).toBe(true);

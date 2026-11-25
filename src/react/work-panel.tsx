@@ -19,19 +19,22 @@ import type { PackActionHandler } from './pack-tasks.js';
 import { installResizeHandle } from './resize-handle.js';
 import {
   askSubject,
+  changedNothing,
   MERGE_LOCALLY_HELP,
   mergesLocally,
+  NO_CHANGES_HELP,
   PULL_REQUEST_HELP,
   pullRequestLabel,
   reviewBlocker,
   reviewHelp,
+  taskPullRequest,
   testsHelp,
   WORK_GROUP_LABEL,
   workGroups,
   workStatus,
   workTasks,
   workTimes,
-  type PullRequestState,
+  type PullRequestStatus,
   type WorkGroup,
   type WorkPanelView,
   type WorkTask,
@@ -41,6 +44,11 @@ import {
 export interface WorkPanelProps {
   /** The session whose delegated tasks are shown, as `<AgentChat>` gets it. */
   state: SessionState | null | undefined;
+  /**
+   * Which conversation `state` is (the host's id for the chat). A task's detail starts afresh, with
+   * nothing typed or confirmed, when it changes. Default: `state.sessionId`.
+   */
+  chatId?: string;
   /** What the panel shows: the open task, the folded groups, the scroll position. The host keeps it per chat. */
   view: WorkPanelView;
   onView(view: WorkPanelView): void;
@@ -64,10 +72,11 @@ export interface WorkPanelProps {
   /** Approve this and every later request of the session. Shown beside Approve when `onApprove` is set. */
   onAutoApprove?(): void;
   /**
-   * What became of the pull requests tasks ended in, by address (`PackTask.pullRequest.url`). The
-   * host looks it up; a pull request without an entry shows as "PR #12" with its link.
+   * What the host learned of the pull requests the tasks' replies link to (`PackTask.pullRequest`),
+   * by task (`WorkTask.key`, "turn:id"): its state, and whether the task opened it (`ours`). Only a
+   * pull request the task opened stands in for Merge locally; any other is a link beside it.
    */
-  pullRequests?: Readonly<Record<string, PullRequestState | undefined>>;
+  pullRequests?: Readonly<Record<string, PullRequestStatus | undefined>>;
   /** Keep the person from acting (the host is disconnected): the panel keeps what it showed, dimmed. */
   disabled?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
@@ -136,7 +145,7 @@ function useNow(active: boolean): number {
  * (`readWorkView`, `writeWorkView`). It never takes the keyboard focus by itself.
  */
 export function WorkPanel(props: WorkPanelProps) {
-  const tasks = workTasks(props.state);
+  const tasks = workTasks(props.state, props.pullRequests);
   const { view, onView } = props;
   const mode = props.mode ?? 'docked';
   const open = view.task ? tasks.find((item) => item.key === view.task) : undefined;
@@ -216,7 +225,8 @@ export function WorkPanel(props: WorkPanelProps) {
       <div className="gc-work-pane" role="tabpanel" aria-label="Tasks">
         {open ? (
           <TaskDetail
-            key={open.key}
+            // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
+            key={`${props.chatId ?? props.state?.sessionId ?? ''}\n${open.key}`}
             item={open}
             now={now}
             cwd={props.state?.cwd ?? ''}
@@ -224,7 +234,6 @@ export function WorkPanel(props: WorkPanelProps) {
             act={open.interactive ? act : undefined}
             onApprove={approve}
             onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
-            pullRequest={open.task.pullRequest ? props.pullRequests?.[open.task.pullRequest.url] : undefined}
             onBack={() => {
               back.current = open.key;
               fromRow.current = false;
@@ -239,7 +248,6 @@ export function WorkPanel(props: WorkPanelProps) {
             onView={onView}
             focus={back}
             onApprove={approve}
-            pullRequests={props.pullRequests}
             onOpen={(key) => {
               fromRow.current = true;
               onView({ ...view, task: key });
@@ -258,7 +266,6 @@ function TaskList({
   onView,
   focus,
   onApprove,
-  pullRequests,
   onOpen,
 }: {
   tasks: WorkTask[];
@@ -268,7 +275,6 @@ function TaskList({
   /** The row to focus once, after its detail closed. */
   focus: { current: string | undefined };
   onApprove?: WorkPanelProps['onApprove'];
-  pullRequests?: WorkPanelProps['pullRequests'];
   onOpen(key: string): void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
@@ -327,14 +333,7 @@ function TaskList({
             {folded
               ? null
               : rows.map((item) => (
-                  <TaskRow
-                    key={item.key}
-                    item={item}
-                    now={now}
-                    onOpen={onOpen}
-                    onApprove={onApprove}
-                    pullRequest={item.task.pullRequest ? pullRequests?.[item.task.pullRequest.url] : undefined}
-                  />
+                  <TaskRow key={item.key} item={item} now={now} onOpen={onOpen} onApprove={onApprove} />
                 ))}
           </section>
         );
@@ -348,16 +347,15 @@ function TaskRow({
   now,
   onOpen,
   onApprove,
-  pullRequest,
 }: {
   item: WorkTask;
   now: number;
   onOpen(key: string): void;
   onApprove?: WorkPanelProps['onApprove'];
-  pullRequest?: PullRequestState;
 }) {
   const { task } = item;
-  const status = workStatus(item, pullRequest);
+  const status = workStatus(item);
+  const pullRequest = taskPullRequest(task, item.pullRequest);
   const ask = item.asks[0];
   const error = packTaskError(task);
   const elapsed = packTaskElapsed(task, now);
@@ -382,7 +380,7 @@ function TaskRow({
     </span>
   ) : (
     <span className="gc-work-line">
-      {task.pullRequest ? `${pullRequestLabel(task.pullRequest, pullRequest)} · ` : ''}
+      {pullRequest ? `${pullRequestLabel(pullRequest, item.pullRequest?.state)} · ` : ''}
       {packTaskOutcome(task)}
     </span>
   );
@@ -519,7 +517,6 @@ function TaskDetail({
   act,
   onApprove,
   onAutoApprove,
-  pullRequest,
   onBack,
 }: {
   item: WorkTask;
@@ -529,7 +526,6 @@ function TaskDetail({
   act?: PackActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
-  pullRequest?: PullRequestState;
   onBack(): void;
 }) {
   const { task } = item;
@@ -537,7 +533,11 @@ function TaskDetail({
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [diff, setDiff] = useState<{ text: string; revision?: string }>();
+  // The revision whose diff the person opened: Merge locally sends it, through reviews and tests.
   const inspected = useRef<string>(undefined);
+  // A merge refused because the worktree moved on from this revision: the diff reloads once the
+  // newer revision is known, and the next merge takes another click.
+  const [stale, setStale] = useState<string>();
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const backButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -545,7 +545,9 @@ function TaskDetail({
   }, []);
   const running = task.status === 'running';
   const worktree = task.state === 'unmerged' && !running;
-  const merges = mergesLocally(task);
+  const merges = mergesLocally(task, item.pullRequest);
+  const pullRequest = taskPullRequest(task, item.pullRequest);
+  const empty = changedNothing(task);
   const checks = task.checks;
   const checking = checks?.review?.status === 'running' || checks?.verify?.status === 'running';
   const visibleDiff = diff && diff.revision === checks?.revision ? diff.text : undefined;
@@ -559,18 +561,29 @@ function TaskDetail({
         inspected.current = action.revision;
         setDiff({ text, revision: action.revision });
       } else {
-        if (action.type === 'review' || action.type === 'verify') inspected.current = undefined;
-        else if (action.type !== 'steer') setFeedback({ text });
+        if (action.type !== 'steer' && action.type !== 'review' && action.type !== 'verify') setFeedback({ text });
         setConfirm(undefined);
         if (action.type === 'steer') setInput('');
       }
     } catch (error) {
       setFeedback({ text: error instanceof Error ? error.message : String(error), error: true });
+      // The worktree moved on since the diff that was looked at: show what is there now first.
+      // (`PackActionError` and the page's own errors carry the refusal's reason.)
+      if (action.type === 'merge' && action.revision && (error as { reason?: unknown })?.reason === 'stale') {
+        inspected.current = undefined;
+        setDiff(undefined);
+        setStale(action.revision);
+      }
     } finally {
       setBusy(false);
     }
   };
-  const status = workStatus(item, pullRequest);
+  useEffect(() => {
+    if (!stale || busy || !checks?.revision || checks.revision === stale) return;
+    setStale(undefined);
+    void perform({ type: 'diff', revision: checks.revision });
+  }, [stale, busy, checks?.revision]);
+  const status = workStatus(item);
   const stopped = packTaskStopped(task);
   const error = packTaskError(task);
   const activity = running ? packActivity(task.text ?? '') : undefined;
@@ -691,23 +704,24 @@ function TaskDetail({
 
         {task.pullRequest ? (
           <>
-            <h4 className="gc-work-label">Pull request</h4>
+            {/* A pull request the task did not open is only a link: its worktree is merged or discarded as any other. */}
+            <h4 className="gc-work-label">{pullRequest ? 'Pull request' : 'Pull request in its reply'}</h4>
             <p className="gc-work-pr">
               <a href={task.pullRequest.url} target="_blank" rel="noopener noreferrer">
-                {pullRequestLabel(task.pullRequest, pullRequest)}
+                {pullRequestLabel(task.pullRequest, item.pullRequest?.state)}
               </a>
               <span>{task.pullRequest.url.replace(/^https:\/\/github\.com\//, '')}</span>
             </p>
-            {worktree ? <p className="gc-work-note">{PULL_REQUEST_HELP}</p> : null}
+            {worktree && pullRequest ? <p className="gc-work-note">{PULL_REQUEST_HELP}</p> : null}
           </>
         ) : null}
 
-        {task.changes?.length ? (
+        {task.changes?.length || (worktree && !task.changes) ? (
           <>
             <h4 className="gc-work-label">
               Changed files{' '}
               <span>
-                {task.changes.length} {task.changes.length === 1 ? 'file' : 'files'}
+                {task.changes ? `${task.changes.length} ${task.changes.length === 1 ? 'file' : 'files'}` : null}
                 {checks?.revision ? (
                   <>
                     {' '}
@@ -731,25 +745,29 @@ function TaskDetail({
                 </button>
               ) : null}
             </h4>
-            <ul className="gc-work-files" aria-label="Changed files">
-              {task.changes.map((line) => {
-                const [kind = '', ...rest] = line.split('\t');
-                return (
-                  <li key={line}>
-                    <span data-change={kind[0]} title={CHANGE_WORD[kind[0] ?? ''] ?? kind}>
-                      {kind[0]}
-                    </span>
-                    <code>{rest.join(' → ') || line}</code>
-                  </li>
-                );
-              })}
-            </ul>
+            {task.changes ? (
+              <ul className="gc-work-files" aria-label="Changed files">
+                {task.changes.map((line) => {
+                  const [kind = '', ...rest] = line.split('\t');
+                  return (
+                    <li key={line}>
+                      <span data-change={kind[0]} title={CHANGE_WORD[kind[0] ?? ''] ?? kind}>
+                        {kind[0]}
+                      </span>
+                      <code>{rest.join(' → ') || line}</code>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="gc-work-note">The changed files could not be listed. Show diff has what changed.</p>
+            )}
             {worktree && visibleDiff !== undefined ? <Diff text={visibleDiff} /> : null}
           </>
-        ) : task.changes && task.mode === 'worktree' && !running ? (
+        ) : empty && !running ? (
           <>
             <h4 className="gc-work-label">Changed files</h4>
-            <p className="gc-work-note">It changed no files.</p>
+            <p className="gc-work-note">It changed no files.{worktree ? ` ${NO_CHANGES_HELP}` : ''}</p>
           </>
         ) : null}
 
@@ -841,7 +859,7 @@ function TaskDetail({
                     <button
                       type="button"
                       className={`gc-work-btn gc-work-sm${blocker || outdated ? '' : ' gc-work-primary'}`}
-                      disabled={checking}
+                      disabled={checking || !!stale}
                       onClick={() => void perform({ type: 'merge', revision: inspected.current ?? checks?.revision })}
                     >
                       Merge locally
@@ -908,6 +926,10 @@ function TaskDetail({
                       if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                         event.preventDefault();
                         send();
+                      } else if (event.key === 'Escape' && input && !event.nativeEvent.isComposing) {
+                        // The first Escape clears what was typed; the next one reaches the host (back to the chat).
+                        event.preventDefault();
+                        setInput('');
                       }
                     }}
                   />

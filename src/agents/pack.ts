@@ -157,13 +157,14 @@ export interface PackTask {
    */
   verdict?: string;
   /**
-   * The pull request the task ended in: the last GitHub pull request link of its final reply, read
-   * from the whole reply. Whether it is open or merged is the host's to look up.
+   * The last GitHub pull request link of its final reply, read from the whole reply. The reply may
+   * only refer to it: whether the task opened it (its worktree is on the pull request's head branch),
+   * and whether it is open or merged, is the host's to look up.
    */
   pullRequest?: PackPullRequest;
 }
 
-/** A pull request a delegated task reported: its address and number. */
+/** A pull request a delegated task's reply links to: its address and number. */
 export interface PackPullRequest {
   url: string;
   number: number;
@@ -537,8 +538,8 @@ function replyVerdict(text: string): string | undefined {
 }
 
 /**
- * The pull request a reply ends in: its last link to a GitHub pull request. A task told to open a
- * pull request reports its address last, after any it only refers to.
+ * The last link to a GitHub pull request in a reply. A task told to open a pull request reports its
+ * address last, after any it only refers to; a reply that only refers to one has it here too.
  */
 export function replyPullRequest(text: string): PackPullRequest | undefined {
   const found = [...text.matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/g)].at(-1);

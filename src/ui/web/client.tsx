@@ -9,6 +9,7 @@ import { EscapeActive, useEscape } from '../../react/escape.js';
 import { storedSize } from '../../react/resize-handle.js';
 import { WorkPanel } from '../../react/work-panel.js';
 import {
+  pullRequestSettled,
   readWorkView,
   WORK_PANEL_MIN,
   WORK_WIDTH_KEY,
@@ -16,7 +17,7 @@ import {
   workPanelLayout,
   workTasks,
   writeWorkView,
-  type PullRequestState,
+  type PullRequestStatus,
   type WorkPanelView,
   type WorkTask,
 } from '../../react/work.js';
@@ -40,6 +41,7 @@ import {
 import type { UiRelease } from './release.js';
 import type { WebCommand, WebSessionListing, WebSwitchCommand } from './server.js';
 import {
+  chatKey as chatKeyOf,
   chatProjects,
   folderName,
   HOME_FOLDER,
@@ -94,7 +96,7 @@ async function postCommand(body: WebCommand) {
     headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
     body: JSON.stringify(body),
   });
-  return (await res.json()) as { ok?: boolean; text?: string; error?: string };
+  return (await res.json()) as { ok?: boolean; text?: string; error?: string; reason?: string };
 }
 
 async function command(body: WebCommand): Promise<boolean> {
@@ -886,46 +888,72 @@ function WhatsNewDialog({ release, ref, onSeen }: { release: UiRelease; ref: Ref
   );
 }
 
-/** How often a pull request that is still open (or not yet answered for) is asked about again. */
+/** How often a pull request not merged yet (or not answered for) is asked about again. */
 const PULL_REQUESTS_EVERY_MS = 60_000;
 
 /**
- * What became of the pull requests the delegated tasks ended in, by address. Asked of the server
- * (`gh pr view`) when a pull request first shows, and again every minute while `watching` for those
- * not merged or closed yet.
+ * What the server learned of the pull requests the delegated tasks' replies link to, by task
+ * (`WorkTask.key`): its state, and whether the task opened it. Asked when such a task first shows,
+ * and again every minute while `watching` for those not merged yet: a closed one can be reopened.
+ * Only the tasks of `chat`, the conversation shown, are asked about.
  */
-function usePullRequests(tasks: readonly WorkTask[], watching: boolean): Record<string, PullRequestState | undefined> {
-  const [states, setStates] = useState<Record<string, PullRequestState | undefined>>({});
-  const asked = useRef(new Set<string>());
-  const urls = tasks.flatMap((item) => (item.task.pullRequest ? [item.task.pullRequest.url] : []));
-  const stamp = [...new Set(urls)].sort().join('\n');
+function usePullRequests(
+  chat: string,
+  tasks: readonly WorkTask[],
+  watching: boolean,
+): Record<string, PullRequestStatus | undefined> {
+  const [found, setFound] = useState<{ chat: string; states: Record<string, PullRequestStatus | undefined> }>({
+    chat,
+    states: {},
+  });
+  const asked = useRef({ chat, keys: new Set<string>() });
+  if (asked.current.chat !== chat) asked.current = { chat, keys: new Set() };
+  const stamp = tasks
+    .filter((item) => item.task.pullRequest)
+    .map((item) => item.key)
+    .join('\n');
+  const states = found.chat === chat ? found.states : {};
   const latest = useRef(states);
   latest.current = states;
   useEffect(() => {
     if (!stamp) return;
     let stopped = false;
     const ask = (again: boolean) => {
-      for (const url of stamp.split('\n')) {
-        const known = latest.current[url];
-        if (again ? known === 'merged' || known === 'closed' : asked.current.has(url)) continue;
-        asked.current.add(url);
-        fetch(`/api/pull-request?url=${encodeURIComponent(url)}`, { headers: { 'x-genaicode-token': token } })
-          .then((reply) => (reply.ok ? (reply.json() as Promise<{ state?: PullRequestState }>) : undefined))
+      for (const key of stamp.split('\n')) {
+        if (again ? pullRequestSettled(latest.current[key]) : asked.current.keys.has(key)) continue;
+        asked.current.keys.add(key);
+        const [turn = '', ...id] = key.split(':');
+        const query = new URLSearchParams({ conversation: chat, turn, task: id.join(':') });
+        fetch(`/api/pull-request?${query}`, { headers: { 'x-genaicode-token': token } })
+          .then((reply) => (reply.ok ? (reply.json() as Promise<PullRequestStatus>) : undefined))
           .then((body) => {
-            if (!stopped && body?.state && latest.current[url] !== body.state)
-              setStates((current) => ({ ...current, [url]: body.state }));
+            if (stopped || !body) return;
+            const status: PullRequestStatus = {
+              ...(body.state ? { state: body.state } : {}),
+              ours: body.ours === true,
+            };
+            const known = latest.current[key];
+            if (known?.state === status.state && known?.ours === status.ours) return;
+            setFound((current) => ({
+              chat,
+              states: { ...(current.chat === chat ? current.states : {}), [key]: status },
+            }));
           })
           .catch(() => undefined);
       }
     };
     ask(false);
-    if (!watching) return;
+    if (!watching) {
+      return () => {
+        stopped = true;
+      };
+    }
     const timer = window.setInterval(() => ask(true), PULL_REQUESTS_EVERY_MS);
     return () => {
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [stamp, watching]);
+  }, [chat, stamp, watching]);
   return states;
 }
 
@@ -938,7 +966,8 @@ function workStore(): Pick<Storage, 'getItem' | 'setItem'> {
   }
 }
 
-const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
+// Per window, as the design asks: two windows of the app each keep their own width.
+const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000], () => sessionStorage);
 
 function App() {
   const root = document.getElementById('root')!;
@@ -1105,7 +1134,7 @@ function App() {
   // The work panel: this chat's delegated tasks, beside the chat where it fits.
   const tasks = useMemo(() => workTasks(session), [session?.turns, session?.approvals]);
   // A chat has no id of its own until its agent names the session.
-  const chatKey = conversation?.id ?? session?.sessionId ?? '';
+  const chatKey = chatKeyOf({ conversation, session });
   // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
   const [workFullOpen, setWorkFullOpen] = useState(false);
   const [work, setWork] = useState<{ chat: string; view: WorkPanelView }>(() => ({
@@ -1140,7 +1169,7 @@ function App() {
   useEffect(() => {
     if (workOpen && workView.seen !== tasks.length) setWorkView({ ...workView, seen: tasks.length });
   }, [workOpen, tasks.length, workView.seen]);
-  const pullRequests = usePullRequests(tasks, workOpen);
+  const pullRequests = usePullRequests(chatKey, tasks, workOpen);
   const focusComposer = () =>
     window.requestAnimationFrame(() =>
       document.querySelector<HTMLTextAreaElement>('.workspace .gc-box textarea')?.focus(),
@@ -1467,10 +1496,12 @@ function App() {
         onRoom={setRoom}
         workFull={workFull}
         onStop={
-          workFull && running
+          workFull && running && !switching
             ? () => {
                 dropWaiting();
-                void command({ type: 'stop' });
+                // Only the turn it was pressed for: the window may be on another chat when it arrives.
+                const turn = session?.turns.at(-1)?.id;
+                void command({ type: 'stop', conversation: chatKey, ...(turn ? { turn } : {}) });
               }
             : undefined
         }
@@ -1478,6 +1509,7 @@ function App() {
           workOpen ? (
             <WorkPanel
               state={session}
+              chatId={chatKey}
               view={workView}
               onView={setWorkView}
               onClose={closeWork}
@@ -1488,10 +1520,13 @@ function App() {
                 setSavedWidth(width);
                 if (commit) workWidth.set(width);
               }}
-              disabled={!connected}
+              // While the window moves to another chat nothing here may act: it would act on the chat left.
+              disabled={!connected || switching}
               onPackAction={async (turnId, id, action) => {
-                const reply = await postCommand({ type: 'pack-task', turnId, id, action });
-                if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');
+                // The server refuses it once the window shows another conversation.
+                const reply = await postCommand({ type: 'pack-task', turnId, id, action, conversation: chatKey });
+                if (!reply.ok)
+                  throw Object.assign(new Error(reply.error ?? 'The task action failed.'), { reason: reply.reason });
                 return reply.text ?? '';
               }}
               onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
