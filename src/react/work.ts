@@ -618,7 +618,10 @@ export function workChanges(
       });
     }
   }
-  const merged = taskRows.filter((row) => row.state === 'merged');
+  // The merge reports a task's files as the chat's folder names them, not from the repository's root.
+  const merged = taskRows
+    .filter((row) => row.state === 'merged')
+    .map((row) => ({ ...row, local: taskChatPath(tasks.find((item) => item.key === row.task)!.task, row.path) }));
   const byPath = new Map<string, WorkLeadChange & { patches: string[]; bare: boolean }>();
   for (const turn of state?.turns ?? []) {
     for (const entry of turn.entries) {
@@ -629,7 +632,7 @@ export function workChanges(
         !!turn.pack &&
         entry.paths.length > 0 &&
         entry.paths.every((path) =>
-          merged.some((row) => row.task.startsWith(`${turn.id}:`) && samePath(row.path, path, cwd)),
+          merged.some((row) => row.task.startsWith(`${turn.id}:`) && samePath(row.local, path, cwd)),
         );
       if (ofMerge) continue;
       const patches = entry.diff ? patchFiles(entry.diff) : [];
@@ -680,16 +683,44 @@ export function workViewerBack(view: WorkPanelView, tasks: readonly WorkTask[]):
   return 'Close';
 }
 
+const slashes = (path: string) => path.replace(/\\/g, '/').replace(/\/+$/, '');
+
+/**
+ * Where the chat's folder is in a worktree task's repository, from its root: `''` at the root,
+ * `'packages/app'` for a chat in that folder. `undefined` when the task does not say (no `worktree`).
+ */
+function chatOffset(task: PackTask): string | undefined {
+  if (task.mode !== 'worktree' || !task.worktree) return undefined;
+  const root = slashes(task.worktree);
+  const dir = slashes(task.cwd);
+  if (dir === root) return '';
+  return dir.startsWith(`${root}/`) ? dir.slice(root.length + 1) : undefined;
+}
+
+/**
+ * A task's changed file, which its changes name from the repository's root, as the chat's folder
+ * names it: `../` and on when it is outside that folder. The merge reports it the same way.
+ */
+export function taskChatPath(task: PackTask, path: string): string {
+  const offset = chatOffset(task);
+  if (!offset) return path;
+  const from = offset.split('/');
+  const to = path.split('/');
+  let same = 0;
+  while (same < from.length && same < to.length - 1 && from[same] === to[same]) same += 1;
+  return [...from.slice(same).map(() => '..'), ...to.slice(same)].join('/');
+}
+
 /**
  * Where a task's changed file is on disk: in its worktree while that is there, else in the chat's
  * folder. A worktree's files are named from its root, which the task's own directory may be inside.
+ * `undefined` for a file outside the chat's folder, which the chat does not open.
  */
-export function taskFilePath(task: PackTask, path: string, cwd: string): string {
-  const join = (dir: string) => (dir ? `${dir.replace(/[\\/]$/, '')}/${path}` : path);
-  if (task.mode !== 'worktree' || task.state !== 'unmerged') return join(cwd);
-  const id = task.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const root = new RegExp(`^(.*[\\\\/]${id}-[a-z0-9]+)(?:[\\\\/]|$)`).exec(task.cwd)?.[1];
-  return join(root ?? task.cwd);
+export function taskFilePath(task: PackTask, path: string, cwd: string): string | undefined {
+  const join = (dir: string, file: string) => (dir ? `${dir.replace(/[\\/]$/, '')}/${file}` : file);
+  if (task.mode === 'worktree' && task.state === 'unmerged') return join(task.worktree ?? task.cwd, path);
+  const local = taskChatPath(task, path);
+  return local.startsWith('../') ? undefined : join(cwd, local);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -724,6 +755,10 @@ export interface WorkPanelView {
   scroll?: number;
   /** How many tasks the chat had when the panel was last looked at: more than that is news. */
   seen?: number;
+  /** Tasks pinned to Watching on the Live tab (`WorkTask.key`), in the order they were pinned. */
+  pinned?: string[];
+  /** The team feed of the Live tab shows routine steps too, one by one. Default: highlights only. */
+  feed?: 'all';
   /**
    * The file or artifact open as a drill-in, in place of the tab's content (`renderViewer` of
    * `<WorkPanel>` draws it). Not remembered: a chat opened again shows its tab.
@@ -731,8 +766,8 @@ export interface WorkPanelView {
   viewing?: WorkViewing;
 }
 
-/** The panel's tabs. Live comes with a later step of the layout. */
-export const WORK_TABS = ['tasks', 'changes', 'artifacts'] as const;
+/** The panel's tabs, in the order they show. */
+export const WORK_TABS = ['tasks', 'live', 'changes', 'artifacts'] as const;
 export type WorkTab = (typeof WORK_TABS)[number];
 
 export const WORK_VIEW_KEY = 'genaicode-work';
@@ -779,6 +814,10 @@ export function readWorkView(store: Store, chat: string): WorkPanelView {
       : {}),
     ...(typeof found?.scroll === 'number' ? { scroll: found.scroll } : {}),
     ...(typeof found?.seen === 'number' ? { seen: found.seen } : {}),
+    ...(Array.isArray(found?.pinned)
+      ? { pinned: found.pinned.filter((key): key is string => typeof key === 'string').slice(0, 20) }
+      : {}),
+    ...(found?.feed === 'all' ? { feed: 'all' as const } : {}),
   };
 }
 

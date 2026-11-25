@@ -1057,7 +1057,7 @@ describe('<WorkPanel> task list', () => {
       state: { approvals },
       props: { onApprove, pullRequests: { '7:t6': { state: 'open', ours: true } } },
     });
-    expect(text('.gc-work-tab')).toBe('Tasks 6');
+    expect(text('.gc-work-tab[data-tab="tasks"]')).toBe('Tasks 6');
     expect($$('.gc-work-group').map((group) => group.getAttribute('aria-label'))).toEqual([
       'Needs you',
       'Failed',

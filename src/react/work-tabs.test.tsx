@@ -112,7 +112,7 @@ afterEach(() => {
 });
 
 describe('<WorkPanel> tabs', () => {
-  it('has Tasks, Changes and Artifacts with their counts, and moves between them by click and arrow key', () => {
+  it('has Tasks, Live, Changes and Artifacts with their counts, and moves between them by click and arrow key', () => {
     show(
       session(
         [
@@ -125,6 +125,7 @@ describe('<WorkPanel> tabs', () => {
     );
     expect($$('[role="tab"]').map((item) => [item.textContent?.trim(), item.getAttribute('aria-selected')])).toEqual([
       ['Tasks 1', 'true'],
+      ['Live', 'false'],
       ['Changes 2', 'false'],
       ['Artifacts 1', 'false'],
     ]);
@@ -208,7 +209,7 @@ describe('<WorkPanel> Changes', () => {
     expect(view.viewing).toEqual({ kind: 'file', path: '/work/app/src/a.ts', from: 'changes' });
     expect($('.test-viewer output').textContent).toBe('file /work/app/src/a.ts');
     // The tabs stay; the list is replaced by the viewer.
-    expect($$('[role="tab"]')).toHaveLength(3);
+    expect($$('[role="tab"]')).toHaveLength(4);
     expect($$('.gc-work-frow')).toHaveLength(0);
     expect($('.test-viewer button').textContent).toBe('Changes');
     click($('.test-viewer button'));
@@ -250,6 +251,55 @@ describe('<WorkPanel> Changes', () => {
     click($('.test-viewer button'));
     expect($('.gc-work-detail').getAttribute('aria-label')).toBe('Task t2');
     expect(document.activeElement).toBe($('.gc-work-filelink'));
+  });
+  it('keeps a task’s detail as it was across a file opened from it: its diff, and the focus on the file', async () => {
+    const reviewed = session(
+      [],
+      [task('t2', { state: 'unmerged', changes: ['M\tsrc/b.ts'], checks: { revision: 'r1' } })],
+    );
+    show(reviewed, { tab: 'tasks' }, { renderViewer: viewer, onPackAction: async () => DIFF });
+    // Opened from its row, as the person does: the back button takes the focus.
+    click($('[data-task="7:t2"] .gc-work-row'));
+    expect(document.activeElement).toBe($('.gc-work-back'));
+    await act(async () =>
+      $$('button')
+        .find((item) => item.textContent === 'Show diff')!
+        .click(),
+    );
+    expect($$('button').some((item) => item.textContent === 'Hide diff')).toBe(true);
+    click($('.gc-work-filelink'));
+    expect($('.test-viewer output').textContent).toBe('file /work/app/.genaicode/worktrees/t2-k1/src/b.ts');
+    // The detail waits under the viewer, out of sight.
+    expect($('.gc-work-detail').closest('[hidden]')).not.toBeNull();
+    click($('.test-viewer button'));
+    expect($('.gc-work-detail').closest('[hidden]')).toBeNull();
+    expect($$('button').some((item) => item.textContent === 'Hide diff')).toBe(true);
+    expect(document.activeElement).toBe($('.gc-work-filelink'));
+  });
+
+  it('opens a merged task’s file in the chat’s folder, inside a repository, and leaves the files outside it plain', () => {
+    const root = '/work/repo/.genaicode/worktrees/t1-k1';
+    const state = {
+      ...session(
+        [{ kind: 'files', paths: ['package.json', '../../package.json'] }],
+        [
+          task('t1', {
+            state: 'merged',
+            cwd: `${root}/packages/web`,
+            worktree: root,
+            changes: ['M\tpackages/web/package.json', 'M\tpackage.json'],
+          }),
+        ],
+      ),
+      cwd: '/work/repo/packages/web',
+    };
+    show(state, { tab: 'changes' }, { renderViewer: viewer });
+    // What the merge reported is the task's, not two more rows of the lead's.
+    expect(rows()).toEqual(['M modifiedpackages/web/package.jsont1 merged', 'M modifiedpackage.jsont1 merged']);
+    click($$('button.gc-work-frow')[0]);
+    expect($$('.gc-work-filelink').map((item) => item.textContent)).toEqual(['packages/web/package.json']);
+    click($('.gc-work-filelink'));
+    expect($('.test-viewer output').textContent).toBe('file /work/repo/packages/web/package.json');
   });
 });
 

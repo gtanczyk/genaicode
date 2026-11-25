@@ -23,6 +23,7 @@ import {
 } from './format.js';
 import { Markdown } from './markdown.js';
 import { installResizeHandle } from './resize-handle.js';
+import { WorkLive } from './work-live.js';
 import {
   askSubject,
   changedNothing,
@@ -41,6 +42,7 @@ import {
   WORK_GROUP_LABEL,
   WORK_GROUPS,
   WORK_PAGE,
+  WORK_TABS,
   workArtifacts,
   workChanges,
   workClearable,
@@ -120,6 +122,11 @@ export interface WorkPanelProps {
   viewsFiles?: boolean;
   /** Where an artifact's content is served: without `renderViewer` its row links there. */
   artifactUrl?(artifact: Artifact): string;
+  /**
+   * Everything that waits for the person, in every chat: Live › Needs you says "all N" beside this
+   * chat's own count, and `onOpen` goes to the host's queue. Without it only this chat's count shows.
+   */
+  needsYou?: { total: number; onOpen(): void };
   /** Keep the person from acting (the host is disconnected): the panel keeps what it showed, dimmed. */
   disabled?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
@@ -149,7 +156,7 @@ const GLYPHS: Record<WorkTone, ReactNode> = {
 };
 
 /** A state as a hue and a shape. Decorative: the status is always written beside it. */
-function Glyph({ tone }: { tone: WorkTone }) {
+export function Glyph({ tone }: { tone: WorkTone }) {
   return (
     <svg className="gc-work-glyph" data-tone={tone} viewBox="0 0 12 12" aria-hidden="true">
       {GLYPHS[tone]}
@@ -157,7 +164,7 @@ function Glyph({ tone }: { tone: WorkTone }) {
   );
 }
 
-const GROUP_TONE: Record<WorkGroup, WorkTone> = {
+export const GROUP_TONE: Record<WorkGroup, WorkTone> = {
   ask: 'ask',
   failed: 'err',
   blocked: 'block',
@@ -200,6 +207,8 @@ export function WorkPanel(props: WorkPanelProps) {
     tasks: tasks.length,
     changes: changes.lead.length + changes.tasks.length,
     artifacts: artifacts.length,
+    // Live has no count of its own: it shows the tasks Tasks counts.
+    live: 0,
   };
   const now = useNow(tasks.some((item) => item.task.status === 'running'));
   const handle = useRef<HTMLDivElement>(null);
@@ -252,10 +261,11 @@ export function WorkPanel(props: WorkPanelProps) {
       }
     : undefined;
   const openFile = props.viewsFiles === false ? undefined : openViewer;
+  /** A tab shows its own top level: the open task belongs to the tab it was opened from. */
   const select = (next: WorkTab) => {
-    if (next === tab && !viewing) return;
+    if (next === tab && !viewing && !view.task) return;
     fromChanges.current = false;
-    onView({ ...view, tab: next, viewing: undefined });
+    onView({ ...view, tab: next, task: undefined, viewing: undefined });
   };
   const tabs = useRef<HTMLDivElement>(null);
   // Per chat and task, the revision whose diff the person opened. Kept here, not in the detail: Merge
@@ -267,6 +277,53 @@ export function WorkPanel(props: WorkPanelProps) {
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
   const act = props.disabled ? undefined : props.onPackAction;
   const approve = props.disabled ? undefined : props.onApprove;
+  // A task's detail shows in Tasks and Live, the tabs a task opens from.
+  const detail =
+    open && (tab === 'tasks' || tab === 'live') ? (
+      <TaskDetail
+        // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
+        key={`${chat}\n${open.key}`}
+        item={open}
+        inspected={{
+          get: () => inspected.current.get(`${chat}\n${open.key}`),
+          set: (value) => {
+            const key = `${chat}\n${open.key}`;
+            if (value) inspected.current.set(key, value);
+            else inspected.current.delete(key);
+          },
+        }}
+        now={now}
+        cwd={props.state?.cwd ?? ''}
+        focusBack={fromRow.current}
+        backLabel={fromChanges.current ? 'Changes' : WORK_TAB_LABEL[tab]}
+        act={open.interactive ? act : undefined}
+        onApprove={approve}
+        onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
+        fileOpener={
+          openFile
+            ? (path) => {
+                const file = taskFilePath(open.task, path, props.state?.cwd ?? '');
+                if (file === undefined) return undefined;
+                return () => {
+                  // Back from the file is no new arrival: the detail keeps the focus where it was.
+                  fromRow.current = false;
+                  openFile({ kind: 'file', path: file, from: 'task' }, `file:${path}`);
+                };
+              }
+            : undefined
+        }
+        onBack={() => {
+          fromRow.current = false;
+          if (fromChanges.current) {
+            fromChanges.current = false;
+            onView({ ...view, tab: 'changes', task: undefined });
+            return;
+          }
+          back.current = open.key;
+          onView({ ...view, task: undefined });
+        }}
+      />
+    ) : undefined;
   return (
     <aside
       ref={root}
@@ -296,13 +353,12 @@ export function WorkPanel(props: WorkPanelProps) {
             const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
             if (!step) return;
             event.preventDefault();
-            const next =
-              WORK_TAB_ORDER[(WORK_TAB_ORDER.indexOf(tab) + step + WORK_TAB_ORDER.length) % WORK_TAB_ORDER.length]!;
+            const next = WORK_TABS[(WORK_TABS.indexOf(tab) + step + WORK_TABS.length) % WORK_TABS.length]!;
             select(next);
             tabs.current?.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
           }}
         >
-          {WORK_TAB_ORDER.map((name) => (
+          {WORK_TABS.map((name) => (
             <button
               key={name}
               type="button"
@@ -313,7 +369,13 @@ export function WorkPanel(props: WorkPanelProps) {
               tabIndex={tab === name ? 0 : -1}
               onClick={() => select(name)}
             >
-              {WORK_TAB_LABEL[name]} {counts[name] ? <span className="gc-work-count">{counts[name]}</span> : null}
+              {WORK_TAB_LABEL[name]}
+              {counts[name] ? (
+                <>
+                  {' '}
+                  <span className="gc-work-count">{counts[name]}</span>
+                </>
+              ) : null}
             </button>
           ))}
         </div>
@@ -339,12 +401,18 @@ export function WorkPanel(props: WorkPanelProps) {
         aria-label={WORK_TAB_LABEL[tab]}
         data-viewing={viewing ? 'true' : undefined}
       >
-        {viewing ? (
-          props.renderViewer!(viewing, {
-            backLabel: workViewerBack(view, tasks),
-            onBack: () => onView({ ...view, viewing: undefined }),
-          })
-        ) : tab === 'changes' ? (
+        {viewing
+          ? props.renderViewer!(viewing, {
+              backLabel: workViewerBack(view, tasks),
+              onBack: () => onView({ ...view, viewing: undefined }),
+            })
+          : null}
+        {detail ? (
+          // Kept mounted under the viewer: back from a file finds the detail as it was left.
+          <div className="gc-work-keep" hidden={!!viewing}>
+            {detail}
+          </div>
+        ) : viewing ? null : tab === 'changes' ? (
           <ChangesList
             changes={changes}
             cwd={props.state?.cwd ?? ''}
@@ -368,44 +436,20 @@ export function WorkPanel(props: WorkPanelProps) {
                 : undefined
             }
           />
-        ) : open ? (
-          <TaskDetail
-            // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
-            key={`${chat}\n${open.key}`}
-            item={open}
-            inspected={{
-              get: () => inspected.current.get(`${chat}\n${open.key}`),
-              set: (value) => {
-                const key = `${chat}\n${open.key}`;
-                if (value) inspected.current.set(key, value);
-                else inspected.current.delete(key);
-              },
-            }}
+        ) : tab === 'live' ? (
+          <WorkLive
+            key={chat}
+            state={props.state}
+            tasks={tasks}
             now={now}
-            cwd={props.state?.cwd ?? ''}
-            focusBack={fromRow.current}
-            backLabel={fromChanges.current ? 'Changes' : 'Tasks'}
-            act={open.interactive ? act : undefined}
+            view={view}
+            onView={onView}
+            needsYou={props.needsYou}
             onApprove={approve}
             onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
-            onOpenFile={
-              openFile
-                ? (path) =>
-                    openFile(
-                      { kind: 'file', path: taskFilePath(open.task, path, props.state?.cwd ?? ''), from: 'task' },
-                      `file:${path}`,
-                    )
-                : undefined
-            }
-            onBack={() => {
-              fromRow.current = false;
-              if (fromChanges.current) {
-                fromChanges.current = false;
-                onView({ ...view, tab: 'changes', task: undefined });
-                return;
-              }
-              back.current = open.key;
-              onView({ ...view, task: undefined });
+            onOpen={(key) => {
+              fromRow.current = true;
+              onView({ ...view, task: key });
             }}
           />
         ) : (
@@ -429,8 +473,12 @@ export function WorkPanel(props: WorkPanelProps) {
   );
 }
 
-const WORK_TAB_ORDER: readonly WorkTab[] = ['tasks', 'changes', 'artifacts'];
-const WORK_TAB_LABEL: Record<WorkTab, string> = { tasks: 'Tasks', changes: 'Changes', artifacts: 'Artifacts' };
+const WORK_TAB_LABEL: Record<WorkTab, string> = {
+  tasks: 'Tasks',
+  live: 'Live',
+  changes: 'Changes',
+  artifacts: 'Artifacts',
+};
 
 const CHIP_LABEL: Record<WorkGroup, string> = { ...WORK_GROUP_LABEL, blocked: 'Blockers' };
 
@@ -1130,16 +1178,19 @@ function TaskRow({
   );
 }
 
-function AskCard({
+export function AskCard({
   agent,
   request,
   onApprove,
   onAutoApprove,
+  task,
 }: {
   agent: string;
   request: ApprovalRequest;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
+  /** Outside the task's own detail: its id, as a link to it. */
+  task?: { id: string; onOpen(): void };
 }) {
   const what =
     request.kind === 'command'
@@ -1154,6 +1205,14 @@ function AskCard({
       <b>
         {agent} {what}
       </b>
+      {task ? (
+        <>
+          {' · '}
+          <button type="button" className="gc-work-ref" aria-label={`Open task ${task.id}`} onClick={task.onOpen}>
+            {task.id}
+          </button>
+        </>
+      ) : null}
       <pre className="gc-work-box">{askSubject(request)}</pre>
       {request.kind === 'question' ? (
         <p className="gc-work-note">Answer it in the chat, where its options are.</p>
@@ -1234,7 +1293,7 @@ function TaskDetail({
   act,
   onApprove,
   onAutoApprove,
-  onOpenFile,
+  fileOpener,
   onBack,
 }: {
   item: WorkTask;
@@ -1243,12 +1302,16 @@ function TaskDetail({
   now: number;
   cwd: string;
   focusBack: boolean;
+  /** Where the back button goes: the tab the task was opened from. */
   backLabel: string;
   act?: WorkActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
-  /** Open one of its changed files (as its changes name it) in the viewer. */
-  onOpenFile?(path: string): void;
+  /**
+   * How one of its changed files (as its changes name it) opens in the viewer: `undefined` for a
+   * file the viewer cannot open, which stays plain text.
+   */
+  fileOpener?(path: string): (() => void) | undefined;
   onBack(): void;
 }) {
   const { task } = item;
@@ -1524,7 +1587,7 @@ function TaskDetail({
                   const [kind = '', ...rest] = line.split('\t');
                   const path = rest.at(-1);
                   // A deleted file is not there to open, and neither is anything of a discarded worktree.
-                  const opens = onOpenFile && path && kind[0] !== 'D' && task.state !== 'discarded';
+                  const opens = path && kind[0] !== 'D' && task.state !== 'discarded' ? fileOpener?.(path) : undefined;
                   return (
                     <li key={line}>
                       <span data-change={kind[0]} title={CHANGE_WORD[kind[0] ?? ''] ?? kind}>
@@ -1536,7 +1599,7 @@ function TaskDetail({
                           className="gc-work-link gc-work-filelink"
                           data-open={`file:${path}`}
                           title="Open the file"
-                          onClick={() => onOpenFile(path)}
+                          onClick={opens}
                         >
                           <code>{rest.join(' → ')}</code>
                         </button>

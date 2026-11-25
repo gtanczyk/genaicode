@@ -1132,6 +1132,8 @@ function App() {
     tasks: tasks.length,
     changes: changes.lead.length + changes.tasks.length,
     artifacts: sessionArtifacts.length,
+    // Live shows what the tasks do: it has something when Tasks has.
+    live: tasks.length,
   };
   const hasWork = WORK_TABS.some((tab) => workCounts[tab] > 0);
   // The viewer over the whole chat area (Expand), until Dock.
@@ -1256,6 +1258,20 @@ function App() {
     // Back in the viewer. Another tab chosen instead keeps the panel, also one the viewer opened.
     if (next.tab !== workView.tab) viewerOpenedPanel.current = false;
     closeViewer(next);
+  };
+  /** A count on the mission strip opens Tasks on that group; a task id there opens that task. */
+  const openWork = (change: Partial<WorkPanelView>) => {
+    // What the viewer showed gives way: the strip asks for a list or a task.
+    setExpanded(false);
+    viewerOpenedPanel.current = false;
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      viewing: undefined,
+      ...change,
+      seen: tasks.length,
+    });
   };
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
@@ -1588,6 +1604,7 @@ function App() {
               view={workView}
               onView={onWorkView}
               onClose={closeWork}
+              needsYou={{ total: needs.total, onOpen: openNeedsYou }}
               mode={workFull ? 'full' : 'docked'}
               width={workLayout.width}
               bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
@@ -2023,6 +2040,20 @@ function App() {
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}
+              // The team's counts and the next approval of a task, above the message box at every width.
+              missionStrip={{
+                pullRequests,
+                dismissed: workView.dismissed,
+                onOpenGroup: (group) =>
+                  openWork({
+                    tab: 'tasks',
+                    task: undefined,
+                    filter: group,
+                    more: undefined,
+                    folded: { ...workView.folded, [group]: false },
+                  }),
+                onOpenTask: (key) => openWork({ task: key }),
+              }}
               hint={
                 inSetup ? (
                   'Connect an agent to start'

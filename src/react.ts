@@ -77,6 +77,8 @@ export type {
   WorkTask,
   WorkViewing,
 } from './react/work.js';
+export { MissionStrip } from './react/mission-strip.js';
+export type { MissionStripProps } from './react/mission-strip.js';
 export type { PackActionHandler } from './react/pack-tasks.js';
 export type { PackAction, PackPullRequest, PackTask } from './agents/pack.js';
 export { useFollowScroll } from './react/follow-scroll.js';

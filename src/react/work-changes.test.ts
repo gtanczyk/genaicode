@@ -186,14 +186,53 @@ describe('the viewer', () => {
   });
 
   it('finds a task’s file in its worktree while that is there, else in the chat’s folder', () => {
-    const unmerged = task('t1', { state: 'unmerged', cwd: '/work/app/.genaicode/worktrees/t1-abc/packages/web' });
-    expect(taskFilePath(unmerged, 'packages/web/a.ts', '/work/app')).toBe(
-      '/work/app/.genaicode/worktrees/t1-abc/packages/web/a.ts',
+    const root = '/work/app/.genaicode/worktrees/t1-abc';
+    const unmerged = task('t1', { state: 'unmerged', cwd: `${root}/packages/web`, worktree: root });
+    expect(taskFilePath(unmerged, 'packages/web/a.ts', '/work/app')).toBe(`${root}/packages/web/a.ts`);
+    expect(taskFilePath(task('t1', { state: 'merged', worktree: root }), 'src/a.ts', '/work/app')).toBe(
+      '/work/app/src/a.ts',
     );
-    expect(taskFilePath(task('t1', { state: 'merged' }), 'src/a.ts', '/work/app')).toBe('/work/app/src/a.ts');
     expect(taskFilePath(task('t1', { mode: 'shared', cwd: '/work/app' }), 'src/a.ts', '/work/app/')).toBe(
       '/work/app/src/a.ts',
     );
+  });
+
+  it('opens a merged task’s file from a chat in a folder of the repository in that folder, not beside it', () => {
+    // The chat runs in /work/repo/packages/web; the task's worktree holds the whole repository.
+    const root = '/work/repo/.genaicode/worktrees/t1-abc';
+    const merged = task('t1', { state: 'merged', cwd: `${root}/packages/web`, worktree: root });
+    const chat = '/work/repo/packages/web';
+    expect(taskFilePath(merged, 'packages/web/package.json', chat)).toBe('/work/repo/packages/web/package.json');
+    expect(taskFilePath(merged, 'packages/web/src/a.ts', chat)).toBe('/work/repo/packages/web/src/a.ts');
+    // Outside the chat's folder: the chat does not open it.
+    expect(taskFilePath(merged, 'package.json', chat)).toBeUndefined();
+    expect(taskFilePath(merged, 'packages/api/a.ts', chat)).toBeUndefined();
+    // The same task, unmerged: every file is in its worktree.
+    expect(taskFilePath({ ...merged, state: 'unmerged' }, 'package.json', chat)).toBe(`${root}/package.json`);
+  });
+
+  it('takes a merge’s report in a chat in a folder of the repository as the task’s rows, not the lead’s', () => {
+    const root = '/work/repo/.genaicode/worktrees/t1-abc';
+    const state = {
+      ...session([
+        {
+          // The merge names the files as the chat's folder does.
+          entries: [{ kind: 'files', paths: ['src/a.ts', '../../package.json'] }],
+          tasks: [
+            task('t1', {
+              state: 'merged',
+              cwd: `${root}/packages/web`,
+              worktree: root,
+              changes: ['M\tpackages/web/src/a.ts', 'M\tpackage.json'],
+            }),
+          ],
+        },
+      ]),
+      cwd: '/work/repo/packages/web',
+    };
+    const { lead, tasks } = workChanges(state, workTasks(state));
+    expect(lead).toEqual([]);
+    expect(tasks.map((row) => row.path)).toEqual(['packages/web/src/a.ts', 'package.json']);
   });
 
   it('remembers the tab of a chat, not what was open in the viewer', () => {
@@ -204,7 +243,7 @@ describe('the viewer', () => {
     };
     writeWorkView(store, 'a', { tab: 'changes', viewing: { kind: 'artifact', id: 'x', from: 'artifacts' } });
     expect(readWorkView(store, 'a')).toEqual({ tab: 'changes' });
-    kept.set('genaicode-work', JSON.stringify([['a', { tab: 'live-or-unknown' }]]));
+    kept.set('genaicode-work', JSON.stringify([['a', { tab: 'unknown' }]]));
     expect(readWorkView(store, 'a')).toEqual({ tab: 'tasks' });
   });
 });
