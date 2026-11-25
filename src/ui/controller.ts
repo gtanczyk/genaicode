@@ -110,6 +110,11 @@ export interface ChatView {
   bark: boolean;
   /** Every permission request is approved without asking (`--yes`, `/auto`). */
   autoApprove: boolean;
+  /**
+   * Counts the conversations shown: a new one (`/clear`, another chat opened) adds one. A setting
+   * meant for one conversation (`setAutoApprove`) names it by this number.
+   */
+  generation?: number;
   tower?: TowerView;
   /** `!commands` still running; stop() ends them. */
   shells: number;
@@ -238,6 +243,11 @@ export interface ChatController {
   /** Apply fresh local inspection results (presence, sign-in, broken binaries) and update `setup` state. */
   updateAgents(inspections: readonly AgentInspection[]): void;
   setModel(model: string | undefined): void;
+  /**
+   * `/auto on|off` for the conversation numbered `generation` (`ChatView.generation`): false, and
+   * nothing changes, when another conversation is shown now.
+   */
+  setAutoApprove(on: boolean, generation: number): boolean;
   /**
    * Take over the session with this id (any agent's, or the one in the store `from.source`; in
    * this directory or below it, or anywhere in `--home` mode): its turns join the chat and the current agent continues it, resuming when
@@ -400,6 +410,7 @@ export function createChatController(options: ChatOptions): ChatController {
       agents,
       bark,
       autoApprove,
+      generation: conversationEpoch,
       shells: shells.size,
       ...(setup ? { setup: true } : {}),
       ...(inbox ? { tower: inbox.view(state) } : {}),
@@ -629,6 +640,20 @@ export function createChatController(options: ChatOptions): ChatController {
    */
   let switchSeq = 0;
 
+  /** `/auto`: for the conversation shown now. */
+  const applyAutoApprove = (on: boolean) => {
+    autoApprove = on;
+    // What is waiting now gets the same answer as what comes next.
+    if (autoApprove)
+      for (const approval of session.get().approvals)
+        if (approval.kind !== 'question') session.approve(approval.id, 'approve');
+    notice(
+      autoApprove
+        ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
+        : 'Auto-approve off: the agent asks again.',
+    );
+  };
+
   const openHome = (): SwitchResult => {
     switchSeq += 1;
     batching++;
@@ -781,6 +806,12 @@ export function createChatController(options: ChatOptions): ChatController {
     }
     if (!cwd) {
       notice(`No folder ${requested} to start a chat in.`, 'error');
+      return 'refused';
+    }
+    // A chosen folder comes as the real path that was checked: one that resolves elsewhere now was
+    // moved under a link since, and is not what the person picked.
+    if (start.chosen && cwd !== requested) {
+      notice(`${requested} changed since it was chosen: choose it again.`, 'error');
       return 'refused';
     }
     // A folder the person picked in the host's own dialog is theirs to open; the unsafe ones stay closed.
@@ -1342,16 +1373,7 @@ export function createChatController(options: ChatOptions): ChatController {
             notice(`Use /auto, /auto on or /auto off (not "${command.invalid}").`, 'error');
             return 'ok';
           }
-          autoApprove = command.on ?? !autoApprove;
-          // What is waiting now gets the same answer as what comes next.
-          if (autoApprove)
-            for (const approval of session.get().approvals)
-              if (approval.kind !== 'question') session.approve(approval.id, 'approve');
-          notice(
-            autoApprove
-              ? 'Auto-approve on: every permission request is approved without asking. /auto off asks again.'
-              : 'Auto-approve off: the agent asks again.',
-          );
+          applyAutoApprove(command.on ?? !autoApprove);
           return 'ok';
         case 'plan': {
           if (command.invalid !== undefined) {
@@ -1402,6 +1424,11 @@ export function createChatController(options: ChatOptions): ChatController {
     moveProject,
     setModel(model) {
       session.setModel(model || undefined);
+    },
+    setAutoApprove(on, generation) {
+      if (generation !== conversationEpoch) return false;
+      applyAutoApprove(on);
+      return true;
     },
     artifacts: options.artifactChannel?.store,
     close() {

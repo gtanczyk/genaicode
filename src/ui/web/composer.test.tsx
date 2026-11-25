@@ -276,6 +276,7 @@ describe('StartsIn', () => {
       return true;
     }),
     onHome: vi.fn(() => void (asked += 1)),
+    onStay: vi.fn(() => void (asked += 1)),
     inspect: vi.fn(async (path: string) =>
       path === '~/src/new' ? { path: '/home/me/src/new', exists: true, git: false } : { path, exists: false },
     ),
@@ -401,6 +402,31 @@ describe('StartsIn', () => {
     expect($('[role="alert"]')).toBeNull();
   });
 
+  it.each([
+    ['the folder it starts in, from the recent ones', {}, 'app/work/app'],
+    ['a folder in no list', { cwd: '/work/other' }, 'other/work/other'],
+    ['the home folder', { atHome: true, cwd: '/home/me/.genaicode/home' }, 'Home folderquestions across projects'],
+  ] as const)('drops a typed folder found after %s was picked again', async (_, patch, row) => {
+    let found!: (folder: { path: string; exists: boolean }) => void;
+    const props = line({
+      ...patch,
+      inspect: vi.fn(() => new Promise<{ path: string; exists: boolean }>((resolve) => (found = resolve))),
+    });
+    render(<StartsIn {...props} />);
+    click(trigger());
+    fill(path(), '/work/slow');
+    click(button('Open'));
+    // While the typed folder is looked up, the person picks the one the chat starts in already.
+    click(named('radio', row));
+    expect(pop()).toBeNull();
+    expect(props.onStay).toHaveBeenCalledTimes(1);
+    found({ path: '/work/slow', exists: true });
+    await settle();
+    await settle();
+    expect(props.onProject).not.toHaveBeenCalled();
+    expect(props.onHome).not.toHaveBeenCalled();
+  });
+
   it('drops a folder the dialog answers with after another chat was asked for', async () => {
     let picked!: (folder: { path: string; exists: boolean }) => void;
     const props = line({
@@ -430,15 +456,25 @@ describe('ComposerHint', () => {
       { agent: 'claude', window: '5h', status: 'ok', usedPercent: 40 },
       { agent: 'gemini', window: '7d', status: 'warning', usedPercent: 91 },
       { agent: 'codex', window: '5h', status: 'exceeded' },
+      // Claude may still call 91% "allowed": the share used decides, not the agent's word.
+      { agent: 'claudeWork', window: '7d', status: 'ok', usedPercent: 91 },
+      { agent: 'opencode', window: '5h', status: 'ok', usedPercent: 80 },
+      // Flagged by the agent, but under the line.
+      { agent: 'qwen', window: '5h', status: 'warning', usedPercent: 79 },
     ],
     [],
     Date.parse('2026-11-25T10:00:00Z'),
   );
 
-  it('says what Enter does, and names only the agents above 80% of their plan', () => {
+  it('says what Enter does, and names only the agents at 80% or more of their plan, or out', () => {
     render(<ComposerHint action="send" quota={quota} files />);
     expect($('span').textContent).toBe('Enter sends · Shift+Enter new line · / for commands · files send without text');
-    expect($$('.hot').map((element) => element.textContent)).toEqual(['codex out', 'gemini 91% · 7d']);
+    expect($$('.hot').map((element) => element.textContent)).toEqual([
+      'codex out',
+      'claudeWork 91% · 7d',
+      'gemini 91% · 7d',
+      'opencode 80% · 5h',
+    ]);
     render(<ComposerHint action="steer" canStop quota={[]} />);
     expect($('span').textContent).toMatch(
       /^Enter steers · Shift\+Enter new line · \/ for commands · (⌘\.|Ctrl\+\.) or Esc stops$/,

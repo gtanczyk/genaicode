@@ -148,6 +148,12 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     const page = await context.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    // What the page asks the server to do.
+    const commands: Array<Record<string, unknown>> = [];
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/command')
+        commands.push(request.postDataJSON() as Record<string, unknown>);
+    });
     await page.goto(opened!);
 
     const card = page.locator('.gc-card');
@@ -213,6 +219,11 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await vi.waitFor(async () => expect(await auto.getAttribute('aria-pressed')).toBe('true'));
     await ask.click();
     await vi.waitFor(async () => expect(await ask.getAttribute('aria-pressed')).toBe('true'));
+    // Each names the conversation shown when it was clicked: the server refuses it in another one.
+    expect(commands.filter((command) => command.type === 'auto')).toEqual([
+      { type: 'auto', on: true, generation: expect.any(Number) },
+      { type: 'auto', on: false, generation: expect.any(Number) },
+    ]);
 
     // The project line: a folder by its path. There is no worktree choice in it.
     expect(await starts.getByRole('button', { name: 'New worktree' }).count()).toBe(0);
@@ -220,6 +231,31 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     const projects = card.getByRole('dialog', { name: 'Project' });
     expect(await projects.getByRole('radio', { name: /Home folder/ }).getAttribute('aria-checked')).toBe('true');
     expect(await projects.getByRole('button', { name: 'Choose…' }).count()).toBe(0);
+    // A typed folder found only after the chat stayed where it is (its folder picked again, `/clear`)
+    // does not move it.
+    for (const stay of ['picked again', '/clear']) {
+      let letGo!: () => void;
+      const held = new Promise<void>((resolve) => (letGo = resolve));
+      await page.route(/\/api\/folder\?path=/, async (route) => {
+        await held;
+        await route.continue();
+      });
+      if (!(await projects.count())) await project.click();
+      await projects.getByLabel('Folder path').fill(knights);
+      await projects.getByLabel('Folder path').press('Enter');
+      if (stay === '/clear') {
+        await message.fill('/clear');
+        await message.press('Enter');
+      } else await projects.getByRole('radio', { name: /Home folder/ }).click();
+      const looked = page.waitForResponse(/\/api\/folder\?path=/);
+      letGo();
+      await looked;
+      await page.waitForTimeout(300);
+      await page.unroute(/\/api\/folder\?path=/);
+      expect(commands.filter((command) => command.type === 'project-chat')).toEqual([]);
+      expect(await project.textContent()).toContain('Home folder');
+    }
+    if (!(await projects.count())) await project.click();
     await projects.getByLabel('Folder path').fill(join(root, 'nowhere'));
     await projects.getByLabel('Folder path').press('Enter');
     await projects

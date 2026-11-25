@@ -3087,8 +3087,20 @@ describe('web UI server', () => {
       // Auto-approve set in one chat does not carry to the next one.
       chat.submit('/auto on');
       expect(chat.get().autoApprove).toBe(true);
+      const first = chat.get().generation!;
+      // A chosen folder comes by the real path that was checked: one that resolves elsewhere is refused.
+      expect(await chat.startProjectChat(linked, { chosen: true })).toBe(false);
+      expect(chat.get().notices.at(-1)).toMatchObject({ tone: 'error', text: expect.stringMatching(/changed since/) });
       expect(await chat.startProjectChat(join(repo, 'src'), { chosen: true })).toBe(true);
       expect(chat.get().session.cwd).toBe(join(repo, 'src'));
+      expect(chat.get().autoApprove).toBe(false);
+      // Auto-approve asked for in the chat that was left does not reach this one.
+      expect(chat.get().generation).toBeGreaterThan(first);
+      expect(chat.setAutoApprove(true, first)).toBe(false);
+      expect(chat.get().autoApprove).toBe(false);
+      expect(chat.setAutoApprove(true, chat.get().generation!)).toBe(true);
+      expect(chat.get().autoApprove).toBe(true);
+      expect(chat.setAutoApprove(false, chat.get().generation!)).toBe(true);
       expect(chat.get().autoApprove).toBe(false);
       expect(existsSync(join(repo, '.genaicode'))).toBe(false);
     } finally {
@@ -3125,13 +3137,18 @@ describe('web UI server', () => {
 
       expect((await fetch(new URL('/api/choose-folder', url), { method: 'POST' })).status).toBe(403);
       const asked = fetch(new URL('/api/choose-folder', url), { method: 'POST', headers });
-      await until(() => errors.includes(`${CHOOSE_FOLDER_LINE}\n`));
-      stdin.write(`folder ${JSON.stringify(repo)}\n`);
+      await until(() => errors.includes(`${CHOOSE_FOLDER_LINE} 1\n`));
+      // An answer without the request's number, or with another one (a dialog given up on), is
+      // not this request's.
+      stdin.write(`folder ${JSON.stringify(plain)}\n`);
+      stdin.write(`folder 7 ${JSON.stringify(plain)}\n`);
+      stdin.write(`folder 1 ${JSON.stringify(repo)}\n`);
       expect(await (await asked).json()).toEqual({ folder: { path: repo, exists: true, git: true, branch: 'main' } });
-      // A dismissed dialog chooses nothing.
+      // A dismissed dialog chooses nothing; a late answer to the first one does not answer this one.
       const dismissed = fetch(new URL('/api/choose-folder', url), { method: 'POST', headers });
-      await until(() => errors.split(CHOOSE_FOLDER_LINE).length === 3);
-      stdin.write('folder null\n');
+      await until(() => errors.includes(`${CHOOSE_FOLDER_LINE} 2\n`));
+      stdin.write(`folder 1 ${JSON.stringify(plain)}\n`);
+      stdin.write('folder 2 null\n');
       expect(await (await dismissed).json()).toEqual({});
 
       // What was picked there may be opened; a path only typed into a request may not.
@@ -3150,7 +3167,7 @@ describe('web UI server', () => {
         const asked = errors.split(CHOOSE_FOLDER_LINE).length;
         const reply = fetch(new URL('/api/choose-folder', url), { method: 'POST', headers });
         await until(() => errors.split(CHOOSE_FOLDER_LINE).length > asked);
-        stdin.write(`folder ${JSON.stringify(path)}\n`);
+        stdin.write(`folder ${asked} ${JSON.stringify(path)}\n`);
         return (await reply).json();
       };
       expect(await pick(linked)).toEqual({ folder: { path: spaced, exists: true, git: false } });
@@ -3162,6 +3179,14 @@ describe('web UI server', () => {
       expect(await found.json()).toEqual({ path: plain, exists: true, git: false });
       expect((await fetch(new URL('/api/folder?path=relative', url), { headers })).status).toBe(400);
       expect((await fetch(new URL(`/api/folder?path=${encodeURIComponent(plain)}`, url))).status).toBe(403);
+      // The chat's own folder is asked about by its exact path: `notes ` is not the `notes` beside it.
+      const exact = (path: string) =>
+        fetch(new URL(`/api/folder?cwd=${encodeURIComponent(path)}`, url), { headers }).then((reply) =>
+          reply.status === 200 ? reply.json() : reply.status,
+        );
+      expect(await exact(spaced)).toEqual({ path: spaced, exists: true, git: false });
+      expect(await exact(plain)).toEqual({ path: plain, exists: true, git: false });
+      expect(await exact('relative')).toBe(400);
 
       // With a fixed project (`--cwd`) the page asks only about the folder the chat is in.
       const fixedIn = new PassThrough();
@@ -3188,6 +3213,17 @@ describe('web UI server', () => {
         expect(await (await ask(`${repo}/`)).json()).toEqual({ path: repo, exists: true, git: true, branch: 'main' });
         expect((await ask(plain)).status).toBe(403);
         expect((await ask(join(repo, 'src'))).status).toBe(403);
+        // That very folder: `knights\` beside it is another one where `\` is no separator.
+        if (process.platform !== 'win32') {
+          const sibling = `${repo}\\`;
+          mkdirSync(sibling);
+          expect((await ask(sibling)).status).toBe(403);
+          const exact = (path: string) =>
+            fetch(new URL(`/api/folder?cwd=${encodeURIComponent(path)}`, fixedUrl), { headers: fixedHeaders });
+          expect((await exact(sibling)).status).toBe(403);
+          expect((await exact(`${repo} `)).status).toBe(403);
+          expect(await (await exact(repo)).json()).toEqual({ path: repo, exists: true, git: true, branch: 'main' });
+        }
       } finally {
         fixedIn.end();
         expect(await fixed).toBe(0);

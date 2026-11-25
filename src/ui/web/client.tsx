@@ -809,9 +809,14 @@ function focusComposer() {
   );
 }
 
-/** What the server knows of a folder (`GET /api/folder`); undefined when the path is not one. */
-async function inspectFolder(path: string): Promise<WebFolder | undefined> {
-  const res = await fetch(`/api/folder?path=${encodeURIComponent(path)}`, { headers: { 'x-genaicode-token': token } });
+/**
+ * What the server knows of a folder (`GET /api/folder`); undefined when the path is not one. A
+ * typed path is taken as typed in (`~`, spaces around it); `exact`, the chat's own, as it is.
+ */
+async function inspectFolder(path: string, exact = false): Promise<WebFolder | undefined> {
+  const res = await fetch(`/api/folder?${exact ? 'cwd' : 'path'}=${encodeURIComponent(path)}`, {
+    headers: { 'x-genaicode-token': token },
+  });
   return res.ok ? ((await res.json()) as WebFolder) : undefined;
 }
 
@@ -1020,6 +1025,14 @@ function App() {
   const chatMark = () => switchSeq.current;
   const startChosenProject = (path: string, mark: number) =>
     mark === switchSeq.current ? startProjectChat(path) : Promise.resolve(undefined);
+  /**
+   * The chat stays where it is (its folder picked again, `/clear`): a choice still under way is
+   * dropped. A request the server has not answered yet is dropped there too.
+   */
+  const stayInChat = () => {
+    if (switchingRef.current) void switchChat({ type: 'stay-chat' }, 'stay in this chat');
+    else switchSeq.current += 1;
+  };
   // A new chat: no prompt yet, so where it starts can still be chosen.
   const newChat = !!session && session.turns.length === 0 && !inSetup;
   const [folder, setFolder] = useState<WebFolder>();
@@ -1027,7 +1040,7 @@ function App() {
     setFolder(undefined);
     if (!newChat || !activeCwd || !token) return;
     let current = true;
-    inspectFolder(activeCwd).then(
+    inspectFolder(activeCwd, true).then(
       (found) => current && setFolder(found),
       () => undefined,
     );
@@ -1057,6 +1070,12 @@ function App() {
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
   // A setting takes effect now: it does not wait behind a prompt whose files still upload.
   const control = (text: string) => void command({ type: 'submit', text });
+  // Auto-approve is for the conversation shown when it is clicked: the server refuses it once
+  // another is shown (a click that arrives after this window, or another one, opened a new chat).
+  const setAutoApprove = (on: boolean) =>
+    view?.generation === undefined
+      ? control(`/auto ${on ? 'on' : 'off'}`)
+      : void command({ type: 'auto', on, generation: view.generation });
   // Mode toggles wait behind any prompt whose attachments are still uploading, so an earlier
   // submitted prompt keeps the mode that was active when the user sent it.
   const orderedControl = (text: string): Promise<boolean> => {
@@ -1142,6 +1161,8 @@ function App() {
       }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
       if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
+      // A new chat: a folder still being looked up for the one that is left does not move it.
+      if (['new', 'clear', 'continue'].includes(own.kind)) switchSeq.current += 1;
       return command({ type: 'submit', text }).then(
         () => true,
         () => true,
@@ -1189,7 +1210,7 @@ function App() {
         {canPlan ? (
           <PlanToggle on={planOn} onToggle={(on) => void orderedControl(`/plan ${on ? 'on' : 'off'}`)} />
         ) : null}
-        <PermissionSwitch auto={view.autoApprove} onChange={(auto) => control(`/auto ${auto ? 'on' : 'off'}`)} />
+        <PermissionSwitch auto={view.autoApprove} onChange={setAutoApprove} />
       </>
     ) : null;
   const stopTurn = () => {
@@ -1541,7 +1562,8 @@ function App() {
                     mark={chatMark}
                     onProject={startChosenProject}
                     onHome={startHomeChat}
-                    inspect={inspectFolder}
+                    onStay={stayInChat}
+                    inspect={(path) => inspectFolder(path)}
                     choose={config?.chooseFolder ? chooseFolder : undefined}
                   />
                 ) : undefined
@@ -1618,7 +1640,7 @@ function App() {
               canStop={!!view?.shells}
               onApprove={(id, decision) => void command({ type: 'approve', id, decision })}
               onAnswer={(id, answers) => void command({ type: 'answer', id, answers })}
-              onAutoApprove={view?.autoApprove ? undefined : () => control('/auto on')}
+              onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               onPackAction={async (turnId, id, action) => {
                 const reply = await postCommand({ type: 'pack-task', turnId, id, action });
                 if (!reply.ok) throw new Error(reply.error ?? 'The task action failed.');

@@ -279,7 +279,11 @@ export const SAVE_SESSION_TRANSCRIPT_PREFIX = 'Save session-transcript ';
 export const REFRESH_ENV_LINE = 'Refresh env';
 /** What the host app reads from stderr when the page asks to reveal a file in Finder / file manager. */
 export const REVEAL_PREFIX = 'Reveal ';
-/** What the host app reads from stderr when the page asks for a folder: it answers `folder <json path or null>` on stdin. */
+/**
+ * What the host app reads from stderr when the page asks for a folder, followed by the request's
+ * number: it answers `folder <number> <json path or null>` on stdin. An answer with another number
+ * (a dialog given up on after `CHOOSE_FOLDER_TIMEOUT_MS`) is dropped.
+ */
 export const CHOOSE_FOLDER_LINE = 'Choose folder';
 /** How long the folder dialog may stay open before the page is told that nothing was chosen. */
 const CHOOSE_FOLDER_TIMEOUT_MS = 10 * 60_000;
@@ -349,6 +353,8 @@ function hostApp(
   let folderChoice: Promise<string | undefined> | undefined;
   let resolveFolder: ((path: string | undefined) => void) | undefined;
   let folderTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The number of the folder dialog asked for last; only its answer is taken. */
+  let folderRequest = 0;
   const finishFolderChoice = (path: string | undefined) => {
     if (folderTimer) clearTimeout(folderTimer);
     folderTimer = undefined;
@@ -369,9 +375,12 @@ function hostApp(
         continue;
       }
       if (line.startsWith('folder ')) {
+        const answer = /^folder (\d+) (.*)$/.exec(line);
+        // The answer to a request that was given up on, or to none: another one may be waiting.
+        if (!answer || !resolveFolder || Number(answer[1]) !== folderRequest) continue;
         let path: unknown;
         try {
-          path = JSON.parse(line.slice(7));
+          path = JSON.parse(answer[2]!);
         } catch {
           path = undefined;
         }
@@ -453,7 +462,7 @@ function hostApp(
               resolveFolder = resolve;
               folderTimer = setTimeout(() => finishFolderChoice(undefined), CHOOSE_FOLDER_TIMEOUT_MS);
               folderTimer.unref?.();
-              options.stderr.write(`${CHOOSE_FOLDER_LINE}\n`);
+              options.stderr.write(`${CHOOSE_FOLDER_LINE} ${++folderRequest}\n`);
             });
             return folderChoice;
           },

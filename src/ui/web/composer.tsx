@@ -299,6 +299,11 @@ export interface StartsInProps {
    */
   onProject(path: string, mark: number): Promise<boolean | undefined>;
   onHome(): void;
+  /**
+   * The folder the chat starts in was picked again: a choice still under way (a typed path looked
+   * up, the host's dialog, a chat asked for) is dropped, so it does not move the chat after all.
+   */
+  onStay(): void;
   /** Looks a typed path up; undefined when it is not one. */
   inspect(path: string): Promise<WebFolder | undefined>;
   /** The host's folder dialog, where it has one. Resolves undefined when nothing was chosen. */
@@ -372,7 +377,16 @@ export function StartsIn(props: StartsInProps) {
             <>
               <div role="radiogroup" aria-label="Project" className="starts-list">
                 {!props.atHome && !recent.some((project) => project.path === here) ? (
-                  <button type="button" className="agent-opt" role="radio" aria-checked="true" onClick={close}>
+                  <button
+                    type="button"
+                    className="agent-opt"
+                    role="radio"
+                    aria-checked="true"
+                    onClick={() => {
+                      close();
+                      props.onStay();
+                    }}
+                  >
                     <FolderIcon />
                     <span className="opt-name">{name}</span>
                     <small>{props.cwd}</small>
@@ -388,6 +402,7 @@ export function StartsIn(props: StartsInProps) {
                     onClick={() => {
                       close();
                       if (props.atHome || project.path !== here) void props.onProject(project.path!, props.mark());
+                      else props.onStay();
                     }}
                   >
                     <FolderIcon />
@@ -403,6 +418,7 @@ export function StartsIn(props: StartsInProps) {
                   onClick={() => {
                     close();
                     if (!props.atHome) props.onHome();
+                    else props.onStay();
                   }}
                 >
                   <FolderIcon />
@@ -492,9 +508,13 @@ function FolderIcon() {
   );
 }
 
+/** The share of a plan window used from which the composer names the agent. */
+const QUOTA_HOT_PERCENT = 80;
+
 /**
  * The line under the composer: what Enter does and the other keys on the left, and on the right
- * only the agents whose plan is above 80% (the sidebar lists every agent's).
+ * only the agents that used 80% or more of a plan window, or all of it (the sidebar lists every
+ * agent's). By the share used: an agent may still call 91% `allowed`.
  */
 export function ComposerHint({
   action,
@@ -510,7 +530,7 @@ export function ComposerHint({
 }) {
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const verb = { send: 'sends', steer: 'steers', queue: 'queues' }[action];
-  const hot = quota.filter((row) => row.level !== 'ok');
+  const hot = quota.filter((row) => row.level === 'exceeded' || (row.percent ?? 0) >= QUOTA_HOT_PERCENT);
   return (
     <>
       <span title={SUBMIT[action].title}>

@@ -59,7 +59,9 @@ const RELAUNCH: &str = "relaunch";
 const RELAUNCH_LINE: &str = "Relaunch to update";
 /// What `genaicode ui` prints when Check again asks to re-read the login shell environment.
 const REFRESH_ENV_LINE: &str = "Refresh env";
-/// What `genaicode ui` prints when its page asks for a project folder: answered with `folder <json>` on stdin.
+/// What `genaicode ui` prints, followed by the request's number, when its page asks for a project
+/// folder: answered with `folder <number> <json>` on stdin, so a late answer to a request it gave up
+/// on is not taken for the next one.
 const CHOOSE_FOLDER_LINE: &str = "Choose folder";
 /// The line `genaicode ui` prints once it listens: `Open http://127.0.0.1:<port>/?token=...`.
 const OPEN_PREFIX: &str = "Open http://127.0.0.1:";
@@ -378,9 +380,9 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
             } else if opened && line == REFRESH_ENV_LINE {
                 // Check again: re-read the login shell environment without restarting the server.
                 refresh_env(&app, generation);
-            } else if opened && line == CHOOSE_FOLDER_LINE {
+            } else if let Some(request) = parse_choose_folder_line(&line).filter(|_| opened) {
                 // The new chat's "Choose…": a native folder dialog, answered over stdin.
-                choose_folder(&app, generation);
+                choose_folder(&app, generation, request);
             } else if opened && line.starts_with(nav::REVEAL_PREFIX) {
                 if let Some(path) = nav::parse_reveal_line(&line) {
                     if path.exists() {
@@ -487,19 +489,28 @@ fn refresh_env(app: &AppHandle, generation: u64) {
     });
 }
 
-/// Encode the folder picked in the dialog as one `folder <json>` line for `genaicode ui`'s stdin:
-/// the path as a JSON string, or `null` when the dialog was dismissed.
-fn format_folder_line(folder: Option<&Path>) -> String {
+/// The number of a `Choose folder <number>` request, None for any other line.
+fn parse_choose_folder_line(line: &str) -> Option<u64> {
+    let number = line.strip_prefix(CHOOSE_FOLDER_LINE)?.strip_prefix(' ')?;
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    number.parse().ok()
+}
+
+/// Encode the folder picked in the dialog as one `folder <number> <json>` line for `genaicode ui`'s
+/// stdin: the request's number, then the path as a JSON string, or `null` when the dialog was dismissed.
+fn format_folder_line(request: u64, folder: Option<&Path>) -> String {
     let json = folder
         .and_then(|path| path.to_str())
         .and_then(|path| serde_json::to_string(path).ok())
         .unwrap_or_else(|| "null".to_string());
-    format!("folder {json}")
+    format!("folder {request} {json}")
 }
 
 /// Show the native folder dialog and send the choice to the running `genaicode ui` over stdin.
 /// A dismissed dialog answers too, so the page stops waiting.
-fn choose_folder(app: &AppHandle, generation: u64) {
+fn choose_folder(app: &AppHandle, generation: u64, request: u64) {
     let handle = app.clone();
     let mut dialog = app.dialog().file().set_title("Choose a project folder");
     if let Some(window) = app.get_webview_window("main") {
@@ -507,7 +518,7 @@ fn choose_folder(app: &AppHandle, generation: u64) {
     }
     dialog.pick_folder(move |folder| {
         let chosen = folder.and_then(|picked| picked.into_path().ok());
-        let line = format_folder_line(chosen.as_deref());
+        let line = format_folder_line(request, chosen.as_deref());
         let state = handle.state::<ShellState>();
         let Ok(mut shell) = state.lock() else { return };
         if shell.quitting || shell.generation != generation {
@@ -1307,11 +1318,20 @@ mod tests {
 
     #[test]
     fn formats_the_chosen_folder_as_one_json_line() {
-        assert_eq!(format_folder_line(None), "folder null");
+        assert_eq!(format_folder_line(3, None), "folder 3 null");
         assert_eq!(
-            format_folder_line(Some(Path::new("/Users/test/my \"repo\""))),
-            "folder \"/Users/test/my \\\"repo\\\"\""
+            format_folder_line(12, Some(Path::new("/Users/test/my \"repo\""))),
+            "folder 12 \"/Users/test/my \\\"repo\\\"\""
         );
+    }
+
+    #[test]
+    fn reads_the_number_of_a_folder_request() {
+        assert_eq!(parse_choose_folder_line("Choose folder 7"), Some(7));
+        assert_eq!(parse_choose_folder_line("Choose folder"), None);
+        assert_eq!(parse_choose_folder_line("Choose folder x"), None);
+        assert_eq!(parse_choose_folder_line("Choose folder -1"), None);
+        assert_eq!(parse_choose_folder_line("Choose folders 1"), None);
     }
 
     #[test]
