@@ -1059,13 +1059,9 @@ export function pack(options: PackOptions): Pack {
           if (result.failure) lastFailure.set(agent.name, result.failure);
           else if (result.ok) lastFailure.delete(agent.name);
           if (sub.dir && sub.start) {
-            try {
-              const revision = await snapshotTree(sub.dir);
-              sub.changes = await worktreeChanges(sub.dir, sub.start, revision);
-              if (sub.checks) sub.checks.revision = revision;
-            } catch {
-              sub.changes = undefined;
-            }
+            const revision = await snapshotTree(sub.dir).catch(() => undefined);
+            sub.changes = revision ? await listChanges(sub, revision) : undefined;
+            if (sub.checks && revision) sub.checks.revision = revision;
           }
           sub.result = result;
           sub.status = result.status;
@@ -1171,7 +1167,7 @@ export function pack(options: PackOptions): Pack {
           const revision = await snapshotTree(root);
           const patch = kind === 'review' ? await worktreeDiff(sub.dir, sub.start, revision) : Buffer.alloc(0);
           // The files listed are those of the revision checked, which Merge locally then takes.
-          if (revision !== sub.checks.revision) sub.changes = await worktreeChanges(sub.dir, sub.start, revision);
+          if (revision !== sub.checks.revision || !sub.changes) sub.changes = await listChanges(sub, revision);
           const checks = sub.checks;
           const abort = new AbortController();
           const cancel = () => abort.abort();
@@ -1320,15 +1316,25 @@ export function pack(options: PackOptions): Pack {
           // up, also when the diff asked for is stale (the detail then reads the newer one); work only
           // the index still holds stays listed.
           const listed = await listChanges(sub, tree);
-          if (listed) setChanges(sub, listed);
+          setChanges(sub, listed);
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
-          return clip(patch.toString('utf8'), MAX_DIFF) || 'No changes.';
+          const text = patch.toString('utf8');
+          // Work only the index holds is in no patch: say where it is, and what Discard would do to it.
+          const staged = (listed ?? []).length && !text ? listed! : [];
+          if (staged.length)
+            return `No changes in the working copy. Staged in the worktree's index only: ${staged
+              .map((line) => line.split('\t').slice(1).join('\t'))
+              .join(
+                ', ',
+              )}. Discarding the worktree removes them; Merge locally refuses until they are restored or unstaged.`;
+          return clip(text, MAX_DIFF) || 'No changes.';
         });
 
-      const setChanges = (sub: Sub, changes: string[]) => {
-        if (sub.changes && sub.changes.join('\n') === changes.join('\n')) return;
+      // Undefined says the files could not be listed: the panel shows that, and the next look reads again.
+      const setChanges = (sub: Sub, changes: string[] | undefined) => {
+        if (sub.changes?.join('\n') === changes?.join('\n') && !!sub.changes === !!changes) return;
         sub.changes = changes;
         notify(sub);
       };
@@ -1349,8 +1355,7 @@ export function pack(options: PackOptions): Pack {
           const tree = empty && sub.dir && sub.start ? await snapshotTree(sub.dir) : undefined;
           if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
             await updateRevision(sub, tree);
-            const listed = await listChanges(sub, tree);
-            if (listed) setChanges(sub, listed);
+            setChanges(sub, await listChanges(sub, tree));
             throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
           }
           sub.state = 'discarded';

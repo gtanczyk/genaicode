@@ -1087,8 +1087,10 @@ describe('pack chat turns', () => {
       });
       expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
       expect(existsSync(dir)).toBe(true);
-      // Reading the diff keeps the staged file listed: the worktree is not empty.
-      await session.actOnPackTask!(1, 't1', { type: 'diff' });
+      // Reading the diff keeps the staged file listed and says where it is: the worktree is not empty.
+      expect(await session.actOnPackTask!(1, 't1', { type: 'diff' })).toContain(
+        "Staged in the worktree's index only: late.txt.",
+      );
       expect(task()?.changes).toEqual(['A\tlate.txt']);
       execFileSync('git', ['reset', '-q'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
@@ -1339,6 +1341,34 @@ describe('pack chat turns', () => {
       );
       expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
       expect(readFileSync(join(cwd, 'b.txt'), 'utf8')).toBe('b changed\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('lists a file the worker staged and then deleted when the task ends', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'late.txt'), 'late\n');
+      execFileSync('git', ['add', 'late.txt'], { cwd: task.cwd });
+      rmSync(join(task.cwd, 'late.txt'));
+      return { text: 'Staged a file.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    try {
+      session.send('go');
+      await session.idle();
+      expect(session.get().turns[0]?.pack?.tasks[0]).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
     } finally {
       session.close();
       await team.close();
