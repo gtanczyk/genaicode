@@ -210,6 +210,12 @@ button.chip:hover { border-color: var(--accent); }
 .field::placeholder { color: var(--faint); }
 .pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 320px; max-width: calc(100vw - 32px); max-height: min(70vh, 520px); overflow: auto; padding: 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--gc-elevation-2); display: grid; gap: 10px; text-align: left; color: var(--text); }
 .pop.starts-pop { width: 380px; }
+/* In the composer a popover opens from a control near the card's left edge: it is no wider than the card, so its buttons stay in a narrow window. */
+.workspace .gc-card { container-type: inline-size; }
+.gc-card .pop { max-width: calc(100cqw - 16px); }
+/* "Starts in" sits after its label: its popover opens from the card's edge, not the button's. */
+.gc-composer-header .menu-anchor:has(> .starts-pop) { position: static; }
+.starts-path .btn { flex: none; }
 .pop label, .pop .pop-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .pop .seg { width: fit-content; max-width: 100%; flex-wrap: wrap; }
 .pop .note { font-size: 12px; color: var(--muted); }

@@ -170,6 +170,23 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await starts.getByText('Starts in').waitFor();
     const project = starts.getByRole('button', { name: /^Starts in/ });
     await vi.waitFor(async () => expect(await project.textContent()).toContain('Home folder'));
+    // In a narrow window the popovers stay inside it, with their buttons where they can be clicked.
+    await page.setViewportSize({ width: 430, height: 800 });
+    const inside = async (locator: ReturnType<typeof page.locator>) => {
+      const box = (await locator.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(430);
+    };
+    await project.click();
+    const narrowProjects = card.getByRole('dialog', { name: 'Project' });
+    await inside(narrowProjects);
+    await inside(narrowProjects.getByRole('button', { name: 'Open' }));
+    await page.keyboard.press('Escape');
+    await card.getByRole('button', { name: /^Agent: helper/ }).click();
+    await inside(card.getByRole('dialog', { name: 'Agent, model, effort and fallback' }));
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await message.focus();
     // Nothing to send yet; no Stop while nothing runs; the plan's limits are not in the composer.
     expect(await submit.textContent()).toBe('Send↵');
     expect(await submit.isDisabled()).toBe(true);
