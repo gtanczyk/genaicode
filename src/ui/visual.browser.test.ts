@@ -631,4 +631,36 @@ describe('the genaicode ui page looks as its baseline', () => {
       await Promise.all(pages.map((page) => page.context().close()));
     }
   });
+
+  // The Settings page in the shell: its first section, and About (the version reads 0.0.0).
+  it('settings page, light and dark', async () => {
+    const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));
+    try {
+      const differing: string[] = [];
+      const shot = (page: Page, name: string) =>
+        expectScreenshot(page, name).catch((error: unknown) => {
+          differing.push(error instanceof Error ? error.message : String(error));
+        });
+      for (const [index, page] of pages.entries()) {
+        await page.goto(url!);
+        await page.locator('.gc-chat textarea').waitFor();
+        await page.getByRole('button', { name: 'Settings', exact: true }).click();
+        const settings = page.getByRole('main', { name: 'Settings' });
+        // The bark's switch comes with the first view from the server.
+        await settings.getByRole('switch', { name: 'Bark when an agent needs you' }).waitFor();
+        await page.evaluate(() => Object.assign(new Image(), { src: '/assets/wolf-64.png' }).decode());
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-settings-${THEMES[index]}`);
+        await settings.getByRole('button', { name: 'About and updates', exact: true }).click();
+        await settings.getByRole('link', { name: 'Get help' }).waitFor();
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-settings-about-${THEMES[index]}`);
+      }
+      expect(differing).toEqual([]);
+    } finally {
+      await Promise.all(pages.map((page) => page.context().close()));
+    }
+  });
 });

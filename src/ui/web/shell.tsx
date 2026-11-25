@@ -20,6 +20,16 @@ function readStore(store: Store | undefined): string | null {
   }
 }
 
+/** Input types a person types text into; a checkbox's or a button's `value` is not typed text. */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'number', 'password', 'tel']);
+
+/** Whether Escape lands in a control holding text that was typed (a page stays open over it). */
+export function holdsTypedText(target: EventTarget | null): target is HTMLElement {
+  if (target instanceof HTMLTextAreaElement) return !!target.value;
+  if (target instanceof HTMLInputElement) return TEXT_INPUT_TYPES.has(target.type) && !!target.value;
+  return target instanceof HTMLElement && target.isContentEditable && !!target.textContent;
+}
+
 export interface ShellProps {
   /** The sidebar's content; the shell owns whether it is collapsed, and Search. */
   side: Omit<SidebarProps, 'collapsed' | 'onToggle' | 'onSearch'>;
@@ -36,6 +46,8 @@ export interface ShellProps {
     home?: string;
     /** Goes to a session of another agent. */
     onOpenSession(session: SessionInfo): void;
+    /** The sections of the Settings page, each a command that opens it there. */
+    settings?: ReadonlyArray<{ label: string; onSelect(): void }>;
   };
   /** The chat's title, or the name of the page in its place. */
   title: string;
@@ -57,8 +69,8 @@ export interface ShellProps {
 /**
  * The window: the sidebar on the left, and the slim top bar over the chat or a page. ⌘B folds the
  * sidebar to its rail (remembered; the rail is the default in a narrow window), ⌘N starts a chat,
- * ⌘K opens and closes Search. Escape goes back from a page to the chat; it never reaches a running
- * turn from here.
+ * ⌘K opens and closes Search, ⌘, opens Settings. Escape goes back from a page to the chat; it never
+ * reaches a running turn from here.
  */
 export function Shell(props: ShellProps) {
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(readStore(props.store), window.innerWidth));
@@ -102,9 +114,9 @@ export function Shell(props: ShellProps) {
         needs: side.needs.total,
         onAllSessions: side.onAllSessions && (() => latest.current.side.onAllSessions?.()),
         onAllChats: side.onAllChats && (() => latest.current.side.onAllChats?.()),
-        settings: side.settings.map((item, index) => ({
+        settings: props.search?.settings?.map((item, index) => ({
           label: item.label,
-          onSelect: () => latest.current.side.settings[index]?.onSelect(),
+          onSelect: () => latest.current.search?.settings?.[index]?.onSelect(),
         })),
         onWhatsNew: side.onWhatsNew && (() => latest.current.side.onWhatsNew?.()),
         onCommands: side.onCommands && (() => latest.current.side.onCommands?.()),
@@ -116,7 +128,7 @@ export function Shell(props: ShellProps) {
       side.needs.total,
       !side.onAllSessions,
       !side.onAllChats,
-      side.settings.map((item) => item.label).join('\n'),
+      props.search?.settings?.map((item) => item.label).join('\n'),
       !side.onWhatsNew,
       !side.onCommands,
       collapsed,
@@ -143,10 +155,8 @@ export function Shell(props: ShellProps) {
       if (event.key === 'Escape') {
         // An open dialog takes its own Escape, and so did any menu before the key got here.
         if (document.querySelector('dialog[open]')) return;
-        const target = event.target;
         // Text being typed is not thrown away with the page: Escape clears the field first.
-        if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) && target.value && now.onBack)
-          return;
+        if (holdsTypedText(event.target) && now.onBack) return;
         if (escapeAction({ page: !!now.onBack }) === 'page') {
           event.preventDefault();
           now.onBack?.();
@@ -168,6 +178,11 @@ export function Shell(props: ShellProps) {
         event.preventDefault();
         if (searchingRef.current) closeSearch();
         else openSearch();
+      } else if (key === ',' && now.side.onSettings) {
+        event.preventDefault();
+        // Settings takes the page: Search does not stay over it.
+        closeSearch(false);
+        now.side.onSettings();
       }
     };
     window.addEventListener('resize', onResize);

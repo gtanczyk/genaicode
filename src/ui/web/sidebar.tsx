@@ -66,6 +66,19 @@ const ICONS = {
     </>
   ),
   folder: <path d="M2 4.5h4l1.2 1.5H14V12.5H2z" />,
+  spark: <path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2 12 12M12 4l-1.8 1.8M5.8 10.2 4 12" />,
+  doc: (
+    <>
+      <path d="M4 2h5.5L12 4.5V14H4z" />
+      <path d="M9.5 2v2.5H12M6 8h4M6 10.5h4" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="6" cy="6" r="2.3" />
+      <path d="M1.8 13c.4-2.2 2-3.4 4.2-3.4s3.8 1.2 4.2 3.4M10.6 3.9a2.3 2.3 0 0 1 0 4.3M12.2 10c1.1.5 1.8 1.5 2 3" />
+    </>
+  ),
 } as const;
 
 export function Icon({ name, className }: { name: keyof typeof ICONS; className?: string }) {
@@ -195,10 +208,8 @@ export interface SidebarProps {
   onRelaunch?(): void;
   quota: readonly QuotaRow[];
   onQuota?(): void;
-  /** The items of the Settings menu. None: no Settings button. */
-  settings: ReadonlyArray<{ label: string; detail?: string; onSelect(): void }>;
-  /** Shown beside the Settings button: the popover a settings item opened. */
-  settingsPopover?: ReactNode;
+  /** Opens the Settings page (⌘,). Absent: no Settings button. */
+  onSettings?(): void;
   /** The version in the Help menu and beside the connection state. */
   version?: string;
   /** The release notes were not opened yet: a quiet dot on Help. */
@@ -401,6 +412,7 @@ export function Sidebar(props: SidebarProps) {
             aria-label="Plan limits"
             title={`Plan limits, the worst window of each agent.\n${quotaTitle}`}
             onClick={props.onQuota}
+            disabled={!props.onQuota}
           >
             <span
               className="ring"
@@ -421,36 +433,21 @@ export function Sidebar(props: SidebarProps) {
           </button>
         ) : null}
         <div className="foot-row">
-          {props.settings.length ? (
-            <MenuButton
-              label="Settings"
-              title="Settings"
-              className="nav"
-              menuClassName="up"
-              button={
-                <>
-                  <Icon name="gear" />
-                  <span className="label grow">Settings</span>
-                </>
-              }
-            >
-              {(close) =>
-                props.settings.map((item) => (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    key={item.label}
-                    onClick={() => {
-                      close();
-                      item.onSelect();
-                    }}
-                  >
-                    <span className="grow">{item.label}</span>
-                    {item.detail ? <span className="pill">{item.detail}</span> : null}
-                  </button>
-                ))
-              }
-            </MenuButton>
+          {props.onSettings ? (
+            // Half of the row, as the Help menu beside it.
+            <span className="foot-item" data-tauri-drag-region="false">
+              <button
+                type="button"
+                className="nav"
+                title="Settings (⌘,)"
+                aria-label="Settings"
+                aria-current={props.page === 'settings' ? 'page' : undefined}
+                onClick={props.onSettings}
+              >
+                <Icon name="gear" />
+                <span className="label grow">Settings</span>
+              </button>
+            </span>
           ) : null}
           <MenuButton
             label="Help"
@@ -507,7 +504,6 @@ export function Sidebar(props: SidebarProps) {
               </>
             )}
           </MenuButton>
-          {props.settingsPopover}
         </div>
         <div
           className={`conn${props.connected ? '' : ' off'}`}

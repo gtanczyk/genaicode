@@ -182,7 +182,7 @@ export interface PaletteActions {
   needs?: number;
   onAllSessions?(): void;
   onAllChats?(): void;
-  /** The items of the Settings menu. */
+  /** The sections of the Settings page, each opened in its place. */
   settings?: ReadonlyArray<{ label: string; onSelect(): void }>;
   onWhatsNew?(): void;
   onCommands?(): void;
@@ -195,7 +195,7 @@ export interface PaletteActions {
 
 /**
  * The commands of the palette: the places of the sidebar and its switches, and only those the
- * window has (no session index: no All sessions; no Settings item: none here).
+ * window has (no session index: no All sessions; a Settings section the page lacks: none here).
  */
 export function paletteCommands(actions: PaletteActions): PaletteCommand[] {
   const key = (letter: string) => (actions.mac === false ? `Ctrl+${letter}` : `⌘${letter}`);

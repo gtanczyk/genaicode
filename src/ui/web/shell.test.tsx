@@ -7,7 +7,7 @@ import { EscapeActive } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
 import { ViewerPanel } from './file-view.js';
-import { Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
+import { holdsTypedText, Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -47,6 +47,7 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
       chats,
       sessions: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work', cwd: '/work/bakery' })],
       onOpenSession: vi.fn(),
+      settings: [{ label: 'Agents', onSelect: vi.fn() }],
     },
     ...patch,
     side: {
@@ -61,7 +62,7 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
       onNewChatIn: vi.fn(),
       others: { shown: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work' })], total: 7 },
       quota: quotaRows([{ agent: 'claude', window: '5h', status: 'warning', usedPercent: 91 }], ['claude'], now),
-      settings: [{ label: 'Agents', onSelect: vi.fn() }],
+      onSettings: vi.fn(),
       version: '3.3.0',
       connected: true,
       now,
@@ -236,6 +237,13 @@ describe('<Shell>', () => {
     expect(host.querySelector('.quota-row')?.textContent).toBe('claude91% · 5h');
     expect(host.querySelector('.quota-row')?.getAttribute('data-level')).toBe('warning');
     expect(host.querySelector('.quota .ring')?.textContent).toBe('91');
+    // The ring opens Settings › Usage only where there is one; else it only shows the limits.
+    expect((button('Plan limits') as HTMLButtonElement).disabled).toBe(true);
+    const onQuota = vi.fn();
+    render(props({}, { ...value.side, onQuota }));
+    expect((button('Plan limits') as HTMLButtonElement).disabled).toBe(false);
+    click(button('Plan limits'));
+    expect(onQuota).toHaveBeenCalledTimes(1);
     click(button('Install 3.4.0 and relaunch'));
     expect(onRelaunch).toHaveBeenCalledTimes(1);
     expect(host.querySelector('.conn')?.textContent).toBe('Connected · 3.3.0');
@@ -278,17 +286,27 @@ describe('<Shell>', () => {
     expect(host.querySelector('[role="menu"]')).toBeNull();
   });
 
-  it('opens Settings as a menu of what the page can configure', () => {
-    const onSelect = vi.fn();
-    render(props({}, { settings: [{ label: 'HTML artifact CDNs', detail: '2', onSelect }] }));
+  it('opens the Settings page from its button and on ⌘, and marks it while it shows', () => {
+    const onSettings = vi.fn();
+    render(props({}, { onSettings }));
+    // A button of its own, not a menu: the page has the sections.
+    expect(button('Settings').getAttribute('aria-haspopup')).toBeNull();
+    expect(button('Settings').getAttribute('aria-current')).toBeNull();
     click(button('Settings'));
-    const item = host.querySelector('[role="menu"][aria-label="Settings"] [role="menuitem"]')!;
-    expect(item.textContent).toBe('HTML artifact CDNs2');
-    click(item);
-    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    press(',', mod());
+    expect(onSettings).toHaveBeenCalledTimes(2);
 
-    render(props({}, { settings: [] }));
+    render(props({ title: 'Settings', onBack: vi.fn() }, { onSettings, page: 'settings' }));
+    expect(button('Settings').getAttribute('aria-current')).toBe('page');
+
+    render(props({}, { onSettings: undefined }));
     expect(button('Settings')).toBeUndefined();
+    // Without a page to open the key is left alone.
+    const event = new KeyboardEvent('keydown', { key: ',', bubbles: true, cancelable: true, ...mod() });
+    act(() => void document.body.dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(false);
   });
 
   it('goes back from a page on Escape, but not past a dialog or over typed text', () => {
@@ -311,6 +329,28 @@ describe('<Shell>', () => {
     dialog.remove();
     press('Escape');
     expect(onBack).toHaveBeenCalledTimes(2);
+
+    // A checkbox's value ("on") or a button's is not typed text: the page goes back.
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    host.append(box);
+    press('Escape', {}, box);
+    expect(onBack).toHaveBeenCalledTimes(3);
+    for (const type of ['radio', 'button', 'range', 'color']) {
+      const other = document.createElement('input');
+      other.type = type;
+      other.value = 'x';
+      expect(holdsTypedText(other)).toBe(false);
+    }
+    for (const type of ['text', 'search', 'url', 'email', 'password']) {
+      const other = document.createElement('input');
+      other.type = type;
+      other.value = 'x';
+      expect(holdsTypedText(other)).toBe(true);
+    }
+    const area = document.createElement('textarea');
+    area.value = 'x';
+    expect(holdsTypedText(area)).toBe(true);
   });
 
   it('gives Escape to what was opened last: the menu, then the viewer, then the page, one press each', () => {
@@ -572,7 +612,7 @@ describe('Search (⌘K)', () => {
     press('k', mod());
     type('settings');
     key('Enter');
-    expect(value.side.settings[0]!.onSelect).toHaveBeenCalledTimes(1);
+    expect(value.search!.settings![0]!.onSelect).toHaveBeenCalledTimes(1);
     press('k', mod());
     type('sidebar');
     key('Enter');
