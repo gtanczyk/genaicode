@@ -32,6 +32,9 @@ describe('clipReview', () => {
     expect(kept).toContain('BLOCKER: drops rows without an id');
     expect(kept.endsWith('VERDICT: CHANGES REQUESTED')).toBe(true);
     expect(clipReview('Short.\nVERDICT: LGTM')).toBe('Short.\nVERDICT: LGTM');
+    // The verdict quoted inline earlier does not hide the final one the clip cut off.
+    const quoted = `Expect a line like VERDICT: CHANGES REQUESTED at the end.\n${'More notes here. '.repeat(1200)}\n[P1] drops rows\nVERDICT: CHANGES REQUESTED`;
+    expect(clipReview(quoted).endsWith('\nVERDICT: CHANGES REQUESTED')).toBe(true);
   });
 });
 import { createAgentSession } from './session.js';

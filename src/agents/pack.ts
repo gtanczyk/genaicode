@@ -339,11 +339,14 @@ const MAX_DIFF = 60_000;
 export const clipReview = (text: string, max = 16_000): string => {
   const kept = clip(text, max);
   if (kept === text) return kept;
-  const deciding = text
-    .split('\n')
-    .filter((line) => /^[\s>*_#\-\d.)]*(?:BLOCKER\b|VERDICT\s*:)/i.test(line) && !kept.includes(line))
-    .slice(0, 20)
-    .map((line) => clip(line, 300));
+  // Whole lines the clip kept; a line it cut through counts as cut off.
+  const shown = new Set(kept.split('\n').slice(0, -1));
+  const lines = text.split('\n');
+  const cut = (line: string) => !shown.has(line);
+  const blockers = lines.filter((line) => /^[\s>*_#\-\d.)]*BLOCKER\b/.test(line) && cut(line)).slice(0, 20);
+  // The last verdict line decides, wherever an earlier one was quoted: it always follows.
+  const verdict = [...lines].reverse().find((line) => /^[\s>*_#]*VERDICT\s*:/i.test(line));
+  const deciding = [...blockers, ...(verdict && cut(verdict) ? [verdict] : [])].map((line) => clip(line, 300));
   return deciding.length ? `${kept}\n…\n${deciding.join('\n')}` : kept;
 };
 
