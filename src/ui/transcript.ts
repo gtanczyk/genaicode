@@ -214,7 +214,7 @@ export function formatChatTranscriptMarkdown(input: ChatTranscriptInput): string
 /** A stored session (`SessionInfo` + turns read from its store) as Markdown. */
 export function formatStoredSessionMarkdown(input: StoredSessionTranscriptInput): string {
   const exportedAt = input.exportedAt ?? new Date().toISOString();
-  const { session, turns, readable } = input;
+  const { session } = input;
   const truncatedReason = input.truncated
     ? (input.truncatedReason ?? 'Earlier turns were omitted from this export; only the latest portion is included.')
     : undefined;
@@ -252,6 +252,14 @@ export function formatStoredSessionMarkdown(input: StoredSessionTranscriptInput)
   }
   out.push('');
 
+  return out.join('\n') + '\n' + storedConversationMarkdown(input);
+}
+
+/** The read-only session page starts with the conversation, omitting export metadata. */
+export function storedConversationMarkdown(input: StoredSessionTranscriptInput): string {
+  const { session, turns, readable } = input;
+  const truncatedReason = input.truncated && (input.truncatedReason || 'Only the latest turns are available.');
+  const out: string[] = [];
   if (truncatedReason) {
     out.push(`> **Note:** ${truncatedReason} Turn numbers below start from the first exported turn.`, '');
   }

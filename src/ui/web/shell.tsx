@@ -69,6 +69,7 @@ export interface ShellProps {
   project?: { name: string; path: string };
   /** A page is open in the chat's place: the bar gets a back arrow, and Escape goes back. */
   onBack?(): void;
+  backLabel?: string;
   /** Token usage of the conversation, as quiet text. */
   usage?: string;
   /** The right end of the bar: the session menu and what has no panel yet. */
@@ -285,12 +286,12 @@ export function Shell(props: ShellProps) {
             <button
               type="button"
               className="btn ghost sm"
-              title="Back to the chat (Esc)"
+              title={`Back to ${props.backLabel ?? 'the chat'} (Esc)`}
               data-tauri-drag-region="false"
               onClick={props.onBack}
             >
               <Icon name="back" />
-              Chat
+              {props.backLabel ?? 'Chat'}
             </button>
           ) : null}
           <h1 title={props.title}>{props.title}</h1>

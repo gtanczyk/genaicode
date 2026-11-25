@@ -456,11 +456,11 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     await page.getByRole('button', { name: 'All sessions', exact: true }).click();
     const row = page.locator('.session-row').filter({ hasText: 'Observed conversation' });
     await row.waitFor();
-    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await row.getByRole('button', { name: /Session actions/ }).click();
     await page.getByRole('menuitem', { name: 'Copy session ID' }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(storedSession.id);
 
-    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await row.getByRole('button', { name: /Session actions/ }).click();
     await page.getByRole('menuitem', { name: 'Copy transcript (Markdown)' }).click();
     await page.getByRole('status').filter({ hasText: 'Copied transcript (Markdown)' }).waitFor();
     const storedMd = await page.evaluate(() => navigator.clipboard.readText());
@@ -468,7 +468,7 @@ it('copies session ID, file path and transcripts and downloads files from chat h
     expect(storedMd).toContain(`Prompt in ${storedSession.id}`);
     expect(storedMd).toContain(`Reply in ${storedSession.id}`);
 
-    await row.getByRole('button', { name: /Copy ID or transcript/ }).click();
+    await row.getByRole('button', { name: /Session actions/ }).click();
     const [jsonDownload] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('menuitem', { name: 'Download JSON (.json)' }).click(),

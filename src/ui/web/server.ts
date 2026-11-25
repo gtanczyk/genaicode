@@ -26,6 +26,7 @@ import {
   chatTranscriptJson,
   formatChatTranscriptMarkdown,
   formatStoredSessionMarkdown,
+  storedConversationMarkdown,
   storedSessionTranscriptJson,
   transcriptFilename,
   type TranscriptFormat,
@@ -77,6 +78,7 @@ export interface WebUiOptions {
     prompt: string,
     sandbox: SandboxPolicy | undefined,
     signal: AbortSignal,
+    onResponse: () => void,
   ) => Promise<AgentResult>;
   /**
    * How much of each agent's plan is used, as last seen (`knownLimits`), at GET /api/limits: the
@@ -1119,7 +1121,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       if (!options.sessionTranscript) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
       const format = url.searchParams.get('format') ?? 'md';
-      if (format !== 'md' && format !== 'json' && format !== 'meta') {
+      if (format !== 'md' && format !== 'json' && format !== 'meta' && format !== 'view') {
         return send(res, 400, 'application/json', '{"error":"bad format"}');
       }
       let source: string, id: string;
@@ -1144,6 +1146,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
       }
       if (!found) return send(res, 404, 'application/json', '{"error":"session not found"}');
+      if (format === 'view') return send(res, 200, 'text/markdown; charset=utf-8', storedConversationMarkdown(found));
       const now = new Date();
       const exportedAt = now.toISOString();
       const filenameMd = transcriptFilename({
@@ -1243,11 +1246,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     const target = /^\/api\/sessions\/([^/]+)\/([^/]+)\/send$/.exec(url.pathname);
     if (req.method === 'POST' && target) {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
-        return send(res, 403, 'application/json', '{"error":"bad token"}');
+        return send(res, 403, 'application/json', '{"delivery":"not-sent","error":"bad token"}');
       }
-      if (!options.sendPrompt) return send(res, 404, 'application/json', '{"error":"no session sender here"}');
+      if (!options.sendPrompt)
+        return send(res, 404, 'application/json', '{"delivery":"not-sent","error":"no session sender here"}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
-        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+        return send(res, 415, 'application/json', '{"delivery":"not-sent","error":"expected JSON"}');
       }
       let source: string, id: string, prompt: string, sandbox: SandboxPolicy | undefined;
       try {
@@ -1264,11 +1268,32 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         prompt = body.prompt;
         sandbox = body.sandbox;
       } catch {
-        return send(res, 400, 'application/json', '{"error":"invalid session prompt or sandbox"}');
+        return send(
+          res,
+          400,
+          'application/json',
+          '{"delivery":"not-sent","error":"invalid session prompt or sandbox"}',
+        );
       }
+      let responded = false;
       try {
-        const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal);
-        if (!result.ok) return send(res, 422, 'application/json', '{"error":"The agent could not finish this turn."}');
+        const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal, () => {
+          responded = true;
+        });
+        if (!result.ok) {
+          const kind = result.failure?.kind;
+          const reasons = {
+            auth: 'The agent is not signed in or its credentials were refused.',
+            quota: 'The agent has reached its quota.',
+            unavailable: 'The agent could not start.',
+            crash: 'The agent crashed.',
+            budget: 'The turn exceeded its budget.',
+          };
+          const error =
+            [kind && reasons[kind], result.error?.trim()].filter(Boolean).join(' ') || `The turn ${result.status}.`;
+          const delivery = responded ? 'reached' : kind === 'unavailable' ? 'not-sent' : 'unknown';
+          return send(res, 422, 'application/json', JSON.stringify({ error, kind, delivery }));
+        }
         return send(res, 200, 'application/json', JSON.stringify({ ok: true, text: result.text }));
       } catch (error) {
         if (error instanceof SessionSendError)
@@ -1276,9 +1301,14 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
             res,
             error.reason === 'missing' ? 404 : 409,
             'application/json',
-            JSON.stringify({ error: error.publicMessage }),
+            JSON.stringify({ error: error.publicMessage, delivery: 'not-sent' }),
           );
-        return send(res, 500, 'application/json', '{"error":"Could not send the session prompt."}');
+        return send(
+          res,
+          500,
+          'application/json',
+          JSON.stringify({ delivery: responded ? 'reached' : 'unknown', error: 'Could not send the session prompt.' }),
+        );
       }
     }
     const asked = /^\/api\/asks\/([a-f0-9]{12})$/.exec(url.pathname);

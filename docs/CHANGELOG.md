@@ -22,6 +22,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - **Taken-over chats are titled from your words, and chats wait for a running turn.** (#374)
   - A chat started by Continue here is titled from what you wrote, not the takeover recap, also for older sessions.
   - While a turn runs, other chats and New chat look unavailable; choosing one offers Stop and open or Wait.
+- **Open session transcripts directly and see why a reply failed.** (#369)
 - **Read release highlights and expand changes for details.** (#368)
 - **The work panel keeps “Running” on one line beside long commands.** (#370)
 - **Browser commands follow the current conversation across windows.** (#371)
