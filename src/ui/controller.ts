@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { supportHelp } from '../support.js';
@@ -19,6 +19,7 @@ import {
   archiveKey,
   codexProjects,
   findSession,
+  isDisallowedWorkspace,
   isNeutralHome,
   isSameDir,
   listSessions,
@@ -688,17 +689,52 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
 
-  const startProjectChat = async (cwd: string): Promise<boolean> => {
+  /**
+   * Whether `dir` (a real path) is a folder a chat may be started in by naming it: one a session of
+   * any agent, a saved conversation or a Codex project already works in, under the rules that pick a
+   * folder when a session is continued (never the filesystem root, the person's home directory or a
+   * temporary one). The chat's folder is a root of the file viewer and of the artifacts, so a
+   * request must not be able to make any directory of the machine one.
+   */
+  const isProjectDir = async (dir: string): Promise<boolean> => {
+    if (isDisallowedWorkspace(dir, { env })) return false;
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    const [listing, saved, codex] = await Promise.all([
+      // Also the chats nobody typed much into: the sidebar lists their folders too.
+      listSessions(sources, { env, readOnly: true, live: false, automated: true }).catch(() => ({ sessions: [] })),
+      readConversations(env).catch(() => []),
+      codexProjects({ env }).catch(() => []),
+    ]);
+    const known = [
+      ...listing.sessions.map((one) => one.cwd),
+      ...saved.map((one) => one.cwd),
+      ...codex.flatMap((project) => project.roots),
+    ];
+    return known.some(
+      (one) => !!one && !isNeutralHome(one, { env }) && !isDisallowedWorkspace(one, { env }) && isSameDir(one, dir),
+    );
+  };
+
+  const startProjectChat = async (requested: string): Promise<boolean> => {
     if (!homeMode) return false;
-    if (isSameDir(cwd, homeDir)) return startHomeChat();
-    let found = false;
+    if (isSameDir(requested, homeDir)) return startHomeChat();
+    // The real path: what a symlink names is checked, and is where the chat then runs.
+    let cwd: string | undefined;
     try {
-      found = isAbsolute(cwd) && statSync(cwd).isDirectory();
+      const real = isAbsolute(requested) ? realpathSync(requested) : undefined;
+      if (real && statSync(real).isDirectory()) cwd = real;
     } catch {
-      found = false;
+      cwd = undefined;
     }
-    if (!found) {
-      notice(`No folder ${cwd} to start a chat in.`, 'error');
+    if (!cwd) {
+      notice(`No folder ${requested} to start a chat in.`, 'error');
+      return false;
+    }
+    if (!(await isProjectDir(cwd))) {
+      notice(
+        `${requested} is not a project folder: a chat starts in a folder one of your sessions worked in. Mention another directory in a chat to move there.`,
+        'error',
+      );
       return false;
     }
     const savedLead = await options.projectLead?.(cwd)?.catch(() => undefined);

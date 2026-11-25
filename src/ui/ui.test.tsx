@@ -1,9 +1,18 @@
 import { request } from 'node:http';
 import { Console } from 'node:console';
 import { PassThrough } from 'node:stream';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -2737,6 +2746,38 @@ describe('web UI server', () => {
         tone: 'error',
         text: 'No folder src/other to start a chat in.',
       });
+
+      // A folder no session worked in is not a project, whatever the request names: the chat's
+      // folder is a root of the file viewer, so the filesystem root, the home directory (here
+      // `root`) and a stranger's folder are refused, also behind a symlink.
+      const stranger = join(root, 'src', 'stranger');
+      mkdirSync(stranger);
+      symlinkSync(parse(root).root, join(root, 'src', 'to-root'));
+      symlinkSync(root, join(root, 'src', 'to-home'));
+      symlinkSync(stranger, join(root, 'src', 'to-stranger'));
+      for (const refused of [
+        parse(root).root,
+        root,
+        stranger,
+        join(root, 'src'),
+        join(root, 'src', 'to-root'),
+        join(root, 'src', 'to-home'),
+        join(root, 'src', 'to-stranger'),
+      ]) {
+        expect(await chat.startProjectChat(refused), refused).toBe(false);
+        expect(chat.get().session.cwd).toBe(homeDir);
+        expect(chat.get().conversation).toMatchObject({ cwd: homeDir, origin: 'home' });
+        expect(chat.get().notices.at(-1)).toMatchObject({
+          tone: 'error',
+          text: expect.stringContaining(`${refused} is not a project folder`),
+        });
+      }
+      // A symlink to a project is that project: the chat runs in the real folder.
+      symlinkSync(other, join(root, 'src', 'to-other'));
+      expect(await chat.startProjectChat(join(root, 'src', 'to-other'))).toBe(true);
+      expect(chat.get().session.cwd).toBe(realpathSync(other));
+      expect(chat.get().conversation).toMatchObject({ cwd: realpathSync(other), origin: 'project' });
+      expect(chat.startHomeChat()).toBe(true);
     } finally {
       chat.close();
     }

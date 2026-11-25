@@ -17,6 +17,7 @@ import {
   readFileLinkPosition,
   type FilePosition,
 } from '../../react/markdown.js';
+import { useEscape } from '../../react/escape.js';
 import { installResizeHandle, storedSize } from '../../react/resize-handle.js';
 import type { FileKind, FileView } from '../files.js';
 
@@ -343,19 +344,12 @@ export function ViewerPanel({
   }, [file, fileLine, fileEndLine, showSource]);
 
   // Esc order: full size -> panel -> (next press reaches chat to stop the agent).
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      // Let an active resize drag undo itself before closing the panel.
-      if (document.body.dataset.resizing === 'true') return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (fullSize) setFullSize(false);
-      else onClose();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [fullSize, onClose]);
+  useEscape(true, () => {
+    // Let an active resize drag undo itself before closing the panel.
+    if (document.body.dataset.resizing === 'true') return false;
+    if (fullSize) setFullSize(false);
+    else onClose();
+  });
 
   // Shared resize-handle on the left edge, persisted in localStorage.
   useEffect(() => {

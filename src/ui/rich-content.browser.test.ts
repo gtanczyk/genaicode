@@ -556,6 +556,15 @@ describe('rich content in genaicode ui (browser)', () => {
       // 1st Esc -> exits Full size (panel stays open, agent keeps running)
       // 2nd Esc -> closes panel (agent keeps running)
       // 3rd Esc -> stops the running agent!
+      // A menu opened over the viewer owns the key first: one press closes Help and leaves the viewer.
+      await page.getByRole('button', { name: 'Help', exact: true }).click();
+      const help = page.getByRole('menu', { name: 'Help' });
+      await help.waitFor();
+      await page.keyboard.press('Escape');
+      await help.waitFor({ state: 'detached' });
+      expect(await panel.count()).toBe(1);
+      expect(longTurnAborted).toBe(false);
+
       await panel.getByRole('button', { name: 'Full size' }).click();
       expect(await panel.getAttribute('data-full-size')).toBe('true');
 

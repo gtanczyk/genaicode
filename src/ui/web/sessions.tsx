@@ -90,6 +90,7 @@ export function Sessions({
   own,
   onAllSessions,
   initialState,
+  initialDays,
   nativeSave,
   onStatus,
 }: {
@@ -112,12 +113,14 @@ export function Sessions({
   onAllSessions?(): void;
   /** The State filter the view opens with (`now`: what needs you). The person can change it. */
   initialState?: string;
+  /** The Period the view opens with, in days (`0`: all time). Default 7. The person can change it. */
+  initialDays?: number;
   /** Desktop host handles Save File dialogs natively. */
   nativeSave?: boolean;
   /** Brief feedback after copying or downloading a session's ID or transcript. */
   onStatus?(message: string, isError?: boolean): void;
 }) {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(initialDays ?? 7);
   const [listing, setListing] = useState<WebSessionListing>();
   const [replyTo, setReplyTo] = useState<SessionInfo>();
   const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();

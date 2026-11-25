@@ -150,9 +150,14 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
       expect(page.url()).toBe(new URL('/', opened!).href);
       await page.reload();
       expect(page.url()).toBe(new URL('/', opened!).href);
-      // Needs you counts the tower's five drafts and what this chat itself asks.
+      // Needs you counts the tower's five items, each once: the pack task's approval is also this
+      // chat's own, and the session that waits on a tool is also in the list of sessions.
       const needsYou = page.locator('.side-actions').getByRole('button', { name: /^Needs you/ });
-      expect(Number(await needsYou.locator('.count').textContent())).toBeGreaterThanOrEqual(5);
+      await page
+        .getByRole('complementary', { name: 'Sidebar' })
+        .getByRole('button', { name: 'All sessions' })
+        .waitFor();
+      await vi.waitFor(async () => expect(await needsYou.locator('.count').textContent()).toBe('5'));
       await needsYou.click();
       await page.getByText('Pack task t1').waitFor();
     }
@@ -190,6 +195,19 @@ it('shares pack approvals, other sessions and individually reviewed messages bet
     expect(decisions).toEqual(['session approve', 'worker deny']);
     await desktop.getByRole('button', { name: 'All sessions', exact: true }).click();
     await desktop.locator('main.sessions').getByText('catalog', { exact: true }).waitFor();
+    // Needs you is the tower's inbox whatever it holds: what the last delivery came to is read there.
+    await desktop
+      .locator('.side-actions')
+      .getByRole('button', { name: /^Needs you/ })
+      .click();
+    await desktop.getByRole('heading', { name: 'Tower inbox' }).waitFor();
+    await desktop.locator('main.tower-inbox [role="status"]').getByText('worker-store / catalog-release').waitFor();
+    await desktop
+      .locator('main.tower-inbox')
+      .getByRole('button', { name: /ask for you$/ })
+      .click();
+    await vi.waitFor(async () => expect(await desktop.locator('header.topbar h1').textContent()).toBe('Needs you'));
+    await desktop.locator('main.sessions').waitFor();
     expect(apiUrls.some((url) => url.endsWith('/api/events'))).toBe(true);
     expect(apiUrls.some((url) => url.includes('/api/sessions'))).toBe(true);
     expect(apiUrls.every((url) => !url.includes('token='))).toBe(true);

@@ -21,6 +21,7 @@ import type { ApprovalDecision, Artifact, QuestionAnswers } from '../agents/type
 import { answerSummary, QuestionCard } from './question-card.js';
 import { describeFailover } from '../agents/failover.js';
 import { PendingAttachments, TurnAttachments, useAttachments, type ChatAttachments } from './attachments.js';
+import { useEscape } from './escape.js';
 import { useFollowScroll } from './follow-scroll.js';
 import {
   formatBytes,
@@ -260,21 +261,14 @@ export function AgentChat(props: AgentChatProps) {
   useEffect(() => {
     if (!fileMenu) return;
     const dismiss = () => setFileMenu(undefined);
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      event.preventDefault();
-      dismiss();
-    };
     window.addEventListener('click', dismiss);
     window.addEventListener('blur', dismiss);
-    window.addEventListener('keydown', onKey, true);
     return () => {
       window.removeEventListener('click', dismiss);
       window.removeEventListener('blur', dismiss);
-      window.removeEventListener('keydown', onKey, true);
     };
   }, [fileMenu]);
+  useEscape(!!fileMenu, () => setFileMenu(undefined));
 
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);

@@ -151,26 +151,56 @@ export function otherSessions(
 export interface NeedsYou {
   total: number;
   here: number;
+  /** The sessions that ask now and are in no other count: what the filtered sessions list adds. */
+  sessions: number;
   title: string;
 }
 
+/** A tower item as the count reads it (`TowerItem`). */
+export interface NeedsYouItem {
+  id: string;
+  sessionId?: string;
+}
+
+/** The tower lists the open chat's own approvals under ids that start so. */
+const TOWER_TURN_ITEM = 'turn:';
+
 /**
- * The count on "Needs you": the open chat's approvals and questions, the tower's drafts, and the
- * sessions of every agent that ask now (the open chat's own session is counted once, as live).
+ * The count on "Needs you": the open chat's approvals and questions, the tower's items, and the
+ * sessions of every agent that ask now. Each request is counted once: the tower repeats the open
+ * chat's approvals, and its items for another agent's session stand for that session, so neither is
+ * added again (nor is the open chat's own session: it counts as live).
  */
 export function needsYou(input: {
   approvals: number;
-  tower?: number;
+  tower?: readonly NeedsYouItem[];
   sessions?: readonly SessionInfo[];
   openId?: string;
   now?: number;
 }): NeedsYou {
+  const tower = (input.tower ?? []).filter((item) => !item.id.startsWith(TOWER_TURN_ITEM));
+  const inTower = new Set(tower.flatMap((item) => (item.sessionId ? [item.sessionId] : [])));
   const elsewhere = (input.sessions ?? []).filter(
-    (session) => session.id !== input.openId && attentionOf(session, input.now) === 'now',
+    (session) => session.id !== input.openId && !inTower.has(session.id) && attentionOf(session, input.now) === 'now',
   ).length;
-  const total = input.approvals + (input.tower ?? 0) + elsewhere;
+  const total = input.approvals + tower.length + elsewhere;
   const scope = `${total} across all projects${input.approvals ? `, ${input.approvals} in this chat` : ''}`;
-  return { total, here: input.approvals, title: total ? `Needs you: ${scope}` : 'Nothing needs you now' };
+  return {
+    total,
+    here: input.approvals,
+    sessions: elsewhere,
+    title: total ? `Needs you: ${scope}` : 'Nothing needs you now',
+  };
+}
+
+/**
+ * Where "Needs you" goes. With a tower it is always the tower's inbox, also when that is empty: the
+ * result of the last delivery and the stores that could not be read are only there (the sessions
+ * that ask are one step on from it). Without one, the sessions that ask now; else the chat.
+ */
+export function needsYouPage(has: { tower: boolean; sessions: boolean }): 'inbox' | 'sessions' | 'chat' {
+  if (has.tower) return 'inbox';
+  return has.sessions ? 'sessions' : 'chat';
 }
 
 /** One agent's plan in the sidebar: its worst window. */
@@ -233,12 +263,12 @@ export function quotaRows(
   return rows.sort((a, b) => (b.percent ?? -1) - (a.percent ?? -1) || a.agent.localeCompare(b.agent));
 }
 
-/** What the window has open, innermost first, for Escape. */
+/**
+ * What the window has open under its menus, popovers and viewer, for Escape. Those are not here:
+ * each claims the key while it is open (`claimEscape`), the one opened last first, and the key
+ * gets this far only when none of them is.
+ */
 export interface OpenThings {
-  /** A menu or popover of the shell (Help, Settings, the session menu, artifacts). */
-  menu?: boolean;
-  /** The file or artifact viewer beside the chat. */
-  viewer?: boolean;
   /** A page in the chat's place (All sessions, Needs you, Agents). */
   page?: boolean;
   /** Keyboard focus is in the message field. */
@@ -248,12 +278,10 @@ export interface OpenThings {
 }
 
 /**
- * What Escape does: it closes the innermost open thing, and stops a running turn only when nothing
- * is open and the focus is in the message field. Otherwise nothing.
+ * What Escape does once no menu, popover or viewer took it: it leaves the open page, and stops a
+ * running turn only when no page is open and the focus is in the message field. Otherwise nothing.
  */
-export function escapeAction(open: OpenThings): 'menu' | 'viewer' | 'page' | 'stop' | undefined {
-  if (open.menu) return 'menu';
-  if (open.viewer) return 'viewer';
+export function escapeAction(open: OpenThings): 'page' | 'stop' | undefined {
   if (open.page) return 'page';
   if (open.inComposer && open.running) return 'stop';
   return undefined;

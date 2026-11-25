@@ -7,6 +7,7 @@ import {
   HOME_FOLDER,
   liveGlyph,
   needsYou,
+  needsYouPage,
   OPEN_CHAT_SOURCE,
   otherSessions,
   quotaRows,
@@ -133,12 +134,48 @@ it('counts what needs you across projects and in the open chat, the open session
     chat('other', { state: 'waiting', ending: 'question', updatedAt: now - 3_600_000 }),
     chat('ended', { state: 'waiting' }),
   ];
-  expect(needsYou({ approvals: 2, tower: 3, sessions, openId: 'open', now })).toEqual({
+  const tower = [{ id: 'draft-1' }, { id: 'draft-2' }, { id: 'draft-3' }];
+  expect(needsYou({ approvals: 2, tower, sessions, openId: 'open', now })).toEqual({
     total: 6,
     here: 2,
+    sessions: 1,
     title: 'Needs you: 6 across all projects, 2 in this chat',
   });
   expect(needsYou({ approvals: 0, now }).title).toBe('Nothing needs you now');
+});
+
+it('counts a request once when the tower, the open chat and the sessions all list it', () => {
+  const sessions = [
+    chat('open', { state: 'waiting', waitingFor: 'approval' }),
+    // Both in the tower: one by what its agent's store says, one by a hook that waits with two questions.
+    chat('native', { state: 'waiting', waitingFor: 'approval' }),
+    chat('hooked', { state: 'waiting', waitingFor: 'approval' }),
+    // Not in the tower: it asks with a question.
+    chat('asks', { state: 'waiting', ending: 'question', updatedAt: now - 3_600_000 }),
+  ];
+  const tower = [
+    // The open chat's own approval, as `TowerInbox.view()` repeats it.
+    { id: 'turn:1:approval-1' },
+    { id: 'native:["claude","native"]', sessionId: 'native' },
+    { id: 'hook:1', sessionId: 'hooked' },
+    { id: 'hook:2', sessionId: 'hooked' },
+    { id: 'draft-1' },
+  ];
+  expect(needsYou({ approvals: 1, tower, sessions, openId: 'open', now })).toMatchObject({
+    // 1 here, 4 in the tower besides it, 1 session the tower does not know.
+    total: 6,
+    here: 1,
+    sessions: 1,
+  });
+  // The tower's view of the turn alone adds nothing to the chat's own count.
+  expect(needsYou({ approvals: 1, tower: [{ id: 'turn:1:approval-1' }], now }).total).toBe(1);
+});
+
+it('opens the tower inbox from Needs you whenever there is a tower, also an empty one', () => {
+  expect(needsYouPage({ tower: true, sessions: true })).toBe('inbox');
+  expect(needsYouPage({ tower: true, sessions: false })).toBe('inbox');
+  expect(needsYouPage({ tower: false, sessions: true })).toBe('sessions');
+  expect(needsYouPage({ tower: false, sessions: false })).toBe('chat');
 });
 
 describe('quotaRows', () => {
@@ -169,9 +206,9 @@ describe('quotaRows', () => {
 });
 
 describe('escapeAction', () => {
-  it('closes the innermost open thing first', () => {
-    expect(escapeAction({ menu: true, viewer: true, page: true, inComposer: true, running: true })).toBe('menu');
-    expect(escapeAction({ viewer: true, page: true, inComposer: true, running: true })).toBe('viewer');
+  // Menus and the viewer come before this: `<Shell>`'s test presses the key on the live handlers.
+  it('leaves the open page before it stops anything', () => {
+    expect(escapeAction({ page: true, inComposer: true, running: true })).toBe('page');
     expect(escapeAction({ page: true, running: true })).toBe('page');
   });
 

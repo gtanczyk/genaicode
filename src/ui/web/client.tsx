@@ -5,6 +5,7 @@ import { personText } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { artifactKindLabel } from '../../react/artifact-panel.js';
+import { useEscape } from '../../react/escape.js';
 import { formatBytes } from '../../react/format.js';
 import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
@@ -30,6 +31,7 @@ import {
   HOME_FOLDER,
   liveGlyph,
   needsYou,
+  needsYouPage,
   OPEN_CHAT_SOURCE,
   otherSessions,
   quotaRows,
@@ -893,8 +895,14 @@ function App() {
   const [focusAgent, setFocusAgent] = useState<string>();
   const showSessions = panel === 'sessions';
   const showAgents = panel === 'agents';
-  // All sessions opened from Needs you: only the ones that ask now.
-  const [needsOnly, setNeedsOnly] = useState(false);
+  // What the Sessions view lists: every agent's sessions, only the ones that ask now (from Needs
+  // you), or this app's own chats of all time, the archived too (from "All chats").
+  const [listed, setListed] = useState<'all' | 'needs' | 'own'>('all');
+  const needsOnly = listed === 'needs';
+  // A chat is being started in another folder. Until the server says it runs there, nothing is
+  // sent: a prompt would start in the folder that is being left.
+  const [switching, setSwitching] = useState(false);
+  const switchingRef = useRef(false);
   const whatsNew = useRef<HTMLDialogElement>(null);
   const [seenRelease, setSeenRelease] = useState(() => {
     try {
@@ -1010,7 +1018,7 @@ function App() {
     }
   }, [viewer, sessionArtifacts]);
 
-  // Dismiss header popovers on outside click or Escape (before ViewerPanel sees Escape).
+  // Dismiss header popovers on outside click or Escape (the popover opened last, so it is asked before the viewer).
   useEffect(() => {
     if (!artifactsOpen && !settingsOpen) return;
     const close = () => {
@@ -1021,19 +1029,13 @@ function App() {
       if ((event.target as Element).closest?.('.popover-anchor')) return;
       close();
     };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      event.preventDefault();
-      close();
-    };
     window.addEventListener('mousedown', onPointerDown, true);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('mousedown', onPointerDown, true);
-      window.removeEventListener('keydown', onKey, true);
-    };
+    return () => window.removeEventListener('mousedown', onPointerDown, true);
   }, [artifactsOpen, settingsOpen]);
+  useEscape(artifactsOpen || settingsOpen, () => {
+    setArtifactsOpen(false);
+    setSettingsOpen(false);
+  });
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1051,6 +1053,8 @@ function App() {
     setPanel('chat');
   };
   const submit = (text: string, files?: File[]): Promise<boolean> => {
+    // Not sent, and the message field keeps it: the chat is moving to another folder.
+    if (switchingRef.current) return Promise.resolve(false);
     // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
     const own = parseSlash(text);
     if (own) {
@@ -1193,22 +1197,25 @@ function App() {
       document.querySelector<HTMLTextAreaElement>('.workspace .gc-box textarea')?.focus(),
     );
   };
-  const openSessions = (needsYouOnly: boolean) => {
+  const openSessions = (which: 'all' | 'needs' | 'own') => {
     setTopic(undefined);
-    setNeedsOnly(needsYouOnly);
+    setListed(which);
     setPanel('sessions');
   };
-  // Needs you is one place: the tower's drafts while it has any, else the sessions that ask now.
+  // Needs you is one place: the tower's inbox where there is a tower, else the sessions that ask now.
   const openNeedsYou = () => {
-    if (view?.tower && (view.tower.items.length || !hasSessions)) setPanel('inbox');
-    else if (hasSessions) openSessions(true);
+    const page = needsYouPage({ tower: !!view?.tower, sessions: hasSessions });
+    if (page === 'inbox') setPanel('inbox');
+    else if (page === 'sessions') openSessions('needs');
     else backToChat();
   };
   const pageTitle =
     panel === 'sessions'
       ? needsOnly
         ? 'Needs you'
-        : 'All sessions'
+        : listed === 'own'
+          ? 'All chats'
+          : 'All sessions'
       : panel === 'inbox'
         ? 'Needs you'
         : panel === 'agents'
@@ -1236,7 +1243,7 @@ function App() {
   const others = useMemo(() => (hasSessions ? otherSessions(chats.all, ownChats) : undefined), [chats.all, ownChats]);
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
-    tower: view?.tower?.items.length,
+    tower: view?.tower?.items,
     sessions: chats.all,
     openId: session?.sessionId,
   });
@@ -1371,13 +1378,16 @@ function App() {
                 ? 'settings'
                 : pageTitle === 'Needs you'
                   ? 'inbox'
-                  : 'sessions',
+                  : listed === 'own'
+                    ? 'chats'
+                    : 'sessions',
           onNewChat: startHomeChat,
           // The palette comes with a later step; ⌘K and the button are wired to this.
           onSearch: () => undefined,
           needs,
           onNeedsYou: openNeedsYou,
-          onAllSessions: hasSessions ? () => openSessions(false) : undefined,
+          onAllSessions: hasSessions ? () => openSessions('all') : undefined,
+          onAllChats: hasSessions ? () => openSessions('own') : undefined,
           projects,
           selectedChat: openRow ? sessionKey(openRow) : undefined,
           selectedGlyph: session
@@ -1398,10 +1408,20 @@ function App() {
           },
           onNewChatIn: (project) => {
             if (!isHome || project.key === HOME_FOLDER) return startHomeChat();
+            if (switchingRef.current) return;
             dropWaiting();
             setViewer(undefined);
-            void command({ type: 'project-chat', cwd: project.key });
             setPanel('chat');
+            switchingRef.current = true;
+            setSwitching(true);
+            void command({ type: 'project-chat', cwd: project.key })
+              .catch(() => undefined)
+              .then((started) => {
+                switchingRef.current = false;
+                setSwitching(false);
+                // The chat says why when the server refused; no answer at all is said here.
+                if (started === undefined) showToast(`Could not start a chat in ${project.name}.`, true);
+              });
           },
           // Outside --home the chat has one folder: a new chat starts there and nowhere else.
           canNewChatIn: (project) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
@@ -1435,13 +1455,16 @@ function App() {
       >
         {showSessions ? (
           <Sessions
-            key={needsOnly ? 'needs' : 'all'}
+            key={listed}
             token={token}
             cwd={activeCwd}
             home={isHome}
             topic={topic}
             onAllTopics={() => setTopic(undefined)}
             initialState={needsOnly ? 'now' : undefined}
+            own={listed === 'own'}
+            initialDays={listed === 'own' ? 0 : undefined}
+            onAllSessions={() => openSessions('all')}
             nativeSave={config?.nativeSave}
             onStatus={showToast}
             onNewTopicChat={isHome ? startTopicChat : undefined}
@@ -1460,6 +1483,7 @@ function App() {
             view={view.tower}
             connected={connected}
             decide={(id, decision) => command({ type: 'tower', id, decision })}
+            asking={hasSessions ? { count: needs.sessions, onOpen: () => openSessions('needs') } : undefined}
           />
         )}
         {showAgents ? (
@@ -1488,7 +1512,7 @@ function App() {
             // The work in one line that opens on click: a long run of tool calls buries the answer.
             foldSteps
             autoFocus={!inSetup}
-            disabled={!connected || inSetup}
+            disabled={!connected || inSetup || switching}
             placeholder={inSetup ? 'Connect an agent to start' : undefined}
             notices={view?.notices}
             artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
@@ -1623,7 +1647,7 @@ function App() {
                         token={token}
                         onTopic={(id) => {
                           setTopic(id);
-                          setNeedsOnly(false);
+                          setListed('all');
                           setPanel('sessions');
                         }}
                         onNewTopicChat={isHome ? startTopicChat : undefined}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEscape } from '../../react/escape.js';
 import type { TranscriptFormat, TranscriptMeta } from '../transcript.js';
 
 export interface TranscriptMenuProps {
@@ -140,19 +141,13 @@ export function TranscriptMenu({
     const onPointerDown = (event: MouseEvent) => {
       if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      setOpen(false);
-      buttonRef.current?.focus();
-    };
     document.addEventListener('mousedown', onPointerDown);
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      window.removeEventListener('keydown', onKeyDown, true);
-    };
+    return () => document.removeEventListener('mousedown', onPointerDown);
   }, [open]);
+  useEscape(open, () => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  });
 
   const fetchTranscript = async (format: TranscriptFormat): Promise<{ text: string; filename: string }> => {
     const res = await fetch(`${endpoint}?format=${format}`, {

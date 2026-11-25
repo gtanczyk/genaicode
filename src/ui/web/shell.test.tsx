@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { chatProjects, needsYou, quotaRows, sessionKey } from '../sidebar.js';
+import { ViewerPanel } from './file-view.js';
 import { Shell, SIDEBAR_KEY, type ShellProps } from './shell.js';
 import { TERMS_URL } from './sidebar.js';
 
@@ -46,7 +47,7 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
       page: 'chat',
       onNewChat: vi.fn(),
       onSearch: vi.fn(),
-      needs: needsYou({ approvals: 1, tower: 2, now }),
+      needs: needsYou({ approvals: 1, tower: [{ id: 'draft-1' }, { id: 'draft-2' }], now }),
       onNeedsYou: vi.fn(),
       onAllSessions: vi.fn(),
       projects: chatProjects(chats),
@@ -305,6 +306,86 @@ describe('<Shell>', () => {
     dialog.remove();
     press('Escape');
     expect(onBack).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives Escape to what was opened last: the menu, then the viewer, then the page, one press each', () => {
+    const onBack = vi.fn();
+    const onClose = vi.fn();
+    const onStop = vi.fn();
+    const artifact = {
+      id: 'a1',
+      name: 'report',
+      title: 'Report',
+      kind: 'file' as const,
+      mimeType: 'application/zip',
+      bytes: 10,
+      version: 1,
+    };
+    const page = (viewer: boolean) =>
+      props({
+        title: 'All sessions',
+        onBack,
+        children: (
+          <div className="workspace">
+            {/* The message field's own key, as <AgentChat> has it: Escape there stops the turn. */}
+            <textarea aria-label="Message" onKeyDown={(event) => event.key === 'Escape' && onStop()} />
+            {viewer ? (
+              <ViewerPanel
+                target={{ kind: 'artifact', id: 'a1' }}
+                token="t"
+                artifacts={[{ id: 'a1', latest: artifact, versions: [artifact] }]}
+                onClose={onClose}
+              />
+            ) : null}
+          </div>
+        ),
+      });
+    render(page(true));
+    const field = host.querySelector('textarea')!;
+    // The viewer was open first; Help opens over it. Rendering again must not put the viewer back on top.
+    click(button('Help'));
+    render(page(true));
+    expect(host.querySelector('[role="menu"][aria-label="Help"]')).not.toBeNull();
+
+    press('Escape', {}, field);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(host.querySelector('.viewer-panel')).not.toBeNull();
+    expect([onClose.mock.calls.length, onBack.mock.calls.length, onStop.mock.calls.length]).toEqual([0, 0, 0]);
+
+    press('Escape', {}, field);
+    expect([onClose.mock.calls.length, onBack.mock.calls.length, onStop.mock.calls.length]).toEqual([1, 0, 0]);
+    render(page(false));
+
+    // A page hides the chat, so the focus is not in the message field then.
+    press('Escape');
+    expect([onClose.mock.calls.length, onBack.mock.calls.length, onStop.mock.calls.length]).toEqual([1, 1, 0]);
+
+    // In the chat, with nothing open, the key is the message field's again.
+    render({ ...page(false), onBack: undefined });
+    press('Escape', {}, host.querySelector('textarea')!);
+    expect([onClose.mock.calls.length, onBack.mock.calls.length, onStop.mock.calls.length]).toEqual([1, 1, 1]);
+  });
+
+  it('ends the chat list with All chats, the way to the older and the archived ones', () => {
+    const onAllChats = vi.fn();
+    render(props({}, { onAllChats }));
+    const all = button('All chats');
+    // After the projects, before the other agents' sessions.
+    const rows = Array.from(host.querySelectorAll('.side-scroll > *'));
+    expect(rows.indexOf(all)).toBe(rows.findIndex((row) => row.matches('section.other')) - 1);
+    expect(all.getAttribute('aria-current')).toBeNull();
+    click(all);
+    expect(onAllChats).toHaveBeenCalledTimes(1);
+
+    render(props({ title: 'All chats', onBack: vi.fn() }, { onAllChats, page: 'chats' }));
+    expect(button('All chats').getAttribute('aria-current')).toBe('page');
+    expect(button('All sessions').getAttribute('aria-current')).toBeNull();
+    // Also with no recent chat at all: the older ones are still somewhere.
+    render(props({}, { onAllChats, projects: [] }));
+    expect(button('All chats')).toBeDefined();
+    // No session index, no list to go to.
+    render(props());
+    expect(button('All chats')).toBeUndefined();
   });
 
   it('leaves Escape alone in the chat: stopping a turn is the message field’s own key', () => {

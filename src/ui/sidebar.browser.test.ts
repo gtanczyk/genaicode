@@ -242,6 +242,66 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await page.keyboard.press('ControlOrMeta+b');
     await vi.waitFor(async () => expect(await sideWidth(page)).toBe(268));
 
+    // "All chats" ends the list: every chat of this app in the Sessions view, of all time, and the
+    // archived ones under their state.
+    const allChats = chats.getByRole('button', { name: 'All chats', exact: true });
+    await allChats.click();
+    await vi.waitFor(async () => expect(await topbar.locator('h1').textContent()).toBe('All chats'));
+    expect(await allChats.getAttribute('aria-current')).toBe('page');
+    expect(
+      await side.getByRole('button', { name: 'All sessions', exact: true }).getAttribute('aria-current'),
+    ).toBeNull();
+    const list = page.locator('main.sessions');
+    expect(await list.getByRole('combobox', { name: 'Period' }).inputValue()).toBe('0');
+    const flour = list.locator('.session-row', { hasText: 'Order flour' });
+    await flour.getByRole('button', { name: 'Archive', exact: true }).click();
+    await flour.waitFor({ state: 'detached' });
+    await list.getByRole('combobox', { name: 'State' }).selectOption('archived');
+    await flour.getByRole('button', { name: 'Unarchive' }).click();
+    await flour.waitFor({ state: 'detached' });
+    await list.getByRole('combobox', { name: 'State' }).selectOption('');
+    await flour.waitFor();
+    await list.getByRole('button', { name: /Chats of this app/ }).click();
+    await vi.waitFor(async () => expect(await topbar.locator('h1').textContent()).toBe('All sessions'));
+
+    // "New chat here" while the server still looks the folder up: nothing can be sent meanwhile,
+    // and when it fails the draft is still in the message field, in the chat that was open.
+    await first.click();
+    await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').count()).toBe(0));
+    let answer: ((ok: boolean) => void) | undefined;
+    await page.route('**/api/command', async (route) => {
+      if ((route.request().postDataJSON() as { type?: string }).type !== 'project-chat') return route.fallback();
+      const go = await new Promise<boolean>((resolve) => (answer = resolve));
+      return go ? route.fallback() : route.fulfill({ json: { ok: false } });
+    });
+    const sentBefore = made.length;
+    const newHere = async () => {
+      answer = undefined;
+      await project.locator('summary').hover();
+      await project.getByRole('button', { name: 'New chat here, bakery' }).click();
+      await vi.waitFor(() => expect(answer).toBeDefined());
+    };
+    await composer.fill('Feed the starter');
+    await newHere();
+    expect(await composer.getAttribute('aria-disabled')).toBe('true');
+    await composer.press('Enter');
+    expect(await composer.inputValue()).toBe('Feed the starter');
+    answer!(false);
+    await vi.waitFor(async () => expect(await composer.getAttribute('aria-disabled')).toBeNull());
+    expect(await composer.inputValue()).toBe('Feed the starter');
+    expect(await topbar.locator('.crumb').count()).toBe(0);
+    expect(made.length).toBe(sentBefore);
+    // Once the chat is in the folder, the same draft goes there.
+    await newHere();
+    answer!(true);
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('bakery'));
+    await vi.waitFor(async () => expect(await composer.getAttribute('aria-disabled')).toBeNull());
+    await composer.press('Enter');
+    await project.getByRole('button', { name: /Feed the starter/ }).waitFor();
+    expect(made.at(-1)).toMatchObject({ title: 'Feed the starter', cwd: bakery });
+    await page.unroute('**/api/command');
+
     // A window under 980 px starts with the rail until the person chooses.
     const narrow = await browser.newContext({ viewport: { width: 900, height: 700 } });
     const small = await narrow.newPage();

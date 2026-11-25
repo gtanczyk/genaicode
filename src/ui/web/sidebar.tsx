@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
+import { useEscape } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { ago } from '../sessions.js';
 import {
@@ -128,20 +129,13 @@ export function MenuButton({
     const onPointer = (event: MouseEvent) => {
       if (!wrap.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      event.preventDefault();
-      setOpen(false);
-      trigger.current?.focus();
-    };
     document.addEventListener('mousedown', onPointer);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      document.removeEventListener('mousedown', onPointer);
-      window.removeEventListener('keydown', onKey, true);
-    };
+    return () => document.removeEventListener('mousedown', onPointer);
   }, [open]);
+  useEscape(open, () => {
+    setOpen(false);
+    trigger.current?.focus();
+  });
   return (
     <span className="menu-anchor" ref={wrap} data-tauri-drag-region="false">
       <button
@@ -169,7 +163,7 @@ export interface SidebarProps {
   collapsed: boolean;
   onToggle(): void;
   /** Which entry is the page shown: a nav item, or the chat (then `selectedChat` marks its row). */
-  page: 'chat' | 'sessions' | 'inbox' | 'settings';
+  page: 'chat' | 'sessions' | 'chats' | 'inbox' | 'settings';
   onNewChat(): void;
   /** ⌘K. The palette comes in a later step: until then the button says so and does nothing. */
   onSearch?(): void;
@@ -177,7 +171,12 @@ export interface SidebarProps {
   onNeedsYou(): void;
   /** Absent when the page has no session index (`/api/sessions`). */
   onAllSessions?(): void;
-  /** This app's chats by directory. */
+  /**
+   * Every chat of this app: the list here ends after 30 days and leaves out the archived, so this is
+   * the way to the rest. Absent when the page has no session index.
+   */
+  onAllChats?(): void;
+  /** This app's chats by directory, the recent ones. */
   projects: readonly ChatProject[];
   /** `sessionKey` of the open chat's row. */
   selectedChat?: string;
@@ -333,6 +332,19 @@ export function Sidebar(props: SidebarProps) {
             })}
           </details>
         ))}
+        {props.onAllChats ? (
+          <button
+            type="button"
+            className="nav chat all"
+            aria-label="All chats"
+            aria-current={props.page === 'chats' ? 'page' : undefined}
+            title="Every chat of this app: the older than 30 days and the archived too"
+            onClick={props.onAllChats}
+          >
+            <span className="grow">All chats</span>
+            <Icon name="chev" />
+          </button>
+        ) : null}
         {props.others?.shown.length && props.onAllSessions ? (
           <section className="other" aria-label="Other agents' sessions">
             <div className="group-h">Other agents’ sessions</div>
