@@ -319,6 +319,35 @@ describe('AgentChat', () => {
     expect($('.gc-pack-detail').getAttribute('aria-label')).toBe('Task t1');
     expect($<HTMLTextAreaElement>('.gc-pack-detail textarea').value).toBe('check empty input');
   });
+  it('folds the steps taken after a message sent mid-turn below it, keeping the reply to each message', () => {
+    const state = fixture();
+    state.turns[1].entries = [
+      { kind: 'tool', id: 'a1', name: 'Bash', input: { command: 'ls' }, done: true },
+      { kind: 'text', text: 'First answer.', streaming: false },
+      { kind: 'tool', id: 'a2', name: 'Bash', input: { command: 'git status' }, done: true },
+      { kind: 'text', text: 'Answer to the first message.', streaming: false },
+      { kind: 'input', text: 'what about the docs?' },
+      { kind: 'tool', id: 'a3', name: 'Bash', input: { command: 'cat README.md' }, done: true },
+      { kind: 'text', text: 'Reading the docs.', streaming: false },
+      { kind: 'tool', id: 'a4', name: 'Bash', input: { command: 'npm test' }, done: false },
+    ];
+    render({ state, foldSteps: true });
+    const turn = $$('.gc-turn')[1];
+    const order = [...turn.querySelectorAll('.gc-steps > *')].map((node) =>
+      node.matches('.gc-fold')
+        ? 'fold: ' + node.querySelector('summary')!.textContent
+        : node.matches('.gc-steer')
+          ? 'message'
+          : (node.textContent ?? '').trim(),
+    );
+    expect(order).toEqual([
+      'fold: 2 steps',
+      'Answer to the first message.',
+      'message',
+      'fold: 2 steps · Shell',
+      'Reading the docs.',
+    ]);
+  });
   it('names the step a running turn is on beside "is working", also below messages sent since', () => {
     const state = fixture();
     state.turns[1].entries.push(

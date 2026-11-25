@@ -19,8 +19,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- **The bottom of a running chat names the step the agent is on.** (#375)
-  - "claude is working" now reads "claude is working · 2m 10s · Shell npm test", also when the steps sit above messages you sent since.
+- **A running chat keeps its newest steps and replies at the bottom.** (#375)
+  - Steps taken after a message you send mid-turn fold below that message, and the reply to each message stays in view instead of folding into the steps.
+  - "claude is working" names the step it is on: "claude is working · 2m 10s · Shell npm test".
 - **Taken-over chats are titled from your words, and chats wait for a running turn.** (#374)
   - A chat started by Continue here is titled from what you wrote, not the takeover recap, also for older sessions.
   - While a turn runs, other chats and New chat look unavailable; choosing one offers Stop and open or Wait.
