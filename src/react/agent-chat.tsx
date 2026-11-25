@@ -216,6 +216,11 @@ export interface AgentChatProps {
   composerTitle?: string;
   /** Keep the user from sending (the box stays editable), e.g. while the host is disconnected. */
   disabled?: boolean;
+  /**
+   * While `disabled`, a message this accepts is sent all the same (without files), e.g. the host's
+   * commands that move it to another chat while it waits for one.
+   */
+  sendsWhileDisabled?(draft: string): boolean;
   autoFocus?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
   theme?: 'auto' | 'light' | 'dark';
@@ -286,7 +291,10 @@ export function AgentChat(props: AgentChatProps) {
 
   const attached = useAttachments(props.attachments);
   const picker = useRef<HTMLInputElement>(null);
-  const sendable = (!!draft.trim() || attached.files.length > 0) && !props.disabled && !attached.recording;
+  const sendable =
+    (!!draft.trim() || attached.files.length > 0) &&
+    (!props.disabled || (!attached.files.length && !!props.sendsWhileDisabled?.(draft))) &&
+    !attached.recording;
   // What is in the composer now, for an answer that comes later.
   const composing = useRef({ draft, files: attached.files });
   composing.current = { draft, files: attached.files };

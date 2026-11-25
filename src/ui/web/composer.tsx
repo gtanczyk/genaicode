@@ -44,7 +44,11 @@ function Popover({
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: MouseEvent) => {
-      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+      if (wrap.current?.contains(event.target as Node)) return;
+      // A field of the panel commits when left: it is left now, before the panel and the edit go.
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && wrap.current?.contains(focused)) focused.blur();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onPointer);
     return () => document.removeEventListener('mousedown', onPointer);

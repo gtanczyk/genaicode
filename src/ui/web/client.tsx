@@ -14,7 +14,15 @@ import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
 import { agentGuide, agentOrder } from '../../agents/drivers/catalog.js';
 import type { AgentInspection } from '../../agents/status.js';
-import { firstLine, formatUsage, needsAttention, parseSlash, SLASH_COMMANDS, splitAttached } from '../format.js';
+import {
+  firstLine,
+  formatUsage,
+  needsAttention,
+  parseSlash,
+  SLASH_COMMANDS,
+  splitAttached,
+  type SlashCommand,
+} from '../format.js';
 import type { UiRelease } from './release.js';
 import type { WebCommand, WebFolder, WebSessionListing, WebSwitchCommand } from './server.js';
 import {
@@ -813,6 +821,14 @@ function focusComposer() {
  * What the server knows of a folder (`GET /api/folder`); undefined when the path is not one. A
  * typed path is taken as typed in (`~`, spaces around it); `exact`, the chat's own, as it is.
  */
+/**
+ * The commands that move the window: they still go while it waits for another chat or a folder,
+ * and are asked for after that request, which they supersede (`/continue` with no id moves nothing).
+ */
+function navigates(own: SlashCommand): boolean {
+  return own.kind === 'clear' || own.kind === 'new' || (own.kind === 'continue' && !!own.id);
+}
+
 async function inspectFolder(path: string, exact = false): Promise<WebFolder | undefined> {
   const res = await fetch(`/api/folder?${exact ? 'cwd' : 'path'}=${encodeURIComponent(path)}`, {
     headers: { 'x-genaicode-token': token },
@@ -932,6 +948,20 @@ function App() {
   // later one, and only the answer to the last gives the message field back. The answer of an
   // earlier one says nothing about where the window is.
   const switchSeq = useRef(0);
+  // The project line looks a folder up (a typed path, the host's dialog): until it is found and
+  // asked for, or dropped, prompts wait as they do while switching, as they may be for that folder.
+  const [lookingUp, setLookingUp] = useState(0);
+  const lookingUpRef = useRef(0);
+  const lookUp = <T,>(found: Promise<T>): Promise<T> => {
+    lookingUpRef.current += 1;
+    setLookingUp(lookingUpRef.current);
+    return found.finally(() => {
+      lookingUpRef.current -= 1;
+      setLookingUp(lookingUpRef.current);
+    });
+  };
+  // Prompts wait; the commands that move the window (`navigates`) still go, and are ordered after it.
+  const holding = switching || lookingUp > 0;
   const whatsNew = useRef<HTMLDialogElement>(null);
   const [seenRelease, setSeenRelease] = useState(() => {
     try {
@@ -1144,25 +1174,49 @@ function App() {
     setPanel('chat');
   };
   const submit = (text: string, files?: File[]): Promise<boolean> => {
-    // Not sent, and the message field keeps it: the window is moving to another chat.
-    if (switchingRef.current) return Promise.resolve(false);
-    // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
     const own = parseSlash(text);
+    // Not sent, and the message field keeps it: the window is moving to another chat, or a folder
+    // for one is being looked up. Only a command that moves the window itself goes, and comes after.
+    if ((switchingRef.current || lookingUpRef.current > 0) && !(own && navigates(own) && !files?.length))
+      return Promise.resolve(false);
+    // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
     if (own) {
       if (files?.length) {
         setUnsent({ problem: 'Not sent: files go with a prompt, not with a command.', text: text.trim() });
         return Promise.resolve(false);
       }
       if (own.kind === 'plan') return orderedControl(text);
+      // As the switch: for the conversation shown now, so a chat opened meanwhile is not approved.
+      if (own.kind === 'auto' && own.invalid === undefined && view?.generation !== undefined) {
+        setAutoApprove(own.on ?? !view.autoApprove);
+        return Promise.resolve(true);
+      }
       // A chat asked for by id is numbered with those picked in the sidebar: the one asked for last wins.
       if (own.kind === 'continue' && own.id) {
-        switchChat({ type: 'continue', id: own.id, takeover: true }, 'open that chat');
+        void switchChat({ type: 'continue', id: own.id, takeover: true }, 'open that chat');
+        return Promise.resolve(true);
+      }
+      // `/clear` is the new chat of the project line's Home folder, numbered with the other requests.
+      if (own.kind === 'clear') {
+        void switchChat({ type: 'home-chat' }, 'start a new chat');
         return Promise.resolve(true);
       }
       // Stopping or leaving the conversation drops what still waits here, as the buttons do.
-      if (['stop', 'new', 'clear', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
-      // A new chat: a folder still being looked up for the one that is left does not move it.
-      if (['new', 'clear', 'continue'].includes(own.kind)) switchSeq.current += 1;
+      if (['stop', 'new', 'continue', 'agent', 'quit'].includes(own.kind)) dropWaiting();
+      // A new agent session in this chat: a chat or folder still asked for does not move it.
+      if (own.kind === 'new') {
+        const stayed = switchingRef.current
+          ? switchChat({ type: 'stay-chat' }, 'stay in this chat')
+          : ((switchSeq.current += 1), Promise.resolve(true));
+        return stayed.then((here) =>
+          here === false
+            ? false
+            : command({ type: 'submit', text }).then(
+                () => true,
+                () => true,
+              ),
+        );
+      }
       return command({ type: 'submit', text }).then(
         () => true,
         () => true,
@@ -1542,7 +1596,15 @@ function App() {
               // The work in one line that opens on click: a long run of tool calls buries the answer.
               foldSteps
               autoFocus={!inSetup}
-              disabled={!connected || inSetup || switching}
+              disabled={!connected || inSetup || holding}
+              sendsWhileDisabled={
+                connected && !inSetup && holding
+                  ? (draft) => {
+                      const own = parseSlash(draft);
+                      return !!own && navigates(own);
+                    }
+                  : undefined
+              }
               placeholder={inSetup ? 'Connect an agent to start' : undefined}
               notices={view?.notices}
               artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
@@ -1563,8 +1625,8 @@ function App() {
                     onProject={startChosenProject}
                     onHome={startHomeChat}
                     onStay={stayInChat}
-                    inspect={(path) => inspectFolder(path)}
-                    choose={config?.chooseFolder ? chooseFolder : undefined}
+                    inspect={(path) => lookUp(inspectFolder(path))}
+                    choose={config?.chooseFolder ? () => lookUp(chooseFolder()) : undefined}
                   />
                 ) : undefined
               }

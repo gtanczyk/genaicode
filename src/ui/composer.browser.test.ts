@@ -204,6 +204,17 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     // A click outside closes it too.
     await message.click();
     await pop.waitFor({ state: 'detached' });
+    // A field that click leaves keeps what was typed in it.
+    await chip.click();
+    await pop.getByLabel('Model').fill('model-10');
+    await message.click();
+    await pop.waitFor({ state: 'detached' });
+    await vi.waitFor(async () => expect(await chip.textContent()).toContain('model-10'));
+    await chip.click();
+    await pop.getByLabel('Fallback when it runs out').fill('');
+    await message.click();
+    await pop.waitFor({ state: 'detached' });
+    await log.getByText('Failover off.').waitFor();
 
     // Plan is a toggle; the permission switch names both states and covers the chat.
     const plan = card.getByRole('button', { name: 'Plan', exact: true });
@@ -219,12 +230,28 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await vi.waitFor(async () => expect(await auto.getAttribute('aria-pressed')).toBe('true'));
     await ask.click();
     await vi.waitFor(async () => expect(await ask.getAttribute('aria-pressed')).toBe('true'));
+    // Typed, `/auto on` and the bare toggle go the same way.
+    await message.fill('/auto on');
+    await message.press('Enter');
+    await vi.waitFor(async () => expect(await auto.getAttribute('aria-pressed')).toBe('true'));
+    await message.fill('/auto');
+    await message.press('Enter');
+    await vi.waitFor(async () => expect(await ask.getAttribute('aria-pressed')).toBe('true'));
     // Each names the conversation shown when it was clicked: the server refuses it in another one.
     expect(commands.filter((command) => command.type === 'auto')).toEqual([
       { type: 'auto', on: true, generation: expect.any(Number) },
       { type: 'auto', on: false, generation: expect.any(Number) },
+      { type: 'auto', on: true, generation: expect.any(Number) },
+      { type: 'auto', on: false, generation: expect.any(Number) },
     ]);
+    expect(commands.filter((command) => /^\/auto/.test(String(command.text ?? '')))).toEqual([]);
 
+    // A field marked waiting (aria-disabled) still takes what is typed: Playwright's fill does not.
+    const retype = async (text: string) => {
+      await message.focus();
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.type(text);
+    };
     // The project line: a folder by its path. There is no worktree choice in it.
     expect(await starts.getByRole('button', { name: 'New worktree' }).count()).toBe(0);
     await project.click();
@@ -240,11 +267,16 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
         await held;
         await route.continue();
       });
+      await message.fill('Plan the siege');
       if (!(await projects.count())) await project.click();
       await projects.getByLabel('Folder path').fill(knights);
       await projects.getByLabel('Folder path').press('Enter');
+      // While the folder is looked up a prompt waits: it may be meant for that folder.
+      await message.press('Enter');
+      expect(await message.inputValue()).toBe('Plan the siege');
+      expect(await message.getAttribute('aria-disabled')).toBe('true');
       if (stay === '/clear') {
-        await message.fill('/clear');
+        await retype('/clear');
         await message.press('Enter');
       } else await projects.getByRole('radio', { name: /Home folder/ }).click();
       const looked = page.waitForResponse(/\/api\/folder\?path=/);
@@ -254,7 +286,56 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
       await page.unroute(/\/api\/folder\?path=/);
       expect(commands.filter((command) => command.type === 'project-chat')).toEqual([]);
       expect(await project.textContent()).toContain('Home folder');
+      await vi.waitFor(async () => expect(await message.getAttribute('aria-disabled')).toBeNull());
+      if (stay !== '/clear') expect(await message.inputValue()).toBe('Plan the siege');
     }
+    expect(commands.filter((command) => command.text === 'Plan the siege')).toEqual([]);
+    // The chat in the folder is asked for and the server has not answered: `/clear` and `/new` go
+    // all the same, after it, and the window stays where they leave it. A prompt still waits.
+    for (const move of ['/clear', '/new']) {
+      let letGo!: () => void;
+      const held = new Promise<void>((resolve) => (letGo = resolve));
+      let asked = false;
+      await page.route('**/api/command', async (route) => {
+        if ((route.request().postDataJSON() as { type?: string }).type !== 'project-chat') return route.fallback();
+        asked = true;
+        await held;
+        await route.fallback();
+      });
+      const before = commands.length;
+      await message.fill('Plan the siege');
+      if (!(await projects.count())) await project.click();
+      await projects.getByLabel('Folder path').fill(knights);
+      await projects.getByLabel('Folder path').press('Enter');
+      await vi.waitFor(() => expect(asked).toBe(true));
+      await message.press('Enter');
+      expect(await message.inputValue()).toBe('Plan the siege');
+      expect(await message.getAttribute('aria-disabled')).toBe('true');
+      await retype(move);
+      await message.press('Enter');
+      const moves = () =>
+        commands
+          .slice(before)
+          .filter((command) => ['project-chat', 'home-chat', 'stay-chat', 'submit'].includes(String(command.type)))
+          .map((command) => (command.type === 'submit' ? command.text : command.type));
+      await vi.waitFor(() =>
+        expect(moves()).toEqual(
+          move === '/clear' ? ['project-chat', 'home-chat'] : ['project-chat', 'stay-chat', '/new'],
+        ),
+      );
+      const answered = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/api/command' &&
+          (response.request().postDataJSON() as { type?: string }).type === 'project-chat',
+      );
+      letGo();
+      expect(await (await answered).json()).toMatchObject({ ok: false });
+      await page.waitForTimeout(300);
+      await page.unroute('**/api/command');
+      expect(await project.textContent()).toContain('Home folder');
+      await vi.waitFor(async () => expect(await message.getAttribute('aria-disabled')).toBeNull());
+    }
+    expect(commands.filter((command) => command.text === 'Plan the siege')).toEqual([]);
     if (!(await projects.count())) await project.click();
     await projects.getByLabel('Folder path').fill(join(root, 'nowhere'));
     await projects.getByLabel('Folder path').press('Enter');
