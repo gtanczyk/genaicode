@@ -1,12 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import type { PackAction } from '../agents/pack.js';
+import type { PackAction, PackSteer, PackStep } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
 import type { ApprovalDecision, ApprovalRequest } from '../agents/types.js';
 import {
+  clockTime,
   packActivity,
   packCheckLabel,
+  packLatestMessage,
   packQuotaText,
-  packSteerText,
+  packRunningStep,
+  packStepLine,
+  packSteerReceipt,
   packTaskElapsed,
   packTaskError,
   packTaskOutcome,
@@ -379,9 +383,16 @@ function TaskRow({
   const error = packTaskError(task);
   const elapsed = packTaskElapsed(task, now);
   const activity = task.status === 'running' ? packActivity(task.text ?? '') : undefined;
+  const step = packRunningStep(task);
+  const doing = step ? packStepLine(step, now, task.cwd) : undefined;
   const line = ask ? (
     <span className="gc-work-line" data-tone="ask">
       <code>{askSubject(ask)}</code>
+    </span>
+  ) : doing ? (
+    <span className="gc-work-line gc-work-doing">
+      <b>{doing.verb}</b> <code>{doing.object}</code>
+      <span className="gc-work-dt"> · {doing.detail}</span>
     </span>
   ) : activity ? (
     <span className="gc-work-line">
@@ -662,6 +673,9 @@ function TaskDetail({
   const error = packTaskError(task);
   const activity = running ? packActivity(task.text ?? '') : undefined;
   const elapsed = packTaskElapsed(task, now);
+  const step = packRunningStep(task);
+  const doing = step ? packStepLine(step, now, task.cwd) : undefined;
+  const said = packLatestMessage(task);
   const send = () => {
     const text = input.trim();
     if (text) void perform({ type: 'steer', text });
@@ -737,20 +751,38 @@ function TaskDetail({
         ))}
         {running ? (
           <div className="gc-work-card" data-tone="run" aria-label="Doing now" role="group">
+            {/* Announced when what it does changes; the time, which ticks every second, is not read out. */}
             <div className="gc-work-now" aria-live="polite">
-              {activity?.argument ? (
+              {doing ? (
                 <>
-                  <b>{activity.tool}</b> <code title={activity.argument}>{activity.argument}</code>
+                  <b>{doing.verb}</b> <code title={doing.object}>{doing.object}</code>
+                  <span className="gc-work-elapsed" aria-hidden="true" title={`Started ${clockTime(step!.at)}`}>
+                    {doing.detail}
+                  </span>
                 </>
               ) : (
-                <b>{activity?.text || 'Starting…'}</b>
+                <>
+                  {activity?.argument ? (
+                    <>
+                      <b>{activity.tool}</b> <code title={activity.argument}>{activity.argument}</code>
+                    </>
+                  ) : (
+                    <b>{activity?.text || 'Starting…'}</b>
+                  )}
+                  {elapsed ? (
+                    <span className="gc-work-elapsed" aria-hidden="true">
+                      {elapsed}
+                    </span>
+                  ) : null}
+                </>
               )}
-              {elapsed ? (
-                <span className="gc-work-elapsed" aria-hidden="true">
-                  {elapsed}
-                </span>
-              ) : null}
             </div>
+            {doing && said ? (
+              <p className="gc-work-say">
+                <small>Latest message · {task.agent}</small>
+                {said}
+              </p>
+            ) : null}
           </div>
         ) : null}
         {error ? (
@@ -764,22 +796,6 @@ function TaskDetail({
 
         <h4 className="gc-work-label">What it was asked</h4>
         <Asked prompt={task.prompt} />
-
-        {task.steers?.length ? (
-          <>
-            <h4 className="gc-work-label">Messages sent while it ran</h4>
-            <ol className="gc-work-steers" aria-label="Messages sent while it ran">
-              {task.steers.map((steer, i) => (
-                <li key={i}>
-                  <p>{steer.text}</p>
-                  <small data-delivery={steer.delivery} role="status">
-                    {packSteerText(steer, task.agent)}
-                  </small>
-                </li>
-              ))}
-            </ol>
-          </>
-        ) : null}
 
         {!running && (task.verdict || (task.text && !(stopped && task.text.trim() === task.error?.trim()))) ? (
           <>
@@ -995,6 +1011,21 @@ function TaskDetail({
             )}
           </fieldset>
         ) : null}
+        {task.steps?.length || task.steers?.length ? (
+          <>
+            <h4 className="gc-work-label">
+              Timeline <span>newest first</span>
+            </h4>
+            <Timeline
+              item={item}
+              now={now}
+              cwd={cwd}
+              resend={
+                running && task.canSteer && act && !busy ? (text) => void perform({ type: 'steer', text }) : undefined
+              }
+            />
+          </>
+        ) : null}
         {feedback ? (
           <p role="status" className={feedback.error ? 'gc-work-feedback gc-work-bad' : 'gc-work-feedback'}>
             {feedback.text}
@@ -1054,12 +1085,138 @@ function TaskDetail({
           )}
           <small>
             {task.canSteer
-              ? `${task.agent} reads your message between two steps of its work. Whether it arrived shows under Messages sent while it ran.`
+              ? `${task.agent} reads your message between two steps of its work. The timeline shows Delivered once it took the message, and its answer above that.`
               : `${task.agent} cannot take messages while it works. Stop the task, or wait until it finishes.`}
           </small>
         </fieldset>
       ) : null}
     </>
+  );
+}
+
+const STEP_ICON: Record<PackStep['kind'] | 'start', ReactNode> = {
+  tool: <path d="m3 5 3 3-3 3M8 11h5" />,
+  edit: <path d="M3 13h2.5L13 5.5 10.5 3 3 10.5zM9.5 4 12 6.5" />,
+  message: <path d="M2.5 3.5h11v7h-6L4.5 13v-2.5h-2z" />,
+  approval: <path d="M8 2 14 8 8 14 2 8z" />,
+  error: <path d="m4 4 8 8M12 4l-8 8" />,
+  start: <path d="M8 2v4M8 10v4M2 8h4M10 8h4" />,
+};
+
+function StepIcon({ kind }: { kind: keyof typeof STEP_ICON }) {
+  return (
+    <svg className="gc-work-tl-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {STEP_ICON[kind]}
+    </svg>
+  );
+}
+
+function Clock({ at }: { at: number }) {
+  return (
+    <time dateTime={new Date(at).toISOString()} title={new Date(at).toLocaleString()}>
+      {clockTime(at)}
+    </time>
+  );
+}
+
+/**
+ * What a task did, newest first: the tool calls that returned, with what each worked on and how it
+ * went; what the agent said; the messages sent to it, each with its receipt; and its start. The
+ * tool call that runs now is in the card above, not here.
+ */
+function Timeline({
+  item,
+  now,
+  cwd,
+  resend,
+}: {
+  item: WorkTask;
+  now: number;
+  /** The chat's folder: the task's directory is shown relative to it. */
+  cwd: string;
+  /** Send a message that was not delivered once more. Absent when the task takes none now. */
+  resend?(text: string): void;
+}) {
+  const { task } = item;
+  const current = packRunningStep(task);
+  type Row = { at: number; order: number } & ({ step: PackStep } | { steer: PackSteer });
+  const rows: Row[] = [
+    ...(task.steps ?? []).filter((step) => step !== current).map((step, order) => ({ at: step.at, order, step })),
+    ...(task.steers ?? []).map((steer, order) => ({ at: steer.at, order, steer })),
+  ];
+  // Newest first; at the same instant a message to the task comes before (so shows under) what followed it.
+  rows.sort((a, b) => b.at - a.at || Number('steer' in a) - Number('steer' in b) || b.order - a.order);
+  return (
+    <ol className="gc-work-tl" aria-label="Timeline">
+      {rows.map((row) => {
+        if ('steer' in row) {
+          const { steer } = row;
+          const receipt = packSteerReceipt(steer, task.agent);
+          const who = steer.from === 'lead' ? 'Lead' : 'You';
+          return (
+            <li key={`steer ${row.order}`} data-kind="steer">
+              <StepIcon kind="message" />
+              <div className="gc-work-bubble" data-from={steer.from}>
+                <div className="gc-work-by">
+                  <b>{who}</b>
+                  <span
+                    className="gc-receipt"
+                    data-state={receipt.state}
+                    role="status"
+                    title={receipt.title}
+                    aria-label={`${steer.from === 'lead' ? 'Lead’s message' : 'Your message'}: ${receipt.spoken}`}
+                  >
+                    {receipt.text}
+                  </span>
+                  <Clock at={steer.at} />
+                  {receipt.state === 'failed' && steer.from === 'user' && resend ? (
+                    <button type="button" className="gc-work-btn gc-work-xs" onClick={() => resend(steer.text)}>
+                      Send again
+                    </button>
+                  ) : null}
+                </div>
+                <p>{steer.text}</p>
+              </div>
+            </li>
+          );
+        }
+        const { step } = row;
+        if (step.kind === 'message') {
+          return (
+            <li key={`step ${step.at} ${row.order}`} data-kind="message">
+              <StepIcon kind="message" />
+              <div className="gc-work-bubble">
+                <div className="gc-work-by">
+                  <b>{task.agent}</b>
+                  <Clock at={step.at} />
+                </div>
+                <p>{step.text}</p>
+              </div>
+            </li>
+          );
+        }
+        const line = packStepLine(step, now, task.cwd);
+        return (
+          <li key={`step ${step.at} ${row.order}`} data-kind={step.kind} data-failed={line.failed ? 'true' : undefined}>
+            <StepIcon kind={step.kind} />
+            <span className="gc-work-tl-x">
+              <b>{line.verb}</b> <code title={line.object}>{line.object}</code>
+              {line.detail ? <span> {line.detail}</span> : null}
+            </span>
+            <Clock at={step.at} />
+          </li>
+        );
+      })}
+      {task.startedAt !== undefined ? (
+        <li data-kind="start">
+          <StepIcon kind="start" />
+          <span className="gc-work-tl-x">
+            <b>Started</b> by {item.lead} in <code title={task.cwd}>{relativePath(task.cwd, cwd) || '.'}</code>
+          </span>
+          <Clock at={task.startedAt} />
+        </li>
+      ) : null}
+    </ol>
   );
 }
 

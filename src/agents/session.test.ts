@@ -595,7 +595,10 @@ describe('createAgentSession', () => {
     await Promise.resolve();
     expect(steered).toEqual(['also this']);
     // The fake's steer resolves with no receipt: handed over, not confirmed.
-    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also this', delivery: 'sent' });
+    const sent = session.get().turns[0].entries.find((entry) => entry.kind === 'input');
+    expect(sent).toMatchObject({ kind: 'input', text: 'also this', delivery: 'sent' });
+    // When it was sent, and when the agent had it.
+    expect(sent).toMatchObject({ at: expect.any(Number), settledAt: expect.any(Number) });
     gate.resolve();
     await session.idle();
     expect(session.get().queued).toEqual([]);
@@ -632,9 +635,9 @@ describe('createAgentSession', () => {
     session.send('two');
     session.send('three');
     expect(inputs()).toEqual([
-      { kind: 'input', text: 'one', delivery: 'sending' },
-      { kind: 'input', text: 'two', delivery: 'sending' },
-      { kind: 'input', text: 'three', delivery: 'sending' },
+      { kind: 'input', text: 'one', delivery: 'sending', at: expect.any(Number) },
+      { kind: 'input', text: 'two', delivery: 'sending', at: expect.any(Number) },
+      { kind: 'input', text: 'three', delivery: 'sending', at: expect.any(Number) },
     ]);
     steers[0].resolve('taken');
     steers[1].resolve();
@@ -1289,7 +1292,9 @@ describe('createAgentSession', () => {
     expect(aborted).toBe(true);
     expect(runs).toEqual(['work']);
     expect(session.get().queued).toEqual([]);
-    expect(session.get().turns[0].entries).toContainEqual({ kind: 'input', text: 'also', delivery: 'dropped' });
+    expect(session.get().turns[0].entries).toContainEqual(
+      expect.objectContaining({ kind: 'input', text: 'also', delivery: 'dropped' }),
+    );
   });
 
   it('does not resume on agents without the capability', async () => {

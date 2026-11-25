@@ -22,6 +22,7 @@ import {
   PackActionError,
   replyPullRequest,
   type PackTask as PackReport,
+  PACK_STEPS_KEPT,
 } from './pack.js';
 
 describe('clipReview', () => {
@@ -891,6 +892,8 @@ describe('pack chat turns', () => {
       pendingSteers[0]!.resolve('taken');
       await expect(leadSteer).resolves.toBe('t1 took the input.');
       await vi.waitFor(() => expect(steers()[0]!.delivery).toBe('delivered'));
+      // The receipt has its times: sent, then taken.
+      expect(steers()[0]!.settledAt).toBeGreaterThanOrEqual(steers()[0]!.at);
 
       const user = session.actOnPackTask!(1, 't1', { type: 'steer', text: 'from you' });
       await vi.waitFor(() => expect(steers()[1]).toMatchObject({ from: 'user', delivery: 'sending' }));
@@ -904,6 +907,69 @@ describe('pack chat turns', () => {
       await expect(late).rejects.toThrow('ended before');
       await vi.waitFor(() => expect(steers()[2]).toMatchObject({ text: 'too late', delivery: 'dropped' }));
       expect(steers().map((steer) => steer.delivery)).toEqual(['delivered', 'sent', 'dropped']);
+    } finally {
+      session.close();
+      await session.idle();
+    }
+  });
+
+  it('keeps the latest steps of a task with their outcome, and marks a steer its next message answers', async () => {
+    let next = () => {};
+    const step = () => new Promise<void>((resolve) => (next = resolve));
+    const base = fake('worker', async (_task, emit, signal) => {
+      emit({ type: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'npm test' } });
+      emit({ type: 'tool-start', id: 'c2', name: 'Read', input: { file_path: '/work/a.ts' } });
+      emit({ type: 'tool-end', id: 'c1', isError: true });
+      emit({ type: 'file-change', paths: ['src/a.ts', 'src/b.ts'] });
+      emit({ type: 'error', message: 'rate limited,\nretrying' });
+      await step();
+      emit({ type: 'message', text: 'Skipping them.' });
+      await step();
+      for (let i = 0; i < 40; i += 1) emit({ type: 'message', text: `note ${i}` });
+      await new Promise((resolve) => signal.addEventListener('abort', resolve));
+    });
+    const worker: CodingAgent = {
+      ...base,
+      capabilities: { steer: true },
+      run: (task) => ({ ...base.run(task), steer: async () => 'taken' as const }),
+    };
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'x', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const session = createAgentSession({ agent: pack({ lead, members: [worker] }), cwd: repo() });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await vi.waitFor(() => expect(task()?.steps).toHaveLength(4));
+      expect(task()!.steps).toEqual([
+        {
+          kind: 'tool',
+          name: 'Bash',
+          text: 'npm test',
+          at: expect.any(Number),
+          endedAt: expect.any(Number),
+          failed: true,
+        },
+        { kind: 'tool', name: 'Read', text: '/work/a.ts', at: expect.any(Number) },
+        { kind: 'edit', text: 'src/a.ts, src/b.ts', at: expect.any(Number) },
+        { kind: 'error', text: 'rate limited, retrying', at: expect.any(Number) },
+      ]);
+      await session.actOnPackTask!(1, 't1', { type: 'steer', text: 'Skip the snapshot tests.' });
+      expect(task()!.steers![0]).toMatchObject({ delivery: 'delivered', settledAt: expect.any(Number) });
+      expect(task()!.steers![0]!.answeredAt).toBeUndefined();
+      next();
+      await vi.waitFor(() => expect(task()!.steers![0]!.answeredAt).toBeTypeOf('number'));
+      next();
+      // Only the latest are kept, and never without the call that still runs.
+      await vi.waitFor(() => expect(task()!.steps!.at(-1)!.text).toBe('note 39'));
+      expect(task()!.steps).toHaveLength(PACK_STEPS_KEPT);
+      expect(task()!.steps![0]).toMatchObject({ kind: 'tool', name: 'Read' });
+      expect(task()!.steps![0]!.endedAt).toBeUndefined();
     } finally {
       session.close();
       await session.idle();
@@ -936,12 +1002,21 @@ describe('pack chat turns', () => {
     try {
       session.send('go');
       await vi.waitFor(() => expect(task()).toMatchObject({ status: 'running', text: 'tool search' }));
+      // Its steps, oldest first: what it said, and the call that runs now with when it started.
+      expect(task()!.steps).toEqual([
+        { kind: 'message', text: 'Reading the code', at: expect.any(Number) },
+        { kind: 'tool', name: 'search', at: expect.any(Number) },
+      ]);
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('Reading the code'));
+      expect(task()!.steps![1]).toMatchObject({ kind: 'tool', name: 'search', endedAt: expect.any(Number) });
       next();
       await vi.waitFor(() => expect(task()?.text).toBe('tool shell: npm test'));
+      expect(task()!.steps![2]).toEqual({ kind: 'tool', name: 'shell', text: 'npm test', at: expect.any(Number) });
       await session.actOnPackTask!(1, 't1', { type: 'stop' });
       expect(task()).toMatchObject({ status: 'aborted', stoppedBy: 'user' });
+      // A call the task never ended is over with the task.
+      expect(task()!.steps![2]!.endedAt).toBe(task()!.endedAt);
     } finally {
       session.close();
       await session.idle();

@@ -56,8 +56,11 @@ export type SessionEntry =
       /** A question's answers (`request.kind === 'question'`), secrets masked. */
       answers?: QuestionAnswers;
     }
-  /** Input the user sent while the turn ran; `delivery` says whether it reached the agent. */
-  | { kind: 'input'; text: string; delivery?: InputDelivery }
+  /**
+   * Input the user sent while the turn ran; `delivery` says whether it reached the agent, `at` when
+   * it was sent and `settledAt` when `delivery` left `sending` (epoch milliseconds).
+   */
+  | { kind: 'input'; text: string; delivery?: InputDelivery; at?: number; settledAt?: number }
   | { kind: 'error'; message: string }
   /** The turn failed with `failure`, so the session moved to `to` and runs the prompt again there. */
   | { kind: 'failover'; from: string; to: string; failure: AgentFailure };
@@ -1157,10 +1160,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       }
       if (current?.steer && turnId !== undefined && steerText !== undefined) {
         if (steerContext) turnContext.push(steerContext);
-        let sent: Extract<SessionEntry, { kind: 'input' }> = { kind: 'input', text: prompt, delivery: 'sending' };
+        let sent: Extract<SessionEntry, { kind: 'input' }> = {
+          kind: 'input',
+          text: prompt,
+          delivery: 'sending',
+          at: Date.now(),
+        };
         addEntry(turnId, sent);
         const deliver = (delivery: InputDelivery) => {
-          const next = { ...sent, delivery };
+          const next = { ...sent, delivery, settledAt: Date.now() };
           const was = sent;
           sent = next;
           updateTurn(turnId, (turn) => ({

@@ -429,7 +429,7 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await message.fill('and the tower');
     await message.press('Enter');
     await vi.waitFor(() => expect(helper.steered).toEqual(['and the tower']));
-    await log.getByRole('status', { name: /Your message: (Seen by|Sent to) helper/ }).waitFor({ timeout: 4000 });
+    await log.getByRole('status', { name: /Your message: (Delivered|Sent to helper)/ }).waitFor({ timeout: 4000 });
     // The agent stays as it is while its turn runs.
     await chip.click();
     expect(await agents.getByRole('radio', { name: /backup/ }).isDisabled()).toBe(true);

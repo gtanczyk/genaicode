@@ -133,6 +133,12 @@ export interface PackTask {
   canSteer?: boolean;
   /** Input sent to the task while it ran, oldest first. */
   steers?: PackSteer[];
+  /**
+   * What the task did, oldest first: its latest tool calls with the argument that names what each
+   * works on and when it started and ended, its messages, edits, approval requests and errors. Only
+   * the latest `PACK_STEPS_KEPT` are kept. A tool call without `endedAt` is the one running now.
+   */
+  steps?: PackStep[];
   /** Where the agent works: its worktree, or the lead's directory. */
   cwd: string;
   /** The root of a worktree task's worktree (`cwd` may be a folder inside it): what Discard removes. */
@@ -187,6 +193,29 @@ export interface PackSteer {
   /** When it was sent (epoch milliseconds). */
   at: number;
   delivery: Exclude<InputDelivery, 'queued'>;
+  /** When `delivery` left `sending`: the agent took it, it was handed over, or it was dropped. */
+  settledAt?: number;
+  /** When the task's first message after a delivered one came: it answered. */
+  answeredAt?: number;
+}
+
+/** How many of a task's latest steps `PackTask.steps` keeps. */
+export const PACK_STEPS_KEPT = 30;
+
+/**
+ * One thing a delegated task did. `tool`: a tool call, `name` the tool and `text` the argument that
+ * names what it works on (the command, path, pattern...), `endedAt` once it returned and `failed`
+ * when it reported an error. `message`: what the agent said. `edit`: the files it changed.
+ * `approval`: what it asked permission for. `error`: an error it reported. `text` is one line.
+ */
+export interface PackStep {
+  kind: 'tool' | 'message' | 'edit' | 'approval' | 'error';
+  name?: string;
+  text?: string;
+  /** When it happened, or a tool call started (epoch milliseconds). */
+  at: number;
+  endedAt?: number;
+  failed?: boolean;
 }
 
 export interface Pack extends CodingAgent {
@@ -304,6 +333,7 @@ interface Sub {
   result?: AgentResult;
   last?: string;
   steers?: PackSteer[];
+  steps?: Step[];
   /** The tool call `last` is about, and the line shown before it started. */
   tool?: { id?: string; name: string; before?: string };
   usage?: TokenUsage;
@@ -502,11 +532,86 @@ function activity(event: AgentEvent): string | undefined {
   }
 }
 
+/** A step with the id of its tool call, which its `tool-end` names. */
+type Step = PackStep & { id?: string };
+
+/** One line of at most `max` characters. */
+function oneLine(text: string, max = 200): string {
+  const line = text.replace(/\s+/g, ' ').trim();
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/** The step an event adds to a task's activity, if any. Never throws. */
+function stepOf(event: AgentEvent, at: number): Step | undefined {
+  try {
+    switch (event.type) {
+      case 'message': {
+        const text = oneLine(event.text, 300);
+        return text ? { kind: 'message', text, at } : undefined;
+      }
+      case 'tool-start': {
+        const text = toolInputSummary(event.input);
+        return {
+          kind: 'tool',
+          name: String(event.name),
+          ...(text ? { text } : {}),
+          at,
+          ...(event.id !== undefined ? { id: event.id } : {}),
+        };
+      }
+      case 'file-change':
+        return event.paths.length ? { kind: 'edit', text: oneLine(event.paths.join(', ')), at } : undefined;
+      case 'approval-request':
+        return { kind: 'approval', text: oneLine(event.request.summary ?? event.request.kind), at };
+      case 'error':
+        return { kind: 'error', text: oneLine(event.message, 300), at };
+      default:
+        return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/** Keeps `PackTask.steps`: adds the event's step, or closes the tool call a `tool-end` names. */
+function trackSteps(sub: Sub, event: AgentEvent, at: number): void {
+  if (event.type === 'tool-end') {
+    const open = (sub.steps ?? []).filter((step) => step.kind === 'tool' && step.endedAt === undefined);
+    // By id when both have one; else the latest open call of that name (any, when the end names none).
+    const found =
+      (event.id !== undefined ? open.find((item) => item.id === event.id) : undefined) ??
+      open.findLast(
+        (item) =>
+          (item.id === undefined || event.id === undefined) && (event.name === undefined || event.name === item.name),
+      );
+    if (!found) return;
+    found.endedAt = at;
+    if (event.isError) found.failed = true;
+    return;
+  }
+  if (event.type === 'message') {
+    // The first message after a delivered steer is its answer.
+    for (const steer of sub.steers ?? [])
+      if (steer.answeredAt === undefined && steer.delivery === 'delivered') steer.answeredAt = at;
+  }
+  const step = stepOf(event, at);
+  if (!step) return;
+  const steps = [...(sub.steps ?? []), step];
+  // The oldest go first, but never a tool call that still runs: its end is yet to be told.
+  while (steps.length > PACK_STEPS_KEPT) {
+    const drop = steps.findIndex((item) => !(item.kind === 'tool' && item.endedAt === undefined));
+    steps.splice(drop < 0 ? 0 : drop, 1);
+  }
+  sub.steps = steps;
+}
+
 /**
  * Follows what a running task is doing: its latest activity line and the tool call that line is
- * about, so the call's `tool-end` takes the line back to what was shown before the call.
+ * about, so the call's `tool-end` takes the line back to what was shown before the call. Its steps
+ * are kept beside it (`PackTask.steps`).
  */
 function track(sub: Sub, event: AgentEvent): void {
+  trackSteps(sub, event, Date.now());
   if (event.type === 'approval-resolved') {
     sub.last = undefined;
     sub.tool = undefined;
@@ -681,6 +786,13 @@ export function pack(options: PackOptions): Pack {
     const pullRequest = replyPullRequest(text);
     return { ...(verdict ? { verdict } : {}), ...(pullRequest ? { pullRequest } : {}) };
   };
+  // A tool call the task never ended (it was stopped, or crashed) ended with the task.
+  const reportStep = (step: Step, sub: Sub): PackStep => {
+    const copy: Step = { ...step };
+    delete copy.id;
+    if (copy.kind === 'tool' && copy.endedAt === undefined && sub.endedAt !== undefined) copy.endedAt = sub.endedAt;
+    return copy;
+  };
   const report = (sub: Sub): PackTask => ({
     id: sub.id,
     agent: sub.agent.name,
@@ -694,6 +806,7 @@ export function pack(options: PackOptions): Pack {
     status: sub.status,
     ...(sub.run?.steer ? { canSteer: true } : {}),
     ...(sub.steers?.length ? { steers: sub.steers.map((steer) => ({ ...steer })) } : {}),
+    ...(sub.steps?.length ? { steps: sub.steps.map((step) => reportStep(step, sub)) } : {}),
     cwd: sub.cwd,
     ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
@@ -1308,6 +1421,7 @@ export function pack(options: PackOptions): Pack {
         notify(sub);
         const settle = (delivery: PackSteer['delivery']) => {
           record.delivery = delivery;
+          record.settledAt = Date.now();
           notify(sub);
         };
         let receipt: unknown;

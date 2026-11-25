@@ -487,8 +487,45 @@ describe('the genaicode ui page looks as its baseline', () => {
   let url: string | undefined;
   /** Ends the turn that delegates, which otherwise stays at work. */
   let release: (() => void) | undefined;
-  /** The tasks of that turn: one running, one with changes to merge and an agent to review them, one failed. */
-  const delegated = tasks.map((task) => (task.id === 't2' ? { ...task, checks: { reviewer: 'helper' } } : task));
+  /**
+   * The tasks of that turn: one running, with the steps it took and the messages sent to it, one
+   * with changes to merge and an agent to review them, one failed.
+   */
+  const delegated = tasks.map((task): PackTask => {
+    if (task.id === 't2') return { ...task, checks: { reviewer: 'helper' } };
+    if (task.id !== 't1') return task;
+    const at = task.startedAt!;
+    return {
+      ...task,
+      text: 'tool Bash: npm test -- cart',
+      steps: [
+        { kind: 'tool', name: 'Read', text: `${task.cwd}/src/cart.ts`, at: at + 2_000, endedAt: at + 2_200 },
+        { kind: 'message', text: 'The total skips discounts. Writing the tests first.', at: at + 10_000 },
+        { kind: 'tool', name: 'Edit', text: `${task.cwd}/src/cart.test.ts`, at: at + 20_000, endedAt: at + 23_000 },
+        { kind: 'tool', name: 'Bash', text: 'npm run lint', at: at + 30_000, endedAt: at + 42_000, failed: true },
+        { kind: 'message', text: 'Skipping the snapshot tests, as you asked.', at: at + 60_000 },
+        { kind: 'tool', name: 'Bash', text: 'npm test -- cart', at: at + 81_000 },
+      ],
+      steers: [
+        {
+          text: 'Skip the snapshot tests.',
+          from: 'user',
+          at: at + 50_000,
+          settledAt: at + 50_900,
+          answeredAt: at + 60_000,
+          delivery: 'delivered',
+        },
+        {
+          text: 'Keep the test names short.',
+          from: 'user',
+          at: at + 70_000,
+          settledAt: at + 72_400,
+          delivery: 'delivered',
+        },
+        { text: 'And run the linter again.', from: 'lead', at: at + 90_000, delivery: 'sending' },
+      ],
+    };
+  });
 
   /**
    * Puts fixed words where the page shows what differs between runs and releases: the directory of
@@ -690,6 +727,14 @@ describe('the genaicode ui page looks as its baseline', () => {
         await steady(page);
         await settle(page);
         await shot(page, `page-task-${THEMES[index]}`);
+        // A running task: what it does now, its latest message, the timeline with receipts, the message box.
+        await work.getByRole('button', { name: 'Tasks', exact: true }).click();
+        await work.locator('[data-task$=":t1"] .gc-work-row').click();
+        await work.getByRole('list', { name: 'Timeline' }).waitFor();
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-live-${THEMES[index]}`);
       }
       expect(differing).toEqual([]);
     } finally {

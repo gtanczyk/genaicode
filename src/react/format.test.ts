@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { PackTask } from '../agents/pack.js';
 import type { SessionTurn } from '../agents/session.js';
 import {
+  messageReceipt,
   packActivity,
+  packLatestMessage,
+  packRunningStep,
+  packStepLine,
+  packSteerReceipt,
   packMetrics,
   packTaskElapsed,
   packTaskError,
@@ -219,6 +224,122 @@ describe('packActivity', () => {
     expect(packActivity('tool Bash')).toEqual({ tool: 'Shell', text: 'Running Shell' });
     expect(packActivity('## Looking at **pack.ts**\nmore')).toEqual({ text: 'Looking at pack.ts' });
     expect(packActivity('edited src/a.ts')).toEqual({ text: 'Edited src/a.ts' });
+  });
+});
+
+describe('packStepLine', () => {
+  const at = 1_000_000;
+  it('words a tool call by what it does: running with the time so far, finished with how long it took', () => {
+    expect(packStepLine({ kind: 'tool', name: 'Bash', text: 'npm test', at }, at + 14_000)).toEqual({
+      verb: 'Running',
+      object: 'npm test',
+      detail: '14s so far',
+      running: true,
+      failed: false,
+    });
+    expect(packStepLine({ kind: 'tool', name: 'shell', text: 'npm test', at, endedAt: at + 65_000 })).toMatchObject({
+      verb: 'Ran',
+      detail: '1m 05s',
+      running: false,
+    });
+    // Under a second says nothing of time; a failure says so.
+    expect(packStepLine({ kind: 'tool', name: 'Read', text: 'a.ts', at, endedAt: at + 20 }).detail).toBe('');
+    expect(packStepLine({ kind: 'tool', name: 'Bash', text: 'x', at, endedAt: at + 20, failed: true })).toMatchObject({
+      detail: 'failed',
+      failed: true,
+    });
+  });
+  it('knows the tools drivers report, and names an unknown one', () => {
+    const verbs = (name: string) => [
+      packStepLine({ kind: 'tool', name, text: 'x', at }).verb,
+      packStepLine({ kind: 'tool', name, text: 'x', at, endedAt: at }).verb,
+    ];
+    expect(verbs('Edit')).toEqual(['Editing', 'Edited']);
+    expect(verbs('apply_patch')).toEqual(['Editing', 'Edited']);
+    expect(verbs('Write')).toEqual(['Writing', 'Wrote']);
+    expect(verbs('Grep')).toEqual(['Searching', 'Searched']);
+    expect(verbs('WebSearch')).toEqual(['Searching', 'Searched']);
+    expect(verbs('WebFetch')).toEqual(['Fetching', 'Fetched']);
+    expect(verbs('Glob')).toEqual(['Listing', 'Listed']);
+    expect(verbs('TodoWrite')).toEqual(['Planning', 'Planned']);
+    expect(verbs('exec_command')).toEqual(['Running', 'Ran']);
+    expect(packStepLine({ kind: 'tool', name: 'mcp__docs__lookup', text: 'react', at })).toMatchObject({
+      verb: 'Using',
+      object: 'mcp__docs__lookup react',
+    });
+    // A known tool that names nothing it works on is named itself.
+    expect(packStepLine({ kind: 'tool', name: 'TodoWrite', at }).object).toBe('Plan');
+  });
+  it('shows paths relative to the task directory, and words edits, approvals and errors', () => {
+    expect(packStepLine({ kind: 'tool', name: 'Read', text: '/work/t1/src/a.ts', at }, at, '/work/t1').object).toBe(
+      'src/a.ts',
+    );
+    expect(packStepLine({ kind: 'edit', text: 'src/a.ts, src/b.ts', at })).toMatchObject({ verb: 'Edited' });
+    expect(packStepLine({ kind: 'approval', text: 'npm install', at }).verb).toBe('Asked to approve');
+    expect(packStepLine({ kind: 'error', text: 'rate limited', at })).toMatchObject({ verb: 'Error', failed: true });
+  });
+  it('finds the call a running task is in and what it said last', () => {
+    const task = (patch: Partial<PackTask>): PackTask => ({
+      id: 't1',
+      agent: 'codex',
+      prompt: 'x',
+      mode: 'shared',
+      cwd: '/work',
+      status: 'running',
+      ...patch,
+    });
+    const steps: PackTask['steps'] = [
+      { kind: 'message', text: 'First.', at },
+      { kind: 'tool', name: 'Bash', text: 'sleep 9', at },
+      { kind: 'message', text: 'Second.', at },
+      { kind: 'tool', name: 'Read', text: 'a.ts', at, endedAt: at },
+    ];
+    expect(packRunningStep(task({ steps }))).toBe(steps[1]);
+    expect(packRunningStep(task({ steps, status: 'completed' }))).toBeUndefined();
+    expect(packRunningStep(task({}))).toBeUndefined();
+    expect(packLatestMessage(task({ steps }))).toBe('Second.');
+  });
+});
+
+describe('messageReceipt', () => {
+  const sent = { at: 10_000, settledAt: 10_900 };
+  it('words every state of a message sent to a working agent', () => {
+    expect(messageReceipt({ delivery: 'sending', at: 1 }, 'claude')).toMatchObject({
+      state: 'sending',
+      text: 'Sending…',
+      spoken: 'Sending',
+    });
+    expect(messageReceipt({ delivery: 'delivered', ...sent }, 'claude')).toEqual({
+      state: 'delivered',
+      text: '✓ Delivered · 0.9s',
+      spoken: 'Delivered after 0.9s',
+      title: 'claude took the message after 0.9s, between two steps of its work.',
+    });
+    expect(messageReceipt({ delivery: 'delivered', ...sent }, 'claude', { answered: true })).toMatchObject({
+      state: 'answered',
+      text: '✓✓ Delivered · answered',
+    });
+    expect(messageReceipt({ delivery: 'sent', at: 0, settledAt: 75_000 }, 'gemini')).toMatchObject({
+      state: 'sent',
+      text: 'Sent to gemini · 1m 15s',
+    });
+    expect(messageReceipt({ delivery: 'queued', ...sent }, 'claude').text).toBe('Queued for the next turn');
+    expect(messageReceipt({ delivery: 'dropped', ...sent }, 'claude')).toMatchObject({
+      state: 'failed',
+      text: 'Not delivered',
+      title: 'The turn was stopped before claude took it.',
+    });
+    // Recorded before delivery or its time was tracked.
+    expect(messageReceipt({ delivery: 'delivered' }, 'claude').text).toBe('✓ Delivered');
+    expect(messageReceipt({}, '')).toMatchObject({ state: 'unknown', text: 'Sent while working' });
+  });
+  it('a steer is answered once the task said something after it took it', () => {
+    const steer = { text: 'x', from: 'user' as const, delivery: 'delivered' as const, ...sent };
+    expect(packSteerReceipt(steer, 'codex').state).toBe('delivered');
+    expect(packSteerReceipt({ ...steer, answeredAt: 12_000 }, 'codex').state).toBe('answered');
+    expect(packSteerReceipt({ ...steer, delivery: 'dropped' }, 'codex').title).toBe(
+      'The task ended before codex took it.',
+    );
   });
 });
 

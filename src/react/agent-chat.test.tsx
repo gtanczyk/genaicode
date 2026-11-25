@@ -1133,23 +1133,38 @@ describe('AgentChat', () => {
     const turn = state.turns[1]!;
     turn.agent = 'claude';
     turn.entries = [
-      { kind: 'input', text: 'one', delivery: 'sending' },
-      { kind: 'input', text: 'two', delivery: 'delivered' },
+      { kind: 'input', text: 'one', delivery: 'sending', at: 5_000 },
+      { kind: 'input', text: 'two', delivery: 'delivered', at: 5_000, settledAt: 5_900 },
       { kind: 'input', text: 'three', delivery: 'sent' },
       { kind: 'input', text: 'four', delivery: 'queued' },
       { kind: 'input', text: 'five', delivery: 'dropped' },
       { kind: 'input', text: 'six' },
     ];
     render({ state });
-    const labels = $$('.gc-steer small').map((el) => [el.textContent, el.getAttribute('aria-label')]);
-    expect(labels).toEqual([
-      ['Sending…', 'Your message: Sending'],
-      ['Seen by claude', 'Your message: Seen by claude'],
-      ['Sent to claude', 'Your message: Sent to claude'],
-      ['Queued for the next turn', 'Your message: Queued for the next turn'],
-      ['Not delivered: stopped first', 'Your message: Not delivered: stopped first'],
-      ['Sent while working', 'Your message: Sent while working'],
+    const receipts = () =>
+      $$('.gc-steer small').map((el) => [
+        el.firstChild?.textContent,
+        el.getAttribute('aria-label'),
+        el.getAttribute('data-receipt'),
+      ]);
+    expect(receipts()).toEqual([
+      ['Sending…', 'Your message: Sending', 'sending'],
+      ['✓ Delivered · 0.9s', 'Your message: Delivered after 0.9s', 'delivered'],
+      ['Sent to claude', 'Your message: Sent to claude', 'sent'],
+      ['Queued for the next turn', 'Your message: Queued for the next turn', 'queued'],
+      ['Not delivered', 'Your message: Not delivered', 'failed'],
+      ['Sent while working', 'Your message: Sent while working', 'unknown'],
     ]);
+    // A message with its time shows when it was sent.
+    expect($$('.gc-steer small time').map((el) => /^\d\d:\d\d/.test(el.textContent ?? ''))).toEqual([true, true]);
+    expect(document.querySelector('.gc-steer small[data-receipt="delivered"]')?.getAttribute('title')).toBe(
+      'claude took the message after 0.9s, between two steps of its work.',
+    );
+    // Once the agent says something after a message it took, that message is answered.
+    turn.entries = [...turn.entries, { kind: 'text', text: 'Noted.', streaming: false }];
+    render({ state });
+    expect(receipts()[1]).toEqual(['✓✓ Delivered · answered', 'Your message: Delivered, answered', 'answered']);
+    expect(receipts()[2]![2]).toBe('sent');
     expect($$('.gc-steer').map((el) => el.getAttribute('data-delivery'))).toEqual([
       'sending',
       'delivered',
