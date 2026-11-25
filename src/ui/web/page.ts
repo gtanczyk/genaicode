@@ -215,6 +215,10 @@ button.chip:hover { border-color: var(--accent); }
 .release-dialog::backdrop { background: rgba(0, 0, 0, .4); }
 .release-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .release-heading h2 { margin: 0; font-size: 20px; }
+.release-entries { padding-left: 20px; }
+.release-entries > li { margin-block: 10px; }
+.release-entries p { margin-block: 4px; }
+.release-entries summary { width: fit-content; cursor: pointer; color: var(--accent); }
 .release-dialog a { color: var(--accent); }
 /* The composer (docs/design/desktop-layout.md, "Composer"): the card of <AgentChat composerLayout="card"> with the page's controls in its row. */
 .workspace .gc-card { background: var(--panel); }
