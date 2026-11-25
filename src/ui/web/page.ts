@@ -243,7 +243,7 @@ button.chip:hover { border-color: var(--accent); }
 .picker-row .btn.sm { flex: none; }
 .picker-row small + .btn { margin-left: 0; }
 .picker-row .opt-name + .btn { margin-left: auto; }
-.starts-path { display: flex; gap: 6px; }
+.starts-path { display: flex; gap: 6px; min-width: 0; }
 .starts-path .field { flex: 1; }
 .starts-fixed { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--text); }
 .starts-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 6em; flex: 1 1 0; }

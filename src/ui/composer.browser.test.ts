@@ -181,13 +181,29 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     const narrowProjects = card.getByRole('dialog', { name: 'Project' });
     await inside(narrowProjects);
     await inside(narrowProjects.getByRole('button', { name: 'Open' }));
-    // A long path that is no folder: the complaint wraps, and Open stays inside the popover.
-    await narrowProjects.getByLabel('Folder path').fill(`/${'a-very-long-folder-name-'.repeat(8)}nowhere`);
+    // A long path that is no folder, with no place to break: the complaint wraps, and the path's
+    // buttons stay inside the popover, also with the host's Choose… beside Open (added here, as
+    // this server has no folder dialog).
+    await narrowProjects.getByLabel('Folder path').fill(`/${'x'.repeat(200)}`);
     await narrowProjects.getByLabel('Folder path').press('Enter');
     await narrowProjects.getByRole('alert').waitFor();
-    const dialogBox = (await narrowProjects.boundingBox())!;
-    const openBox = (await narrowProjects.getByRole('button', { name: 'Open' }).boundingBox())!;
-    expect(openBox.x + openBox.width).toBeLessThanOrEqual(dialogBox.x + dialogBox.width);
+    const overflow = () =>
+      narrowProjects.evaluate((dialog) => {
+        const right = dialog.getBoundingClientRect().right;
+        return Array.from(dialog.querySelectorAll('.starts-path .btn'), (button) =>
+          Math.round(button.getBoundingClientRect().right - right),
+        );
+      });
+    expect((await overflow()).every((past) => past <= 0)).toBe(true);
+    await narrowProjects.evaluate((dialog) => {
+      const choose = document.createElement('button');
+      choose.className = 'btn';
+      choose.textContent = 'Choose…';
+      dialog.querySelector('.starts-path')!.append(choose);
+    });
+    expect(await overflow()).toHaveLength(2);
+    expect((await overflow()).every((past) => past <= 0)).toBe(true);
+    await narrowProjects.evaluate((dialog) => dialog.querySelector('.starts-path .btn:last-child')!.remove());
     await inside(narrowProjects.getByRole('button', { name: 'Open' }));
     await narrowProjects.getByLabel('Folder path').fill('');
     await page.keyboard.press('Escape');
