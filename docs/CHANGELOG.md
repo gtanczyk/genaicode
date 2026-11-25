@@ -21,6 +21,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
   - Browser commands follow the conversation generation. Resumed pack tasks renew their checks (#354, #362).
   - Streaming waits report increasing progress and send a final JSON-RPC response.
 
+### Internal
+
+- **Refresh the macOS task and file viewer screenshots in both themes.** (#373)
+
 ## 3.4.0 — 2026-11-25
 
 The new window layout puts your chats in the sidebar and delegated tasks in the work panel. Press ⌘K (Ctrl+K) to search chats, sessions and commands. Open Needs you to answer agents across projects, or Settings to manage agents, teams and usage.
