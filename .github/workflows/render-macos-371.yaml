@@ -1,0 +1,36 @@
+name: Render macOS baselines for PR 371
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/render-macos-371.yaml'
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.head_ref == 'codex/render-macos-371' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install chromium
+      - name: Render the light and dark themes
+        run: GENAICODE_UPDATE_SCREENSHOTS=1 npm run test:browser -- visual --testTimeout=30000
+      - name: Compare an independent render
+        run: npm run test:browser -- visual --testTimeout=30000
+      - name: Collect task and viewer baselines
+        run: |
+          mkdir -p "$RUNNER_TEMP/darwin"
+          cp src/ui/__screenshots__/darwin/page-{task,viewer}-{light,dark}.png "$RUNNER_TEMP/darwin/"
+          git diff --name-only -- src/ui/__screenshots__/darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-task-viewer
+          path: ${{ runner.temp }}/darwin/*.png
+          if-no-files-found: error
+          retention-days: 3
