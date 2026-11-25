@@ -10,11 +10,18 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- **Pick a model the agent ran, and read Claude replies as they are written.** (#374)
+  - The agent chip's Model field suggests recent picks, the models the agent ran (how often, when) and names its driver knows, and still takes any name. A model the agent rejects says which model and agent, with a way back to the default.
+  - Claude replies stream when the installed `claude` takes `--include-partial-messages`. A reply that arrives whole (codex exec, vibe, opencode) shows within 300–600 ms, at once with reduced motion or on a scroll, click or key.
+  - lib: `AgentCapabilities.models`, `claude({ partialMessages })` and `claudeTakesPartialMessages()`.
 - **Review bulk approvals and merges, inspect changed files, and undo a discard.** (#371)
   - The work panel confirms bulk approvals and checked merges and shows per-file changes. Merged and discarded worktrees stay on disk for recovery (#358, #365).
 
 ### Fixed
 
+- **Taken-over chats are titled from your words, and chats wait for a running turn.** (#374)
+  - A chat started by Continue here is titled from what you wrote, not the takeover recap, also for older sessions.
+  - While a turn runs, other chats and New chat look unavailable; choosing one offers Stop and open or Wait.
 - **Open session transcripts directly and see why a reply failed.** (#369)
 - **Read release highlights and expand changes for details.** (#368)
 - **The work panel keeps “Running” on one line beside long commands.** (#370)

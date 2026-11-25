@@ -2160,7 +2160,7 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false
     );
     const bin = join(binDir, 'claude');
     writeFileSync(bin, `#!${process.execPath}\nimport(${JSON.stringify(script)});\n`, { mode: 0o755 });
-    const worker = claude({ command: bin, steer: false });
+    const worker = claude({ command: bin, steer: false, partialMessages: false });
     const lead = fake(
       'lead',
       async (task) => {

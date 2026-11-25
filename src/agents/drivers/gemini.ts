@@ -67,6 +67,8 @@ export function gemini(options: GeminiAgentOptions = {}): CodingAgent {
     name: 'gemini',
     command: options.command ?? 'gemini',
     capabilities: {
+      // Gemini CLI's model aliases.
+      models: ['auto', 'pro', 'flash', 'flash-lite'],
       usage: true,
       ...(options.trustWorkspace === false ? {} : { plan: true }),
       mcp: true,

@@ -67,6 +67,8 @@ export interface AgentChoice {
   canAsk?: boolean;
   /** The effort levels it takes, in its own words. Absent: none. */
   effort?: readonly string[];
+  /** Model names it is known to take (`capabilities.models`). Absent: none known. */
+  models?: readonly string[];
   /** Supports Plan mode (`/plan`). */
   canPlan?: boolean;
   /** Local sign-in state when inspected: `ready`, `signed-out`, or `unknown`. */
@@ -301,6 +303,7 @@ export function createChatController(options: ChatOptions): ChatController {
     ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
     canAsk: canAgentAsk(agent),
     ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
+    ...(agent.capabilities.models?.length ? { models: agent.capabilities.models } : {}),
     ...(agent.capabilities.plan ? { canPlan: true } : {}),
   }));
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
@@ -613,6 +616,7 @@ export function createChatController(options: ChatOptions): ChatController {
         ...(agent.sessions?.name ? { store: agent.sessions.name } : {}),
         canAsk: canAgentAsk(agent),
         ...(agent.capabilities.effort?.length ? { effort: agent.capabilities.effort } : {}),
+        ...(agent.capabilities.models?.length ? { models: agent.capabilities.models } : {}),
         ...(agent.capabilities.plan ? { canPlan: true } : {}),
         ...(info ? { auth: info.auth } : prev?.auth ? { auth: prev.auth } : {}),
         ...(info?.broken ? { broken: true } : {}),
