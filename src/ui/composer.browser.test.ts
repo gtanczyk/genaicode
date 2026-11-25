@@ -181,6 +181,15 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     const narrowProjects = card.getByRole('dialog', { name: 'Project' });
     await inside(narrowProjects);
     await inside(narrowProjects.getByRole('button', { name: 'Open' }));
+    // A long path that is no folder: the complaint wraps, and Open stays inside the popover.
+    await narrowProjects.getByLabel('Folder path').fill(`/${'a-very-long-folder-name-'.repeat(8)}nowhere`);
+    await narrowProjects.getByLabel('Folder path').press('Enter');
+    await narrowProjects.getByRole('alert').waitFor();
+    const dialogBox = (await narrowProjects.boundingBox())!;
+    const openBox = (await narrowProjects.getByRole('button', { name: 'Open' }).boundingBox())!;
+    expect(openBox.x + openBox.width).toBeLessThanOrEqual(dialogBox.x + dialogBox.width);
+    await inside(narrowProjects.getByRole('button', { name: 'Open' }));
+    await narrowProjects.getByLabel('Folder path').fill('');
     await page.keyboard.press('Escape');
     await card.getByRole('button', { name: /^Agent: helper/ }).click();
     await inside(card.getByRole('dialog', { name: 'Agent, model, effort and fallback' }));

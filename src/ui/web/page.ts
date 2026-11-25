@@ -210,6 +210,10 @@ button.chip:hover { border-color: var(--accent); }
 .field::placeholder { color: var(--faint); }
 .pop { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 40; width: 320px; max-width: calc(100vw - 32px); max-height: min(70vh, 520px); overflow: auto; padding: 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--gc-elevation-2); display: grid; gap: 10px; text-align: left; color: var(--text); }
 .pop.starts-pop { width: 380px; }
+/* Long content (a path, the complaint about it) wraps: the popover's column never grows past it. */
+.pop { grid-template-columns: minmax(0, 1fr); }
+.pop > *, .pop label, .pop .pop-field { min-width: 0; }
+.pop .note { overflow-wrap: anywhere; }
 /* In the composer a popover opens from a control near the card's left edge: it is no wider than the card, so its buttons stay in a narrow window. */
 .workspace .gc-card { container-type: inline-size; }
 .gc-card .pop { max-width: calc(100cqw - 16px); }
