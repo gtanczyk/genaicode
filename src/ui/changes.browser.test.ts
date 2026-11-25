@@ -150,7 +150,7 @@ it('lists the files changed in a chat in the work panel, and opens a file in the
     const VIEWER = 1440 - 268 - 600;
     const width = () => work.boundingBox().then((box) => Math.round(box!.width));
     const focused = () => page.evaluate(() => document.activeElement?.textContent?.replace(/\s+/g, ' ').trim());
-    expect(await work.getByRole('tab').allTextContents()).toEqual(['Tasks 2', 'Changes 5', 'Artifacts ']);
+    expect(await work.getByRole('tab').allTextContents()).toEqual(['Tasks 2', 'Live', 'Changes 5', 'Artifacts']);
     expect(await width()).toBe(420);
 
     // Changes: the lead's own files first, then the tasks' files with their task and whether it is merged.
