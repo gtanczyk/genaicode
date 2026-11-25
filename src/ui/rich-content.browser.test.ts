@@ -509,11 +509,17 @@ describe('rich content in genaicode ui (browser)', () => {
       const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       await page.goto(opened!);
 
-      // Wait for artifact card v1 and Artifacts list button.
-      await page.getByRole('button', { name: 'Artifacts · 1' }).waitFor();
+      // Wait for artifact card v1 and the Work button: the artifact is in the work panel's Artifacts tab.
+      const workButton = page.locator('.work-toggle');
+      await workButton.waitFor();
+      const work = page.getByRole('complementary', { name: 'Work panel' });
+      // An artifact does not open the panel by itself.
+      expect(await work.count()).toBe(0);
       await page.locator('.gc-artifact button', { hasText: 'Open' }).first().click();
-      const panel = page.locator('.viewer-panel');
+      // The viewer is a drill-in of the work panel, with Close as the way back to the chat.
+      const panel = work.locator('.viewer-panel');
       await panel.waitFor();
+      expect(await panel.locator('.viewer-back').textContent()).toBe('Close');
       // Inline preview is NOT expanded in the card when side panel is used.
       expect(await page.locator('.gc-artifact iframe').count()).toBe(0);
       await expect
@@ -521,7 +527,7 @@ describe('rich content in genaicode ui (browser)', () => {
         .toBe('Version 1');
 
       // Resize via keyboard on the separator and verify localStorage persistence.
-      const sep = panel.locator('[role="separator"]');
+      const sep = work.locator('[role="separator"]');
       await sep.focus();
       await page.keyboard.press('ArrowLeft');
       const savedWidth = await page.evaluate(() => localStorage.getItem('genaicode-viewer-width'));
@@ -552,9 +558,9 @@ describe('rich content in genaicode ui (browser)', () => {
       await panel.getByRole('button', { name: 'Send to agent' }).click();
       await page.getByText('Got submission!').waitFor();
 
-      // Now turn 2 is STILL running. Put panel in Full size and verify Esc order:
-      // 1st Esc -> exits Full size (panel stays open, agent keeps running)
-      // 2nd Esc -> closes panel (agent keeps running)
+      // Now turn 2 is STILL running. Expand the viewer over the chat area and verify Esc order:
+      // 1st Esc -> docks it beside the chat again (viewer stays open, agent keeps running)
+      // 2nd Esc -> closes the viewer, and the panel it opened (agent keeps running)
       // 3rd Esc -> stops the running agent!
       // A menu opened over the viewer owns the key first: one press closes Help and leaves the viewer.
       await page.getByRole('button', { name: 'Help', exact: true }).click();
@@ -565,16 +571,26 @@ describe('rich content in genaicode ui (browser)', () => {
       expect(await panel.count()).toBe(1);
       expect(longTurnAborted).toBe(false);
 
-      await panel.getByRole('button', { name: 'Full size' }).click();
-      expect(await panel.getAttribute('data-full-size')).toBe('true');
+      const chatWidth = async () => (await page.locator('.gc-chat').boundingBox())!.width;
+      const docked = await work.boundingBox();
+      await panel.getByRole('button', { name: 'Expand' }).click();
+      await expect.poll(() => panel.getAttribute('data-expanded')).toBe('true');
+      expect(await work.getAttribute('data-mode')).toBe('full');
+      // Over the whole chat area: from the sidebar's edge to the window's.
+      expect((await work.boundingBox())!.width).toBeCloseTo(await chatWidth(), -1);
+      expect(await panel.getByRole('button', { name: 'Dock' }).getAttribute('aria-pressed')).toBe('true');
 
       await page.keyboard.press('Escape');
-      expect(await panel.getAttribute('data-full-size')).toBeNull();
+      await expect.poll(() => panel.getAttribute('data-expanded')).toBeNull();
       expect(await panel.count()).toBe(1);
+      expect((await work.boundingBox())!.width).toBe(docked!.width);
       expect(longTurnAborted).toBe(false);
 
       await page.keyboard.press('Escape');
       await panel.waitFor({ state: 'detached' });
+      // The viewer opened the panel, so it goes with it, and the message field has the keyboard.
+      expect(await work.count()).toBe(0);
+      await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('aria-label'))).toBe('Message');
       expect(longTurnAborted).toBe(false);
 
       // Focus the composer so chat's Esc stops the running turn.
@@ -582,20 +598,36 @@ describe('rich content in genaicode ui (browser)', () => {
       await page.keyboard.press('Escape');
       await vi.waitFor(() => expect(longTurnAborted).toBe(true));
 
-      // The Artifacts menu closes when Settings takes the chat's place (⌘,): Escape there goes back.
-      await page.getByRole('button', { name: 'Artifacts · 1' }).click();
-      await page.locator('.artifacts-popover').waitFor();
+      // The Work button opens the panel on Artifacts (the chat has no tasks). Settings takes the
+      // chat's place (⌘,) and Escape there goes back: the panel is as it was.
+      await workButton.click();
+      const row = work.locator('.gc-work-art', { hasText: 'Survey' });
+      await row.waitFor();
+      expect(await work.getByRole('tab', { selected: true }).textContent()).toBe('Artifacts 1');
+      expect(await row.textContent()).toContain('v2 of 2');
       await page.keyboard.press('ControlOrMeta+,');
       const settings = page.getByRole('main', { name: 'Settings' });
       await settings.waitFor();
+      expect(await work.count()).toBe(0);
       await page.keyboard.press('Escape');
       await settings.waitFor({ state: 'detached' });
-      expect(await page.locator('.artifacts-popover').count()).toBe(0);
 
-      // Header Artifacts button re-opens an artifact from earlier in the session.
-      await page.getByRole('button', { name: 'Artifacts · 1' }).click();
-      await page.locator('.artifacts-popover button', { hasText: 'Survey' }).click();
+      // The Artifacts tab re-opens an artifact from earlier in the session; back returns to the list.
+      await row.click();
       await panel.waitFor();
+      await expect.poll(() => work.boundingBox().then((box) => box!.width)).toBe(docked!.width);
+      const backButton = panel.locator('.viewer-back');
+      expect(await backButton.textContent()).toBe('Artifacts');
+      await backButton.click();
+      await panel.waitFor({ state: 'detached' });
+      await row.waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.className)).toBe('gc-work-art');
+      // From the list Escape closes nothing: the keyboard goes to the message field, the panel stays.
+      await row.click();
+      await panel.waitFor();
+      await page.keyboard.press('Escape');
+      await panel.waitFor({ state: 'detached' });
+      expect(await work.count()).toBe(1);
     } finally {
       releaseRepublish?.();
       releaseLongTurn?.();

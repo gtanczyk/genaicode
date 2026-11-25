@@ -502,7 +502,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
     // When the turn ends the tasks stay in the panel.
     finish?.();
     await page.locator('.gc-chat[data-status="idle"]').waitFor();
-    await expect.poll(() => work.locator('.gc-work-tab').textContent()).toBe('Tasks 5');
+    await expect.poll(() => work.locator('.gc-work-tab[data-tab="tasks"]').textContent()).toBe('Tasks 5');
     expect(errors).toEqual([]);
     await context.close();
   } finally {

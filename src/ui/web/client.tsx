@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { personText } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
-import { artifactKindLabel } from '../../react/artifact-panel.js';
 import { EscapeActive, useEscape } from '../../react/escape.js';
 import { storedSize } from '../../react/resize-handle.js';
 import { WorkPanel } from '../../react/work-panel.js';
@@ -12,7 +11,11 @@ import {
   pullRequestSettled,
   readWorkView,
   WORK_PANEL_MIN,
+  WORK_PANEL_VIEWER,
+  WORK_TABS,
   WORK_WIDTH_KEY,
+  workArtifacts,
+  workChanges,
   workNeedsYou,
   workPanelLayout,
   workTasks,
@@ -21,8 +24,14 @@ import {
   type WorkPanelView,
   type WorkTask,
 } from '../../react/work.js';
-import { formatBytes, submitAction } from '../../react/format.js';
-import { extractLocalImagePaths, isPathWithin, Markdown, resolveFilePath } from '../../react/markdown.js';
+import { submitAction } from '../../react/format.js';
+import {
+  extractLocalImagePaths,
+  isPathWithin,
+  Markdown,
+  resolveFilePath,
+  type FilePosition,
+} from '../../react/markdown.js';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import type { Artifact, RateLimit } from '../../agents/types.js';
 import type { ChatView } from '../controller.js';
@@ -57,7 +66,7 @@ import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
 import { Sessions } from './sessions.js';
-import { ViewerPanel, type SessionArtifactGroup, type ViewerTarget } from './file-view.js';
+import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
 import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
@@ -690,31 +699,6 @@ function useLocalImages(
   }, [cache, scopeKey]);
 }
 
-/** Collect all artifacts published in the session, grouped by id with all versions, newest first. */
-function collectSessionArtifacts(turns: ChatView['session']['turns'] | undefined): SessionArtifactGroup[] {
-  if (!turns?.length) return [];
-  const byId = new Map<string, SessionArtifactGroup>();
-  for (const turn of turns) {
-    for (const entry of turn.entries) {
-      if (entry.kind !== 'artifact') continue;
-      const art = entry.artifact;
-      const existing = byId.get(art.id);
-      if (existing) {
-        const versions = existing.versions.some((v) => v.version === art.version)
-          ? existing.versions.map((v) => (v.version === art.version ? art : v))
-          : [...existing.versions, art];
-        const latest = art.version >= existing.latest.version ? art : existing.latest;
-        // Move to end so newest-published comes first after reversing.
-        byId.delete(art.id);
-        byId.set(art.id, { id: art.id, latest, versions });
-      } else {
-        byId.set(art.id, { id: art.id, latest: art, versions: [art] });
-      }
-    }
-  }
-  return [...byId.values()].reverse();
-}
-
 /** The message field, for the focus: a new chat and the way back from a page start there. */
 function focusComposer() {
   window.requestAnimationFrame(() =>
@@ -898,6 +882,8 @@ function workStore(): Pick<Storage, 'getItem' | 'setItem'> {
 
 // Per window, as the design asks: two windows of the app each keep their own width.
 const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000], () => sessionStorage);
+// The panel's width while a file or an artifact is open in it: wider, and kept apart from the lists'.
+const viewerWidth = storedSize(VIEWER_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
 
 function App() {
   const root = document.getElementById('root')!;
@@ -1007,8 +993,6 @@ function App() {
     if (trigger) void checkAgents({ env: false, quiet: true });
   }, [hasAgentsApi, session?.turns]);
   const openSettings = (which: SettingsSection = 'general') => {
-    // What is open over the chat closes with it: hidden, it would keep its claim on Escape.
-    setArtifactsOpen(false);
     setFocusAgent(undefined);
     setSection(which);
     setPanel('settings');
@@ -1031,7 +1015,7 @@ function App() {
   const switchChat = (request: WebSwitchCommand, what: string): Promise<boolean | undefined> => {
     // What still waits here was meant for the conversation that is left.
     dropWaiting();
-    setViewer(undefined);
+    closeViewer();
     setPanel('chat');
     // The composer stays, and the next key goes to it.
     focusComposer();
@@ -1139,11 +1123,21 @@ function App() {
   };
   // Why the last message did not leave, shown under the transcript until the next one does.
   const [unsent, setUnsent] = useState<{ problem: string; text: string }>();
-  // The file or artifact open in the side viewer panel beside the chat.
-  const [viewer, setViewer] = useState<ViewerTarget>();
-  const [artifactsOpen, setArtifactsOpen] = useState(false);
-  // The work panel: this chat's delegated tasks, beside the chat where it fits.
+  // The work panel: this chat's delegated tasks, changed files and artifacts, beside the chat where
+  // it fits. A file or an artifact opens inside it (`workView.viewing`).
   const tasks = useMemo(() => workTasks(session), [session?.turns, session?.approvals]);
+  const sessionArtifacts = useMemo(() => workArtifacts(session), [session?.turns]);
+  const changes = useMemo(() => workChanges(session, tasks), [session?.turns, session?.cwd]);
+  const workCounts = {
+    tasks: tasks.length,
+    changes: changes.lead.length + changes.tasks.length,
+    artifacts: sessionArtifacts.length,
+  };
+  const hasWork = WORK_TABS.some((tab) => workCounts[tab] > 0);
+  // The viewer over the whole chat area (Expand), until Dock.
+  const [expanded, setExpanded] = useState(false);
+  // A link in the chat opened the viewer while the panel was closed: closing the viewer closes it again.
+  const viewerOpenedPanel = useRef(false);
   // A chat has no id of its own until its agent names the session.
   const chatKey = chatKeyOf({ conversation, session });
   // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
@@ -1154,26 +1148,41 @@ function App() {
   }));
   if (work.chat !== chatKey) {
     // The chat got its id: what was chosen in it meanwhile stays. Another chat: what was remembered for it.
-    const carried = work.chat === '' && (work.view.open !== undefined || work.view.task !== undefined);
+    const carried =
+      work.chat === '' &&
+      (work.view.open !== undefined || work.view.task !== undefined || work.view.viewing !== undefined);
     if (carried) writeWorkView(workStore(), chatKey, work.view);
     setWork({ chat: chatKey, view: carried ? work.view : readWorkView(workStore(), chatKey) });
-    if (!carried) setWorkFullOpen(false);
+    if (!carried) {
+      setWorkFullOpen(false);
+      setExpanded(false);
+      viewerOpenedPanel.current = false;
+    }
   }
   const workView = work.view;
   const setWorkView = (next: WorkPanelView) => {
     setWork({ chat: chatKey, view: next });
     if (chatKey) writeWorkView(workStore(), chatKey, next);
   };
+  const viewing = workView.viewing;
   const [room, setRoom] = useState(() => ({ room: window.innerWidth, window: window.innerWidth }));
   const [savedWidth, setSavedWidth] = useState(() => workWidth.get());
-  const workLayout = workPanelLayout({ ...room, saved: savedWidth });
+  const [savedViewerWidth, setSavedViewerWidth] = useState(() => viewerWidth.get());
+  // With a file or an artifact open the panel is 600 px wide where the chat keeps its own 600.
+  const workLayout = workPanelLayout({
+    ...room,
+    saved: viewing ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
+  });
   const latestLayout = useRef(workLayout);
   latestLayout.current = workLayout;
-  // Beside the chat it opens by itself until the person closes it (remembered per chat). Where it
-  // would cover the chat it opens only by hand.
+  // Beside the chat it opens by itself on delegated tasks until the person closes it (remembered
+  // per chat). Where it would cover the chat it opens only by hand.
   const workOpen =
-    panel === 'chat' && tasks.length > 0 && !viewer && (workLayout.docks ? (workView.open ?? true) : workFullOpen);
-  const workFull = workOpen && !workLayout.docks;
+    panel === 'chat' &&
+    (hasWork || !!viewing) &&
+    (workLayout.docks ? (workView.open ?? tasks.length > 0) : workFullOpen);
+  // In the chat's place: no room beside it, or the viewer was expanded over it.
+  const workFull = workOpen && (!workLayout.docks || (expanded && !!viewing));
   const workNeeds = workNeedsYou(tasks);
   // Work the person has not opened: tasks delegated since the panel was last looked at.
   const workNews = !workOpen && tasks.length > (workView.seen ?? 0);
@@ -1182,34 +1191,81 @@ function App() {
   }, [workOpen, tasks.length, workView.seen]);
   const pullRequests = usePullRequests(chatKey, tasks, workOpen);
   const closeWork = () => {
-    if (workFull) setWorkFullOpen(false);
-    else setWorkView({ ...workView, open: false });
+    setExpanded(false);
+    viewerOpenedPanel.current = false;
+    if (!workLayout.docks) setWorkFullOpen(false);
+    // What was open in the viewer goes with the panel: opened again, it shows its tab.
+    setWorkView({ ...workView, ...(workLayout.docks ? { open: false } : {}), viewing: undefined });
     // The panel's view covered the chat, or held the focus: the next key goes to the message field.
     if (workFull || document.activeElement?.closest('.gc-work')) focusComposer();
   };
+  /** The tab the panel opens on: the one it had, or the first with something in it. */
+  const landingTab = () =>
+    workCounts[workView.tab] ? workView.tab : (WORK_TABS.find((tab) => workCounts[tab] > 0) ?? workView.tab);
   const toggleWork = () => {
     if (workOpen) return closeWork();
-    if (!tasks.length) return;
-    // The viewer has the place beside the chat until the panel takes it.
-    setViewer(undefined);
+    if (!hasWork) return;
     setPanel('chat');
-    if (workLayout.docks) setWorkView({ ...workView, open: true, seen: tasks.length });
-    else setWorkFullOpen(true);
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      tab: landingTab(),
+      viewing: undefined,
+      seen: tasks.length,
+    });
+    if (!workLayout.docks) setWorkFullOpen(true);
   };
   /** A turn's line in the chat opens the panel on that turn's tasks. */
   const openTasks = () => {
-    setViewer(undefined);
+    setExpanded(false);
+    viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(true);
-    setWorkView({ ...workView, ...(workLayout.docks ? { open: true } : {}), task: undefined, seen: tasks.length });
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      tab: 'tasks',
+      task: undefined,
+      viewing: undefined,
+      seen: tasks.length,
+    });
+  };
+  /** Opens a file or an artifact in the panel's viewer, from the chat or from inside the viewer. */
+  const openViewer = (target: ViewerTarget) => {
+    setPanel('chat');
+    if (!workOpen) viewerOpenedPanel.current = true;
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      // A link followed inside the viewer keeps the way back of what was open.
+      viewing: { ...target, from: viewing?.from ?? 'chat' },
+    });
+  };
+  /** Closes the viewer: back to the list it was opened from, or (opened from the chat) to the chat. */
+  const closeViewer = (next: WorkPanelView = workView) => {
+    setExpanded(false);
+    if (viewerOpenedPanel.current) return closeWork();
+    // Opened from the chat: a key that went to the viewer goes to the message field next.
+    if (viewing?.from === 'chat' && document.activeElement?.closest('.viewer-panel')) focusComposer();
+    if (next.viewing) setWorkView({ ...next, viewing: undefined });
+    else if (next !== workView) setWorkView(next);
+  };
+  /** What the panel asks to show next. */
+  const onWorkView = (next: WorkPanelView) => {
+    if (!viewing || next.viewing) return setWorkView(next);
+    // Back in the viewer. Another tab chosen instead keeps the panel, also one the viewer opened.
+    if (next.tab !== workView.tab) viewerOpenedPanel.current = false;
+    closeViewer(next);
   };
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
+    // The viewer inside it goes first, whichever of the two claimed the key last (Dock claims it anew).
+    if (viewing) return false;
     if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
     // A field with text in it (the task filter, a message to a task) is cleared by its own Escape first.
     if (holdsTypedText(event.target)) return false;
     focusComposer();
   });
-  const sessionArtifacts = useMemo(() => collectSessionArtifacts(session?.turns), [session?.turns]);
   const localImages = useLocalImages(session?.turns, view?.notices, !!config?.files, activeCwd);
   // Stable while the images are, so memoized Markdown does not re-render on every update.
   const imageUrl = useMemo(
@@ -1219,22 +1275,8 @@ function App() {
 
   // Close the viewer if the conversation was cleared and the open artifact no longer exists.
   useEffect(() => {
-    if (viewer?.kind === 'artifact' && !sessionArtifacts.some((g) => g.id === viewer.id)) {
-      setViewer(undefined);
-    }
-  }, [viewer, sessionArtifacts]);
-
-  // Dismiss header popovers on outside click or Escape (the popover opened last, so it is asked before the viewer).
-  useEffect(() => {
-    if (!artifactsOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if ((event.target as Element).closest?.('.popover-anchor')) return;
-      setArtifactsOpen(false);
-    };
-    window.addEventListener('mousedown', onPointerDown, true);
-    return () => window.removeEventListener('mousedown', onPointerDown, true);
-  }, [artifactsOpen]);
-  useEscape(artifactsOpen && panel === 'chat', () => setArtifactsOpen(false));
+    if (viewing?.kind === 'artifact' && !sessionArtifacts.some((g) => g.id === viewing.id)) closeViewer();
+  }, [viewing, sessionArtifacts]);
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1247,10 +1289,11 @@ function App() {
   const openArtifactInPanel = (artifact: Artifact) => {
     const group = sessionArtifacts.find((g) => g.id === artifact.id);
     const followLatest = !group || artifact.version >= group.latest.version;
-    setViewer({ kind: 'artifact', id: artifact.id, ...(followLatest ? {} : { version: artifact.version }) });
-    setArtifactsOpen(false);
-    setPanel('chat');
+    openViewer({ kind: 'artifact', id: artifact.id, ...(followLatest ? {} : { version: artifact.version }) });
   };
+  const openFile = config?.files
+    ? (path: string, position?: FilePosition) => openViewer({ kind: 'file', path, position })
+    : undefined;
   const submit = (text: string, files?: File[]): Promise<boolean> => {
     const own = parseSlash(text);
     // Not sent, and the message field keeps it: the window is moving to another chat, or a folder
@@ -1514,8 +1557,17 @@ function App() {
             ? { name: folderName(activeCwd), path: activeCwd }
             : undefined
         }
-        onBack={panel === 'chat' ? (workFull ? closeWork : undefined) : backToChat}
-        onToggleWork={view && session && tasks.length ? toggleWork : undefined}
+        onBack={
+          panel === 'chat'
+            ? workFull
+              ? // Expanded over the chat, back docks the viewer; with no room to dock, it closes the view.
+                expanded && workLayout.docks
+                ? () => setExpanded(false)
+                : closeWork
+              : undefined
+            : backToChat
+        }
+        onToggleWork={view && session && hasWork ? toggleWork : undefined}
         onRoom={setRoom}
         workFull={workFull}
         onStop={
@@ -1534,15 +1586,51 @@ function App() {
               state={session}
               chatId={chatKey}
               view={workView}
-              onView={setWorkView}
+              onView={onWorkView}
               onClose={closeWork}
               mode={workFull ? 'full' : 'docked'}
               width={workLayout.width}
               bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
               onWidth={(width, commit) => {
+                if (viewing) {
+                  setSavedViewerWidth(width);
+                  if (commit) viewerWidth.set(width);
+                  return;
+                }
                 setSavedWidth(width);
                 if (commit) workWidth.set(width);
               }}
+              viewsFiles={!!config?.files}
+              renderViewer={(target, controls) => (
+                <ViewerPanel
+                  target={target}
+                  token={token}
+                  artifacts={sessionArtifacts}
+                  canReveal={config?.reveal}
+                  onReveal={revealFile}
+                  onOpenFile={openFile}
+                  imageUrl={imageUrl}
+                  onSelectArtifactVersion={(version) =>
+                    target.kind === 'artifact'
+                      ? setWorkView({ ...workView, viewing: { ...target, version } })
+                      : undefined
+                  }
+                  onArtifactSubmit={
+                    connected && !inSetup
+                      ? (artifact, data) => void submit(artifactSubmission(artifact, data))
+                      : undefined
+                  }
+                  // The lead's own edit, opened from Changes: its diff first.
+                  diff={
+                    target.kind === 'file' && target.from === 'changes'
+                      ? changes.lead.find((row) => row.path === target.path)?.diff
+                      : undefined
+                  }
+                  back={{ label: controls.backLabel, onBack: controls.onBack }}
+                  expanded={expanded && workLayout.docks}
+                  onExpand={workLayout.docks ? setExpanded : undefined}
+                />
+              )}
               // While the window moves to another chat nothing here may act: it would act on the chat left.
               disabled={!connected || switching}
               onPackAction={async (turnId, id, action, intent) => {
@@ -1573,41 +1661,6 @@ function App() {
         actions={
           view && session && panel === 'chat' ? (
             <>
-              {sessionArtifacts.length ? (
-                <div className="popover-anchor" data-tauri-drag-region="false">
-                  <button
-                    className="btn ghost sm"
-                    aria-expanded={artifactsOpen}
-                    aria-pressed={artifactsOpen}
-                    title="Artifacts published in this conversation"
-                    onClick={() => setArtifactsOpen((v) => !v)}
-                  >
-                    Artifacts · {sessionArtifacts.length}
-                  </button>
-                  {artifactsOpen ? (
-                    <div className="popover artifacts-popover" data-popup role="menu" aria-label="Session artifacts">
-                      {sessionArtifacts.map((group) => (
-                        <button
-                          key={group.id}
-                          type="button"
-                          role="menuitem"
-                          className={`artifact-list-item${viewer?.kind === 'artifact' && viewer.id === group.id ? ' active' : ''}`}
-                          onClick={() => openArtifactInPanel(group.latest)}
-                        >
-                          <span className="artifact-list-icon" aria-hidden="true">
-                            ◆
-                          </span>
-                          <span className="artifact-list-title">{group.latest.title}</span>
-                          <small className="artifact-list-meta">
-                            {artifactKindLabel(group.latest)} · {formatBytes(group.latest.bytes)}
-                            {group.latest.version > 1 ? ` · v${group.latest.version}` : ''}
-                          </small>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               {session.sessionId || session.turns.length ? (
                 <TranscriptMenu
                   token={token}
@@ -1644,7 +1697,7 @@ function App() {
                   }
                 />
               ) : null}
-              {tasks.length ? (
+              {hasWork ? (
                 <button
                   type="button"
                   className="btn ghost sm work-toggle"
@@ -1897,7 +1950,7 @@ function App() {
               }
               composerExtras={inSetup ? null : controls}
               attachments={config?.uploads && !inSetup ? ATTACH : undefined}
-              onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
+              onOpenFile={openFile}
               onRevealFile={config?.reveal ? revealFile : undefined}
               renderPrompt={promptBubble}
               renderFailure={(turn) =>
@@ -2053,26 +2106,6 @@ function App() {
                 )
               }
             />
-            {viewer ? (
-              <ViewerPanel
-                target={viewer}
-                token={token}
-                artifacts={sessionArtifacts}
-                canReveal={config?.reveal}
-                onReveal={revealFile}
-                onOpenFile={config?.files ? (path, position) => setViewer({ kind: 'file', path, position }) : undefined}
-                imageUrl={imageUrl}
-                onSelectArtifactVersion={(version) =>
-                  setViewer((current) => (current?.kind === 'artifact' ? { ...current, version } : current))
-                }
-                onArtifactSubmit={
-                  connected && !inSetup
-                    ? (artifact, data) => void submit(artifactSubmission(artifact, data))
-                    : undefined
-                }
-                onClose={() => setViewer(undefined)}
-              />
-            ) : null}
           </EscapeActive.Provider>
         </div>
       </Shell>

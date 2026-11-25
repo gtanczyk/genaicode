@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { PackAction, PackSteer, PackStep } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
-import type { ApprovalDecision, ApprovalRequest } from '../agents/types.js';
+import type { ApprovalDecision, ApprovalRequest, Artifact } from '../agents/types.js';
+import { artifactKindLabel } from './artifact-panel.js';
 import {
   clockTime,
+  formatBytes,
   packActivity,
   packCheckLabel,
   packLatestMessage,
@@ -31,12 +33,16 @@ import {
   pullRequestLabel,
   reviewBlocker,
   reviewHelp,
+  taskFilePath,
   taskPullRequest,
   testsHelp,
+  WORK_CHANGE_WORD,
   WORK_DENSE_ABOVE,
   WORK_GROUP_LABEL,
   WORK_GROUPS,
   WORK_PAGE,
+  workArtifacts,
+  workChanges,
   workClearable,
   workDismiss,
   workFootnote,
@@ -44,12 +50,25 @@ import {
   workStatus,
   workTasks,
   workTimes,
+  workViewerBack,
   type PullRequestStatus,
+  type WorkArtifact,
+  type WorkChanges,
   type WorkGroup,
   type WorkPanelView,
+  type WorkTab,
   type WorkTask,
   type WorkTone,
+  type WorkViewing,
 } from './work.js';
+
+/** What `renderViewer` gets beside the target: the way back, for the viewer's own header. */
+export interface WorkViewerControls {
+  /** Where back goes, in words: "Changes", "Artifacts", a task's id, or "Close" for one opened from the chat. */
+  backLabel: string;
+  /** Closes the viewer: the panel shows what it was opened from. */
+  onBack(): void;
+}
 
 export interface WorkPanelProps {
   /** The session whose delegated tasks are shown, as `<AgentChat>` gets it. */
@@ -91,6 +110,16 @@ export interface WorkPanelProps {
    * pull request the task opened stands in for Merge locally; any other is a link beside it.
    */
   pullRequests?: Readonly<Record<string, PullRequestStatus | undefined>>;
+  /**
+   * Draws the file or artifact that is open (`view.viewing`) in place of the tab's content, with a
+   * back button from `controls`. With it the files of Changes and of a task, and the artifacts, open
+   * on click. Without it they are a plain list (an artifact is a link when `artifactUrl` is set).
+   */
+  renderViewer?(viewing: WorkViewing, controls: WorkViewerControls): ReactNode;
+  /** `false` when `renderViewer` shows artifacts only: the files stay a plain list. Default true. */
+  viewsFiles?: boolean;
+  /** Where an artifact's content is served: without `renderViewer` its row links there. */
+  artifactUrl?(artifact: Artifact): string;
   /** Keep the person from acting (the host is disconnected): the panel keeps what it showed, dimmed. */
   disabled?: boolean;
   /** 'auto' follows prefers-color-scheme. Default 'auto'. */
@@ -162,7 +191,16 @@ export function WorkPanel(props: WorkPanelProps) {
   const tasks = workTasks(props.state, props.pullRequests);
   const { view, onView } = props;
   const mode = props.mode ?? 'docked';
+  const tab: WorkTab = view.tab ?? 'tasks';
   const open = view.task ? tasks.find((item) => item.key === view.task) : undefined;
+  const artifacts = useMemo(() => workArtifacts(props.state), [props.state?.turns]);
+  const changes = useMemo(() => workChanges(props.state, tasks), [props.state?.turns, props.state?.cwd]);
+  const viewing = props.renderViewer ? view.viewing : undefined;
+  const counts: Record<WorkTab, number> = {
+    tasks: tasks.length,
+    changes: changes.lead.length + changes.tasks.length,
+    artifacts: artifacts.length,
+  };
   const now = useNow(tasks.some((item) => item.task.status === 'running'));
   const handle = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLElement>(null);
@@ -192,6 +230,34 @@ export function WorkPanel(props: WorkPanelProps) {
   const back = useRef<string>(undefined);
   // The detail was opened from a row here (not from the chat): its back button takes the focus.
   const fromRow = useRef(false);
+  // The detail was opened from a file of Changes: back goes there.
+  const fromChanges = useRef(false);
+  // What gets the focus back when the viewer closes: the row it was opened from.
+  const viewerFrom = useRef<string>(undefined);
+  const pane = useRef<HTMLDivElement>(null);
+  const wasViewing = useRef(!!viewing);
+  useLayoutEffect(() => {
+    const closed = wasViewing.current && !viewing;
+    wasViewing.current = !!viewing;
+    const key = viewerFrom.current;
+    if (!closed || key === undefined) return;
+    viewerFrom.current = undefined;
+    pane.current?.querySelector<HTMLElement>(`[data-open="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+  }, [viewing]);
+  /** Opens a file or an artifact from a row (`key` names it, for the focus on the way back). */
+  const openViewer = props.renderViewer
+    ? (target: WorkViewing, key: string) => {
+        viewerFrom.current = key;
+        onView({ ...view, viewing: target });
+      }
+    : undefined;
+  const openFile = props.viewsFiles === false ? undefined : openViewer;
+  const select = (next: WorkTab) => {
+    if (next === tab && !viewing) return;
+    fromChanges.current = false;
+    onView({ ...view, tab: next, viewing: undefined });
+  };
+  const tabs = useRef<HTMLDivElement>(null);
   // Per chat and task, the revision whose diff the person opened. Kept here, not in the detail: Merge
   // locally after leaving the task and opening it again still sends what was looked at, so a
   // newer revision there is refused and its diff shown first. `stale` marks a revision a merge was
@@ -222,10 +288,34 @@ export function WorkPanel(props: WorkPanelProps) {
         />
       ) : null}
       <div className="gc-work-top">
-        <div role="tablist" aria-label="Work">
-          <button type="button" role="tab" className="gc-work-tab" aria-selected="true">
-            Tasks <span className="gc-work-count">{tasks.length}</span>
-          </button>
+        <div
+          ref={tabs}
+          role="tablist"
+          aria-label="Work"
+          onKeyDown={(event) => {
+            const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+            if (!step) return;
+            event.preventDefault();
+            const next =
+              WORK_TAB_ORDER[(WORK_TAB_ORDER.indexOf(tab) + step + WORK_TAB_ORDER.length) % WORK_TAB_ORDER.length]!;
+            select(next);
+            tabs.current?.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+          }}
+        >
+          {WORK_TAB_ORDER.map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="tab"
+              className="gc-work-tab"
+              data-tab={name}
+              aria-selected={tab === name}
+              tabIndex={tab === name ? 0 : -1}
+              onClick={() => select(name)}
+            >
+              {WORK_TAB_LABEL[name]} {counts[name] ? <span className="gc-work-count">{counts[name]}</span> : null}
+            </button>
+          ))}
         </div>
         <span className="gc-work-grow" />
         {props.onClose ? (
@@ -242,8 +332,43 @@ export function WorkPanel(props: WorkPanelProps) {
           </button>
         ) : null}
       </div>
-      <div className="gc-work-pane" role="tabpanel" aria-label="Tasks">
-        {open ? (
+      <div
+        ref={pane}
+        className="gc-work-pane"
+        role="tabpanel"
+        aria-label={WORK_TAB_LABEL[tab]}
+        data-viewing={viewing ? 'true' : undefined}
+      >
+        {viewing ? (
+          props.renderViewer!(viewing, {
+            backLabel: workViewerBack(view, tasks),
+            onBack: () => onView({ ...view, viewing: undefined }),
+          })
+        ) : tab === 'changes' ? (
+          <ChangesList
+            changes={changes}
+            cwd={props.state?.cwd ?? ''}
+            lead={props.state?.agent}
+            onOpenFile={
+              openFile ? (path) => openFile({ kind: 'file', path, from: 'changes' }, `file:${path}`) : undefined
+            }
+            onOpenTask={(key) => {
+              fromChanges.current = true;
+              fromRow.current = true;
+              onView({ ...view, tab: 'tasks', task: key });
+            }}
+          />
+        ) : tab === 'artifacts' ? (
+          <ArtifactsList
+            artifacts={artifacts}
+            artifactUrl={props.artifactUrl}
+            onOpen={
+              openViewer
+                ? (item) => openViewer({ kind: 'artifact', id: item.id, from: 'artifacts' }, `artifact:${item.id}`)
+                : undefined
+            }
+          />
+        ) : open ? (
           <TaskDetail
             // Two chats can each have a task 1:t1: what was typed or confirmed in one stays there.
             key={`${chat}\n${open.key}`}
@@ -259,12 +384,27 @@ export function WorkPanel(props: WorkPanelProps) {
             now={now}
             cwd={props.state?.cwd ?? ''}
             focusBack={fromRow.current}
+            backLabel={fromChanges.current ? 'Changes' : 'Tasks'}
             act={open.interactive ? act : undefined}
             onApprove={approve}
             onAutoApprove={props.disabled ? undefined : props.onAutoApprove}
+            onOpenFile={
+              openFile
+                ? (path) =>
+                    openFile(
+                      { kind: 'file', path: taskFilePath(open.task, path, props.state?.cwd ?? ''), from: 'task' },
+                      `file:${path}`,
+                    )
+                : undefined
+            }
             onBack={() => {
-              back.current = open.key;
               fromRow.current = false;
+              if (fromChanges.current) {
+                fromChanges.current = false;
+                onView({ ...view, tab: 'changes', task: undefined });
+                return;
+              }
+              back.current = open.key;
               onView({ ...view, task: undefined });
             }}
           />
@@ -289,7 +429,253 @@ export function WorkPanel(props: WorkPanelProps) {
   );
 }
 
+const WORK_TAB_ORDER: readonly WorkTab[] = ['tasks', 'changes', 'artifacts'];
+const WORK_TAB_LABEL: Record<WorkTab, string> = { tasks: 'Tasks', changes: 'Changes', artifacts: 'Artifacts' };
+
 const CHIP_LABEL: Record<WorkGroup, string> = { ...WORK_GROUP_LABEL, blocked: 'Blockers' };
+
+/** How many rows of a list show before **Show N more**. */
+const FILES_SHOWN = 40;
+
+const TASK_CHANGE_STATE: Record<WorkChanges['tasks'][number]['state'], string> = {
+  merged: 'merged',
+  unmerged: 'unmerged',
+  discarded: 'discarded',
+  shared: 'in your folder',
+};
+
+function ChangeLetter({ kind }: { kind?: keyof typeof WORK_CHANGE_WORD }) {
+  return (
+    <span className="gc-work-change" data-change={kind} title={kind ? WORK_CHANGE_WORD[kind] : 'edited'}>
+      {kind ?? '•'}
+      <span className="gc-work-sr"> {kind ? WORK_CHANGE_WORD[kind] : 'edited'}</span>
+    </span>
+  );
+}
+
+/**
+ * Changes: the files the lead agent changed itself (a file opens in the viewer, with its diff when
+ * the agent gave one), then the files of the delegated tasks, each with its task's id as a link to
+ * the task's detail, where its diff, review and merge are.
+ */
+function ChangesList({
+  changes,
+  cwd,
+  lead,
+  onOpenFile,
+  onOpenTask,
+}: {
+  changes: WorkChanges;
+  cwd: string;
+  lead?: string;
+  onOpenFile?(path: string): void;
+  onOpenTask(key: string): void;
+}) {
+  const [filter, setFilter] = useState<'merged' | 'unmerged'>();
+  const [more, setMore] = useState(0);
+  if (!changes.lead.length && !changes.tasks.length) {
+    return (
+      <div className="gc-work-scroll">
+        <p className="gc-work-empty">
+          No files changed in this conversation yet. Files the agent edits, and the changes of delegated tasks, are
+          listed here.
+        </p>
+        {changes.unlisted ? <p className="gc-work-note">{unlistedText(changes.unlisted)}</p> : null}
+      </div>
+    );
+  }
+  const count = (state: 'merged' | 'unmerged') => changes.tasks.filter((row) => row.state === state).length;
+  const chips = count('merged') > 0 && count('unmerged') > 0;
+  const active = chips ? filter : undefined;
+  const taskRows = changes.tasks.filter((row) => !active || row.state === active);
+  const limit = FILES_SHOWN + more;
+  const leadShown = changes.lead.slice(0, limit);
+  const taskShown = taskRows.slice(0, Math.max(0, limit - leadShown.length));
+  const hidden = changes.lead.length + taskRows.length - leadShown.length - taskShown.length;
+  return (
+    <div className="gc-work-scroll gc-work-changes">
+      {leadShown.length ? (
+        <section className="gc-work-group" aria-label="Changed by the lead agent">
+          <h4 className="gc-work-label">
+            {lead ? `Changed by ${lead}` : 'Changed by the lead agent'}{' '}
+            <span>
+              {changes.lead.length} {changes.lead.length === 1 ? 'file' : 'files'} · newest first
+            </span>
+          </h4>
+          <ul className="gc-work-filelist">
+            {leadShown.map((row) => {
+              const name = relativePath(row.path, cwd);
+              const inner = (
+                <>
+                  <ChangeLetter kind={row.kind} />
+                  <code title={row.path}>{name}</code>
+                  {row.added !== undefined ? (
+                    <span className="gc-work-delta">
+                      <span data-sign="add">+{row.added}</span> <span data-sign="del">−{row.removed ?? 0}</span>
+                    </span>
+                  ) : row.edits > 1 ? (
+                    <span className="gc-work-delta">{row.edits} edits</span>
+                  ) : null}
+                </>
+              );
+              return (
+                <li key={row.path} className="gc-work-file">
+                  {onOpenFile ? (
+                    <button
+                      type="button"
+                      className="gc-work-frow"
+                      data-open={`file:${row.path}`}
+                      title={row.diff ? 'Open the diff' : 'Open the file'}
+                      onClick={() => onOpenFile(row.path)}
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <span className="gc-work-frow">{inner}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {changes.tasks.length ? (
+        <section className="gc-work-group" aria-label="Changed by delegated tasks">
+          <h4 className="gc-work-label">
+            Changed by delegated tasks{' '}
+            <span>
+              {changes.tasks.length} {changes.tasks.length === 1 ? 'file' : 'files'}
+            </span>
+          </h4>
+          {chips ? (
+            <div className="gc-work-chips" role="group" aria-label="Show task changes">
+              {([undefined, 'merged', 'unmerged'] as const).map((state) => (
+                <button
+                  key={state ?? 'all'}
+                  type="button"
+                  className="gc-work-chip"
+                  aria-pressed={active === state}
+                  onClick={() => {
+                    setFilter(state);
+                    setMore(0);
+                  }}
+                >
+                  {state ? (state === 'merged' ? 'Merged' : 'Unmerged') : 'All'}{' '}
+                  <i>{state ? count(state) : changes.tasks.length}</i>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <ul className="gc-work-filelist">
+            {taskShown.map((row) => (
+              <li key={`${row.task}\n${row.path}`} className="gc-work-file">
+                <button
+                  type="button"
+                  className="gc-work-frow"
+                  title={`Open ${row.id}: its diff, review and merge`}
+                  onClick={() => onOpenTask(row.task)}
+                >
+                  <ChangeLetter kind={row.kind} />
+                  <code title={row.from ? `${row.from} → ${row.path}` : row.path}>{row.path}</code>
+                  <span className="gc-work-delta">
+                    <span className="gc-work-id">{row.id}</span>{' '}
+                    <span data-state={row.state}>{TASK_CHANGE_STATE[row.state]}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {hidden > 0 ? (
+        <button type="button" className="gc-work-more" onClick={() => setMore(more + WORK_PAGE)}>
+          Show {Math.min(hidden, WORK_PAGE)} more{hidden > WORK_PAGE ? ` of ${hidden}` : ''}
+        </button>
+      ) : null}
+      {changes.unlisted ? <p className="gc-work-note">{unlistedText(changes.unlisted)}</p> : null}
+      {changes.tasks.length ? (
+        <p className="gc-work-foot">A task’s file opens the task: its diff, review and merge are there.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function unlistedText(count: number): string {
+  return `${count} ${count === 1 ? 'task has' : 'tasks have'} a worktree whose changed files could not be listed. Show diff in the task has what changed.`;
+}
+
+/** Artifacts: what the conversation published, the newest first, each with its versions. */
+function ArtifactsList({
+  artifacts,
+  artifactUrl,
+  onOpen,
+}: {
+  artifacts: WorkArtifact[];
+  artifactUrl?: WorkPanelProps['artifactUrl'];
+  onOpen?(artifact: WorkArtifact): void;
+}) {
+  if (!artifacts.length) {
+    return (
+      <div className="gc-work-scroll">
+        <p className="gc-work-empty">
+          No artifacts in this conversation yet. A page, image or document the agent publishes shows here, with its
+          versions.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="gc-work-scroll gc-work-arts">
+      <ul className="gc-work-filelist" aria-label="Artifacts">
+        {artifacts.map((item) => {
+          const { latest } = item;
+          const inner = (
+            <>
+              <span className="gc-work-art-icon" aria-hidden="true">
+                ◆
+              </span>
+              <span className="gc-work-art-text">
+                <b>{latest.title}</b>
+                <small>
+                  {artifactKindLabel(latest)} · {formatBytes(latest.bytes)}
+                  {item.versions.length > 1
+                    ? ` · v${latest.version} of ${item.versions.length}`
+                    : latest.version > 1
+                      ? ` · v${latest.version}`
+                      : ''}
+                </small>
+              </span>
+            </>
+          );
+          const url = artifactUrl?.(latest);
+          return (
+            <li key={item.id}>
+              {onOpen ? (
+                <button
+                  type="button"
+                  className="gc-work-art"
+                  data-open={`artifact:${item.id}`}
+                  onClick={() => onOpen(item)}
+                >
+                  {inner}
+                  <svg className="gc-work-chevron" viewBox="0 0 16 16" aria-hidden="true">
+                    <path d="m6 4 4 4-4 4" />
+                  </svg>
+                </button>
+              ) : url ? (
+                <a className="gc-work-art" href={url} target="_blank" rel="noopener noreferrer">
+                  {inner}
+                </a>
+              ) : (
+                <span className="gc-work-art">{inner}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function TaskList({
   tasks,
@@ -802,7 +1188,7 @@ function AskCard({
 }
 
 /** A unified diff with its added, removed and hunk lines marked. */
-function Diff({ text }: { text: string }) {
+export function Diff({ text }: { text: string }) {
   return (
     <pre className="gc-work-diff" aria-label="Diff">
       {text.split('\n').map((line, i) => (
@@ -836,7 +1222,7 @@ export type WorkActionHandler = (
 
 type Inspected = { revision: string; stale?: boolean };
 
-const CHANGE_WORD: Record<string, string> = { A: 'added', M: 'modified', D: 'deleted', R: 'renamed', C: 'copied' };
+const CHANGE_WORD: Record<string, string> = WORK_CHANGE_WORD;
 
 function TaskDetail({
   item,
@@ -844,9 +1230,11 @@ function TaskDetail({
   now,
   cwd,
   focusBack,
+  backLabel,
   act,
   onApprove,
   onAutoApprove,
+  onOpenFile,
   onBack,
 }: {
   item: WorkTask;
@@ -855,9 +1243,12 @@ function TaskDetail({
   now: number;
   cwd: string;
   focusBack: boolean;
+  backLabel: string;
   act?: WorkActionHandler;
   onApprove?: WorkPanelProps['onApprove'];
   onAutoApprove?: WorkPanelProps['onAutoApprove'];
+  /** Open one of its changed files (as its changes name it) in the viewer. */
+  onOpenFile?(path: string): void;
   onBack(): void;
 }) {
   const { task } = item;
@@ -1000,7 +1391,7 @@ function TaskDetail({
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <path d="M10 3 5 8l5 5" />
           </svg>
-          Tasks
+          {backLabel}
         </button>
         <div className="gc-work-head">
           <h3>
@@ -1131,12 +1522,27 @@ function TaskDetail({
               <ul className="gc-work-files" aria-label="Changed files">
                 {task.changes.map((line) => {
                   const [kind = '', ...rest] = line.split('\t');
+                  const path = rest.at(-1);
+                  // A deleted file is not there to open, and neither is anything of a discarded worktree.
+                  const opens = onOpenFile && path && kind[0] !== 'D' && task.state !== 'discarded';
                   return (
                     <li key={line}>
                       <span data-change={kind[0]} title={CHANGE_WORD[kind[0] ?? ''] ?? kind}>
                         {kind[0]}
                       </span>
-                      <code>{rest.join(' → ') || line}</code>
+                      {opens ? (
+                        <button
+                          type="button"
+                          className="gc-work-link gc-work-filelink"
+                          data-open={`file:${path}`}
+                          title="Open the file"
+                          onClick={() => onOpenFile(path)}
+                        >
+                          <code>{rest.join(' → ')}</code>
+                        </button>
+                      ) : (
+                        <code>{rest.join(' → ') || line}</code>
+                      )}
                     </li>
                   );
                 })}

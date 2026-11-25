@@ -593,6 +593,21 @@ describe('the genaicode ui page looks as its baseline', () => {
     // A repository of its own on a fixed branch: the new chat's project line names the branch, and
     // without this it would be the branch of whatever checkout runs the test (none in a CI merge).
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: project });
+    // The file the lead edits itself in the delegating turn: Changes lists it, the viewer shows it.
+    mkdirSync(join(project, 'src'));
+    writeFileSync(
+      join(project, 'src', 'cart.ts'),
+      'export function total(items: Item[]) {\n  return items.reduce((sum, item) => sum + item.price * item.count, 0);\n}\n',
+    );
+    const cartDiff = [
+      `--- ${join(project, 'src', 'cart.ts')}`,
+      `+++ ${join(project, 'src', 'cart.ts')}`,
+      '@@ -1,3 +1,3 @@',
+      ' export function total(items: Item[]) {',
+      '-  return items.reduce((sum, item) => sum + item.price, 0);',
+      '+  return items.reduce((sum, item) => sum + item.price * item.count, 0);',
+      ' }',
+    ].join('\n');
     const reply = 'The cart total now counts **every item**:\n\n- `cart.ts` multiplies the price by the count';
     const helper: CodingAgent = {
       name: 'helper',
@@ -617,6 +632,10 @@ describe('the genaicode ui page looks as its baseline', () => {
             async *[Symbol.asyncIterator](): AsyncGenerator<AgentEvent> {
               yield { type: 'session', sessionId: result.sessionId! };
               for (const item of handed) yield { type: 'subtask-start', ...item };
+              if (handed === delegated) {
+                yield { type: 'file-change', paths: [join(project, 'src', 'cart.ts')], diff: cartDiff };
+                yield { type: 'file-change', paths: ['docs/CHANGELOG.md'] };
+              }
               yield {
                 type: 'message',
                 text: handed === delegated ? 'Three tasks are out; one is still running.' : 'All 48 tasks are out.',
@@ -779,6 +798,21 @@ describe('the genaicode ui page looks as its baseline', () => {
         await steady(page);
         await settle(page);
         await shot(page, `page-live-${THEMES[index]}`);
+        // Changes: the files the lead edited itself, then the files of the tasks with their task.
+        await work.getByRole('tab', { name: 'Changes' }).click();
+        await work.locator('.gc-work-frow', { hasText: 'src/cart.ts' }).waitFor();
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-changes-${THEMES[index]}`);
+        // The viewer, a drill-in of the panel: the lead's file opens on its diff, with the way back.
+        await work.locator('.gc-work-frow', { hasText: 'src/cart.ts' }).click();
+        await work.locator('.viewer-panel .gc-work-diff').waitFor();
+        await work.locator('.viewer-panel header small').waitFor();
+        await page.mouse.move(0, 0);
+        await steady(page);
+        await settle(page);
+        await shot(page, `page-viewer-${THEMES[index]}`);
       }
       expect(differing).toEqual([]);
     } finally {

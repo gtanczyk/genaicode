@@ -6,13 +6,15 @@
 import type { PackTaskChecks } from '../agents/pack-checks.js';
 import type { PackPullRequest, PackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
-import type { ApprovalRequest } from '../agents/types.js';
+import type { ApprovalRequest, Artifact } from '../agents/types.js';
 import { formatDuration, packTaskTitle, relativePath } from './format.js';
 
 /** The panel's narrowest width, its width until someone drags it, and what the chat keeps beside it. */
 export const WORK_PANEL_MIN = 380;
 export const WORK_PANEL_DEFAULT = 420;
 export const WORK_CHAT_MIN = 600;
+/** The panel's width while a file or an artifact is open in it, where the chat keeps `WORK_CHAT_MIN`. */
+export const WORK_PANEL_VIEWER = 600;
 
 /**
  * Where the panel goes. `room` is the width the chat and the panel share (the window without the
@@ -436,6 +438,260 @@ export const NO_CHANGES_HELP =
   'Git sees no changes, so there is nothing to merge. Discard worktree deletes its folder, files Git ignores (logs, build output) included.';
 
 // ---------------------------------------------------------------------------------------------
+// Artifacts and Changes
+
+/** An artifact of the conversation with every version that was published, newest first. */
+export interface WorkArtifact {
+  id: string;
+  latest: Artifact;
+  /** Newest first. */
+  versions: Artifact[];
+}
+
+/** The artifacts published in the conversation, the one published last first. */
+export function workArtifacts(state: Pick<SessionState, 'turns'> | null | undefined): WorkArtifact[] {
+  const byId = new Map<string, WorkArtifact>();
+  for (const turn of state?.turns ?? []) {
+    for (const entry of turn.entries) {
+      if (entry.kind !== 'artifact') continue;
+      const artifact = entry.artifact;
+      const known = byId.get(artifact.id);
+      const versions = known ? known.versions.filter((item) => item.version !== artifact.version) : [];
+      versions.push(artifact);
+      versions.sort((a, b) => b.version - a.version);
+      // Published again: it moves to the end, which is the top of the list.
+      byId.delete(artifact.id);
+      byId.set(artifact.id, { id: artifact.id, latest: versions[0]!, versions });
+    }
+  }
+  return [...byId.values()].reverse();
+}
+
+/** How a file changed: added, modified, deleted, renamed or copied. */
+export type WorkChangeKind = 'A' | 'M' | 'D' | 'R' | 'C';
+
+export const WORK_CHANGE_WORD: Record<WorkChangeKind, string> = {
+  A: 'added',
+  M: 'modified',
+  D: 'deleted',
+  R: 'renamed',
+  C: 'copied',
+};
+
+/** A file the lead agent changed itself, in the chat's folder. */
+export interface WorkLeadChange {
+  /** As the agent reported it: absolute, or relative to the chat's folder. */
+  path: string;
+  /** Known only when the agent gave a patch. */
+  kind?: WorkChangeKind;
+  /** How many times it was reported changed. */
+  edits: number;
+  /** Every patch of this file, oldest first, when the agent gave one for each of its edits. */
+  diff?: string;
+  /** Lines added and removed over those patches. */
+  added?: number;
+  removed?: number;
+}
+
+/** A file a delegated task changed, in its worktree or (a shared task) in the chat's folder. */
+export interface WorkTaskChange {
+  path: string;
+  /** Where a renamed or copied file came from. */
+  from?: string;
+  kind: WorkChangeKind;
+  /** `WorkTask.key` of the task: its detail has the diff. */
+  task: string;
+  id: string;
+  /** Where the change is now. */
+  state: 'merged' | 'unmerged' | 'discarded' | 'shared';
+}
+
+export interface WorkChanges {
+  lead: WorkLeadChange[];
+  tasks: WorkTaskChange[];
+  /** Tasks with a worktree whose changed files could not be listed. */
+  unlisted: number;
+}
+
+function patchPath(name: string): string {
+  const path = name.replace(/\t.*$/, '').trim();
+  return path === '/dev/null' ? '' : path.replace(/^[ab]\//, '');
+}
+
+/**
+ * A unified patch cut into its files: each with the path its header names, how the file changed and
+ * the lines it adds and removes. A `--- ` line starts a file only outside a hunk (inside one it is
+ * a removed line that began with `-- `).
+ */
+export function patchFiles(
+  patch: string,
+): Array<{ path: string; kind: WorkChangeKind; text: string; added: number; removed: number }> {
+  const files: Array<{ path: string; kind: WorkChangeKind; lines: string[]; added: number; removed: number }> = [];
+  // Lines the open hunk still holds; outside a hunk, undefined.
+  let left: { old: number; new: number } | undefined;
+  let head: string[] = [];
+  const lines = patch.replace(/\n$/, '').split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    if (left && left.old <= 0 && left.new <= 0) left = undefined;
+    if (!left && line.startsWith('diff --git ')) {
+      head = [line];
+      continue;
+    }
+    if (!left && line.startsWith('--- ') && lines[index + 1]?.startsWith('+++ ')) {
+      const before = patchPath(line.slice(4));
+      const after = patchPath(lines[index + 1]!.slice(4));
+      files.push({
+        path: after || before,
+        kind: !before ? 'A' : !after ? 'D' : 'M',
+        lines: [...head, line, lines[index + 1]!],
+        added: 0,
+        removed: 0,
+      });
+      head = [];
+      index += 1;
+      continue;
+    }
+    const file = files.at(-1);
+    if (!left && head.length) {
+      // `index`, `new file mode` and the like, between `diff --git` and the file names.
+      head.push(line);
+      continue;
+    }
+    if (!file) continue;
+    file.lines.push(line);
+    const hunk = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+    if (hunk) {
+      left = { old: Number(hunk[1] ?? 1), new: Number(hunk[2] ?? 1) };
+    } else if (left) {
+      if (line.startsWith('+')) {
+        file.added += 1;
+        left.new -= 1;
+      } else if (line.startsWith('-')) {
+        file.removed += 1;
+        left.old -= 1;
+      } else if (!line.startsWith('\\')) {
+        left.old -= 1;
+        left.new -= 1;
+      }
+    }
+  }
+  return files.map(({ lines: text, ...file }) => ({ ...file, text: text.join('\n') }));
+}
+
+function samePath(a: string, b: string, cwd: string): boolean {
+  return relativePath(a, cwd) === relativePath(b, cwd);
+}
+
+/**
+ * The files changed in the conversation. `lead`: what the lead agent reported changing itself, one
+ * row per file, the one changed last first. `tasks`: what each delegated task changed, newest task
+ * first. A merge puts a task's files into the chat's folder and reports them for the lead's turn
+ * too: those are the task's rows, not the lead's.
+ */
+export function workChanges(
+  state: Pick<SessionState, 'turns' | 'cwd'> | null | undefined,
+  tasks: readonly WorkTask[],
+): WorkChanges {
+  const cwd = state?.cwd ?? '';
+  const taskRows: WorkTaskChange[] = [];
+  let unlisted = 0;
+  for (const item of tasks.slice().reverse()) {
+    const { task } = item;
+    if (!task.changes) {
+      if (task.state === 'unmerged' && task.status !== 'running') unlisted += 1;
+      continue;
+    }
+    for (const line of task.changes) {
+      const [status = '', ...names] = line.split('\t');
+      const letter = status[0] as WorkChangeKind;
+      const path = names.at(-1);
+      if (!path) continue;
+      taskRows.push({
+        path,
+        ...(names.length > 1 ? { from: names[0] } : {}),
+        kind: letter in WORK_CHANGE_WORD ? letter : 'M',
+        task: item.key,
+        id: task.id,
+        state: task.state ?? 'shared',
+      });
+    }
+  }
+  const merged = taskRows.filter((row) => row.state === 'merged');
+  const byPath = new Map<string, WorkLeadChange & { patches: string[]; bare: boolean }>();
+  for (const turn of state?.turns ?? []) {
+    for (const entry of turn.entries) {
+      if (entry.kind !== 'files') continue;
+      // What a merge reports: paths only, every one a merged task's file.
+      const ofMerge =
+        !entry.diff &&
+        !!turn.pack &&
+        entry.paths.length > 0 &&
+        entry.paths.every((path) =>
+          merged.some((row) => row.task.startsWith(`${turn.id}:`) && samePath(row.path, path, cwd)),
+        );
+      if (ofMerge) continue;
+      const patches = entry.diff ? patchFiles(entry.diff) : [];
+      for (const path of entry.paths) {
+        const key = relativePath(path, cwd);
+        const patch = patches.find((file) => samePath(file.path, path, cwd));
+        const known = byPath.get(key);
+        const row = known ?? { path, edits: 0, patches: [], bare: false };
+        row.edits += 1;
+        if (patch) {
+          row.patches.push(patch.text);
+          row.added = (row.added ?? 0) + patch.added;
+          row.removed = (row.removed ?? 0) + patch.removed;
+          // Added then modified is still a file this chat added; deleted is how it ended.
+          row.kind = patch.kind === 'D' ? 'D' : row.kind === 'A' ? 'A' : patch.kind;
+        } else {
+          row.bare = true;
+        }
+        // Changed again: to the end, which is the top of the list.
+        byPath.delete(key);
+        byPath.set(key, row);
+      }
+    }
+  }
+  const lead = [...byPath.values()].reverse().map(({ patches, bare, ...row }): WorkLeadChange => {
+    // A count over some of the edits only would read as the whole change.
+    if (bare || !patches.length) return { path: row.path, edits: row.edits };
+    return { ...row, diff: patches.join('\n') };
+  });
+  return { lead, tasks: taskRows, unlisted };
+}
+
+/** The file or artifact open in the panel as a drill-in, and where it was opened from. */
+export type WorkViewing = (
+  | { kind: 'file'; path: string; position?: { line: number; endLine?: number; column?: number } }
+  | { kind: 'artifact'; id: string; version?: number }
+) & {
+  /** The tab's list, a task's detail (`task`), or the chat. Back goes there. */
+  from: 'changes' | 'artifacts' | 'task' | 'chat';
+};
+
+/** The words on the viewer's back button: where it goes. */
+export function workViewerBack(view: WorkPanelView, tasks: readonly WorkTask[]): string {
+  const from = view.viewing?.from;
+  if (from === 'changes') return 'Changes';
+  if (from === 'artifacts') return 'Artifacts';
+  if (from === 'task') return tasks.find((item) => item.key === view.task)?.task.id ?? 'Tasks';
+  return 'Close';
+}
+
+/**
+ * Where a task's changed file is on disk: in its worktree while that is there, else in the chat's
+ * folder. A worktree's files are named from its root, which the task's own directory may be inside.
+ */
+export function taskFilePath(task: PackTask, path: string, cwd: string): string {
+  const join = (dir: string) => (dir ? `${dir.replace(/[\\/]$/, '')}/${path}` : path);
+  if (task.mode !== 'worktree' || task.state !== 'unmerged') return join(cwd);
+  const id = task.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const root = new RegExp(`^(.*[\\\\/]${id}-[a-z0-9]+)(?:[\\\\/]|$)`).exec(task.cwd)?.[1];
+  return join(root ?? task.cwd);
+}
+
+// ---------------------------------------------------------------------------------------------
 // What is remembered
 
 /** What the panel remembers per chat. */
@@ -467,10 +723,16 @@ export interface WorkPanelView {
   scroll?: number;
   /** How many tasks the chat had when the panel was last looked at: more than that is news. */
   seen?: number;
+  /**
+   * The file or artifact open as a drill-in, in place of the tab's content (`renderViewer` of
+   * `<WorkPanel>` draws it). Not remembered: a chat opened again shows its tab.
+   */
+  viewing?: WorkViewing;
 }
 
-/** The panel's tabs. Live, Changes and Artifacts come with later steps of the layout. */
-export type WorkTab = 'tasks';
+/** The panel's tabs. Live comes with a later step of the layout. */
+export const WORK_TABS = ['tasks', 'changes', 'artifacts'] as const;
+export type WorkTab = (typeof WORK_TABS)[number];
 
 export const WORK_VIEW_KEY = 'genaicode-work';
 export const WORK_WIDTH_KEY = 'genaicode-work-width';
@@ -497,7 +759,7 @@ function readViews(store: Store): Array<[string, WorkPanelView]> {
 export function readWorkView(store: Store, chat: string): WorkPanelView {
   const found = readViews(store).find(([key]) => key === chat)?.[1];
   return {
-    tab: 'tasks',
+    tab: (WORK_TABS as readonly unknown[]).includes(found?.tab) ? found!.tab : 'tasks',
     ...(typeof found?.open === 'boolean' ? { open: found.open } : {}),
     ...(typeof found?.task === 'string' ? { task: found.task } : {}),
     ...(found?.folded && typeof found.folded === 'object' ? { folded: found.folded } : {}),
@@ -522,7 +784,10 @@ export function readWorkView(store: Store, chat: string): WorkPanelView {
 export function writeWorkView(store: Store, chat: string, view: WorkPanelView): void {
   try {
     const rest = readViews(store).filter(([key]) => key !== chat);
-    store.setItem(WORK_VIEW_KEY, JSON.stringify([[chat, view], ...rest].slice(0, WORK_VIEWS_KEPT)));
+    // What is open in the viewer is not remembered.
+    const kept = { ...view };
+    delete kept.viewing;
+    store.setItem(WORK_VIEW_KEY, JSON.stringify([[chat, kept], ...rest].slice(0, WORK_VIEWS_KEPT)));
   } catch {
     // Storage blocked: the state lasts until the page is closed.
   }

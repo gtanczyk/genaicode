@@ -3367,3 +3367,146 @@ body[data-resizing='true'] iframe {
   flex: none;
   font-size: 12px;
 }
+
+/* Changes and Artifacts: plain lists; a row opens the viewer, or the task that changed the file. */
+.gc-work-filelist {
+  list-style: none;
+  padding: 0;
+}
+.gc-work-file {
+  border-radius: var(--gc-radius-control);
+}
+.gc-work-file:hover,
+.gc-work-file:focus-within {
+  background: var(--gc-color-surface);
+}
+.gc-work-frow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: var(--gc-radius-control);
+}
+button.gc-work-frow {
+  cursor: pointer;
+}
+.gc-work-frow code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-work-change {
+  font: 600 var(--gc-type-12) var(--gc-font-mono);
+  width: 14px;
+  flex: none;
+  text-align: center;
+  color: var(--gc-color-warn);
+}
+.gc-work-change[data-change='A'] {
+  color: var(--gc-color-ok);
+}
+.gc-work-change[data-change='D'] {
+  color: var(--gc-color-err);
+}
+.gc-work-change:not([data-change]) {
+  color: var(--gc-color-muted);
+}
+.gc-work-delta {
+  flex: none;
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-muted);
+  white-space: nowrap;
+}
+.gc-work-delta [data-sign='add'] {
+  color: var(--gc-color-ok);
+}
+.gc-work-delta [data-sign='del'] {
+  color: var(--gc-color-err);
+}
+.gc-work-delta [data-state='unmerged'] {
+  color: var(--gc-color-merge, var(--gc-color-muted));
+}
+.gc-work-changes .gc-work-chips {
+  margin: 0 0 6px;
+}
+.gc-work-changes .gc-work-more {
+  padding-left: 8px;
+}
+.gc-work-files .gc-work-filelink {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-weight: inherit;
+  color: inherit;
+  text-decoration: none;
+}
+.gc-work-files .gc-work-filelink:hover code {
+  text-decoration: underline;
+}
+.gc-work-arts {
+  padding-top: 10px;
+}
+.gc-work-art {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--gc-color-line);
+  border-radius: var(--gc-radius-control);
+  background: var(--gc-color-surface);
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+}
+button.gc-work-art,
+a.gc-work-art {
+  cursor: pointer;
+}
+button.gc-work-art:hover,
+a.gc-work-art:hover {
+  border-color: var(--gc-color-accent);
+}
+.gc-work-art-icon {
+  color: var(--gc-color-accent);
+  flex: none;
+}
+.gc-work-art-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.gc-work-art-text b {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gc-work-art-text small {
+  font-size: var(--gc-type-12);
+  color: var(--gc-color-muted);
+}
+.gc-work-art .gc-work-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  color: var(--gc-color-muted);
+}
+/* The viewer drill-in: the host's own viewer fills the pane. */
+.gc-work-pane[data-viewing] > * {
+  flex: 1;
+  min-height: 0;
+}

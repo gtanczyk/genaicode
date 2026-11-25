@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
-import type { Artifact } from '../../agents/types.js';
 import { formatBytes } from '../../react/format.js';
 import {
   artifactKindLabel,
@@ -18,18 +17,32 @@ import {
   type FilePosition,
 } from '../../react/markdown.js';
 import { useEscape } from '../../react/escape.js';
-import { installResizeHandle, storedSize } from '../../react/resize-handle.js';
+import { Diff } from '../../react/work-panel.js';
+import type { WorkArtifact } from '../../react/work.js';
 import type { FileKind, FileView } from '../files.js';
 
-export interface SessionArtifactGroup {
-  id: string;
-  latest: Artifact;
-  versions: Artifact[];
-}
+export type SessionArtifactGroup = WorkArtifact;
 
 export type ViewerTarget =
   | { kind: 'file'; path: string; position?: FilePosition }
   | { kind: 'artifact'; id: string; version?: number };
+
+/** `Icon` of the shell is not imported here: the viewer draws its two glyphs itself. */
+function BackIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
+      <path d="M10 3 5 8l5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const PROBLEMS: Record<string, string> = {
   directory: 'This link points to a folder.',
@@ -49,9 +62,8 @@ const FILE_KIND_LABEL: Record<FileKind, string> = {
   other: 'File',
 };
 
-const MIN_WIDTH = 320;
-const DEFAULT_WIDTH = 620;
-const WIDTH_STORAGE_KEY = 'genaicode-viewer-width';
+/** Where the panel's width is kept while a file or an artifact is open in it. */
+export const VIEWER_WIDTH_KEY = 'genaicode-viewer-width';
 /** Renew the open file's `/files/<id>` capability before the server's 15-minute inactivity TTL. */
 const FILE_CAPABILITY_REFRESH_MS = 10 * 60_000;
 
@@ -99,14 +111,23 @@ export interface ViewerPanelProps {
   onSelectArtifactVersion?(version: number | undefined): void;
   /** Called when the user confirms a submission from an HTML artifact inside the panel. */
   onArtifactSubmit?: SubmitArtifact;
-  onClose(): void;
+  /** What the agent changed in the open file, as a unified patch: the viewer opens on it, with Diff / File. */
+  diff?: string;
+  /** The way back: the words on the button (where it goes) and what it does. */
+  back: { label: string; onBack(): void };
+  /** Over the whole chat area (Dock brings it back beside the chat). */
+  expanded?: boolean;
+  /** Expand and Dock. Without it the viewer has neither (no room to dock beside the chat). */
+  onExpand?(expanded: boolean): void;
 }
 
 /**
- * Unified side panel beside the chat: shows either a project file (text with line jump, Markdown
- * with source toggle, image with fit/actual-size, audio, video, PDF, sandboxed HTML with source
- * toggle, or binary download/reveal) or a published artifact (with version switcher, submit
- * confirmation, full size, New tab and Download). Resizable via the shared resize-handle.
+ * The viewer, a drill-in of the work panel: shows either a project file (its diff when the agent
+ * gave one, text with line jump, Markdown with source toggle, image with fit/actual-size, audio,
+ * video, PDF, sandboxed HTML with source toggle, or binary download/reveal) or a published artifact
+ * (with version switcher, submit confirmation, New tab and Download). Its header has the back
+ * button to where it was opened from, and Expand / Dock; Escape does what they do. The panel around
+ * it has the width and the resize handle.
  */
 export function ViewerPanel({
   target,
@@ -118,9 +139,13 @@ export function ViewerPanel({
   imageUrl,
   onSelectArtifactVersion,
   onArtifactSubmit,
-  onClose,
+  diff,
+  back,
+  expanded = false,
+  onExpand,
 }: ViewerPanelProps) {
-  const [fullSize, setFullSize] = useState(false);
+  // The diff first, as the row said; a link to a line of the file shows the file.
+  const [showDiff, setShowDiff] = useState(true);
   const [file, setFile] = useState<FileView>();
   const [problem, setProblem] = useState<{ code: string; message: string }>();
   const [showSource, setShowSource] = useState(false);
@@ -128,8 +153,6 @@ export function ViewerPanel({
   const [dims, setDims] = useState<{ width: number; height: number }>();
   const [docImages, setDocImages] = useState<Record<string, string>>({});
   const [docImageTick, setDocImageTick] = useState(0);
-  const panelRef = useRef<HTMLElement>(null);
-  const handleRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLPreElement>(null);
   const markdownRef = useRef<HTMLDivElement>(null);
   const artifactFrameRef = useRef<HTMLIFrameElement>(null);
@@ -166,6 +189,7 @@ export function ViewerPanel({
     setDims(undefined);
     // Opening a Markdown or HTML file with a specific `:line` starts in Source mode so the line is visible.
     setShowSource(fileLine !== undefined);
+    setShowDiff(fileLine === undefined);
   }, [filePath, fileLine, target.kind, activeArtifact?.id, activeArtifact?.version]);
 
   useEffect(() => {
@@ -343,44 +367,13 @@ export function ViewerPanel({
     lineEl?.scrollIntoView?.({ block: 'center' });
   }, [file, fileLine, fileEndLine, showSource]);
 
-  // Esc order: full size -> panel -> (next press reaches chat to stop the agent).
+  // Esc order: Dock when expanded -> back to where it was opened from -> (the next press is the panel's or the chat's).
   useEscape(true, () => {
-    // Let an active resize drag undo itself before closing the panel.
+    // Let an active resize drag undo itself first.
     if (document.body.dataset.resizing === 'true') return false;
-    if (fullSize) setFullSize(false);
-    else onClose();
+    if (expanded && onExpand) onExpand(false);
+    else back.onBack();
   });
-
-  // Shared resize-handle on the left edge, persisted in localStorage.
-  useEffect(() => {
-    if (fullSize || !handleRef.current || !panelRef.current) return;
-    const panel = panelRef.current;
-    const store = storedSize(WIDTH_STORAGE_KEY, [MIN_WIDTH, 1400]);
-    let width = store.get();
-    if (width) panel.style.setProperty('--viewer-width', `${width}px`);
-    const handle = installResizeHandle(handleRef.current, {
-      axis: 'x',
-      direction: () => -1,
-      bounds: () => [MIN_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - 200)],
-      read: () => width ?? Math.min(DEFAULT_WIDTH, Math.max(MIN_WIDTH, Math.round(window.innerWidth * 0.48))),
-      write(next, commit) {
-        width = next;
-        panel.style.setProperty('--viewer-width', `${next}px`);
-        if (commit) store.set(next);
-      },
-      reset() {
-        width = undefined;
-        panel.style.removeProperty('--viewer-width');
-        store.clear();
-      },
-    });
-    const onResize = () => handle.sync();
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      handle.dispose();
-    };
-  }, [fullSize]);
 
   const revealLabel = /Mac/.test(navigator.platform) ? 'Reveal in Finder' : 'Reveal';
 
@@ -391,23 +384,22 @@ export function ViewerPanel({
     const versions = artifactGroup ? [...artifactGroup.versions].sort((a, b) => b.version - a.version) : [];
     const isPdf = artifact?.mimeType === 'application/pdf';
     return (
-      <aside
-        ref={panelRef}
-        className={`viewer-panel${fullSize ? ' full-size' : ''}`}
+      <section
+        className="viewer-panel"
         data-viewer-kind="artifact"
-        data-full-size={fullSize ? 'true' : undefined}
+        data-expanded={expanded ? 'true' : undefined}
         aria-label={artifact ? `Artifact ${artifact.title}` : 'Artifact'}
       >
-        {!fullSize ? (
-          <div
-            ref={handleRef}
-            className="viewer-resize"
-            role="separator"
-            tabIndex={0}
-            aria-label="Resize viewer panel"
-          />
-        ) : null}
         <header>
+          <button
+            type="button"
+            className="chip viewer-back"
+            title={back.label === 'Close' ? 'Close (Esc)' : `Back to ${back.label} (Esc)`}
+            onClick={back.onBack}
+          >
+            <BackIcon />
+            {back.label}
+          </button>
           <span className="viewer-icon" aria-hidden="true">
             ◆
           </span>
@@ -446,15 +438,17 @@ export function ViewerPanel({
               {actualSize ? 'Fit' : 'Actual size'}
             </button>
           ) : null}
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={fullSize}
-            title={fullSize ? 'Exit full size (Esc)' : 'Full size'}
-            onClick={() => setFullSize((v) => !v)}
-          >
-            {fullSize ? 'Restore' : 'Full size'}
-          </button>
+          {onExpand ? (
+            <button
+              type="button"
+              className="chip"
+              aria-pressed={expanded}
+              title={expanded ? 'Back beside the chat (Esc)' : 'Use the whole chat area'}
+              onClick={() => onExpand(!expanded)}
+            >
+              {expanded ? 'Dock' : 'Expand'}
+            </button>
+          ) : null}
           {url && artifact && canPreviewArtifact(artifact) ? (
             <a className="chip" href={url} target="_blank" rel="noopener noreferrer">
               New tab
@@ -465,9 +459,6 @@ export function ViewerPanel({
               Download
             </a>
           ) : null}
-          <button type="button" className="chip" onClick={onClose} title="Close (Esc)">
-            Close
-          </button>
         </header>
         {!artifact || !url ? (
           <p className="file-problem">This artifact is no longer available.</p>
@@ -544,7 +535,7 @@ export function ViewerPanel({
             ) : null}
           </>
         )}
-      </aside>
+      </section>
     );
   }
 
@@ -555,6 +546,7 @@ export function ViewerPanel({
   const dlUrl = rawUrl ? withDownloadParam(rawUrl) : undefined;
   const lines = file?.text !== undefined ? file.text.replace(/\n$/, '').split('\n') : [];
   const hasSourceToggle = file?.kind === 'markdown' || file?.kind === 'html';
+  const diffShown = !!diff && showDiff;
   const showTextLines = file?.kind === 'text' || (hasSourceToggle && showSource);
   const canOpenTab =
     !!rawUrl &&
@@ -603,18 +595,23 @@ export function ViewerPanel({
   };
 
   return (
-    <aside
-      ref={panelRef}
-      className={`viewer-panel file-panel${fullSize ? ' full-size' : ''}`}
+    <section
+      className="viewer-panel file-panel"
       data-viewer-kind="file"
       data-file-kind={file?.kind}
-      data-full-size={fullSize ? 'true' : undefined}
+      data-expanded={expanded ? 'true' : undefined}
       aria-label={`File ${file?.path ?? target.path}`}
     >
-      {!fullSize ? (
-        <div ref={handleRef} className="viewer-resize" role="separator" tabIndex={0} aria-label="Resize viewer panel" />
-      ) : null}
       <header>
+        <button
+          type="button"
+          className="chip viewer-back"
+          title={back.label === 'Close' ? 'Close (Esc)' : `Back to ${back.label} (Esc)`}
+          onClick={back.onBack}
+        >
+          <BackIcon />
+          {back.label}
+        </button>
         <code className="viewer-title" title={target.path}>
           {displayName}
         </code>
@@ -625,25 +622,37 @@ export function ViewerPanel({
           </small>
         ) : null}
         <span className="spacer" />
-        {hasSourceToggle ? (
+        {diff ? (
+          <span className="seg" role="group" aria-label="Show">
+            <button type="button" aria-pressed={diffShown} onClick={() => setShowDiff(true)}>
+              Diff
+            </button>
+            <button type="button" aria-pressed={!diffShown} onClick={() => setShowDiff(false)}>
+              File
+            </button>
+          </span>
+        ) : null}
+        {hasSourceToggle && !diffShown ? (
           <button type="button" className="chip" aria-pressed={showSource} onClick={() => setShowSource((v) => !v)}>
             {showSource ? 'Preview' : 'Source'}
           </button>
         ) : null}
-        {file?.kind === 'image' ? (
+        {file?.kind === 'image' && !diffShown ? (
           <button type="button" className="chip" aria-pressed={actualSize} onClick={() => setActualSize((v) => !v)}>
             {actualSize ? 'Fit' : 'Actual size'}
           </button>
         ) : null}
-        <button
-          type="button"
-          className="chip"
-          aria-pressed={fullSize}
-          title={fullSize ? 'Exit full size (Esc)' : 'Full size'}
-          onClick={() => setFullSize((v) => !v)}
-        >
-          {fullSize ? 'Restore' : 'Full size'}
-        </button>
+        {onExpand ? (
+          <button
+            type="button"
+            className="chip"
+            aria-pressed={expanded}
+            title={expanded ? 'Back beside the chat (Esc)' : 'Use the whole chat area'}
+            onClick={() => onExpand(!expanded)}
+          >
+            {expanded ? 'Dock' : 'Expand'}
+          </button>
+        ) : null}
         {canOpenTab ? (
           <a className="chip" href={rawUrl} target="_blank" rel="noopener noreferrer" onClick={handleRawAction('tab')}>
             {file?.kind === 'pdf' && hasNoInlinePdfViewer() ? 'Open externally' : 'New tab'}
@@ -659,11 +668,12 @@ export function ViewerPanel({
             {revealLabel}
           </button>
         ) : null}
-        <button type="button" className="chip" onClick={onClose} title="Close (Esc)">
-          Close
-        </button>
       </header>
-      {problem ? (
+      {diffShown ? (
+        <div className="viewer-body viewer-diff">
+          <Diff text={diff!} />
+        </div>
+      ) : problem ? (
         <div className="viewer-stage viewer-fallback">
           <p className="file-problem">{problem.message}</p>
           <code className="viewer-refused-path">{target.path}</code>
@@ -800,6 +810,6 @@ export function ViewerPanel({
           </div>
         </div>
       )}
-    </aside>
+    </section>
   );
 }
