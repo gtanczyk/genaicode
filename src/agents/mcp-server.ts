@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { handleMcpMessage, type McpSkill, type McpTool } from './mcp-tools.js';
+import { handleMcpMessage, rpcError, type McpSkill, type McpTool } from './mcp-tools.js';
 import type { McpServer } from './types.js';
 
 export interface LocalMcpServerOptions {
@@ -101,8 +101,8 @@ export async function startScopedLocalMcpServer(
         },
         undefined,
         acceptsSse ? writeEvent : undefined,
-      ).then(
-        (answer) => {
+      )
+        .then((answer) => {
           if (sse) {
             if (answer !== null) writeEvent(answer);
             if (!response.destroyed && !response.writableEnded) response.end();
@@ -110,15 +110,18 @@ export async function startScopedLocalMcpServer(
             if (answer === null) reply(202);
             else reply(200, answer);
           }
-        },
-        () => {
+        })
+        .catch(() => {
           if (sse) {
+            const id = (message as { id?: unknown })?.id;
+            writeEvent(
+              rpcError(typeof id === 'string' || typeof id === 'number' ? id : null, -32603, 'Internal error'),
+            );
             if (!response.destroyed && !response.writableEnded) response.end();
           } else {
             reply(500);
           }
-        },
-      );
+        });
     });
   });
   // A tool may hold its answer for minutes (waiting on other agents).

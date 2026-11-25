@@ -1,3 +1,4 @@
+import { worktreeMatchesCommit } from '../agents/pack-git.js';
 import { execFile } from 'node:child_process';
 import type { PullRequestStatus } from '../react/work.js';
 
@@ -45,6 +46,7 @@ export function pullRequestLookup(
     env?: NodeJS.ProcessEnv;
     /** For tests: stands in for `gh` and `git`, resolving to their output. */
     run?: Run;
+    matchesCommit?: typeof worktreeMatchesCommit;
   } = {},
 ): PullRequestLookup {
   const kept = new Map<string, { at: number; status: Promise<PullRequestStatus | undefined> }>();
@@ -73,7 +75,8 @@ export function pullRequestLookup(
     if ((await git(worktree, 'rev-parse', 'HEAD'))?.trim() !== commit) return false;
     // Edits inside a submodule count too, whatever its `ignore` setting says.
     return (
-      (await git(worktree, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'))?.trim() === ''
+      (await git(worktree, 'status', '--porcelain', '--untracked-files=all', '--ignore-submodules=none'))?.trim() ===
+        '' && (await (options.matchesCommit ?? worktreeMatchesCommit)(worktree, commit))
     );
   };
   let running = 0;
