@@ -1113,12 +1113,27 @@ export function pack(options: PackOptions): Pack {
 
       // A new revision and its file list go together, wherever it is seen: the list is what Merge
       // locally then takes.
-      const updateRevision = async (sub: Sub, revision?: string) => {
-        if (!sub.checks || sub.checks.revision === revision) return;
-        if (revision && sub.dir && sub.start) {
-          const changes = await worktreeChanges(sub.dir, sub.start, revision).catch(() => undefined);
-          if (changes) sub.changes = changes;
+      // What a worktree holds beyond its start, as listed in the panel: the snapshot's files, then
+      // what only its index still has (staged, the working copy gone). Undefined when git fails: the
+      // panel then says the files could not be listed.
+      const listChanges = async (sub: Sub, revision: string): Promise<string[] | undefined> => {
+        if (!sub.dir || !sub.start) return undefined;
+        try {
+          const changes = await worktreeChanges(sub.dir, sub.start, revision);
+          const staged = await stagedChanges(sub.dir);
+          const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
+          return [...changes, ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t')))];
+        } catch {
+          return undefined;
         }
+      };
+
+      // A new revision and its file list go together, wherever it is seen: the list is what Merge
+      // locally then takes. A list that could not be read is read again on the next look.
+      const updateRevision = async (sub: Sub, revision?: string) => {
+        if (!sub.checks) return;
+        if (sub.checks.revision === revision && (sub.changes || !revision)) return;
+        sub.changes = revision ? await listChanges(sub, revision) : sub.changes;
         sub.checks.revision = revision;
         notify(sub);
       };
@@ -1216,8 +1231,8 @@ export function pack(options: PackOptions): Pack {
             throw new PackActionError(worktreeReason(sub), `${sub.id} is already ${sub.state}.`);
           const tree = await snapshotTree(sub.dir);
           const checks = sub.checks;
+          await updateRevision(sub, tree);
           if (sub.inspected || checks?.review || checks?.verify || expected) {
-            await updateRevision(sub, tree);
             if (
               expected
                 ? expected !== tree
@@ -1302,8 +1317,10 @@ export function pack(options: PackOptions): Pack {
           const tree = await snapshotTree(sub.dir);
           await updateRevision(sub, tree);
           // What the diff shows is what the task's files say: an edit made after the task ended shows
-          // up, also when the diff asked for is stale (the detail then reads the newer one).
-          setChanges(sub, await worktreeChanges(sub.dir, sub.start, tree));
+          // up, also when the diff asked for is stale (the detail then reads the newer one); work only
+          // the index still holds stays listed.
+          const listed = await listChanges(sub, tree);
+          if (listed) setChanges(sub, listed);
           if (expected && expected !== tree) throw new PackActionError('stale');
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.inspected = tree;
@@ -1331,14 +1348,9 @@ export function pack(options: PackOptions): Pack {
           // (staged work counts once the file is gone).
           const tree = empty && sub.dir && sub.start ? await snapshotTree(sub.dir) : undefined;
           if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
-            const changes = await worktreeChanges(sub.dir, sub.start, tree);
-            const staged = await stagedChanges(sub.dir);
             await updateRevision(sub, tree);
-            const listed = new Set(changes.map((line) => line.split('\t').slice(1).join('\t')));
-            setChanges(sub, [
-              ...changes,
-              ...staged.filter((line) => !listed.has(line.split('\t').slice(1).join('\t'))),
-            ]);
+            const listed = await listChanges(sub, tree);
+            if (listed) setChanges(sub, listed);
             throw new PackActionError('changed', `${sub.id}'s worktree has changes now. Nothing was discarded.`);
           }
           sub.state = 'discarded';

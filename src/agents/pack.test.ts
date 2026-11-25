@@ -1087,6 +1087,9 @@ describe('pack chat turns', () => {
       });
       expect(task()).toMatchObject({ state: 'unmerged', changes: ['A\tlate.txt'] });
       expect(existsSync(dir)).toBe(true);
+      // Reading the diff keeps the staged file listed: the worktree is not empty.
+      await session.actOnPackTask!(1, 't1', { type: 'diff' });
+      expect(task()?.changes).toEqual(['A\tlate.txt']);
       execFileSync('git', ['reset', '-q'], { cwd: dir });
       expect(await session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).toBe('Discarded t1.');
     } finally {
@@ -1336,6 +1339,37 @@ describe('pack chat turns', () => {
       );
       expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
       expect(readFileSync(join(cwd, 'b.txt'), 'utf8')).toBe('b changed\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('merged without a diff or check first, a task lists the files of the revision merged', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      const before = task()!.checks?.revision;
+      writeFileSync(join(task()!.cwd, 'e.txt'), 'e\n');
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(task()?.changes).toEqual(['M\ta.txt', 'A\te.txt']);
+      expect(task()!.checks?.revision).not.toBe(before);
     } finally {
       session.close();
       await team.close();
