@@ -3048,6 +3048,8 @@ describe('web UI server', () => {
     git('commit', '-q', '-m', 'start');
     writeFileSync(join(repo, 'src', 'draft.ts'), 'not committed yet\n');
     const homeEnv = { ...env, HOME: root, GENAICODE_HOME: join(root, '.genaicode') };
+    // The test folders sit inside this repository's checkout: git must not look above them for one.
+    vi.stubEnv('GIT_CEILING_DIRECTORIES', root);
 
     // The command and what the project line reads of a folder.
     expect(parseCommand({ type: 'project-chat', cwd: repo, worktree: true })).toEqual({
@@ -3166,6 +3168,7 @@ describe('web UI server', () => {
     } finally {
       stdin.end();
       expect(await done).toBe(0);
+      vi.unstubAllEnvs();
       rmSync(root, { recursive: true, force: true });
     }
   });
