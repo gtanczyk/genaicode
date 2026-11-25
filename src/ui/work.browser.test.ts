@@ -364,7 +364,7 @@ it('shows delegated tasks in the work panel: one task from approval to merge, at
       /^worker · works in its own copy \(a git worktree\) · started .+ · took 50s\.genaicode\/worktrees\/t2$/,
     );
     expect(await detail.locator('.gc-work-result').textContent()).toBe('Added one line under Unreleased.');
-    expect(await detail.locator('.gc-work-files li').allTextContents()).toEqual(['Mdocs/CHANGELOG.md']);
+    expect(await detail.locator('.gc-work-files li').allTextContents()).toEqual(['Mdocs/CHANGELOG.mdDiff']);
     // No test command in this chat: it says what the person can do.
     expect(await detail.locator('.gc-work-check .gc-work-note').textContent()).toMatch(
       /^No test command is set for this chat, so tests cannot run from here\./,

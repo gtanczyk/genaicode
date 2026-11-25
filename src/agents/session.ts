@@ -1,3 +1,4 @@
+import { trackReply } from './reply.js';
 import { addUsage, remainingBudget } from './usage.js';
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
@@ -44,7 +45,7 @@ export type SessionEntry =
       done: boolean;
     }
   /** Files the agent changed; `diff` is the change as a unified patch, when the agent gave one. */
-  | { kind: 'files'; paths: string[]; diff?: string }
+  | { kind: 'files'; paths: string[]; mergedTask?: string; diff?: string }
   /** The agent published something to look at; the content is in the session's `ArtifactStore`. */
   | { kind: 'artifact'; artifact: Artifact }
   /** `automatic`: decided by the task's `permissions.approval`, without asking. */
@@ -512,23 +513,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
   // An input entry closes the streaming text entry before it, but not the reply: its next deltas
   // and its final message still belong to the reply that began before the input.
   const replies = new Map<number, { seq: number; open: boolean }>();
-  const REPLY_ENDS = new Set<AgentEvent['type']>([
-    'message',
-    'tool-start',
-    'tool-end',
-    'file-change',
-    'approval-request',
-    'error',
-  ]);
   const noteReply = (turnId: number, event: AgentEvent) => {
     let reply = replies.get(turnId);
     if (!reply) {
       for (const id of replies.keys()) if (!state.turns.some((turn) => turn.id === id)) replies.delete(id);
       replies.set(turnId, (reply = { seq: 0, open: false }));
     }
-    if ((event.type === 'text-delta' || event.type === 'message') && !reply.open) reply.seq += 1;
-    if (event.type === 'text-delta') reply.open = true;
-    else if (REPLY_ENDS.has(event.type)) reply.open = false;
+    trackReply(reply, event);
   };
   // Input the agent took and has not answered yet, with the reply that was the latest when it took
   // it: that reply began before and so is no answer.
@@ -661,7 +652,12 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         });
         return;
       case 'file-change':
-        addEntry(turnId, { kind: 'files', paths: event.paths, ...(event.diff ? { diff: event.diff } : {}) });
+        addEntry(turnId, {
+          kind: 'files',
+          paths: event.paths,
+          ...(event.mergedTask ? { mergedTask: event.mergedTask } : {}),
+          ...(event.diff ? { diff: event.diff } : {}),
+        });
         return;
       case 'approval-request':
         // Usually added by `onApproval`, which holds the pending decision; this covers requests
@@ -866,6 +862,7 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
         candidate.name !== agent.name && !tried.has(candidate.name) && (!needsPlan || candidate.capabilities.plan),
     );
     if (!next) return false;
+    noteReply(turnId, { type: 'failover', from: agent.name, to: next.name, failure: result.failure! });
     addEntry(turnId, { kind: 'failover', from: agent.name, to: next.name, failure: result.failure! });
     const changed = [...new Set(failed.entries.flatMap((entry) => (entry.kind === 'files' ? entry.paths : [])))];
     const did: string[] = [];

@@ -610,8 +610,9 @@ describe('<AgentChat> inline card with 150 tasks', () => {
         root.render(<AgentChat state={state} chatId={chatId} onSend={() => undefined} onApprove={() => undefined} />),
       );
     };
-    chat('a');
+    chat('');
     click(button('Clear 112 finished'));
+    chat('a');
     expect(button('Show 112 cleared')).toBeDefined();
     // Another chat whose turn has the same id starts afresh...
     chat('b');

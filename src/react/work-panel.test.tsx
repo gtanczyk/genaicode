@@ -96,6 +96,50 @@ afterEach(() => {
 });
 
 describe('<WorkPanel> task detail', () => {
+  it('confirms full approval requests and acts only on unchanged targets', async () => {
+    const tasks: PackTask[] = ['t1', 't2', 't3'].map((id) => ({ ...base, id, prompt: id, status: 'running' }));
+    const onApprove = vi.fn();
+    const approvals = tasks.map((task) => ({
+      kind: 'command' as const,
+      id: 'ask' + task.id,
+      subtaskId: task.id,
+      summary: 'Run script',
+      detail: { command: 'npm test -- ' + task.id },
+    }));
+    show(tasks, { list: true, props: { onApprove }, state: { approvals: approvals.slice(0, 2) } });
+    click(button('Approve all'));
+    expect(host.textContent).toContain('npm test -- t2');
+    state = { ...state, approvals: approvals.slice(1) };
+    draw();
+    await actAsync(() => button('Confirm approve all')!.click());
+    expect(onApprove.mock.calls).toEqual([
+      ['askt2', 'approve', { turn: 7, task: 't2', command: expect.stringContaining('npm test -- t2') }],
+    ]);
+  });
+
+  it('merges only the confirmed revisions with explicit passing reviews and tests', async () => {
+    const onPackAction = vi.fn(async () => 'Merged');
+    const good = { revision: 'a', status: 'completed' as const, detail: 'VERDICT: LGTM' };
+    const tasks: PackTask[] = ['t1', 't2', 't3', 't4'].map((id) => ({
+      ...base,
+      id,
+      prompt: id,
+      status: 'completed',
+      state: 'unmerged',
+      changes: ['M\ta'],
+      checks: { revision: 'a', verify: good, review: good },
+    }));
+    tasks[2]!.checks!.verify = { ...good, revision: 'old' };
+    tasks[3]!.checks!.review = { ...good, detail: 'Review finished.' };
+    show(tasks, { list: true, props: { onPackAction } });
+    click(button('Merge all'));
+    tasks[0]!.checks = { ...tasks[0]!.checks, revision: 'changed' };
+    tasks[2]!.checks!.verify = good;
+    draw();
+    await actAsync(() => button('Confirm merge all')!.click());
+    expect(onPackAction.mock.calls).toEqual([[7, 't2', { type: 'merge', revision: 'a', checked: true }]]);
+  });
+
   it('running: what it was asked, who does it, what it does now, its messages with receipts, steer and stop', async () => {
     const onAction = vi.fn<PackActionHandler>(async () => 'ok');
     show(
@@ -420,13 +464,15 @@ describe('<WorkPanel> task detail', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     expect(button('Merge locally')).toBeUndefined();
     expect(text('.gc-work-detail')).toContain(
-      'The work is in the pull request, so there is nothing to merge here. Discard removes the local worktree copy only.',
+      'The work is in the pull request, so there is nothing to merge here. You can discard the task and recover its local worktree later.',
     );
     // No checks before a merge that does not happen here.
     expect($('.gc-work-checks')).toBeNull();
     click(button('Discard worktree'));
     // The confirmation says what goes: the folder, files Git ignores included.
-    expect(text('.gc-work-merge')).toContain('Its folder is deleted, files Git ignores (logs, build output) included.');
+    expect(text('.gc-work-merge')).toContain(
+      'You can undo this discard. The folder keeps its files, including staged and ignored work.',
+    );
     await actAsync(() => button('Confirm discard')!.click());
     // Sent as the pull request's: the host checks again that it still holds the work.
     expect(onAction).toHaveBeenCalledWith(7, 't5', { type: 'discard' }, { pullRequest: true });
@@ -498,7 +544,7 @@ describe('<WorkPanel> task detail', () => {
     expect(button('Merge locally')).toBeUndefined();
     expect(button('Discard worktree')).toBeDefined();
     expect(text('.gc-work-detail')).toContain(
-      'It changed no files. Git sees no changes, so there is nothing to merge. Discard worktree deletes its folder, files Git ignores (logs, build output) included.',
+      'It changed no files. Git sees no changes, so there is nothing to merge. Discard keeps the folder available for recovery, including ignored files.',
     );
     // The worktree is still there: its diff shows any edit made since the task ended.
     await actAsync(() => button('Show diff')!.click());
@@ -821,7 +867,10 @@ describe('<WorkPanel> task detail', () => {
     );
     expect(text('.gc-work-pill')).toBe('Unmerged');
     expect($('.gc-work-pill').getAttribute('data-tone')).toBe('merge');
-    expect($$('.gc-work-files li').map((item) => item.textContent)).toEqual(['Mdocs/CHANGELOG.md', 'Asrc/new.ts']);
+    expect($$('.gc-work-files li').map((item) => item.textContent)).toEqual([
+      'Mdocs/CHANGELOG.mdDiff',
+      'Asrc/new.tsDiff',
+    ]);
     expect(text('.gc-work-merge .gc-work-note')).toBe(
       'Merge locally copies this task’s changes from its worktree into your project folder. Nothing is staged, committed or pushed.',
     );
