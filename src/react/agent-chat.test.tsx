@@ -347,6 +347,10 @@ describe('AgentChat', () => {
       'fold: 2 steps · Shell',
       'Reading the docs.',
     ]);
+    // A message the host hides starts no stretch: one fold, as before.
+    render({ state, foldSteps: true, renderPrompt: (text) => (text.includes('docs?') ? null : text) });
+    const hidden = Array.from($$('.gc-turn')[1].querySelectorAll('.gc-steps > .gc-fold'));
+    expect(hidden.map((node) => node.querySelector('summary')!.textContent)).toEqual(['4 steps · Shell']);
   });
   it('names the step a running turn is on beside "is working", also below messages sent since', () => {
     const state = fixture();

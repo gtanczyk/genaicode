@@ -1082,14 +1082,22 @@ function Folded({
     : entries.findLast((item) => item.kind === 'progress' && item.plan !== undefined);
   // A message sent while the turn runs starts a new stretch: the steps after it fold below it, and
   // the last reply of each earlier stretch stays in view (the answer to that message).
+  // A message the host hides (`renderPrompt` gives nothing) starts no stretch.
+  const splits = (item: SessionEntry) => {
+    if (item.kind !== 'input') return false;
+    const render = entryProps(item).prompt;
+    const shown = render ? render(item.text) : item.text;
+    return shown !== null && shown !== undefined && shown !== false;
+  };
   const segment: number[] = [];
-  entries.reduce((n, item, i) => (segment[i] = item.kind === 'input' ? n + 1 : n), 0);
-  const segments = (segment.at(-1) ?? 0) + 1;
-  const segmentReply = new Set<number>();
-  for (let s = 0; s < segments - 1; s++) {
-    const last = entries.findLastIndex((item, i) => segment[i] === s && item.kind === 'text');
-    if (last >= 0) segmentReply.add(last);
-  }
+  const replies: number[] = [];
+  let segments = 1;
+  entries.forEach((item, i) => {
+    if (splits(item)) segments++;
+    segment[i] = segments - 1;
+    if (item.kind === 'text') replies[segments - 1] = i;
+  });
+  const segmentReply = new Set(replies.slice(0, -1).filter((i) => i !== undefined));
   const inView = (item: SessionEntry, i: number) =>
     i === answer ||
     segmentReply.has(i) ||
@@ -1101,20 +1109,25 @@ function Folded({
     item.kind === 'artifact' ||
     item.kind === 'input' ||
     (item.kind === 'approval' && !item.decision && pending.some((request) => request.id === item.request.id));
-  const allSteps = entries.map((item, i) => [item, i] as const).filter(([item, i]) => i !== update && !inView(item, i));
+  const stretchSteps: (readonly [SessionEntry, number])[][] = Array.from({ length: segments }, () => []);
+  entries.forEach((item, i) => {
+    if (i !== update && !inView(item, i)) stretchSteps[segment[i]].push([item, i]);
+  });
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
-  const open = turn.result ? undefined : entries.findLast((item) => item.kind === 'tool' && !item.done);
+  const openIndex = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'tool' && !item.done);
+  const open = entries[openIndex];
   const now = open?.kind === 'tool' ? toolName(open.name) : undefined;
   // One keyed list in a fixed order, per stretch its steps first and then what is in view, oldest
   // first: the end of the turn moves nothing (a moved artifact frame would reload and lose what was
   // typed in it), and the latest reply keeps its element and state when it becomes the answer.
   const fold = (s: number) => {
-    const steps = allSteps.filter(([, i]) => segment[i] === s);
+    const steps = stretchSteps[s];
     if (!steps.length) return null;
     const tools = steps.filter(([item]) => item.kind === 'tool').length;
     const failed = steps.some(([item]) => item.kind === 'tool' && item.isError);
     const count = tools || steps.length;
-    const latest = s === segments - 1;
+    // The spinner and the step it is on go on the fold that holds the open call, else the newest.
+    const latest = openIndex >= 0 ? segment[openIndex] === s : s === segments - 1;
     return (
       <LazyDetails
         key={s ? `fold-${s}` : 'fold'}
@@ -1145,7 +1158,7 @@ function Folded({
                 ? [entry(item, i)]
                 : [];
           // A sent message opens its stretch: the steps taken since fold right below it.
-          return item.kind === 'input' ? [...shown, fold(segment[i])] : shown;
+          return splits(item) ? [...shown, fold(segment[i])] : shown;
         }),
       ]}
     </>
