@@ -1152,6 +1152,84 @@ describe('pack chat turns', () => {
     }
   });
 
+  it('does not merge a patch that leaves out a file staged in the worktree and gone from its working copy', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async (task) => {
+      writeFileSync(join(task.cwd, 'a.txt'), 'one\ntwo\nthree\nfour\n');
+      return { text: 'Added a line.' };
+    });
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'edit' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: ['M\ta.txt'] });
+      const dir = task()!.cwd;
+      writeFileSync(join(dir, 'notes.txt'), 'notes\n');
+      execFileSync('git', ['add', 'notes.txt'], { cwd: dir });
+      rmSync(join(dir, 'notes.txt'));
+      await expect(session.actOnPackTask!(1, 't1', { type: 'merge' })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      // Nothing applied, and the only copy of notes.txt is still staged in the kept worktree.
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\n');
+      expect(task()?.state).toBe('unmerged');
+      expect(execFileSync('git', ['show', ':notes.txt'], { cwd: dir, encoding: 'utf8' })).toBe('notes\n');
+      // Staging everything the working copy has makes the index match the snapshot: it merges.
+      execFileSync('git', ['add', '-A'], { cwd: dir });
+      expect(await session.actOnPackTask!(1, 't1', { type: 'merge' })).toContain('Merged t1');
+      expect(readFileSync(join(cwd, 'a.txt'), 'utf8')).toBe('one\ntwo\nthree\nfour\n');
+      expect(existsSync(join(cwd, 'notes.txt'))).toBe(false);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
+  it('does not discard as unchanged a worktree whose edit git status hides (assume-unchanged)', async () => {
+    const cwd = repo();
+    const worker = fake('worker', async () => ({ text: 'Nothing to change.' }));
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent: 'worker', prompt: 'look' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({ lead, members: [worker] });
+    const session = createAgentSession({ agent: team, cwd });
+    const task = () => session.get().turns[0]?.pack?.tasks[0];
+    try {
+      session.send('go');
+      await session.idle();
+      expect(task()).toMatchObject({ status: 'completed', state: 'unmerged', changes: [] });
+      const dir = task()!.cwd;
+      execFileSync('git', ['update-index', '--assume-unchanged', 'a.txt'], { cwd: dir });
+      writeFileSync(join(dir, 'a.txt'), 'edited\n');
+      expect(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' })).toBe('');
+      await expect(session.actOnPackTask!(1, 't1', { type: 'discard', empty: true })).rejects.toMatchObject({
+        name: 'PackActionError',
+        reason: 'changed',
+      });
+      expect(task()).toMatchObject({ state: 'unmerged', changes: ['M\ta.txt'] });
+      expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('edited\n');
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('propagates Plan mode to capable workers, refuses incompatible delegates and blocks merge', async () => {
     const cwd = repo();
     const seenWorkerModes: Array<string | undefined> = [];

@@ -684,7 +684,6 @@ describe('the genaicode ui page looks as its baseline', () => {
     }
   });
 
-
   // The Settings page in the shell: its first section, and About (the version reads 0.0.0).
   it('settings page, light and dark', async () => {
     const pages = await Promise.all(THEMES.map((theme) => newPage(browser, theme, { width: 1280, height: 800 })));

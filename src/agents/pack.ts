@@ -15,11 +15,11 @@ import type { McpTool } from './mcp-tools.js';
 import {
   addWorktree,
   applyPatch,
+  patchCoversWorktree,
   removeWorktree,
   repoRoot,
   snapshotTree,
   stagedChanges,
-  worktreeAtStart,
   withSnapshot,
   worktreeChanges,
   worktreeDiff,
@@ -1218,6 +1218,13 @@ export function pack(options: PackOptions): Pack {
             )
               throw new PackActionError('stale');
           }
+          // The worktree goes once merged: nothing is applied unless the patch covers all it holds
+          // (a commit, or a staged file the working copy no longer has, would go with it).
+          if (!(await patchCoversWorktree(sub.dir, sub.start, tree)))
+            throw new PackActionError(
+              'changed',
+              `${sub.id}'s worktree has commits or staged work its diff does not show. Nothing was merged or removed.`,
+            );
           const patch = await worktreeDiff(sub.dir, sub.start, tree);
           sub.changes = await worktreeChanges(sub.dir, sub.start, tree);
           const paths = (sub.changes ?? []).map((line) => line.split('\t').slice(1).join('\t'));
@@ -1239,13 +1246,6 @@ export function pack(options: PackOptions): Pack {
               return `Merged ${sub.id} with conflicts. Resolve the conflict markers in:\n${clip(applied.error)}`;
             }
           }
-          // An empty patch merges nothing: keep the worktree unless it holds nothing beyond its start
-          // (a commit or staged file the snapshot no longer shows would go with it).
-          if (!patch.length && !(await worktreeAtStart(sub.dir, sub.start)))
-            throw new PackActionError(
-              'changed',
-              `${sub.id}'s worktree has commits or staged work its diff does not show. Nothing was merged or removed.`,
-            );
           sub.state = 'merged';
           await drop(sub);
           events.push({ type: 'subtask-update', id: sub.id, agent: sub.agent.name, state: 'merged', paths });
@@ -1318,10 +1318,11 @@ export function pack(options: PackOptions): Pack {
               worktreeReason(sub),
               `${sub.id} is ${sub.state ?? 'a shared task'}: nothing to discard.`,
             );
-          // Discarded as unchanged only while the worktree holds nothing beyond its start; otherwise list
-          // what the snapshot and the worktree's own index show (staged work counts once the file is gone).
-          if (empty && sub.dir && sub.start && !(await worktreeAtStart(sub.dir, sub.start))) {
-            const tree = await snapshotTree(sub.dir);
+          // Discarded as unchanged only while the worktree holds nothing beyond its start (its snapshot,
+          // its index and its HEAD); otherwise list what the snapshot and the worktree's own index show
+          // (staged work counts once the file is gone).
+          const tree = empty && sub.dir && sub.start ? await snapshotTree(sub.dir) : undefined;
+          if (tree && sub.dir && sub.start && !(await patchCoversWorktree(sub.dir, sub.start, tree, { empty: true }))) {
             const changes = await worktreeChanges(sub.dir, sub.start, tree);
             const staged = await stagedChanges(sub.dir);
             updateRevision(sub, tree);
