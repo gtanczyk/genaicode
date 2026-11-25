@@ -162,3 +162,39 @@ it('says which listing could not be read, and which stores, until it is read aga
   expect(chats.failed).toEqual([]);
   expect(chats.errors).toEqual([{ source: 'codex', message: 'locked' }]);
 });
+
+it('keeps the stores this app’s chats could not read until that listing reads them', async () => {
+  const answers: Array<(res: Response) => void> = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => new Promise<Response>((resolve) => void answers.push(resolve))),
+  );
+  let chats!: Chats;
+  function Probe() {
+    chats = useChats('t', true, 'stamp');
+    return null;
+  }
+  act(() => root.render(<Probe />));
+  const [own, all] = answers.splice(0);
+  await act(async () =>
+    own!(new Response(JSON.stringify({ sessions: [], errors: [{ source: 'codex', message: 'locked' }] }))),
+  );
+  await act(async () => all!(new Response(JSON.stringify({ sessions: [], errors: [] }))));
+  expect(chats.failed).toEqual([]);
+  expect(chats.errors).toEqual([{ source: 'codex', message: 'locked' }]);
+
+  // Every agent's listing fails on the same store: it is named once.
+  act(() => chats.refresh());
+  const [ownAgain, allAgain] = answers.splice(0);
+  await act(async () =>
+    allAgain!(new Response(JSON.stringify({ sessions: [], errors: [{ source: 'codex', message: 'locked' }] }))),
+  );
+  expect(chats.errors).toEqual([{ source: 'codex', message: 'locked' }]);
+  await act(async () => ownAgain!(new Response(JSON.stringify({ sessions: [], errors: [] }))));
+  expect(chats.errors).toEqual([{ source: 'codex', message: 'locked' }]);
+
+  act(() => chats.refresh());
+  const [, allLast] = answers.splice(0);
+  await act(async () => allLast!(new Response(JSON.stringify({ sessions: [], errors: [] }))));
+  expect(chats.errors).toEqual([]);
+});

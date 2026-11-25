@@ -223,6 +223,21 @@ it('says the queue could not be read, and which stores, in place of saying nothi
   expect(host.querySelector('.needs-empty b')?.textContent).toBe('Nothing needs you now');
 });
 
+it('says the queue could not be read, not that a filter is empty, while a listing failed', async () => {
+  render(props());
+  const chips = () => Array.from(host.querySelectorAll('.chipf'));
+  await click(chips()[5]!);
+  render(
+    props({
+      items: items.filter((item) => item.kind !== 'question'),
+      unread: { failed: [], errors: [{ source: 'codex', message: 'locked' }] },
+    }),
+  );
+  expect(cards()).toHaveLength(0);
+  expect(host.textContent).not.toContain('Nothing waits here.');
+  expect(host.textContent).toContain('Could not read codex: locked');
+});
+
 it('gives the next question of a session a card of its own: a button of the last one does not answer it', async () => {
   const hooked: SessionInfo = { ...gate, id: 'hooked', title: 'Ship it', ending: undefined, waitingFor: 'approval' };
   const ask = { id: 'abc', agent: 'claude', session: 'hooked', tool: 'Bash', preview: 'npm publish', at: now, pid: 1 };

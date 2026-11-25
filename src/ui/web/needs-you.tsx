@@ -146,7 +146,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
             <span>Approvals and questions from every project and agent wait here until you answer them.</span>
           </div>
         )}
-        {items.length && !shown.length ? <p className="needs-none">Nothing waits here.</p> : null}
+        {items.length && !shown.length && !incomplete ? <p className="needs-none">Nothing waits here.</p> : null}
         {shown.map((item) => {
           const age = waited(item.since, now);
           const replying = replyTo === item.key && !!item.reply;

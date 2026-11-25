@@ -20,8 +20,8 @@ export interface Chats {
   senders: NonNullable<WebSessionListing['senders']>;
   /**
    * Why the last read of a listing failed, for each that did (every agent's sessions, this app's
-   * chats), and the stores the last listing of every agent's sessions could not read: while any is
-   * there, an empty queue does not say nothing waits.
+   * chats), and the stores the last read of either listing could not read: while any is there, an
+   * empty queue does not say nothing waits.
    */
   failed: string[];
   errors: WebSessionListing['errors'];
@@ -54,6 +54,14 @@ function knownAsks(asks: PendingAsk[], gone: ReadonlyMap<string, AskedBy | undef
   return more.length ? [...asks, ...more] : asks;
 }
 
+/** The stores either listing could not read, each once. */
+function storeErrors(all: WebSessionListing['errors'], own: WebSessionListing['errors']): WebSessionListing['errors'] {
+  if (!own.length) return all;
+  const seen = new Set(all.map((error) => `${error.source}\n${error.message}`));
+  const more = own.filter((error) => !seen.has(`${error.source}\n${error.message}`));
+  return more.length ? [...all, ...more] : all;
+}
+
 /**
  * What the sidebar lists (`/api/sessions`): this app's chats of the last 30 days, and every
  * agent's sessions of the last 7. Asked again when `stamp` changes (a turn ended, another chat was
@@ -69,6 +77,8 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
   // Why the last read of each listing failed; absent once one is read.
   const [failedAll, setFailedAll] = useState<string>();
   const [failedOwn, setFailedOwn] = useState<string>();
+  // The stores the last read of this app's chats could not read.
+  const [ownErrors, setOwnErrors] = useState<WebSessionListing['errors']>([]);
   // The questions answered from here that a listing may still hold, with the session each was asked
   // for where known: forgotten once a listing does not hold it.
   const [gone, setGone] = useState<ReadonlyMap<string, AskedBy | undefined>>(NO_ASKS_GONE);
@@ -105,6 +115,7 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         'days=30&own=1',
         (found) => {
           setOwn(found.sessions ?? []);
+          setOwnErrors(found.errors ?? []);
           setOwnKnown(true);
         },
         setFailedOwn,
@@ -137,7 +148,7 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         ...(failedAll ? [`every agent’s sessions: ${failedAll}`] : []),
         ...(failedOwn ? [`this app’s chats: ${failedOwn}`] : []),
       ],
-      errors: listing.errors ?? [],
+      errors: storeErrors(listing.errors ?? [], ownErrors),
       refresh: () => setRound((value) => value + 1),
       answered: (ask, of) => {
         // The own chats are settled now too: every agent's listing may be read again first and no
@@ -159,5 +170,5 @@ export function useChats(token: string, enabled: boolean, stamp: string): Chats 
         setRound((value) => value + 1);
       },
     };
-  }, [own, ownKnown, listing, gone, failedAll, failedOwn]);
+  }, [own, ownKnown, listing, gone, failedAll, failedOwn, ownErrors]);
 }

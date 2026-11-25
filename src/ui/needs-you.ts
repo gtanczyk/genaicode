@@ -147,7 +147,8 @@ const hookAsk = (item: TowerItem) => (item.id.startsWith('hook:') ? item.id.slic
  *
  * A session a hook's question (`asks`) is open for waits on it, whatever its row says: the listing
  * reads the stores before the questions, so a question asked in between finds its session still
- * at work.
+ * at work, and a row may say it waits for approval and still be at work (a live record read before
+ * it).
  */
 export function needsSessions(
   sessions: readonly SessionInfo[] = [],
@@ -158,7 +159,7 @@ export function needsSessions(
   const all = [...sessions, ...own.filter((session) => !listed.has(sessionKey(session)))];
   if (!asks.length) return all;
   return all.map((session) =>
-    session.waitingFor !== 'approval' && askOf(session, all, asks)
+    (session.state !== 'waiting' || session.waitingFor !== 'approval') && askOf(session, all, asks)
       ? { ...session, state: 'waiting', waitingFor: 'approval' }
       : session,
   );

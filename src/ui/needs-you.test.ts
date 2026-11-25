@@ -134,6 +134,23 @@ describe('needsItems', () => {
     expect(count(late)).toBe(1);
   });
 
+  it('asks for approval where a hook question is open though the row says approval and still at work', () => {
+    // The Codex app server reported approval, then a live record read before it set the row to work.
+    const stale: NeedsInput = {
+      sessions: [session('stale', { source: 'codex', agent: 'codex', state: 'active', waitingFor: 'approval' })],
+      asks: [
+        { id: 'q2', agent: 'codex', session: 'stale', tool: 'Bash', preview: 'npm publish', at: now - MIN, pid: 1 },
+      ],
+      now,
+    };
+    expect(needsSessions(stale.sessions, [], stale.asks)[0]).toMatchObject({
+      state: 'waiting',
+      waitingFor: 'approval',
+    });
+    expect(needsItems(stale).map((one) => [one.key, one.kind])).toEqual([['session:codex:stale:q2', 'approval']]);
+    expect(count(stale)).toBe(1);
+  });
+
   it('lists what the sidebar counts, each request once', () => {
     const items = needsItems(input);
     expect(items.map((one) => one.key)).toEqual([
