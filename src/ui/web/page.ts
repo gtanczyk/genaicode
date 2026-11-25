@@ -80,7 +80,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 /* The work panel: a third column beside the chat, or (no room beside a chat of 600px) a view in the chat's place under the top bar. */
 .shell.has-work { grid-template-columns: var(--side-cur) minmax(0, 1fr) auto; position: relative; }
-.shell > .gc-work { z-index: 2; }
+/* In the page the panel speaks in the page's own font, as the sidebar does. */
+.shell > .gc-work { z-index: 2; font-family: inherit; }
 .shell.work-full { grid-template-columns: var(--side-cur) minmax(0, 1fr); }
 .shell.work-full > .gc-work { position: absolute; top: 46px; bottom: 0; right: 0; left: var(--side-cur); z-index: 29; }
 .btn.danger { color: var(--gc-color-err); }
