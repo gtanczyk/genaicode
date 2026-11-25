@@ -15,7 +15,25 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { EventQueue } from './event-queue.js';
 import { createArtifactStore } from './artifacts.js';
 import { personText } from './host-text.js';
-import { delegationBrief, pack, PackActionError, replyPullRequest, type PackTask as PackReport } from './pack.js';
+import {
+  clipReview,
+  delegationBrief,
+  pack,
+  PackActionError,
+  replyPullRequest,
+  type PackTask as PackReport,
+} from './pack.js';
+
+describe('clipReview', () => {
+  it('keeps the lines that decide a long review after the clip', () => {
+    const long = `${'Looked at the importer. '.repeat(900)}\n- BLOCKER: drops rows without an id\n\nVERDICT: CHANGES REQUESTED`;
+    const kept = clipReview(long);
+    expect(kept.length).toBeLessThan(long.length);
+    expect(kept).toContain('BLOCKER: drops rows without an id');
+    expect(kept.endsWith('VERDICT: CHANGES REQUESTED')).toBe(true);
+    expect(clipReview('Short.\nVERDICT: LGTM')).toBe('Short.\nVERDICT: LGTM');
+  });
+});
 import { createAgentSession } from './session.js';
 import type { AgentEvent, AgentResult, AgentRun, AgentTask, CodingAgent, McpServer } from './types.js';
 

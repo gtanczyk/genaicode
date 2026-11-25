@@ -332,6 +332,21 @@ interface TaskOptions {
 const CLIP = 4_000;
 const MAX_DIFF = 60_000;
 
+/**
+ * A review clipped for showing keeps what decides it: its BLOCKER lines and its verdict line, when the
+ * clip would cut them off, follow the clipped text.
+ */
+export const clipReview = (text: string, max = 16_000): string => {
+  const kept = clip(text, max);
+  if (kept === text) return kept;
+  const deciding = text
+    .split('\n')
+    .filter((line) => /^[\s>*_#\-\d.)]*(?:BLOCKER\b|VERDICT\s*:)/i.test(line) && !kept.includes(line))
+    .slice(0, 20)
+    .map((line) => clip(line, 300));
+  return deciding.length ? `${kept}\n…\n${deciding.join('\n')}` : kept;
+};
+
 const clip = (text: string, max = CLIP) =>
   text.length > max ? `${text.slice(0, max)}\n[... ${text.length - max} more characters]` : text;
 
@@ -1195,7 +1210,7 @@ export function pack(options: PackOptions): Pack {
               checks[kind] = {
                 revision,
                 status: report.ok ? 'completed' : 'failed',
-                detail: report.detail && clip(report.detail, 16_000),
+                detail: report.detail && (kind === 'review' ? clipReview(report.detail) : clip(report.detail, 16_000)),
               };
             } catch (error) {
               checks[kind] = {

@@ -692,6 +692,25 @@ describe('<WorkPanel> task detail', () => {
     expect(text('.gc-work-feedback')).toBe('Merged t6');
   });
 
+  it('a merged task still shows what its review said', () => {
+    show([
+      {
+        ...base,
+        id: 't8',
+        prompt: 'Rewrite the importer.',
+        status: 'completed',
+        state: 'merged',
+        changes: ['M\tsrc/import.ts'],
+        checks: {
+          reviewer: 'claude',
+          revision: 'abc',
+          review: { revision: 'abc', status: 'completed', detail: '[P1] drops rows\n\nVERDICT: CHANGES REQUESTED' },
+        },
+      },
+    ]);
+    expect($$('.gc-work-check-head').map((item) => item.textContent)[0]).toContain('Blocker');
+  });
+
   it('review and tests: request them, read the notes, and a blocker takes the emphasis off Merge', async () => {
     const onAction = vi.fn<PackActionHandler>(async () => '');
     show(

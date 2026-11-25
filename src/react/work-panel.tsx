@@ -682,7 +682,8 @@ function TaskDetail({
         {visibleDiff === undefined ? 'Show diff' : 'Hide diff'}
       </button>
     ) : null;
-  const blocker = merges && reviewBlocker(checks);
+  // What the review said stays as it said it, also once the task is merged or discarded.
+  const blocker = reviewBlocker(checks);
   const outdated = merges && !!checks?.review && checks.review.revision !== checks.revision;
   return (
     <>
