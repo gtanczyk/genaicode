@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 3.5.0 — 2026-11-26
+
 ### Added
 
 - **Run several chats at once in the browser and desktop app.** (#367)
