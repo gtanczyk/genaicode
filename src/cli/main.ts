@@ -113,6 +113,7 @@ import {
   autoUpdate,
   backgroundUpdate,
   defaultUpdateDeps,
+  durableCliPath,
   findInstall,
   installCommand,
   installedReleaseNotes,
@@ -121,7 +122,6 @@ import {
   registerRun,
   selfInstall,
   setAutoUpdate,
-  stableCliPath,
   updateInstall,
   type UpdateDeps,
 } from './update.js';
@@ -1142,6 +1142,11 @@ function sessionSkills(): McpSkill[] {
   }
 }
 
+/** After `mcp install` or `hooks install` from npx's cache, which npm clears, with no installed command. */
+const NPX_CACHE_WARNING =
+  "This genaicode runs from npx's cache, and npm clears it: the agents would then fail to start it.\n" +
+  'Install the command once ("npx genaicode install") and run this again as "genaicode ...".\n';
+
 /** `mcp`: the session index in the agents' own MCP configuration. */
 async function manageMcp(
   cli: CliEnvironment,
@@ -1154,7 +1159,7 @@ async function manageMcp(
     return EXIT_USAGE;
   }
   // The installed command's server runs `current`, which survives updates; otherwise this package.
-  const install = findInstall(updater.packageRoot);
+  const cliPath = durableCliPath(updater.packageRoot, cli.env);
   const installedHere = new Map(
     detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
   );
@@ -1165,9 +1170,7 @@ async function manageMcp(
     const options = {
       env: cli.env,
       ...(command.send ? { send: true } : {}),
-      ...(install
-        ? { server: { command: process.execPath, args: [stableCliPath(updater.packageRoot), 'sessions', 'mcp'] } }
-        : {}),
+      ...(cliPath.installed ? { server: { command: process.execPath, args: [cliPath.path, 'sessions', 'mcp'] } } : {}),
       ...(found ? { cli: found } : {}),
     };
     try {
@@ -1207,6 +1210,7 @@ async function manageMcp(
         'They read what your other agents\' sessions said. "genaicode mcp uninstall" takes them out again.\n',
     );
   }
+  if (command.action === 'install' && cliPath.transient) cli.stderr.write(NPX_CACHE_WARNING);
   return failed ? EXIT_FAILED : EXIT_OK;
 }
 
@@ -1597,10 +1601,10 @@ async function manageHooks(
     return EXIT_USAGE;
   }
   // The installed command's hooks run `current`, which survives updates; otherwise this package.
-  const install = findInstall(updater.packageRoot);
+  const cliPath = durableCliPath(updater.packageRoot, cli.env);
   const hookOptions = {
     env: cli.env,
-    ...(install ? { command: `"${process.execPath}" "${stableCliPath(updater.packageRoot)}" hook` } : {}),
+    ...(cliPath.installed ? { command: `"${process.execPath}" "${cliPath.path}" hook` } : {}),
   };
   const chosen = HOOK_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
   const installedHere = new Map(
@@ -1665,6 +1669,7 @@ async function manageHooks(
       `${live.size} open session${live.size === 1 ? '' : 's'}${ended ? ` (and ${ended} ended)` : ''} reported in ${liveDir(cli.env)}\n`,
     );
   }
+  if (command.action === 'install' && cliPath.transient) cli.stderr.write(NPX_CACHE_WARNING);
   return failed ? EXIT_FAILED : EXIT_OK;
 }
 
