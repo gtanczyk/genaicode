@@ -104,9 +104,14 @@ function matchRoot(
   return best;
 }
 
+/** Reject Windows UNC/network (`\\host`, `//host`, `/\host`, `\/host`) and device (`\\?\`, `\\.\`) paths before hitting the OS. */
+function isUnsafeFsPath(targetPath: string): boolean {
+  return !targetPath || targetPath.includes('\0') || /^[\\/]{2}/.test(targetPath);
+}
+
 /** Resolve `targetPath` against one or more allowed roots synchronously (following symlinks). */
 export function resolveInRootsSync(targetPath: string, rootsInput: RootsInput): RootResolveResult {
-  if (!targetPath || targetPath.includes('\0')) return { ok: false, reason: 'missing' };
+  if (isUnsafeFsPath(targetPath)) return { ok: false, reason: 'missing' };
   const resolvedRoots: string[] = [];
   for (const dir of readRoots(rootsInput)) {
     try {
@@ -158,7 +163,7 @@ export function resolveInRootsSync(targetPath: string, rootsInput: RootsInput): 
 
 /** Resolve `targetPath` against one or more allowed roots asynchronously (following symlinks). */
 export async function resolveInRoots(targetPath: string, rootsInput: RootsInput): Promise<RootResolveResult> {
-  if (!targetPath || targetPath.includes('\0')) return { ok: false, reason: 'missing' };
+  if (isUnsafeFsPath(targetPath)) return { ok: false, reason: 'missing' };
   const resolvedRoots: string[] = [];
   for (const dir of readRoots(rootsInput)) {
     try {

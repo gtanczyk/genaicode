@@ -6,6 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { isSandboxPolicy } from '../../agents/permissions.js';
+import type { DiscoveredModel } from '../../agents/models.js';
 import type { AgentInspection } from '../../agents/status.js';
 import { SessionSendError } from '../../agents/sessions/send.js';
 import type { AgentResult, RateLimit, SandboxPolicy } from '../../agents/types.js';
@@ -117,6 +118,11 @@ export interface WebUiOptions {
     refresh?: boolean;
     refreshEnv?: boolean;
   }) => Promise<{ agents: AgentInspection[]; setup: boolean }>;
+  /**
+   * Available models discovered on demand from an installed agent CLI, at GET /api/models?agent=<name>.
+   * `?refresh=1` bypasses the per-agent cache.
+   */
+  models?: (agent: string, query?: { refresh?: boolean }) => Promise<DiscoveredModel[]>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
   /** Resolves the current chat session's raw file path on disk (for transcript metadata / Copy path). */
@@ -672,6 +678,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       sessions: !!options.sessions,
       ...(options.limits ? { limits: true } : {}),
       agents: !!options.agents,
+      ...(options.models ? { models: true } : {}),
       uploads: !!options.uploads,
       ...(options.projectTeams ? { projectTeams: true } : {}),
       ...(options.agentTools ? { agentTools: true } : {}),
@@ -1108,6 +1115,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const refreshEnv = req.method === 'POST' || url.searchParams.get('env') === '1';
       const status = await options.agents({ refresh, refreshEnv });
       return send(res, 200, 'application/json', JSON.stringify(status));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/models') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!options.models) return send(res, 404, 'application/json', '{"error":"no model catalog here"}');
+      const agent = url.searchParams.get('agent')?.trim();
+      if (!agent || agent.length > 100) return send(res, 400, 'application/json', '{"error":"missing agent"}');
+      const refresh = url.searchParams.get('refresh') === '1';
+      const models = await options.models(agent, { refresh }).catch(() => []);
+      return send(res, 200, 'application/json', JSON.stringify({ agent, models }), { 'cache-control': 'no-store' });
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/agent-tools') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))

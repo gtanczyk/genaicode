@@ -588,6 +588,30 @@ describe('<UsageSection>', () => {
     expect(chatLimits([{ agent: 'codex', window: '5h', status: 'ok' }], [], undefined)).toHaveLength(1);
   });
 
+  it('lists installed agents without limits or shares, and merges Live accounts into one row', async () => {
+    stubFetch({ '/api/shares': () => ({ body: { shares: [] } }) });
+    render(
+      <UsageSection
+        token="tok"
+        shares
+        now={now}
+        agents={['antigravity', 'claude', 'cursor']}
+        limits={[{ agent: 'claudeLive', window: '5h', status: 'warning', usedPercent: 85 }]}
+      />,
+    );
+    await flush();
+    expect(Array.from(host.querySelectorAll('[data-agent]')).map((one) => one.getAttribute('data-agent'))).toEqual([
+      'antigravity',
+      'claude',
+      'cursor',
+    ]);
+    const row = (name: string) => host.querySelector<HTMLElement>(`[data-agent="${name}"]`)!;
+    expect(row('claude').querySelector('.pill')!.className).toBe('pill warn');
+    expect(row('claude').querySelector('.pill')!.textContent).toContain('85%');
+    expect(row('antigravity').querySelector('.pill')!.textContent).toBe('reports no plan limits');
+    expect(row('cursor').querySelector('.pill')!.textContent).toBe('reports no plan limits');
+  });
+
   it('asks for no shares without a session index, and says when nothing is known', () => {
     const calls = stubFetch({});
     render(<UsageSection token="tok" shares={false} limits={[]} now={now} />);

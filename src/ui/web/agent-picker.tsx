@@ -12,6 +12,18 @@ export interface AgentListProps {
   onOpenSetup?(focusAgent?: string): void;
 }
 
+function agentRowTitle(agent: AgentInspection): string {
+  const version = agent.version ? ` · v${agent.version}` : '';
+  if (!agent.installed) return `${agent.guide.title} — not installed`;
+  if (agent.broken) return `${agent.guide.title} — ${agent.hint ?? 'needs reinstall'}`;
+  if (agent.auth === 'signed-out') return `${agent.guide.title} — installed, not signed in${version}`;
+  if (agent.auth === 'ready') {
+    const plan = agent.plan ? ` (${agent.plan})` : '';
+    return `${agent.guide.title} — signed in${plan}${version}`;
+  }
+  return `${agent.guide.title} — installed; sign-in is checked when you run it${version}`;
+}
+
 /**
  * The agents of the composer's agent chip popover:
  * - Installed & Ready / unknown agents are choosable.
@@ -29,6 +41,7 @@ export function AgentList({ current, agents, noQuestions, disabled, onSelect, on
           {installed.map((agent) => {
             const choosable = !agent.broken && agent.auth !== 'signed-out';
             const selected = agent.name === current;
+            const title = agentRowTitle(agent);
             if (choosable) {
               return (
                 <button
@@ -37,6 +50,7 @@ export function AgentList({ current, agents, noQuestions, disabled, onSelect, on
                   role="radio"
                   aria-checked={selected}
                   className="agent-opt"
+                  title={title}
                   disabled={disabled && !selected}
                   onClick={() => onSelect(agent.name)}
                 >
@@ -54,7 +68,7 @@ export function AgentList({ current, agents, noQuestions, disabled, onSelect, on
               );
             }
             return (
-              <div key={agent.name} className="picker-row muted" role="none">
+              <div key={agent.name} className="picker-row muted" role="none" title={title}>
                 <span className="picker-dot" data-state={agent.broken ? 'broken' : 'signed-out'} aria-hidden="true" />
                 <span className="opt-name">{agent.guide.title}</span>
                 <small>{agent.broken ? 'Needs reinstall' : 'Not signed in'}</small>
@@ -73,7 +87,7 @@ export function AgentList({ current, agents, noQuestions, disabled, onSelect, on
         <div className="picker-section">
           <div className="picker-heading">More agents</div>
           {missing.map((agent) => (
-            <div key={agent.name} className="picker-row muted" role="none">
+            <div key={agent.name} className="picker-row muted" role="none" title={agentRowTitle(agent)}>
               <span className="picker-dot" data-state="missing" aria-hidden="true" />
               <span className="opt-name">{agent.guide.title}</span>
               {onOpenSetup ? (

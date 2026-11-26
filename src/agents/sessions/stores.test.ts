@@ -373,6 +373,105 @@ describe('agent session stores', () => {
     ).toEqual(['errand', 'test']);
   });
 
+  it('reads Antigravity transcript token usage and resolves mirrored CLI transcripts', async () => {
+    const agyHome = { ...env, HOME: join(home, 'agy-usage'), GENAICODE_HOME: join(home, 'agy-usage', '.genaicode') };
+    const schema =
+      'CREATE TABLE conversation_summaries (conversation_id TEXT PRIMARY KEY, title, last_modified_time, workspace_uris, nesting_depth)';
+    const at = '2026-11-10 12:00:00+00:00';
+    // Both DBs carry the same timestamp (desktop mirrors CLI), while the transcript lives under antigravity-cli.
+    database(
+      join(agyHome.HOME, '.gemini', 'antigravity', 'conversation_summaries.db'),
+      schema,
+      'conversation_summaries',
+      [
+        {
+          conversation_id: 'cli-1',
+          title: 'Mirrored CLI run',
+          last_modified_time: at,
+          workspace_uris: '["file:///work/app"]',
+          nesting_depth: 0,
+        },
+        {
+          conversation_id: 'desk-1',
+          title: 'Desktop run',
+          last_modified_time: at,
+          workspace_uris: '["file:///work/ops"]',
+          nesting_depth: 0,
+        },
+      ],
+    );
+    database(
+      join(agyHome.HOME, '.gemini', 'antigravity-cli', 'conversation_summaries.db'),
+      schema,
+      'conversation_summaries',
+      [
+        {
+          conversation_id: 'cli-1',
+          title: 'Mirrored CLI run',
+          last_modified_time: at,
+          workspace_uris: '["file:///work/app"]',
+          nesting_depth: 0,
+        },
+      ],
+    );
+    const cliTranscript = join(
+      agyHome.HOME,
+      '.gemini',
+      'antigravity-cli',
+      'brain',
+      'cli-1',
+      '.system_generated',
+      'logs',
+      'transcript.jsonl',
+    );
+    write(
+      cliTranscript,
+      jsonl(
+        { step_index: 0, type: 'USER_INPUT', created_at: '2026-11-10T11:50:00Z', content: 'Fix usage' },
+        {
+          step_index: 1,
+          type: 'PLANNER_RESPONSE',
+          created_at: '2026-11-10T11:51:00Z',
+          input_tokens: 1_200,
+          cache_read_tokens: 0,
+          output_tokens: 300,
+        },
+        {
+          step_index: 2,
+          type: 'CHECKPOINT',
+          created_at: '2026-11-10T11:55:00Z',
+          input_tokens: 800,
+          cache_read_tokens: 5_000,
+          output_tokens: 200,
+        },
+      ),
+    );
+    const deskTranscript = join(
+      agyHome.HOME,
+      '.gemini',
+      'antigravity',
+      'brain',
+      'desk-1',
+      '.system_generated',
+      'logs',
+      'transcript.jsonl',
+    );
+    write(
+      deskTranscript,
+      jsonl({ step_index: 0, type: 'USER_INPUT', created_at: '2026-11-10T11:00:00Z', content: 'No tokens here' }),
+    );
+
+    const sessions = await antigravitySessions().list({ env: agyHome });
+    const byId = new Map(sessions.map((s) => [s.id, s]));
+    expect(byId.get('cli-1')!.path).toBe(cliTranscript);
+    expect(byId.get('cli-1')!.usage).toEqual({
+      inputTokens: 2_000,
+      outputTokens: 500,
+      cachedInputTokens: 5_000,
+    });
+    expect(byId.get('desk-1')!.usage).toBeUndefined();
+  });
+
   it('reads Copilot workspaces and their events', async () => {
     const state = join(home, '.copilot', 'session-state');
     write(

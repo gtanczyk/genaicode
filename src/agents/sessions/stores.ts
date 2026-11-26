@@ -19,6 +19,7 @@ import { number, queryDatabase, tableColumns, text, type Row } from './sqlite.js
 import type { SessionTurn } from '../session.js';
 import { transcriptBuilder, transcriptLines } from './transcript.js';
 import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
+import { antigravityUsage } from './window.js';
 
 export interface StoreOptions {
   /** The agent's data directory, instead of its default place under the home directory. */
@@ -197,6 +198,8 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
         ? [options.dir]
         : ['antigravity', 'antigravity-cli'].map((name) => path.join(homeOf(env), '.gemini', name));
       const byId = new Map<string, SessionInfo>();
+      const transcriptPath = (dir: string, id: string) =>
+        path.join(dir, 'brain', id, '.system_generated', 'logs', 'transcript.jsonl');
       for (const dir of dirs) {
         const found = await rows(path.join(dir, 'conversation_summaries.db'), 'conversation_summaries', [
           'conversation_id',
@@ -234,12 +237,37 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
               title: title(row.title) ?? title(row.preview),
               updatedAt,
               state: status.endsWith('_RUNNING') ? 'active' : status.endsWith('_IDLE') ? 'waiting' : undefined,
-              path: path.join(dir, 'brain', id, '.system_generated', 'logs', 'transcript.jsonl'),
+              path: transcriptPath(dir, id),
             }),
           );
         }
       }
-      return select([...byId.values()], query);
+      const chosen = select([...byId.values()], query);
+      // Desktop and CLI mirror each other's summaries, while the transcript stays in the dir that ran it.
+      if (dirs.length > 1) {
+        const exists = (file: string) =>
+          fs.stat(file).then(
+            () => true,
+            () => false,
+          );
+        await mapLimited(chosen, 16, async (info) => {
+          if (info.path && (await exists(info.path))) return;
+          for (const dir of dirs) {
+            const candidate = transcriptPath(dir, info.id);
+            if (candidate === info.path) continue;
+            if (await exists(candidate)) {
+              info.path = candidate;
+              return;
+            }
+          }
+        });
+      }
+      await mapLimited(chosen.slice(0, ENRICH), 8, async (info) => {
+        if (!info.path) return;
+        const usage = await antigravityUsage(info.path, env);
+        if (usage) info.usage = usage;
+      });
+      return chosen;
     },
     async read(info, readOptions) {
       if (!info.path) throw new Error(`Session ${info.id} has no transcript file.`);

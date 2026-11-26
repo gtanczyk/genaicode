@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import type { TokenUsage } from '../../core/types.js';
 import { homeOf } from './files.js';
 import { zstdFile } from './transcript.js';
 import type { SessionInfo } from './types.js';
@@ -46,36 +47,68 @@ function codexWeight(report: Record<string, unknown>): number {
   return Math.max(0, count(report.input_tokens) - count(report.cached_input_tokens)) + count(report.output_tokens);
 }
 
-/** What was read of a Codex rollout so far: Codex only ever adds lines, so the next look goes on from `offset`. */
-interface RolloutScan {
+interface ScanBase {
   /** Bytes read, up to the end of the last whole line. */
   offset: number;
   /** How the file begins: another file under the same name is read anew. */
   head: string;
   total: number;
-  /** The counter's last figure. */
-  previous: number;
   reports: number;
   /** The total after each report that added to it, with its time, in the file's order. */
   points: Array<[at: number, total: number]>;
 }
 
+/** What was read of a Codex rollout so far: Codex only ever adds lines, so the next look goes on from `offset`. */
+interface RolloutScan extends ScanBase {
+  /** The counter's last figure. */
+  previous: number;
+}
+
+/** What was read of an Antigravity `transcript.jsonl` so far: each model step adds its own tokens. */
+interface AntigravityScan extends ScanBase {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+}
+
 const HEAD = 256;
-/** A rollout smaller than this is read again every time: keeping its scan saves nothing. */
+/** A rollout smaller than this is read again every time: keeping its scan on disk saves nothing. */
 const KEEP_FROM = 1024 * 1024;
+/** Cap on small files kept in memory for Antigravity scans. */
+const MAX_MEMORY_SCANS = 512;
 const scans = new Map<string, RolloutScan>();
+const antigravityScans = new Map<string, AntigravityScan>();
 const freshScan = (head = ''): RolloutScan => ({ offset: 0, head, total: 0, previous: 0, reports: 0, points: [] });
+const freshAntigravityScan = (head = ''): AntigravityScan => ({
+  offset: 0,
+  head,
+  total: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cachedInputTokens: 0,
+  reports: 0,
+  points: [],
+});
+const isPoints = (value: unknown): value is Array<[number, number]> =>
+  Array.isArray(value) &&
+  value.every((point) => Array.isArray(point) && typeof point[0] === 'number' && typeof point[1] === 'number');
 const isScan = (value: unknown): value is RolloutScan =>
   isRecord(value) &&
   [value.offset, value.total, value.previous, value.reports].every((n) => typeof n === 'number' && n >= 0) &&
   typeof value.head === 'string' &&
-  Array.isArray(value.points) &&
-  value.points.every((point) => Array.isArray(point) && typeof point[0] === 'number' && typeof point[1] === 'number');
+  isPoints(value.points);
+const isAntigravityScan = (value: unknown): value is AntigravityScan =>
+  isRecord(value) &&
+  [value.offset, value.total, value.inputTokens, value.outputTokens, value.cachedInputTokens, value.reports].every(
+    (n) => typeof n === 'number' && n >= 0,
+  ) &&
+  typeof value.head === 'string' &&
+  isPoints(value.points);
 
-/** Where scans of big rollouts are kept between runs: `~/.genaicode/cache/rollouts`. */
-function scanFile(file: string, env: NodeJS.ProcessEnv): string {
+/** Where scans of big transcripts are kept between runs: `~/.genaicode/cache/<bucket>`. */
+function scanFile(file: string, env: NodeJS.ProcessEnv, bucket = 'rollouts'): string {
   const home = env.GENAICODE_HOME ?? path.join(homeOf(env), '.genaicode');
-  return path.join(home, 'cache', 'rollouts', `${createHash('sha256').update(file).digest('hex').slice(0, 32)}.json`);
+  return path.join(home, 'cache', bucket, `${createHash('sha256').update(file).digest('hex').slice(0, 32)}.json`);
 }
 
 /** One line of a rollout: Codex notes the thread's running total with a time after every model call. */
@@ -111,7 +144,35 @@ function takeLine(scan: RolloutScan, text: string): void {
   if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
 }
 
-function workSince(scan: RolloutScan, since: number): WorkWithin | undefined {
+/**
+ * One line of an Antigravity `transcript.jsonl`: each `PLANNER_RESPONSE` (and `CHECKPOINT`) notes
+ * that call's non-cached input, cached input and output tokens with `created_at`. Cached input is
+ * kept for display but left out of `total`, or a long thread would weigh by its length alone.
+ */
+function takeAntigravityLine(scan: AntigravityScan, text: string): void {
+  if (!text.includes('"input_tokens"') && !text.includes('"output_tokens"')) return;
+  let line: unknown;
+  try {
+    line = JSON.parse(text);
+  } catch {
+    return;
+  }
+  if (!isRecord(line)) return;
+  if (typeof line.input_tokens !== 'number' && typeof line.output_tokens !== 'number') return;
+  scan.reports += 1;
+  const input = count(line.input_tokens);
+  const output = count(line.output_tokens);
+  const cached = count(line.cache_read_tokens);
+  scan.inputTokens += input;
+  scan.outputTokens += output;
+  scan.cachedInputTokens += cached;
+  scan.total = scan.inputTokens + scan.outputTokens;
+  const at = typeof line.created_at === 'string' ? Date.parse(line.created_at) : NaN;
+  if (Number.isNaN(at)) return;
+  if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
+}
+
+function workSince(scan: ScanBase, since: number): WorkWithin | undefined {
   if (scan.reports === 0) return undefined;
   let before = 0;
   for (let i = scan.points.length - 1; i >= 0; i--) {
@@ -130,8 +191,12 @@ function workSince(scan: RolloutScan, since: number): WorkWithin | undefined {
 /** A usage report is a short line: a longer one (a tool's output) is passed over unread. */
 const MAX_LINE = 1024 * 1024;
 
-/** Read what the rollout gained since `scan`. Returns the scan up to its last whole line, and one with the unfinished line too. */
-async function readOn(file: string, scan: RolloutScan): Promise<{ kept: RolloutScan; all: RolloutScan }> {
+/** Read what a JSONL transcript gained since `scan`. Returns the scan up to its last whole line, and one with the unfinished line too. */
+async function readOn<S extends ScanBase>(
+  file: string,
+  scan: S,
+  take: (scan: S, text: string) => void,
+): Promise<{ kept: S; all: S }> {
   // The line so far, in the pieces it came in: joined once, when its end arrives.
   let pieces: Buffer[] = [];
   let length = 0;
@@ -146,7 +211,7 @@ async function readOn(file: string, scan: RolloutScan): Promise<{ kept: RolloutS
     while ((end = chunk.indexOf(10, start)) !== -1) {
       const last = chunk.subarray(start, end);
       const text = line(last);
-      if (text !== undefined) takeLine(scan, text);
+      if (text !== undefined) take(scan, text);
       scan.offset += length + last.length + 1;
       pieces = [];
       length = 0;
@@ -161,9 +226,19 @@ async function readOn(file: string, scan: RolloutScan): Promise<{ kept: RolloutS
   const rest = length ? line() : undefined;
   if (rest === undefined) return { kept: scan, all: scan };
   // A last line without its end may still be written: counted now, read again next time.
-  const all = { ...scan, points: [...scan.points] };
-  takeLine(all, rest);
+  const all: S = { ...scan, points: [...scan.points] };
+  take(all, rest);
   return { kept: scan, all };
+}
+
+async function saveScan(target: string, scan: ScanBase): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+    await fs.writeFile(`${target}.tmp`, JSON.stringify(scan), { mode: 0o600 });
+    await fs.rename(`${target}.tmp`, target);
+  } catch {
+    // Only a saving: the next look reads the file again.
+  }
 }
 
 /**
@@ -215,25 +290,102 @@ async function codexPart(
   const from = same ? { ...scan!, points: [...scan!.points] } : freshScan(head);
   const read = from.offset;
   let result: { kept: RolloutScan; all: RolloutScan };
-  try {
-    result = await readOn(file, from);
-  } catch {
-    return undefined;
+  if (same && from.offset === size) {
+    result = { kept: from, all: from };
+  } else {
+    try {
+      result = await readOn(file, from, takeLine);
+    } catch {
+      return undefined;
+    }
   }
   if (size >= KEEP_FROM) {
     scans.set(file, result.kept);
     if (result.kept.offset - read >= KEEP_FROM) {
-      const target = scanFile(file, env);
-      try {
-        await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-        await fs.writeFile(`${target}.tmp`, JSON.stringify(result.kept), { mode: 0o600 });
-        await fs.rename(`${target}.tmp`, target);
-      } catch {
-        // Only a saving: the next look reads the rollout again.
-      }
+      await saveScan(scanFile(file, env), result.kept);
     }
   }
   return workSince(result.all, since);
+}
+
+/**
+ * Scan an Antigravity `transcript.jsonl` for per-step token counts, reading only what the file
+ * gained since the last look. Long transcripts keep their scan under `~/.genaicode/cache/antigravity`.
+ */
+async function scanAntigravity(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<AntigravityScan | undefined> {
+  let size: number;
+  let head: string;
+  try {
+    const handle = await fs.open(file, 'r');
+    try {
+      size = (await handle.stat()).size;
+      const start = Buffer.alloc(Math.min(HEAD, size));
+      await handle.read(start, 0, start.length, 0);
+      head = start.toString('latin1');
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return undefined;
+  }
+  let scan = antigravityScans.get(file);
+  if (!scan && size >= KEEP_FROM) {
+    try {
+      const saved: unknown = JSON.parse(await fs.readFile(scanFile(file, env, 'antigravity'), 'utf8'));
+      if (isAntigravityScan(saved)) scan = saved;
+    } catch {
+      // Nothing kept yet, or not readable: read the transcript from its start.
+    }
+  }
+  const same = scan && scan.head !== '' && scan.offset <= size && head.startsWith(scan.head);
+  const from = same ? { ...scan!, points: [...scan!.points] } : freshAntigravityScan(head);
+  const read = from.offset;
+  let result: { kept: AntigravityScan; all: AntigravityScan };
+  if (same && from.offset === size) {
+    result = { kept: from, all: from };
+  } else {
+    try {
+      result = await readOn(file, from, takeAntigravityLine);
+    } catch {
+      return undefined;
+    }
+  }
+  if (antigravityScans.size >= MAX_MEMORY_SCANS && !antigravityScans.has(file)) {
+    const oldest = antigravityScans.keys().next().value;
+    if (oldest !== undefined) antigravityScans.delete(oldest);
+  }
+  antigravityScans.set(file, result.kept);
+  if (size >= KEEP_FROM && result.kept.offset - read >= KEEP_FROM) {
+    await saveScan(scanFile(file, env, 'antigravity'), result.kept);
+  }
+  return result.all;
+}
+
+/** Whole-session token usage read from an Antigravity `transcript.jsonl`, or undefined when none is recorded. */
+export async function antigravityUsage(
+  file: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<TokenUsage | undefined> {
+  const scan = await scanAntigravity(file, env);
+  if (!scan || scan.reports === 0) return undefined;
+  if (scan.inputTokens === 0 && scan.outputTokens === 0 && scan.cachedInputTokens === 0) return undefined;
+  return {
+    inputTokens: scan.inputTokens,
+    outputTokens: scan.outputTokens,
+    ...(scan.cachedInputTokens > 0 ? { cachedInputTokens: scan.cachedInputTokens } : {}),
+  };
+}
+
+async function antigravityPart(
+  file: string,
+  since: number,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<WorkWithin | undefined> {
+  const scan = await scanAntigravity(file, env);
+  return scan ? workSince(scan, since) : undefined;
 }
 
 /**
@@ -282,8 +434,8 @@ function partByTime(session: SessionInfo, since: number): number {
  * What each session did at or after `since`: the part (0 to 1) of its work, and the tokens where counted. A session's own
  * figures cover its whole life, so one old, long session touched once in the window would
  * otherwise count as if all of it happened there. Read from the session's file where it keeps
- * times (Codex, Claude Code); elsewhere estimated from how much of its lifetime the window covers.
- * What was read of a long Codex rollout is kept under `~/.genaicode/cache/rollouts` (`options.env` says where home is).
+ * times (Codex, Claude Code, Antigravity); elsewhere estimated from how much of its lifetime the window covers.
+ * What was read of a long rollout or transcript is kept under `~/.genaicode/cache` (`options.env` says where home is).
  */
 export async function partsSince(
   sessions: readonly SessionInfo[],
@@ -294,6 +446,8 @@ export async function partsSince(
   const older = sessions.filter((session) => {
     // A Codex rollout is read either way: its counter can start over, and the session's own figure is the last one.
     if (session.source === 'codex' && session.path) return true;
+    // Antigravity's index carries no token totals: read its transcript for the period's work.
+    if (session.source === 'antigravity' && session.path) return true;
     // Started in the window: all of it is there.
     return !(session.startedAt !== undefined && session.startedAt >= since);
   });
@@ -303,6 +457,8 @@ export async function partsSince(
       const session = older[next++]!;
       let within: WorkWithin | undefined;
       if (session.path && session.source === 'codex') within = await codexPart(session.path, since, options.env);
+      else if (session.path && session.source === 'antigravity')
+        within = await antigravityPart(session.path, since, options.env);
       else if (session.path && session.source === 'claude') {
         const part = await claudePart(session.path, since);
         if (part !== undefined) within = { part };

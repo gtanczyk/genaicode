@@ -1,9 +1,12 @@
+import type { DiscoveredModel } from '../agents/models.js';
 import type { SessionInfo } from '../agents/sessions/group.js';
 import type { AgentFailure } from '../agents/types.js';
 
 /** One entry of the agent chip's model list. */
 export interface ModelSuggestion {
   model: string;
+  /** Human-readable name reported by the agent CLI, when distinct from `model`. */
+  label?: string;
   /** Why it is listed: picked lately, how often and when the agent ran it, or a name the agent knows. */
   note: string;
 }
@@ -16,6 +19,8 @@ export interface ModelSuggestionInput {
   sessions: readonly SessionInfo[];
   /** The model the open session's agent reported running (`SessionState.reportedModel`). */
   reported?: string;
+  /** Models discovered live from the agent's CLI (`GET /api/models`). */
+  discovered?: readonly DiscoveredModel[];
   /** Names the driver knows its CLI takes (`capabilities.models`). */
   known?: readonly string[];
   /** Picked here lately, newest first (`readRecentModels`). */
@@ -57,16 +62,22 @@ export function modelSuggestions(input: ModelSuggestionInput): ModelSuggestion[]
     if (!seen.runs) return 'running in this chat';
     return `ran in ${seen.runs} session${seen.runs === 1 ? '' : 's'}, last ${when(seen.last, now)}`;
   };
+  const labels = new Map<string, string>();
+  for (const item of input.discovered ?? []) {
+    if (item.label && item.label !== item.id) labels.set(item.id, item.label);
+  }
   const out: ModelSuggestion[] = [];
   const listed = new Set<string>();
   const add = (model: string, note: string) => {
     if (!model || listed.has(model)) return;
     listed.add(model);
-    out.push({ model, note });
+    const label = labels.get(model);
+    out.push({ model, ...(label ? { label } : {}), note });
   };
   for (const model of input.recent ?? []) add(model, `picked lately${ranNote(model) ? ` · ${ranNote(model)}` : ''}`);
   const byUse = [...ran.entries()].sort((a, b) => b[1].runs - a[1].runs || b[1].last - a[1].last);
   for (const [model] of byUse) add(model, ranNote(model)!);
+  for (const item of input.discovered ?? []) add(item.id, item.label ?? `available in ${input.agent}`);
   for (const model of input.known ?? []) add(model, `a name ${input.agent} takes`);
   return out;
 }

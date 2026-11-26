@@ -3,7 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { claude } from '../drivers/claude.js';
-import { keepRunLimit, knownLimits, limitsAgent, recordLimits, rolloutLimits, statusLineLimits } from './limits.js';
+import {
+  antigravityUsageLimits,
+  keepRunLimit,
+  knownLimits,
+  limitsAgent,
+  parseAntigravityUsageLimits,
+  probeAntigravityLimits,
+  recordLimits,
+  rolloutLimits,
+  statusLineLimits,
+} from './limits.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -135,6 +145,119 @@ describe('known limits', () => {
     try {
       keepRunLimit('codexLive', limit, env);
       expect((await knownLimits(env)).map((known) => known.agent)).toEqual(['codex']);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('parses and probes Antigravity /usage JSON plan limits', async () => {
+    const payload = {
+      conversation_id: '',
+      status: 'SUCCESS',
+      command: {
+        name: 'usage',
+        data: {
+          groups: [
+            {
+              name: 'Gemini Models',
+              buckets: [
+                {
+                  id: 'gemini-weekly',
+                  window: 'weekly',
+                  remaining_fraction: 0.7969,
+                  reset_time: '2026-12-03T07:57:12Z',
+                },
+                {
+                  id: 'gemini-5h',
+                  window: '5h',
+                  remaining_fraction: 0.15,
+                  reset_time: '2026-11-27T01:00:26Z',
+                },
+              ],
+            },
+            {
+              name: 'Claude and GPT models',
+              buckets: [
+                {
+                  id: '3p-5h',
+                  window: '5h',
+                  remaining_fraction: 0,
+                  reset_time: '2026-11-27T02:05:12Z',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const expected = [
+      {
+        window: '7d',
+        status: 'ok',
+        usedPercent: 20.3,
+        resetsAt: Date.parse('2026-12-03T07:57:12Z'),
+        name: 'Gemini',
+      },
+      {
+        window: '5h',
+        status: 'warning',
+        usedPercent: 85,
+        resetsAt: Date.parse('2026-11-27T01:00:26Z'),
+        name: 'Gemini',
+      },
+      {
+        window: '5h',
+        status: 'exceeded',
+        usedPercent: 100,
+        resetsAt: Date.parse('2026-11-27T02:05:12Z'),
+        name: 'Claude and GPT',
+      },
+    ];
+    expect(antigravityUsageLimits(payload)).toEqual(expected);
+    expect(parseAntigravityUsageLimits(`Fetching...\n${JSON.stringify(payload)}\n`)).toEqual(expected);
+    expect(parseAntigravityUsageLimits('not json')).toEqual([]);
+
+    const env = home();
+    const binDir = join(env.HOME!, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const fakeAgy = join(binDir, 'agy');
+    const futurePayload = {
+      status: 'SUCCESS',
+      command: {
+        name: 'usage',
+        data: {
+          groups: [
+            {
+              name: 'Gemini Models',
+              buckets: [
+                {
+                  id: 'gemini-5h',
+                  window: '5h',
+                  remaining_fraction: 0.8,
+                  reset_time: new Date(Date.now() + 3_600_000).toISOString(),
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    writeFileSync(
+      fakeAgy,
+      `#!${process.execPath}\nif (process.argv.includes('/usage')) process.stdout.write(${JSON.stringify(JSON.stringify(futurePayload))});\n`,
+      { mode: 0o755 },
+    );
+    const probeEnv = { ...env, PATH: binDir };
+    vi.stubEnv('GENAICODE_LIMITS', '');
+    try {
+      const probed = await probeAntigravityLimits({ env: probeEnv });
+      expect(probed).toHaveLength(1);
+      expect(probed[0]).toMatchObject({ window: '5h', status: 'ok', usedPercent: 20, name: 'Gemini' });
+      const stored = await knownLimits(probeEnv);
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({ agent: 'antigravity', window: '5h', usedPercent: 20, name: 'Gemini' });
+      // Missing binary returns [].
+      expect(await probeAntigravityLimits({ command: 'no-such-agy-bin', env: probeEnv })).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
     }

@@ -213,3 +213,60 @@ it('reads a long Codex rollout once, then only what it gained', async () => {
   );
   expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 1, tokens: 50 });
 });
+
+it('counts Antigravity transcript tokens in the period without cache reads, and caches long transcripts', async () => {
+  const step = (daysAgo: number, input: number, cached: number, output: number, type = 'PLANNER_RESPONSE') => ({
+    type,
+    created_at: at(daysAgo),
+    input_tokens: input,
+    cache_read_tokens: cached,
+    output_tokens: output,
+  });
+  const old = session('antigravity', 'a1', {
+    path: file('agy-old.jsonl', [
+      step(20, 9_000, 100_000, 1_000),
+      step(2, 800, 200_000, 200),
+      step(1, 400, 200_000, 100, 'CHECKPOINT'),
+    ]),
+  });
+  const fresh = session('antigravity', 'a2', {
+    path: file('agy-fresh.jsonl', [step(1, 1_200, 10_000, 300)]),
+  });
+  const parts = await partsSince([old, fresh], since);
+  expect(parts.get(old)).toEqual({ part: 1_500 / 11_500, tokens: 1_500 });
+  expect(parts.get(fresh)).toEqual({ part: 1, tokens: 1_500 });
+
+  const store = {
+    topics: [
+      { id: 't1', name: 'Old' },
+      { id: 't2', name: 'Fresh' },
+    ],
+    sessions: { 'antigravity:a1': 't1', 'antigravity:a2': 't2' },
+  };
+  const shares = topicShares([old, fresh], store, parts);
+  expect(shares).toEqual([
+    {
+      agent: 'antigravity',
+      by: 'tokens',
+      shares: [
+        { topic: 't1', name: 'Old', share: 0.5, sessions: 1 },
+        { topic: 't2', name: 'Fresh', share: 0.5, sessions: 1 },
+      ],
+    },
+  ]);
+
+  // A long transcript is cached under cache/antigravity and updated incrementally on append.
+  const env = { GENAICODE_HOME: join(dir, 'agy-home') };
+  const filler = { type: 'GENERIC', created_at: at(20), content: 'x'.repeat(1_000) };
+  const long = session('antigravity', 'a-long', {
+    path: file('agy-long.jsonl', [
+      step(20, 4_000, 0, 1_000),
+      ...Array.from({ length: 1_200 }, () => filler),
+      step(1, 400, 50_000, 100),
+    ]),
+  });
+  expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 500 / 5_500, tokens: 500 });
+  expect(readdirSync(join(dir, 'agy-home', 'cache', 'antigravity'))).toHaveLength(1);
+  appendFileSync(long.path!, `\n${JSON.stringify(step(0, 300, 0, 200))}\n`);
+  expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 1_000 / 6_000, tokens: 1_000 });
+});

@@ -73,10 +73,12 @@ import {
 import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, ModelRejected, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import type { DiscoveredModel } from '../../agents/models.js';
 import { forgetModel, modelSuggestions, readRecentModels, rememberModel, rejectsModel } from '../models.js';
 import { SessionReplies } from './session-reply.js';
 import { setSessionArchive, Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
+import { StepsPanel } from './steps-panel.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
 import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
@@ -256,6 +258,8 @@ interface PageConfig {
   /** True when the plan limits last seen of every agent are served (`/api/limits`). */
   limits?: boolean;
   files?: boolean;
+  /** True when `GET /api/models?agent=` can discover available models from installed CLIs. */
+  models?: boolean;
   /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
   nativeSave?: boolean;
   reveal?: boolean;
@@ -1440,14 +1444,18 @@ function App({ selected }: { selected?: string }) {
     }
   }, [view?.generation, sessionArtifacts.length]);
   const viewing = workView.viewing;
+  const [stepsTarget, setStepsTarget] = useState<{ turnId: number; stretch: number }>();
+  const activeStepsTarget =
+    stepsTarget && session?.turns.some((turn) => turn.id === stepsTarget.turnId) ? stepsTarget : undefined;
+  const anyViewer = !!viewing || !!activeStepsTarget;
   const [room, setRoom] = useState(() => ({ room: window.innerWidth, window: window.innerWidth }));
   const [savedWidth, setSavedWidth] = useState(() => workWidth.get());
   const [savedViewerWidth, setSavedViewerWidth] = useState(() => viewerWidth.get());
   // The docked viewer has its own preferred width and resize setting.
   const workLayout = workPanelLayout({
     ...room,
-    viewer: !!viewing,
-    saved: viewing ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
+    viewer: anyViewer,
+    saved: anyViewer ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
   });
   const latestLayout = useRef(workLayout);
   latestLayout.current = workLayout;
@@ -1455,19 +1463,23 @@ function App({ selected }: { selected?: string }) {
   // per chat). Where it would cover the chat it opens only by hand.
   const workOpen =
     panel === 'chat' &&
-    (hasWork || !!viewing) &&
+    (hasWork || anyViewer) &&
     (workLayout.docks ? (workView.open ?? (tasks.length > 0 || sessionArtifacts.length > 0)) : workFullOpen);
   // In the chat's place: no room beside it, or the viewer was expanded over it.
-  const workFull = workOpen && (!workLayout.docks || (expanded && !!viewing));
+  const workFull = workOpen && (!workLayout.docks || (expanded && anyViewer));
   const workNeeds = workNeedsYou(tasks);
   // Work the person has not opened: tasks delegated since the panel was last looked at.
   const workNews = !workOpen && tasks.length > (workView.seen ?? 0);
   useEffect(() => {
     if (workOpen && workView.seen !== tasks.length) setWorkView({ ...workView, seen: tasks.length });
   }, [workOpen, tasks.length, workView.seen]);
+  useEffect(() => {
+    setStepsTarget(undefined);
+  }, [chatKey, view?.generation]);
   const pullRequests = usePullRequests(chatKey, tasks, workOpen);
   const closeWork = () => {
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(false);
     // What was open in the viewer goes with the panel: opened again, it shows its tab.
@@ -1482,6 +1494,7 @@ function App({ selected }: { selected?: string }) {
     if (workOpen) return closeWork();
     if (!hasWork) return;
     setPanel('chat');
+    setStepsTarget(undefined);
     setWorkView({
       ...workView,
       ...(workLayout.docks ? { open: true } : {}),
@@ -1494,6 +1507,7 @@ function App({ selected }: { selected?: string }) {
   /** A turn's line in the chat opens the panel on that turn's tasks. */
   const openTasks = () => {
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1508,6 +1522,7 @@ function App({ selected }: { selected?: string }) {
   /** Opens a file or an artifact in the panel's viewer, from the chat or from inside the viewer. */
   const openViewer = (target: ViewerTarget) => {
     setPanel('chat');
+    setStepsTarget(undefined);
     if (!workOpen) viewerOpenedPanel.current = true;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1517,18 +1532,35 @@ function App({ selected }: { selected?: string }) {
       viewing: { ...target, from: viewing?.from ?? 'chat' },
     });
   };
+  const openStepsInPanel = (turn: SessionTurn, stretch: number) => {
+    if (workOpen && activeStepsTarget?.turnId === turn.id && activeStepsTarget.stretch === stretch && !viewing) {
+      closeViewer();
+      return;
+    }
+    setPanel('chat');
+    if (!workOpen) viewerOpenedPanel.current = true;
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setStepsTarget({ turnId: turn.id, stretch });
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      viewing: undefined,
+    });
+  };
   /** Closes the viewer: back to the list it was opened from, or (opened from the chat) to the chat. */
   const closeViewer = (next: WorkPanelView = workView) => {
     setExpanded(false);
+    const closedFromChat = viewing?.from === 'chat' || (!!activeStepsTarget && !viewing);
+    setStepsTarget(undefined);
     if (viewerOpenedPanel.current) return closeWork();
     // Opened from the chat: a key that went to the viewer goes to the message field next.
-    if (viewing?.from === 'chat' && document.activeElement?.closest('.viewer-panel')) focusComposer();
+    if (closedFromChat && document.activeElement?.closest('.viewer-panel')) focusComposer();
     if (next.viewing) setWorkView({ ...next, viewing: undefined });
     else if (next !== workView) setWorkView(next);
   };
   /** What the panel asks to show next. */
   const onWorkView = (next: WorkPanelView) => {
-    if (!viewing || next.viewing) return setWorkView(next);
+    if (!anyViewer || next.viewing) return setWorkView(next);
     // Back in the viewer. Another tab chosen instead keeps the panel, also one the viewer opened.
     if (next.tab !== workView.tab) viewerOpenedPanel.current = false;
     closeViewer(next);
@@ -1537,6 +1569,7 @@ function App({ selected }: { selected?: string }) {
   const openWork = (change: Partial<WorkPanelView>) => {
     // What the viewer showed gives way: the strip asks for a list or a task.
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1550,7 +1583,7 @@ function App({ selected }: { selected?: string }) {
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
     // The viewer inside it goes first, whichever of the two claimed the key last (Dock claims it anew).
-    if (viewing) return false;
+    if (anyViewer) return false;
     if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
     // A field with text in it (the task filter, a message to a task) is cleared by its own Escape first.
     if (holdsTypedText(event.target)) return false;
@@ -1563,10 +1596,11 @@ function App({ selected }: { selected?: string }) {
     [config?.files, localImages],
   );
 
-  // Close the viewer if the conversation was cleared and the open artifact no longer exists.
+  // Close the viewer if the conversation was cleared and the open artifact or turn no longer exists.
   useEffect(() => {
     if (viewing?.kind === 'artifact' && !sessionArtifacts.some((g) => g.id === viewing.id)) closeViewer();
-  }, [viewing, sessionArtifacts]);
+    if (stepsTarget && !session?.turns.some((turn) => turn.id === stepsTarget.turnId)) closeViewer();
+  }, [viewing, stepsTarget, sessionArtifacts, session?.turns]);
 
   const revealFile = (path: string) => {
     void chatFetch('/api/reveal', {
@@ -1654,8 +1688,30 @@ function App({ selected }: { selected?: string }) {
     setPanel('chat');
   }, [selected]);
 
-  // The Model field's list: picked here lately, run by this agent (the index, this chat), known to it.
+  // The Model field's list: picked here lately, run by this agent (the index, this chat), discovered from CLI, known to it.
   const [recentModels, setRecentModels] = useState<string[]>([]);
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
+  const [loadingModelsKey, setLoadingModelsKey] = useState<string>();
+  const modelsInFlight = useRef(new Set<string>());
+  const modelKey = (agentName: string) => `${agentName}\0${activeCwd ?? ''}`;
+  const loadModels = (agentName: string) => {
+    const key = modelKey(agentName);
+    if (!config?.models || !token || !agentName || modelsInFlight.current.has(key)) return;
+    modelsInFlight.current.add(key);
+    if (!discoveredModels[key]?.length) setLoadingModelsKey(key);
+    void fetch(`/api/models?agent=${encodeURIComponent(agentName)}`, { headers: { 'x-genaicode-token': token } })
+      .then((res) => (res.ok ? (res.json() as Promise<{ models?: DiscoveredModel[] }>) : undefined))
+      .then((body) => {
+        if (body && Array.isArray(body.models)) {
+          setDiscoveredModels((prev) => ({ ...prev, [key]: body.models! }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        modelsInFlight.current.delete(key);
+        setLoadingModelsKey((current) => (current === key ? undefined : current));
+      });
+  };
   useEffect(() => {
     setRecentModels(session?.agent ? readRecentModels(workStore(), session.agent) : []);
   }, [session?.agent]);
@@ -1673,10 +1729,20 @@ function App({ selected }: { selected?: string }) {
       ...(currentAgent?.store ? { store: currentAgent.store } : {}),
       sessions,
       reported: session.reportedModel,
+      discovered: discoveredModels[modelKey(session.agent)],
       known: currentAgent?.models,
       recent: recentModels,
     });
-  }, [session?.agent, session?.reportedModel, currentAgent, chats.own, chats.all, recentModels]);
+  }, [
+    session?.agent,
+    session?.reportedModel,
+    currentAgent,
+    chats.own,
+    chats.all,
+    recentModels,
+    discoveredModels,
+    activeCwd,
+  ]);
   const pickModel = (model: string) => {
     if (session?.agent) setRecentModels(rememberModel(workStore(), session.agent, model));
     return inChat({ type: 'model', model });
@@ -1692,12 +1758,16 @@ function App({ selected }: { selected?: string }) {
           model={session.model}
           reportedModel={session.reportedModel}
           models={models}
+          modelsLoading={loadingModelsKey === modelKey(session.agent)}
           effort={session.effort}
           efforts={efforts}
           fallback={session.fallback ?? []}
           agents={agentList}
           noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
           running={running}
+          onOpen={() => {
+            if (session.agent) loadModels(session.agent);
+          }}
           onAgent={(name) => {
             // What still waits here was meant for the other agent.
             dropWaiting();
@@ -2018,7 +2088,7 @@ function App({ selected }: { selected?: string }) {
               width={workLayout.width}
               bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
               onWidth={(width, commit) => {
-                if (viewing) {
+                if (anyViewer) {
                   setSavedViewerWidth(width);
                   if (commit) viewerWidth.set(width);
                   return;
@@ -2027,6 +2097,34 @@ function App({ selected }: { selected?: string }) {
                 if (commit) workWidth.set(width);
               }}
               viewsFiles={!!config?.files}
+              customViewer={
+                activeStepsTarget && session
+                  ? {
+                      backLabel: 'Close',
+                      onBack: () => closeViewer(),
+                      render: (controls) => {
+                        const turn = session.turns.find((candidate) => candidate.id === activeStepsTarget.turnId);
+                        if (!turn) return null;
+                        return (
+                          <StepsPanel
+                            turn={turn}
+                            stretch={activeStepsTarget.stretch}
+                            cwd={session.cwd}
+                            pending={turn.result ? [] : session.approvals}
+                            renderPrompt={promptBubble}
+                            onOpenFile={openFile}
+                            imageUrl={imageUrl}
+                            artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+                            onOpenArtifact={openArtifactInPanel}
+                            back={{ label: controls.backLabel, onBack: controls.onBack }}
+                            expanded={expanded && workLayout.docks}
+                            onExpand={workLayout.docks ? setExpanded : undefined}
+                          />
+                        );
+                      },
+                    }
+                  : undefined
+              }
               renderViewer={(target, controls) => (
                 <ViewerPanel
                   target={target}
@@ -2347,6 +2445,7 @@ function App({ selected }: { selected?: string }) {
                     token,
                     limits: knownLimits,
                     shares: hasSessions,
+                    agents: agentList.filter((agent) => agent.installed).map((agent) => agent.name),
                     onTopic: (id) => {
                       setTopic(id);
                       setListed('all');
@@ -2559,6 +2658,8 @@ function App({ selected }: { selected?: string }) {
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}
+              onOpenSteps={openStepsInPanel}
+              activeSteps={workOpen && !viewing && activeStepsTarget ? activeStepsTarget : undefined}
               // The team's counts and the next approval of a task, above the message box at every width.
               missionStrip={{
                 pullRequests,
