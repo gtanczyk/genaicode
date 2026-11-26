@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as zlib from 'node:zlib';
@@ -195,6 +195,17 @@ describe('agent session stores', () => {
     });
     expect(sessions[0]!.automated).toBeUndefined();
     expect(sessions[2]!.state).toBeUndefined();
+
+    // A rollout that grew is read again; one that did not gives the same.
+    expect(await codexSessions().list({ env })).toEqual(sessions);
+    appendFileSync(
+      rollout,
+      jsonl({
+        type: 'response_item',
+        payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'One more thing.' }] },
+      }),
+    );
+    expect((await codexSessions().list({ env }))[0]).toMatchObject({ lastReply: 'One more thing.' });
   });
 
   it("knows the Codex threads nobody started, and the desktop app's projects", async () => {

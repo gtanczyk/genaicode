@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { chatStore } from './chat-store.js';
 import { ChatHub, type HubChat } from './hub.js';
-import { sharedWhileRunning } from './shared-while-running.js';
+import { sessionsOncePerMinute } from './shared-while-running.js';
 import { PackPool } from '../agents/pack-pool.js';
 import type { Pack } from '../agents/pack.js';
 import { scopedMcpServers, type startLocalMcpServer } from '../agents/mcp-server.js';
@@ -950,56 +950,51 @@ function webLink(
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
-      // The sidebar's two listings, the Home page and every open window ask at the same moments (a
-      // turn starting or ending): a listing asked for while the same one is read shares that read.
-      sessions: sharedWhileRunning(
-        ({ own, since }) => `${own ? 'own' : 'all'}:${since === undefined ? '' : Math.floor(since / 60_000)}`,
-        async ({ own, ...query }) => {
-          const sources = options.sessionSources ?? agentSessionSources(options.agents);
-          const recorded = options.home ? await readConversations(options.env).catch(() => []) : [];
-          const listing = await listSessions(sources, {
-            ...query,
-            // In `--cwd`/`--no-project` mode, own conversations live in `options.cwd`.
-            // In `--home` mode, own conversations can run in any project directory and are tracked in `conversations.json`.
-            ...(own
-              ? options.home
-                ? { automated: true, live: false }
-                : { cwd: options.cwd, automated: true, live: false }
-              : {}),
-            ...(options.env ? { env: options.env } : {}),
-          });
-          const sessions =
-            own && options.home
-              ? listing.sessions.filter(
-                  (session) =>
-                    !!recordedConversation(recorded, session) ||
-                    (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
-                )
-              : listing.sessions;
-          const readable = sources.filter((source) => source.read).map((source) => source.name);
-          // Questions held open by `genaicode hooks install --answer`, to answer from the page.
-          const asks = await pendingAsks(options.env).catch(() => []);
-          // The topics the sessions were sorted into, for the view to group by.
-          const store = await readTopics(options.env).catch(() => undefined);
-          const topics = [...(store?.topics ?? [])];
-          const topicOf: Record<string, string> = {};
-          for (const session of sessions) {
-            const key = `${session.source}:${session.id}`;
-            const topic = store?.sessions[key];
-            if (topic) {
-              topicOf[key] = topic;
-            } else {
-              const conv = recordedConversation(recorded, session);
-              if (conv?.topicId && conv.topicName) {
-                topicOf[key] = conv.topicId;
-                if (!topics.some((t) => t.id === conv.topicId)) topics.push({ id: conv.topicId, name: conv.topicName });
-              }
+      sessions: sessionsOncePerMinute(async ({ own, ...query }) => {
+        const sources = options.sessionSources ?? agentSessionSources(options.agents);
+        const recorded = options.home ? await readConversations(options.env).catch(() => []) : [];
+        const listing = await listSessions(sources, {
+          ...query,
+          // In `--cwd`/`--no-project` mode, own conversations live in `options.cwd`.
+          // In `--home` mode, own conversations can run in any project directory and are tracked in `conversations.json`.
+          ...(own
+            ? options.home
+              ? { automated: true, live: false }
+              : { cwd: options.cwd, automated: true, live: false }
+            : {}),
+          ...(options.env ? { env: options.env } : {}),
+        });
+        const sessions =
+          own && options.home
+            ? listing.sessions.filter(
+                (session) =>
+                  !!recordedConversation(recorded, session) ||
+                  (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
+              )
+            : listing.sessions;
+        const readable = sources.filter((source) => source.read).map((source) => source.name);
+        // Questions held open by `genaicode hooks install --answer`, to answer from the page.
+        const asks = await pendingAsks(options.env).catch(() => []);
+        // The topics the sessions were sorted into, for the view to group by.
+        const store = await readTopics(options.env).catch(() => undefined);
+        const topics = [...(store?.topics ?? [])];
+        const topicOf: Record<string, string> = {};
+        for (const session of sessions) {
+          const key = `${session.source}:${session.id}`;
+          const topic = store?.sessions[key];
+          if (topic) {
+            topicOf[key] = topic;
+          } else {
+            const conv = recordedConversation(recorded, session);
+            if (conv?.topicId && conv.topicName) {
+              topicOf[key] = conv.topicId;
+              if (!topics.some((t) => t.id === conv.topicId)) topics.push({ id: conv.topicId, name: conv.topicName });
             }
           }
-          const sorted = topics.length ? { topics, topicOf } : {};
-          return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
-        },
-      ),
+        }
+        const sorted = topics.length ? { topics, topicOf } : {};
+        return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
+      }),
       sendPrompt: async (source, id, prompt, sandbox, signal, onResponse, scopedRoot = addRoot) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const found = await findSession(

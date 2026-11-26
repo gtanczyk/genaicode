@@ -64,4 +64,25 @@ describe('cachedSessionReader', () => {
     await expect(cached(file)).rejects.toThrow('busy');
     expect(await cached(file)).not.toBeNull();
   });
+
+  it('tells apart two writes of the same size in the same millisecond', async () => {
+    const read = vi.fn(async (file: SessionFile, now: number) => info(file, now));
+    const cached = cachedSessionReader(read);
+    await cached({ path: '/a.jsonl', mtimeMs: 1000, exactMtimeMs: 1000.1, size: 10 });
+    await cached({ path: '/a.jsonl', mtimeMs: 1000, exactMtimeMs: 1000.4, size: 10 });
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('copies nested objects too', async () => {
+    const cached = cachedSessionReader(async (file, now) => ({
+      ...info(file, now),
+      project: { id: 'chan_1', name: 'Plan' },
+      usage: { totalTokens: 5 },
+    }));
+    const file = { path: '/a.jsonl', mtimeMs: 1000, size: 10 };
+    const first = await cached(file);
+    first!.project!.name = 'changed';
+    first!.usage!.totalTokens = 9;
+    expect(await cached(file)).toMatchObject({ project: { name: 'Plan' }, usage: { totalTokens: 5 } });
+  });
 });

@@ -147,6 +147,13 @@ export async function readCodexSession(file: SessionFile, now = Date.now()): Pro
 /** `readCodexSession` for listings, which read the same unchanged rollouts again and again. */
 const listedCodexSession = cachedSessionReader(readCodexSession);
 
+/** The same for a rollout Codex compressed (`<rollout>.jsonl.zst`), read whole once it is unpacked. */
+const listedPackedRollout = cachedSessionReader(async (file, now) => {
+  const data = await zstdFile(file.path);
+  if (!data) return null;
+  return fromLines({ path: file.path.slice(0, -'.zst'.length), mtimeMs: 0, size: data.length }, now, chunksOf(data));
+});
+
 function fromLines(file: SessionFile, now: number, { head, tail }: { head: unknown[]; tail: unknown[] }) {
   const id = ROLLOUT_ID.exec(file.path)?.[1];
   const info: SessionInfo = {
@@ -371,11 +378,12 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     let read: SessionInfo | null;
     const stat = await fs.stat(info.path).catch(() => undefined);
     // Whether it is active is the index's to say (its own `updatedAt`), not the file's.
-    if (stat) read = await readCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
+    if (stat) read = await listedCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
     else {
-      const data = await zstdFile(`${info.path}.zst`);
-      if (!data) return;
-      read = fromLines({ path: info.path, mtimeMs: 0, size: data.length }, Infinity, chunksOf(data));
+      const zst = `${info.path}.zst`;
+      const packed = await fs.stat(zst).catch(() => undefined);
+      if (!packed) return;
+      read = await listedPackedRollout({ path: zst, mtimeMs: packed.mtimeMs, size: packed.size }, Infinity);
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
