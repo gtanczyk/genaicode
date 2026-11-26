@@ -374,6 +374,8 @@ interface Sub {
   stoppedBy?: PackStopCause;
   run?: AgentRun;
   result?: AgentResult;
+  // Saved replies are clipped, so preserve metadata originally read from the complete reply.
+  recoveredReply?: Pick<PackTask, 'verdict' | 'pullRequest' | 'mcpServers'>;
   last?: string;
   steers?: PackSteer[];
   steps?: Step[];
@@ -906,7 +908,11 @@ export function pack(options: PackOptions): Pack {
     prompt: sub.prompt,
     ...(sub.model ? { model: sub.model } : {}),
     ...(sub.effort ? { effort: sub.effort } : {}),
-    ...(sub.mcpServers?.length ? { mcpServers: sub.mcpServers.map((server) => server.name) } : {}),
+    ...(sub.mcpServers?.length
+      ? { mcpServers: sub.mcpServers.map((server) => server.name) }
+      : sub.recoveredReply?.mcpServers
+        ? { mcpServers: sub.recoveredReply.mcpServers }
+        : {}),
     ...(sub.quotaHint ? { quotaHint: sub.quotaHint } : {}),
     mode: sub.mode,
     status: sub.status,
@@ -916,7 +922,7 @@ export function pack(options: PackOptions): Pack {
     cwd: sub.cwd,
     ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
-      ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
+      ? { text: clip(sub.result.text), ...(sub.recoveredReply ?? verdictOf(sub.result.text)) }
       : sub.status === 'running' && sub.last
         ? { text: sub.last }
         : {}),
@@ -1054,8 +1060,25 @@ export function pack(options: PackOptions): Pack {
         if (!agent) continue;
         let sub = subs.get(saved.id);
         if (!sub) {
+          const status = saved.status === 'running' ? 'aborted' : saved.status;
           sub = {
             id: saved.id,
+            result: {
+              status,
+              ok: status === 'completed',
+              exitCode: null,
+              signal: null,
+              text: saved.text,
+              error: saved.error,
+              failure: saved.failure,
+            },
+            recoveredReply: { verdict: saved.verdict, pullRequest: saved.pullRequest, mcpServers: saved.mcpServers },
+            fileStats: saved.fileStats,
+            stagedOnly: saved.stagedOnly,
+            steps: saved.steps,
+            steers: saved.steers,
+            stoppedBy: saved.stoppedBy,
+            quotaHint: saved.quotaHint,
             agent,
             title: saved.title,
             prompt: saved.prompt,
@@ -1073,7 +1096,7 @@ export function pack(options: PackOptions): Pack {
             changes: saved.changes,
             reviewer: [lead, ...members].find((candidate) => candidate.name === record.reviewer),
             checks: saved.checks,
-            status: saved.status === 'running' ? 'aborted' : saved.status,
+            status,
             startedAt: saved.startedAt ?? Date.now(),
             endedAt: saved.endedAt,
             ended: Promise.resolve(),
@@ -1811,6 +1834,7 @@ export function pack(options: PackOptions): Pack {
               sub.endedAt = undefined;
               sub.stoppedBy = undefined;
               sub.result = undefined;
+              sub.recoveredReply = undefined;
               sub.last = undefined;
               sub.tool = undefined;
               sub.reported = false;
@@ -2166,7 +2190,10 @@ export function pack(options: PackOptions): Pack {
       });
 
       const result = (async (): Promise<AgentResult> => {
-        if (recovered) return { status: 'completed', ok: true, exitCode: 0, signal: null };
+        if (recovered) {
+          ended.abort();
+          return { status: 'completed', ok: true, exitCode: 0, signal: null };
+        }
         if (!lead.capabilities.mcp) return failed(`${lead.name} cannot attach MCP servers, so it cannot lead a pack.`);
         const refusedMode = unsupportedMode(lead.name, lead.capabilities, task);
         if (refusedMode) return failed(refusedMode);

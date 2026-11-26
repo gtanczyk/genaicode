@@ -386,7 +386,10 @@ function useAgents(
   };
 }
 
-function useView(onToast?: (text: string) => void): {
+function useView(
+  route: string | undefined,
+  onToast?: (text: string) => void,
+): {
   loaded: ChatSummary[];
   view?: ChatView;
   config?: PageConfig;
@@ -396,7 +399,9 @@ function useView(onToast?: (text: string) => void): {
 } {
   const [release, setRelease] = useState<UiRelease>();
   const [loaded, setLoaded] = useState<ChatSummary[]>([]);
-  const [view, setView] = useState<ChatView>();
+  const snapshots = useRef(new Map<string | undefined, ChatView>());
+  const [live, setLive] = useState<{ route?: string; view: ChatView }>();
+  const view = live && live.route === route ? live.view : snapshots.current.get(route);
   const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
   const [rejected, setRejected] = useState(!token);
@@ -408,10 +413,12 @@ function useView(onToast?: (text: string) => void): {
     let timer: number | undefined;
     const connect = async () => {
       try {
-        const res = await chatFetch('__TAURI_INTERNALS__' in window ? '/api/events?desktop=1' : '/api/events', {
+        const path = '__TAURI_INTERNALS__' in window ? '/api/events?desktop=1' : '/api/events';
+        const res = await fetch(chatUrl(path, route), {
           headers: { 'x-genaicode-token': token },
           signal: abort.signal,
         });
+        if (abort.signal.aborted) return;
         if (res.status === 404 && pageChat()) {
           history.replaceState(history.state, '', location.pathname + location.search);
           location.reload();
@@ -439,7 +446,12 @@ function useView(onToast?: (text: string) => void): {
           buffer = taken.rest;
           for (const { event, data: payload } of taken.events) {
             if (event === 'view') {
-              setView(JSON.parse(payload) as ChatView);
+              const view = JSON.parse(payload) as ChatView;
+              const id = route ?? view.conversation?.id;
+              snapshots.current.delete(id);
+              snapshots.current.set(id, view);
+              if (snapshots.current.size > 8) snapshots.current.delete(snapshots.current.keys().next().value);
+              setLive({ route, view });
               setConnected(true);
             } else if (event === 'chats') {
               setLoaded(JSON.parse(payload) as ChatSummary[]);
@@ -469,8 +481,8 @@ function useView(onToast?: (text: string) => void): {
       abort.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, []);
-  return { view, config, release, connected, rejected, loaded };
+  }, [route]);
+  return { view, config, release, connected: connected && live?.route === route, rejected, loaded };
 }
 
 /**
@@ -505,24 +517,29 @@ function useBark(view: ChatView | undefined) {
       document.removeEventListener('visibilitychange', hush);
     };
   }, []);
-  useEffect(() => {
-    if (!view) return;
-    const before = seen.current;
-    seen.current = view;
-    if (
-      !needsAttention(before?.session, view.session, before?.notices, view.notices) ||
-      (document.hasFocus() && document.visibilityState === 'visible')
-    )
-      return;
+  const ring = () => {
+    if (document.hasFocus() && document.visibilityState === 'visible') return;
     unread.current += 1;
     document.title = `(${unread.current}) ${baseTitleRef.current}`;
-    if (!view.bark) return;
+    if (!view?.bark) return;
     audio.current ??= new Audio('/assets/bark.mp3');
     audio.current.currentTime = 0;
     audio.current.volume = 0.5;
     // Browsers may refuse sound before the first click on the page; the title still counts.
     audio.current.play().catch(() => {});
+  };
+  useEffect(() => {
+    if (!view) return;
+    const before = seen.current;
+    seen.current = view;
+    if (
+      before?.conversation?.id !== view.conversation?.id ||
+      !needsAttention(before?.session, view.session, before?.notices, view.notices)
+    )
+      return;
+    ring();
   }, [view]);
+  return ring;
 }
 
 /** Refresh cached local-image capability URLs before the server's 15-minute inactivity TTL. */
@@ -543,8 +560,9 @@ function useLocalImages(
   turns: ChatView['session']['turns'] | undefined,
   notices: ChatView['notices'] | undefined,
   enabled: boolean,
-  scopeKey: string,
+  cwd: string,
 ): Record<string, string> {
+  const scopeKey = JSON.stringify([pageChat(), cwd]);
   const [cache, setCache] = useState<{ scope: string; map: Record<string, CachedImage> }>(() => ({
     scope: scopeKey,
     map: {},
@@ -601,7 +619,7 @@ function useLocalImages(
       if (relay?.status !== 'answered' || !relay.reply) continue;
       for (const rawPath of extractLocalImagePaths(relay.reply)) {
         const path = relay.cwd ? resolveFilePath(rawPath, relay.cwd) : rawPath;
-        const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (scopeKey && isPathWithin(path, scopeKey));
+        const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (cwd && isPathWithin(path, cwd));
         if (allowed && !found.includes(path)) found.push(path);
       }
     }
@@ -976,8 +994,8 @@ const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000], () => sessi
 // The panel's width while a file or an artifact is open in it: wider, and kept apart from the lists'.
 const viewerWidth = storedSize(VIEWER_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
 
-function App() {
-  const route = pageChat();
+function App({ selected }: { selected?: string }) {
+  const route = selected ?? pageChat();
   const root = document.getElementById('root')!;
   const [toast, setToast] = useState<{ text: string; error?: boolean; chat?: string }>();
   const toastTimer = useRef<number>(undefined);
@@ -987,27 +1005,32 @@ function App() {
     toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-  const { view, config, release, connected, rejected, loaded } = useView((text) => showToast(text));
-  const [returnedDraft, setReturnedDraft] = useState<{ text: string; files: File[]; stamp: number }>();
+  const { view, config, release, connected, rejected, loaded } = useView(selected, (text) => showToast(text));
+  const [returnedDraft, setReturnedDraft] = useState<{ chat: string; stamp: string }>();
   const currentRow = loaded.find((row) => row.chat === pageChat());
   const cancelQueue = () => postCommand({ type: 'stop' });
   useEffect(() => {
     const id = pageChat();
     if (!id || !view?.recoveredDraft) return;
     const draft = restoreQueued(id, view.recoveredDraft);
-    if (draft) setReturnedDraft({ ...draft, stamp: Date.now() });
+    if (draft) {
+      rememberDraft(id, draft);
+      setReturnedDraft({ chat: id, stamp: view.recoveredDraft.id });
+    }
   }, [view?.recoveredDraft?.id]);
+  const ring = useBark(view);
   const prior = useRef<ChatSummary[]>([]);
   useEffect(() => {
     for (const chat of loaded) {
       const old = prior.current.find((row) => row.chat === chat.chat);
-      if (
-        !old ||
-        chat.chat === pageChat() ||
-        !((old.turnInProgress && !chat.turnInProgress) || (!old.approvals.length && chat.approvals.length))
-      )
-        continue;
-      const text = (chat.approvals.length ? 'Needs you: ' : 'Finished: ') + chat.title;
+      if (!old || chat.chat === pageChat()) continue;
+      const approval = chat.approvals.some((request) => !old.approvals.some((prior) => prior.id === request.id));
+      const finished =
+        !chat.turnInProgress &&
+        (old.turnInProgress || (old.turn !== chat.turn && (chat.glyph === 'ok' || chat.glyph === 'err')));
+      if (!approval && !finished) continue;
+      const text = (approval ? 'Needs you: ' : 'Finished: ') + chat.title;
+      ring();
       showToast(text, false, chat.chat);
       if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         const notice = new Notification(text);
@@ -1031,7 +1054,6 @@ function App() {
   const isHome = config ? config.home === true : !!root.dataset.home;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   const hasAgentsApi = config?.agents === true;
-  useBark(view);
   const [theme, setTheme] = useTheme();
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
   const [panel, navigate] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
@@ -1108,7 +1130,7 @@ function App() {
     inspectedAt,
     checkAgain: checkAgents,
   } = useAgents(hasAgentsApi, view?.agents, inSetup || showAgents, inSetup);
-  const allLimits = useAllLimits(running);
+  const allLimits = useAllLimits(config?.multiChat ? loaded.some((chat) => chat.turnInProgress) : running);
   // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
   const seenAuthFail = useRef(new Set<number>());
   useEffect(() => {
@@ -1264,7 +1286,9 @@ function App() {
   const chats = useChats(
     token,
     hasSessions,
-    `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
+    config?.multiChat
+      ? JSON.stringify(loaded.map((chat) => [chat.chat, chat.id, chat.turn, chat.turnInProgress]))
+      : `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
   );
   // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
   const rateLimits = session?.rateLimits?.length ? session.rateLimits : plan;
@@ -1546,13 +1570,27 @@ function App() {
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
-      setUnsent(problem ? { problem, text: text.trim() } : undefined);
+      if (route === pageChat() && !dropped.aborted) setUnsent(problem ? { problem, text: text.trim() } : undefined);
       return !problem;
     });
   };
 
   const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
   const efforts = currentAgent?.effort ?? [];
+  // Invalidate outstanding local actions when navigation comes from the URL or another window.
+  useEffect(() => {
+    switchSeq.current++;
+    switchingRef.current = false;
+    setSwitching(false);
+    refreshLookups();
+    seenAuthFail.current.clear();
+    setHeld(undefined);
+    setUnsent(undefined);
+    setWorkFullOpen(false);
+    setExpanded(false);
+    setPanel('chat');
+  }, [selected]);
+
   // The Model field's list: picked here lately, run by this agent (the index, this chat), known to it.
   const [recentModels, setRecentModels] = useState<string[]>([]);
   useEffect(() => {
@@ -2258,9 +2296,13 @@ function App() {
                 (row) => row.chat !== currentRow.chat && row.cwd === currentRow.cwd && row.turnInProgress,
               ) && <div role="status">Another chat is working in this folder.</div>}
             <AgentChat
-              key={config?.multiChat ? pageChat() + ':' + (returnedDraft?.stamp ?? '') : 'single'}
-              initialDraft={config?.multiChat ? (returnedDraft ?? savedDraft()) : undefined}
-              onDraftChange={config?.multiChat ? rememberDraft : undefined}
+              key={
+                route
+                  ? route + ':' + (returnedDraft && returnedDraft.chat === route ? returnedDraft.stamp : '')
+                  : 'single'
+              }
+              initialDraft={savedDraft(route)}
+              onDraftChange={route ? (draft) => rememberDraft(route, draft) : undefined}
               state={session}
               chatId={view?.generation !== undefined ? String(view.generation) : chatKey || undefined}
               header={null}
@@ -2578,7 +2620,7 @@ function ChatWindow() {
       window.removeEventListener('hashchange', changed);
     };
   }, []);
-  return <App key={route ?? 'initial'} />;
+  return <App selected={route} />;
 }
 
 // Before the first paint: the theme chosen in Settings, where there is one.

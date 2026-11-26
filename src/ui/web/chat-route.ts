@@ -19,24 +19,17 @@ export interface ComposerDraft {
   text: string;
   files: File[];
 }
-let currentDraft: ComposerDraft = { text: '', files: [] };
-export function rememberDraft(draft: ComposerDraft) {
-  currentDraft = draft;
-}
 const drafts = new Map<string, ComposerDraft>();
-export function savedDraft(): ComposerDraft | undefined {
-  const chat = pageChat();
+export function rememberDraft(chat: string, draft: ComposerDraft) {
+  if (draft.text || draft.files.length) drafts.set(chat, draft);
+  else drafts.delete(chat);
+}
+export function savedDraft(chat?: string): ComposerDraft | undefined {
   return chat ? drafts.get(chat) : undefined;
 }
 
 export function showChat(id: string) {
-  const current = pageChat();
-  if (current === id) return;
-  if (current) {
-    if (currentDraft.text || currentDraft.files.length) drafts.set(current, currentDraft);
-    else drafts.delete(current);
-  }
-  currentDraft = drafts.get(id) ?? { text: '', files: [] };
+  if (pageChat() === id) return;
   history.replaceState(history.state, '', '#chat=' + encodeURIComponent(id));
   window.dispatchEvent(new Event('genaicode-chat'));
 }
@@ -47,6 +40,7 @@ const restored = new Map<string, string>();
 export function restoreQueued(chat: string, draft: { id: string; prompts: string[] }): ComposerDraft | undefined {
   if (restored.get(chat) === draft.id) return;
   restored.set(chat, draft.id);
+  const currentDraft = savedDraft(chat) ?? { text: '', files: [] };
   const parts = draft.prompts.map(splitAttached);
   const files = [...currentDraft.files];
   const text = parts.map((p) => p.text);

@@ -155,18 +155,17 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
   };
 
   let unregister: (() => void) | undefined;
-  const register = () =>
-    (unregister ??= options.pool?.register({
-      size: totalBytes,
-      idle: options.idle ?? (() => true),
-      evict() {
-        const oldest = byName.entries().next().value;
-        if (!oldest) return false;
-        oldest[1].shift();
-        if (!oldest[1].length) byName.delete(oldest[0]);
-        return true;
-      },
-    }));
+  const pooled = {
+    size: totalBytes,
+    idle: options.idle ?? (() => true),
+    evict(protectLatest: boolean) {
+      const oldest = byName.entries().next().value;
+      if (!oldest || (protectLatest && byName.size === 1 && oldest[1].length === 1)) return false;
+      oldest[1].shift();
+      if (!oldest[1].length) byName.delete(oldest[0]);
+      return true;
+    },
+  };
   const trim = () => {
     // First drop superseded older versions before dropping whole artifacts.
     while (totalBytes() > maxTotalBytes) {
@@ -247,8 +246,8 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       byName.delete(name);
       byName.set(name, versions);
       trim();
-      register();
-      options.pool?.trim();
+      unregister ??= options.pool?.register(pooled);
+      options.pool?.trim(pooled);
       for (const listener of [...listeners]) {
         try {
           listener(artifact);
@@ -429,20 +428,28 @@ export async function startArtifactChannel(options: ArtifactChannelOptions): Pro
 }
 
 /** Evict old content across chat stores when their combined buffers reach the app's cap. */
+interface PooledStore {
+  size(): number;
+  evict(protectLatest: boolean): boolean;
+  idle(): boolean;
+}
+
 export class ArtifactPool {
-  private readonly stores = new Set<{ size(): number; evict(): boolean; idle(): boolean }>();
+  private readonly stores = new Set<PooledStore>();
   constructor(private readonly limit = 200 * 1024 * 1024) {}
-  register(store: { size(): number; evict(): boolean; idle(): boolean }) {
+  register(store: PooledStore) {
     this.stores.add(store);
     return () => this.stores.delete(store);
   }
-  trim() {
-    const stores = [...this.stores].sort((a, b) => Number(b.idle()) - Number(a.idle()));
+  trim(publisher: PooledStore) {
+    const stores = [...this.stores].sort(
+      (a, b) => Number(a === publisher) - Number(b === publisher) || Number(b.idle()) - Number(a.idle()),
+    );
     let total = stores.reduce((sum, store) => sum + store.size(), 0);
     for (const store of stores) {
       while (total > this.limit) {
         const before = store.size();
-        if (!store.evict()) break;
+        if (!store.evict(store === publisher)) break;
         total -= before - store.size();
       }
       if (total <= this.limit) break;

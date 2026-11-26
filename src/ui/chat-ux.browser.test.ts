@@ -146,6 +146,8 @@ it('runs two chats independently, restores drafts, and queues a third at the con
     await sheep.waitFor();
     await page.getByRole('log').getByText('Finished.').waitFor();
 
+    const sheepHash = new URL(page.url()).hash;
+    await side.evaluate((node) => node.setAttribute('data-original-sidebar', 'yes'));
     // A second chat with a turn that keeps running.
     await newChat.click();
     await vi.waitFor(async () => expect(await title.textContent()).toBe('New chat'));
@@ -168,6 +170,17 @@ it('runs two chats independently, restores drafts, and queues a third at the con
     await vi.waitFor(async () => expect(await composer.inputValue()).toBe('Draft for the fence'));
     await page.getByText('fence.txt', { exact: true }).waitFor();
     expect(aborted).toBe(0);
+    const fenceHash = new URL(page.url()).hash;
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, sheepHash);
+    await vi.waitFor(async () => expect(await title.textContent()).toBe('Count the sheep'));
+    await page.evaluate((hash) => {
+      location.hash = hash;
+    }, fenceHash);
+    await vi.waitFor(async () => expect(await composer.inputValue()).toBe('Draft for the fence'));
+    await page.getByText('fence.txt', { exact: true }).waitFor();
+    expect(await side.getAttribute('data-original-sidebar')).toBe('yes');
 
     await newChat.click();
     await vi.waitFor(async () => expect(await title.textContent()).toBe('New chat'));
@@ -192,7 +205,16 @@ it('runs two chats independently, restores drafts, and queues a third at the con
     await page.getByText(/Waiting for a free slot/).waitFor();
     expect(submittedFiles[0]).toEqual([expect.any(String)]);
     expect(submittedFiles[1]).toEqual(submittedFiles[0]);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    });
     slow.shift()!();
+    await page.getByText('Finished: Paint the fence, slow', { exact: false }).waitFor();
+    await vi.waitFor(async () => expect(await page.title()).toMatch(/^\(\d+\)/));
+    await page.evaluate(() => {
+      Reflect.deleteProperty(document, 'visibilityState');
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
     await page.getByRole('log').getByText('Finished.').waitFor();
     expect(aborted).toBe(0);
     slow.shift()!();

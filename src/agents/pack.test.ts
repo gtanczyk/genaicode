@@ -2464,9 +2464,19 @@ it('reopens an unmerged worker after shutdown and uses the same worktree and sha
   expect((await original.result).ok).toBe(true);
   await first.shutdown();
   const records = JSON.parse(JSON.stringify(first.records()));
+  Object.assign(records[0].task, {
+    text: 'A clipped reply',
+    verdict: 'LGTM',
+    pullRequest: { number: 7, url: 'https://github.com/example/project/pull/7' },
+    steps: [{ kind: 'message', at: 1, text: 'Wrote saved.txt' }],
+    steers: [{ text: 'keep going', at: 1, from: 'user', delivery: 'sent' }],
+  });
   const second = template.forChat('first', pool);
   const controls = second.recover({ cwd, prompt: 'delegate' }, records);
-  expect(controls.task('t1')?.worktree).toBe(records[0].task.worktree);
+  expect(controls.task('t1')).toMatchObject(records[0].task);
+  await expect(controls.act('t1', { type: 'steer', text: 'no detached run' })).rejects.toMatchObject({
+    reason: 'not-running',
+  });
   const busy = pool.take()!;
   await expect(controls.act('t1', { type: 'verify' })).rejects.toMatchObject({ reason: 'capacity' });
   busy();

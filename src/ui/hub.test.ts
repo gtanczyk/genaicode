@@ -124,6 +124,7 @@ it('keeps identical approval ids, project files and spent budgets with their cha
     };
     return {
       warnings: () => warnings,
+      unauthenticated: (path: string) => fetch(new URL(path, address)),
       call,
       send,
       rows,
@@ -137,6 +138,14 @@ it('keeps identical approval ids, project files and spent budgets with their cha
   let server = await launch();
   try {
     const first = (await server.rows())[0]!.chat;
+    expect((await server.call('/api/chats?chat=gone')).status).toBe(200);
+    expect((await server.call('/api/file?chat=gone')).status).toBe(404);
+    for (const path of ['/api/events', '/api/chats', '/api/file']) {
+      const live = await server.unauthenticated(path + '?chat=' + first);
+      const missing = await server.unauthenticated(path + '?chat=gone');
+      expect([missing.status, await missing.text()]).toEqual([live.status, await live.text()]);
+      expect(live.status).toBe(403);
+    }
     const ids: string[] = [];
     for (const cwd of dirs) {
       const { chat } = await (
@@ -169,7 +178,14 @@ it('keeps identical approval ids, project files and spent budgets with their cha
     const broken = (await crash.read(ids[1]!))!;
     await crash.save({ ...broken, session: { ...broken.session, turns: JSON.parse('[null]') } });
     const catalog = (await crash.index())!;
-    await crash.saveIndex(catalog.ids, ids[0]!, catalog.chats!);
+    const stale = '12345678-1234-1234-1234-123456789012';
+    const missing = {
+      ...catalog.chats!.find((row) => row.chat === ids[1])!,
+      chat: stale,
+      id: 'native-1',
+      source: 'helper',
+    };
+    await crash.saveIndex(catalog.ids, ids[0]!, [...catalog.chats!, missing]);
     const runsBefore = budgets.length;
     const recovered = await launch(true, copy);
     try {
@@ -179,11 +195,24 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       expect((await recovered.rows()).find((row) => row.chat === queued)?.interrupted).toBe(true);
       expect((await recovered.rows()).find((row) => row.chat === ids[0])?.agent).toBe('helper');
       expect(await recovered.view(ids[0]!)).not.toContain('foreign-session');
+      const opened = await recovered.send(ids[0]!, { type: 'continue', id: 'native-1', source: 'helper' });
+      expect(opened).toMatchObject({ ok: true, chat: expect.any(String) });
+      expect(opened.chat).not.toBe(stale);
+      expect((await recovered.rows()).some((row) => row.chat === stale)).toBe(false);
       expect(budgets).toHaveLength(runsBefore);
     } finally {
       await recovered.close();
     }
+    const fresh = await launch(false, copy);
+    try {
+      expect(await fresh.rows()).toHaveLength(1);
+    } finally {
+      await fresh.close();
+    }
+    await server.send(queued, { type: 'submit', text: `!"${process.execPath}" -e "setTimeout(() => {}, 30000)"` });
+    await vi.waitFor(async () => expect(await server.view(queued)).toContain('"shells":1'));
     expect(await server.send(queued, { type: 'stop' })).toMatchObject({ draft: 'keep this for later' });
+    await vi.waitFor(async () => expect(await server.view(queued)).toContain('"shells":0'));
     expect(
       (
         await server.call('/api/command?chat=' + ids[0], {
@@ -195,7 +224,12 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       ).status,
     ).toBe(409);
     expect(
-      await server.send(ids[0]!, { type: 'tower', id: 'turn:' + ids[1] + ':1:same', decision: 'approve' }),
+      await server.send(ids[0]!, {
+        type: 'tower',
+        generation: 999,
+        id: 'turn:' + ids[1] + ':1:same',
+        decision: 'approve',
+      }),
     ).toMatchObject({
       ok: true,
     });
@@ -214,7 +248,7 @@ it('keeps identical approval ids, project files and spent budgets with their cha
     expect(await (await server.call('/api/command', { chat: ids[0], type: 'close' })).json()).toEqual({ ok: true });
     expect(await server.view(ids[0]!)).toContain(ids[0]);
     await server.close();
-    server = await launch();
+    server = await launch(true);
     for (const id of ids) expect((await server.rows()).some((row) => row.chat === id)).toBe(true);
     const initial = (await server.rows())[0]!.chat;
     expect(await server.send(initial, { type: 'continue', id: 'native-1', source: 'helper' })).toMatchObject({
@@ -320,6 +354,11 @@ it('isolates send consent and artifact contents while sharing recipient order an
   const current = await active.publish({ title: 'new', content: '123456' });
   expect(idle.read(old.id)).toBeUndefined();
   expect(active.read(current.id)?.body.toString()).toBe('123456');
+  const other = createArtifactStore({ cwd: target.cwd, pool, idle: () => false });
+  await other.publish({ title: 'other', content: 'abc' });
+  const latest = await active.publish({ title: 'latest', content: 'abcdefghijk' });
+  expect(active.read(latest.id)?.body.toString()).toBe('abcdefghijk');
+  expect(other.list()).toEqual([]);
 });
 
 const placeholder: CodingAgent = {

@@ -97,7 +97,7 @@ export function Icon({ name, className }: { name: keyof typeof ICONS; className?
 }
 
 const GLYPHS: Record<ChatGlyph, ReactNode> = {
-  wait: '◌',
+  wait: <circle cx="6" cy="6" r="3.5" strokeDasharray="1.8 1.8" />,
   run: <path d="M6 1.5A4.5 4.5 0 1 0 10.5 6" />,
   ask: <path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />,
   err: <path d="m2.5 2.5 7 7M9.5 2.5l-7 7" />,

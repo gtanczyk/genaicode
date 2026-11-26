@@ -377,7 +377,7 @@ export function createChatController(options: ChatOptions): ChatController {
     initialUsage: options.initialUsage,
     ...(options.fallback?.length ? { fallback: fallbackAgents(options.fallback) } : {}),
     agent: initial,
-    cwd: options.cwd,
+    cwd: options.restoredConversation?.cwd ?? options.cwd,
     model: options.model,
     effort: options.effort,
     mode: options.mode,

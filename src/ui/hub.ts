@@ -98,8 +98,17 @@ export class ChatHub {
     try {
       return await loading;
     } finally {
+      if (!this.chats.has(id) && !this.closing && this.dormant.delete(id)) {
+        this.checkpoint();
+        this.changed();
+      }
       if (this.loading.get(id) === loading) this.loading.delete(id);
     }
+  }
+
+  private async reopenOwner(id: string) {
+    // A broken snapshot does not prevent the native session store from reopening its conversation.
+    return this.reopen(id).catch(() => undefined);
   }
 
   private mayUnload(id: string, { controller }: HubChat) {
@@ -336,7 +345,7 @@ export class ChatHub {
           );
           return;
         }
-        if (owners[0]) return (await this.reopen(owners[0].chat)) ? owners[0].chat : undefined;
+        if (owners[0] && (await this.reopenOwner(owners[0].chat))) return owners[0].chat;
         let stored;
         try {
           stored = await this.resolveSession?.(target.id, target.source);
@@ -353,7 +362,7 @@ export class ChatHub {
               (row.source === stored.source ||
                 (row.source.startsWith('genaicode:open:') && row.agent === stored.agent)),
           );
-          if (live) return (await this.reopen(live.chat)) ? live.chat : undefined;
+          if (live && (await this.reopenOwner(live.chat))) return live.chat;
         }
         if (target.takeover && !this.home)
           return (await current.controller.continueSession(target.id, { source: target.source })) ? from : undefined;
@@ -414,9 +423,9 @@ export class ChatHub {
 
   cancel(id: string) {
     const prompts = this.waiting.get(id);
+    if (!prompts?.length) return;
     this.waiting.delete(id);
     this.changed();
-    if (!prompts?.length) return;
     this.chats.get(id)?.controller.recoverPrompts(prompts.map((p) => p.text));
     this.checkpoint(id);
     return prompts.map((p) => p.text);

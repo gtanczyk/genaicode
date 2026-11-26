@@ -580,8 +580,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         }
       : undefined;
   const disk = chatStore(liveEnv, options.cwd, !!options.home);
-  const catalog = await disk.index();
-  const restored = options.restoreChats ? catalog : undefined;
+  const restored = options.restoreChats ? await disk.index() : undefined;
   let bark = options.bark ?? true;
   const channels = scopedMcpServers();
   const progress = await startProgressChannel().catch(() => undefined);
@@ -635,7 +634,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         },
         web,
         onRoot: addRoot,
-        restoredConversation: saved?.conversation,
+        restoredConversation: saved ? { ...saved.conversation, cwd: saved.session.cwd } : undefined,
         initialUsage: saved?.session,
         agent: previous?.agent ?? (!saved || agents.some((a) => a.name === options.agent) ? options.agent : undefined),
         model: previous?.model ?? options.model,
@@ -751,7 +750,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         ?.session;
     },
     options.home,
-    catalog?.chats,
+    restored?.chats,
     (error) => options.stderr.write(`Could not checkpoint chats: ${String(error)}\n`),
   );
   hub.setArchive(await readArchive(liveEnv));
