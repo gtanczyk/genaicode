@@ -31,6 +31,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - **Starting a project chat is instant and spinners stay smooth while chats stream.** (#381)
   - Clicking `+` on a project checks open chats, recent listings and saved conversations before scanning every session store on disk, and opening an empty chat no longer triggers extra session listings.
   - Running spinners animate on the compositor layer, completed turns and the sidebar skip redundant re-renders during streaming, and mid-turn chat checkpoints coalesce to every 2 seconds.
+- **Resize the sidebar and archive or delete chat history from its row menu.** (#382)
+  - Archive puts a chat in All chats → Archived. Delete chat history asks for confirmation and deletes the Genaicode copy. The agent keeps its own transcript.
+  - Drag the right edge or focus it and use the arrow keys. The sidebar remembers its width. On macOS the app icon lines up with the window controls.
 - **MCP servers and hooks installed with npx keep working after npm clears its cache.** (#378)
   - `npx genaicode mcp install` and `hooks install` register the installed command (`~/.genaicode/current`) when there is one, and otherwise say to install it first.
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)

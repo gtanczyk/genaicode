@@ -9,6 +9,7 @@ import { personText } from '../agents/host-text.js';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
+import { chatStore } from './chat-store.js';
 import { runWeb } from './index.js';
 import { TERMS_URL } from './web/sidebar.js';
 
@@ -238,6 +239,16 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true),
     );
 
+    const edge = page.getByRole('separator', { name: 'Resize sidebar' });
+    const bounds = (await edge.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + 64, bounds.y + 120);
+    await page.mouse.up();
+    expect(await sideWidth(page)).toBe(332);
+    await edge.press('ArrowRight');
+    expect(await sideWidth(page)).toBe(356);
+
     // ⌘B folds the sidebar to the 56 px rail; the chat keeps the rest, and a reload remembers it.
     await page.keyboard.press('ControlOrMeta+b');
     await page.locator('.shell.side-collapsed').waitFor();
@@ -247,7 +258,9 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await page.reload();
     await page.locator('.shell.side-collapsed').waitFor();
     await topbar.getByRole('button', { name: 'Show sidebar' }).click();
-    await vi.waitFor(async () => expect(await sideWidth(page)).toBe(268));
+    await vi.waitFor(async () => expect(await sideWidth(page)).toBe(356));
+    await edge.press('Enter');
+    expect(await sideWidth(page)).toBe(268);
     await side.getByRole('button', { name: 'Collapse sidebar' }).click();
     await page.locator('.shell.side-collapsed').waitFor();
     await page.keyboard.press('ControlOrMeta+b');
@@ -265,7 +278,13 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     const list = page.locator('main.sessions');
     expect(await list.getByRole('combobox', { name: 'Period' }).inputValue()).toBe('0');
     const flour = list.locator('.session-row', { hasText: 'Order flour' });
-    await flour.getByRole('button', { name: 'Archive', exact: true }).click();
+    const sidebarFlour = chats.locator('.chat-actions', { hasText: 'Order flour' });
+    await sidebarFlour.hover();
+    const actions = sidebarFlour.getByRole('button', { name: 'Chat actions' });
+    expect(await actions.locator('..').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    await actions.click();
+    await sidebarFlour.getByRole('menuitem', { name: 'Archive' }).click();
+    await sidebarFlour.waitFor({ state: 'detached' });
     await flour.waitFor({ state: 'detached' });
     await list.getByRole('combobox', { name: 'State' }).selectOption('archived');
     await flour.getByRole('button', { name: 'Unarchive' }).click();
@@ -476,6 +495,38 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await held[0]!.answered;
     await inA();
     await page.unroute('**/api/command*');
+
+    // Delete has a separate confirmation. Cancelling preserves the chat; confirming erases the
+    // app's history even for the current chat, while the agent's session source keeps its copy.
+    const firstRow = home
+      .locator('.chat-actions')
+      .filter({ has: page.getByRole('button', { name: /What is waiting for me\?/ }) });
+    const deleteMenu = async () => {
+      await firstRow.hover();
+      await firstRow.getByRole('button', { name: 'Chat actions' }).click();
+      await firstRow.getByRole('menuitem', { name: 'Delete chat history…' }).click();
+    };
+    const confirm = page.getByRole('dialog', { name: 'Delete chat history?' });
+    await deleteMenu();
+    expect(await confirm.textContent()).toContain('What is waiting for me?');
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await first.waitFor();
+    await deleteMenu();
+    await confirm.getByRole('button', { name: 'Delete history' }).click();
+    await first.waitFor({ state: 'detached' });
+    await vi.waitFor(async () => expect(await topbar.locator('h1').textContent()).toBe('New chat'));
+    await page.reload();
+    await side.getByRole('button', { name: 'All chats', exact: true }).click();
+    await list.getByRole('combobox', { name: 'State' }).waitFor();
+    expect(await list.getByText('What is waiting for me?', { exact: true }).count()).toBe(0);
+    expect(made.some((row) => row.title === 'What is waiting for me?')).toBe(true);
+    const snapshot = await chatStore(env, made[0]!.cwd!, true).index();
+    // The workspace used by --home is Genaicode's home directory, the cwd of this chat's first turn.
+    expect(snapshot).toBeDefined();
+    expect(JSON.stringify(snapshot)).not.toContain('What is waiting for me?');
+    const ownStore = chatStore(env, made[0]!.cwd!, true);
+    const oldSnapshot = await ownStore.read(new URL(page.url()).hash.slice('#chat='.length));
+    expect(JSON.stringify(oldSnapshot ?? {})).not.toContain('What is waiting for me?');
 
     // A window under 980 px starts with the rail until the person chooses.
     const narrow = await browser.newContext({ viewport: { width: 900, height: 700 } });

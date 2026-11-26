@@ -771,19 +771,31 @@ export async function saveConversation(
   record: ConversationRecord,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  const cleaned: ConversationRecord = {
+    ...record,
+    ...(record.title && promptLine(record.title, 120) ? { title: promptLine(record.title, 120) } : {}),
+  };
+  return updateConversations(env, (existing) =>
+    [cleaned, ...existing.filter((item) => item.id !== record.id)]
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_CONVERSATIONS),
+  );
+}
+
+export function removeConversationRecords(ids: ReadonlySet<string>, env: NodeJS.ProcessEnv) {
+  return updateConversations(env, (records) => records.filter((record) => !ids.has(record.id)));
+}
+
+async function updateConversations(
+  env: NodeJS.ProcessEnv,
+  change: (records: ConversationRecord[]) => ConversationRecord[],
+) {
   const file = path.resolve(conversationsFile(env));
   const previous = conversationQueues.get(file) ?? Promise.resolve();
   const run = previous
     .catch(() => undefined)
     .then(async () => {
-      const existing = await readConversationsUnlocked(file);
-      const cleaned: ConversationRecord = {
-        ...record,
-        ...(record.title && promptLine(record.title, 120) ? { title: promptLine(record.title, 120) } : {}),
-      };
-      const next = [cleaned, ...existing.filter((item) => item.id !== record.id)]
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, MAX_CONVERSATIONS);
+      const next = change(await readConversationsUnlocked(file));
       await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
       const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2, 8)}.tmp`;
       await fs.writeFile(tmp, `${JSON.stringify(next, null, 1)}\n`, { mode: 0o600 });

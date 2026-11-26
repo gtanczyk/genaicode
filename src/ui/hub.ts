@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isArchived } from '../agents/sessions/archive.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
+import type { chatStore } from './chat-store.js';
 import type { ChatController, ChatSwitch, ChatView, SwitchOrder } from './controller.js';
 import type { ProjectFiles } from './files.js';
 import type { Uploads } from './uploads.js';
@@ -68,6 +69,7 @@ export class ChatHub {
     private readonly home = false,
     catalog?: ChatSummary[],
     private readonly onSaveError?: (error: unknown) => void,
+    readonly history?: ReturnType<typeof chatStore>,
   ) {
     this.lastShown = initial;
     for (const row of catalog ?? []) {
@@ -112,13 +114,10 @@ export class ChatHub {
     return this.reopen(id).catch(() => undefined);
   }
 
-  private mayUnload(id: string, { controller }: HubChat) {
+  private hasIdleHistory(id: string, { controller }: HubChat) {
     const { session } = controller.get();
     return (
-      id !== this.initial &&
-      !this.views.get(id) &&
       !this.waiting.has(id) &&
-      !controller.artifacts?.list().length &&
       !controller.hasShellProcesses() &&
       session.status === 'idle' &&
       !session.approvals.length &&
@@ -135,6 +134,55 @@ export class ChatHub {
           ),
       )
     );
+  }
+
+  private mayUnload(id: string, chat: HubChat) {
+    return (
+      id !== this.initial &&
+      !this.views.get(id) &&
+      !chat.controller.artifacts?.list().length &&
+      this.hasIdleHistory(id, chat)
+    );
+  }
+
+  /** Delete the app's copy. A window already showing it receives an empty conversation. */
+  deleteHistory(target: SessionInfo, chatId?: string) {
+    const work = this.opening.then(async () => {
+      if (this.closing || !this.history) return false;
+      const matches = () => this.summaries().filter((row) => row.source === target.source && row.id === target.id);
+      const owners = matches();
+      if (owners.length > 1 || (chatId && owners[0]?.chat !== chatId)) return false;
+      const id = owners[0]?.chat;
+      const chat = id ? await this.reopen(id) : undefined;
+      if (this.closing) return false;
+      let recordId: string | undefined;
+      if (chat && id) {
+        const row = matches().find((row) => row.chat === id);
+        if (
+          !row ||
+          row.updatedAt !== target.updatedAt ||
+          !this.hasIdleHistory(id, chat) ||
+          this.busyPacks?.().includes(id)
+        )
+          return false;
+        const conversation = chat.controller.get().conversation;
+        recordId = conversation?.recordId ?? id;
+        if (!chat.controller.startHomeChat()) return false;
+        chat.interrupted = false;
+        chat.controller.artifacts?.clear();
+        this.unseen.delete(id);
+        this.created.set(id, Date.now());
+        // Queue the empty snapshot behind any pending saves before releasing the old history.
+        await chat.save?.(false);
+      }
+      await this.history.erase(target, recordId);
+      if (id && chat && !this.hasHistory(chat)) await this.unload(id);
+      await this.index();
+      this.changed();
+      return true;
+    });
+    this.opening = work.catch(() => {});
+    return work;
   }
 
   async unload(id: string) {
@@ -264,7 +312,7 @@ export class ChatHub {
 
   async load(id: string, options?: { announce?: boolean }) {
     const chat = await this.create(id);
-    this.created.set(id, Date.now());
+    this.created.set(id, this.dormant.get(id)?.updatedAt ?? Date.now());
     this.lastSeen.set(id, Date.now());
     this.chats.set(id, chat);
     this.dormant.delete(id);
@@ -305,7 +353,7 @@ export class ChatHub {
         return {
           chat,
           source: session.sessionId && source ? source : 'genaicode:open:' + chat,
-          id: session.sessionId ?? chat,
+          id: session.sessionId ?? conversation?.recordId ?? chat,
           agent: session.agent,
           where: 'local',
           cwd: session.cwd,
