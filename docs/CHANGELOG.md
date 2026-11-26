@@ -24,6 +24,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- **Fix Steps panel navigation, model cache races, and oversized Antigravity usage.** (#384)
+  - Switching from Steps to another work-panel tab on narrow screens keeps the panel open, Steps stays open when a new chat receives its first session ID, and clicking local image thumbnails inside Steps opens them in the viewer.
+  - Model discovery refreshes no longer let older probes overwrite newer results, project switches key cached models by the server-resolved directory, and truncated `<genaicode-briefing>` fragments strip cleanly from session titles.
+  - Antigravity usage counts oversized (`> 1 MiB`) transcript records without dropping tokens, and failed `update_steps` calls no longer report completed steps.
 - **Render `file://` links, keep the working bar on one line, and surface progress updates.** (#376)
   - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
   - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
