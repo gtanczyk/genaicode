@@ -169,10 +169,8 @@ export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
   const emptyTtlMs = options.emptyTtlMs ?? 30_000;
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
   const cache = new Map<string, { at: number; models: DiscoveredModel[] }>();
-  const inFlight = new Map<string, { epoch: number; seq: number; promise: Promise<DiscoveredModel[]> }>();
-  const latestSeq = new Map<string, number>();
+  const inFlight = new Map<string, { epoch: number; promise: Promise<DiscoveredModel[]> }>();
   let epoch = 0;
-  let seq = 0;
 
   return {
     async list(agentName, req = {}) {
@@ -187,23 +185,25 @@ export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
       // Only reuse an in-flight probe from the current generation (never one predating `invalidate()`).
       if (!req.refresh && existing && existing.epoch === epoch) return existing.promise;
       const startEpoch = epoch;
-      const reqSeq = ++seq;
-      latestSeq.set(key, reqSeq);
-      const promise = listAgentModels(agent, options.getEnv(), {
+      const entry: { epoch: number; promise: Promise<DiscoveredModel[]> } = {
+        epoch: startEpoch,
+        promise: undefined!,
+      };
+      entry.promise = listAgentModels(agent, options.getEnv(), {
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
         ...(cwd ? { cwd } : {}),
       })
         .then((models) => {
-          // Only the newest probe in the current generation may populate the cache; an older
-          // probe finishing after a `refresh: true` request must not overwrite newer results.
-          if (startEpoch === epoch && latestSeq.get(key) === reqSeq) cache.set(key, { at: Date.now(), models });
+          // Only the current in-flight entry in the current generation may populate the cache; an
+          // older probe finishing after a `refresh: true` probe must not overwrite newer results.
+          if (startEpoch === epoch && inFlight.get(key) === entry) cache.set(key, { at: Date.now(), models });
           return models;
         })
         .finally(() => {
-          if (inFlight.get(key)?.seq === reqSeq) inFlight.delete(key);
+          if (inFlight.get(key) === entry) inFlight.delete(key);
         });
-      inFlight.set(key, { epoch: startEpoch, seq: reqSeq, promise });
-      return promise;
+      inFlight.set(key, entry);
+      return entry.promise;
     },
     invalidate(agentName) {
       epoch += 1;

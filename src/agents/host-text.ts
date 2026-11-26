@@ -16,24 +16,26 @@ const BLOCK_START = `\n\n${OPEN}\n\n${PREAMBLE}\n\n`;
  * Find the start of a trailing generated `<genaicode-briefing>` block in linear time, matching
  * both the multi-line form and a one-line / cut-short title or preview (including cuts mid-preamble).
  */
-function trailingBriefingIndex(text: string): number {
+function trailingBriefingIndex(text: string, truncated = false): number {
   for (let pos = text.lastIndexOf(OPEN); pos >= 0; pos = pos > 0 ? text.lastIndexOf(OPEN, pos - 1) : -1) {
     // Must be at start of string or preceded by whitespace.
     if (pos > 0 && !/\s/.test(text[pos - 1]!)) continue;
     let start = pos;
     while (start > 0 && /\s/.test(text[start - 1]!)) start -= 1;
     const afterTag = text.slice(pos + OPEN.length);
-    // A title cut right after the opening tag by `oneLine()` ends with Unicode `…`.
-    if (afterTag === '…') return start;
+    // A truncated title cut right after the opening tag by `oneLine()` ends with Unicode `…`.
+    if (truncated && afterTag === '…') return start;
     if (!afterTag || !/^\s/.test(afterTag)) continue;
     const after = afterTag.trimStart();
     if (!after) continue;
     const isFull = after.startsWith(PREAMBLE);
     const hasEllipsis = after.endsWith('…');
     const trimmedCut = hasEllipsis ? after.slice(0, -1) : after;
-    // In explicitly truncated titles (`…`), even a short preamble prefix (e.g. `<genaicode-briefing> Ad…`)
-    // identifies the generated block; without `…`, require >= 5 preamble chars so ordinary tag mentions stay intact.
-    const isTruncatedPreamble = !isFull && (hasEllipsis || trimmedCut.length >= 5) && PREAMBLE.startsWith(trimmedCut);
+    // In explicitly truncated titles/previews (`truncated: true` + `…`), even a short preamble prefix
+    // (e.g. `<genaicode-briefing> Ad…`) identifies the generated block; in full prompts require >= 5
+    // preamble chars so literal mentions like `<genaicode-briefing>…` stay intact.
+    const isTruncatedPreamble =
+      !isFull && ((truncated && hasEllipsis) || trimmedCut.length >= 5) && PREAMBLE.startsWith(trimmedCut);
     if (!isFull && !isTruncatedPreamble) continue;
     const close = after.indexOf(CLOSE);
     if (close < 0 || close === after.trimEnd().length - CLOSE.length) return start;
@@ -107,7 +109,19 @@ export function hasLeadingBriefing(text: string): boolean {
 export function personText(text: string): string {
   let out = withoutHandoff(text.trimStart());
   for (const lead of LEGACY) out = out.replace(lead, '');
-  const at = trailingBriefingIndex(out);
+  const at = trailingBriefingIndex(out, false);
+  if (at >= 0) out = out.slice(0, at);
+  return out.trim();
+}
+
+/**
+ * Like `personText()`, for truncated titles/previews (e.g. cut to 120 chars with `…`): also strips
+ * short trailing briefing fragments like `<genaicode-briefing> Ad…` or `<genaicode-briefing>…`.
+ */
+export function personTitle(text: string): string {
+  let out = withoutHandoff(text.trimStart());
+  for (const lead of LEGACY) out = out.replace(lead, '');
+  const at = trailingBriefingIndex(out, true);
   if (at >= 0) out = out.slice(0, at);
   return out.trim();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasLeadingBriefing, personText, withBriefing } from './host-text.js';
+import { hasLeadingBriefing, personText, personTitle, withBriefing } from './host-text.js';
 import { delegationBrief } from './pack.js';
 import { handoffPreamble } from './handoff.js';
 import type { SessionTurn } from './session.js';
@@ -36,9 +36,9 @@ describe('personText', () => {
     const oneLine = briefed.replace(/\s+/g, ' ').slice(0, 95) + '…';
     expect(personText(oneLine)).toBe('fix the header');
     expect(personText('fix the header <genaicode-briefing> Added by gen…')).toBe('fix the header');
-    expect(personText('fix the header <genaicode-briefing> Ad…')).toBe('fix the header');
-    expect(personText('fix the header <genaicode-briefing> A…')).toBe('fix the header');
-    expect(personText('fix the header <genaicode-briefing>…')).toBe('fix the header');
+    expect(personTitle('fix the header <genaicode-briefing> Ad…')).toBe('fix the header');
+    expect(personTitle('fix the header <genaicode-briefing> A…')).toBe('fix the header');
+    expect(personTitle('fix the header <genaicode-briefing>…')).toBe('fix the header');
     // Stays linear on a long internal whitespace run.
     const started = performance.now();
     expect(personText(`hello${' '.repeat(50_000)}world`)).toBe(`hello${' '.repeat(50_000)}world`);
@@ -48,6 +48,13 @@ describe('personText', () => {
   it('keeps a prompt that only mentions the tag', () => {
     expect(personText('Document <genaicode-briefing> in the README.')).toBe(
       'Document <genaicode-briefing> in the README.',
+    );
+    // Full transcript prompts ending with a literal `<genaicode-briefing>…` keep their words intact.
+    expect(personText('The displayed title ends with <genaicode-briefing>…')).toBe(
+      'The displayed title ends with <genaicode-briefing>…',
+    );
+    expect(personText('The displayed title ends with <genaicode-briefing> Ad…')).toBe(
+      'The displayed title ends with <genaicode-briefing> Ad…',
     );
     const own = 'Explain this:\n\n<genaicode-briefing>\n\nsome notes\n\n</genaicode-briefing>';
     expect(personText(own)).toBe(own);

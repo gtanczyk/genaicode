@@ -294,4 +294,59 @@ it('counts Antigravity transcript tokens in the period without cache reads, and 
     ]),
   });
   expect((await partsSince([huge], since, { env })).get(huge)).toEqual({ part: 1, tokens: 261 });
+
+  // Unversioned v1 Antigravity scan caches from before oversized-line support trigger a rescan from byte zero.
+  const hugeCacheDir = join(dir, 'agy-home', 'cache', 'antigravity');
+  const legacyEnv = { GENAICODE_HOME: join(dir, 'agy-legacy') };
+  const legacyFile = file('agy-legacy.jsonl', [
+    {
+      type: 'PLANNER_RESPONSE',
+      created_at: at(1),
+      payload: 'x'.repeat(1_100_000),
+      input_tokens: 200,
+      output_tokens: 50,
+    },
+    step(1, 5, 0, 1),
+  ]);
+  const legacySession = session('antigravity', 'a-legacy', { path: legacyFile });
+  // Prime the cache, then downgrade it on disk to an unversioned v1 scan that had skipped the >1 MiB line.
+  expect((await partsSince([legacySession], since, { env: legacyEnv })).get(legacySession)?.tokens).toBe(256);
+  const legacyCacheDir = join(dir, 'agy-legacy', 'cache', 'antigravity');
+  const legacyCachePath = join(legacyCacheDir, readdirSync(legacyCacheDir)[0]!);
+  const savedV2 = JSON.parse(readFileSync(legacyCachePath, 'utf8')) as Record<string, unknown>;
+  delete savedV2.version;
+  savedV2.total = 6;
+  savedV2.inputTokens = 5;
+  savedV2.outputTokens = 1;
+  savedV2.reports = 1;
+  savedV2.points = [[Date.parse(at(1)), 6]];
+  writeFileSync(legacyCachePath, JSON.stringify(savedV2));
+  vi.resetModules();
+  const reloaded = await import('./window.js');
+  expect((await reloaded.partsSince([legacySession], since, { env: legacyEnv })).get(legacySession)?.tokens).toBe(256);
+  expect(readdirSync(hugeCacheDir).length).toBeGreaterThanOrEqual(1);
+
+  // Oversized extractor matches JSON.parse on escaped keys, escaped timestamps, malformed scalars, and duplicate null keys.
+  const rawHuge = join(dir, 'agy-escapes.jsonl');
+  const pad = 'p'.repeat(1_100_000);
+  const oldTsEscaped = at(20).replace(/Z$/, '\\u005a');
+  const recentTsEscaped = at(1).replace(/Z$/, '\\u005a');
+  writeFileSync(
+    rawHuge,
+    [
+      // Escaped quote in second key `"input_tokens\""` must NOT overwrite `"input_tokens":3`, and escaped old timestamp puts it before `since`.
+      `{"payload":"${pad}","input_tokens":3,"input_tokens\\"":700,"created_at":"${oldTsEscaped}"}`,
+      // Valid recent record with escaped key `\u0069nput_tokens` and escaped timestamp `\u005a`.
+      `{"payload":"${pad}","\\u0069nput_tokens":40,"output_tokens":10,"created_at":"${recentTsEscaped}"}`,
+      // Malformed split scalar `1 2` must be rejected like JSON.parse.
+      `{"payload":"${pad}","input_tokens":1 2,"created_at":"${recentTsEscaped}"}`,
+      // Duplicate `"input_tokens":null` replaces earlier numeric value (leaving only output_tokens: 7).
+      `{"payload":"${pad}","input_tokens":500,"input_tokens":null,"output_tokens":7,"created_at":"${recentTsEscaped}"}`,
+    ].join('\n') + '\n',
+  );
+  const escapedSession = session('antigravity', 'a-escaped', { path: rawHuge });
+  expect((await reloaded.partsSince([escapedSession], since, { env: legacyEnv })).get(escapedSession)).toEqual({
+    part: 57 / 60,
+    tokens: 57,
+  });
 });

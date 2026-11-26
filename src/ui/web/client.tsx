@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'rea
 import { ReleaseNotes } from './release-notes.js';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
-import { personText } from '../../agents/host-text.js';
+import { personText, personTitle } from '../../agents/host-text.js';
 import { AgentChat, artifactSubmission } from '../../react/agent-chat.js';
 import styles from '../../react/agent-chat.css';
 import { EscapeActive, useEscape } from '../../react/escape.js';
@@ -1316,7 +1316,7 @@ function App({ selected }: { selected?: string }) {
   }, [newChat, activeCwd, conversation?.id]);
   const convTopic = conversation?.topic?.name;
   const convTitle =
-    (conversation?.title && personText(conversation.title)) ||
+    (conversation?.title && personTitle(conversation.title)) ||
     (session?.turns.length ? firstLine(personText(session.turns[0]!.prompt)) : undefined) ||
     convTopic;
   // The chat whose turn keeps the others from opening, as messages and tooltips name it.
@@ -1410,6 +1410,8 @@ function App({ selected }: { selected?: string }) {
   const chatKey = chatKeyOf({ conversation, session });
   // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
   const [workFullOpen, setWorkFullOpen] = useState(false);
+  // Keeps the panel visible when the person explicitly switches from Steps to an empty work tab.
+  const [workTabOpen, setWorkTabOpen] = useState(false);
   const [stepsTarget, setStepsTarget] = useState<{ turnId: number; stretch: number }>();
   const [work, setWork] = useState<{ chat: string; generation?: number; view: WorkPanelView }>(() => ({
     generation: view?.generation,
@@ -1427,6 +1429,7 @@ function App({ selected }: { selected?: string }) {
     });
     if (!carried) {
       setWorkFullOpen(false);
+      setWorkTabOpen(false);
       setExpanded(false);
       setStepsTarget(undefined);
       viewerOpenedPanel.current = false;
@@ -1468,8 +1471,10 @@ function App({ selected }: { selected?: string }) {
   // per chat). Where it would cover the chat it opens only by hand.
   const workOpen =
     panel === 'chat' &&
-    (hasWork || anyViewer) &&
-    (workLayout.docks ? (workView.open ?? (tasks.length > 0 || sessionArtifacts.length > 0)) : workFullOpen);
+    (hasWork || anyViewer || workTabOpen) &&
+    (workLayout.docks
+      ? (workView.open ?? (tasks.length > 0 || sessionArtifacts.length > 0 || workTabOpen))
+      : workFullOpen);
   // In the chat's place: no room beside it, or the viewer was expanded over it.
   const workFull = workOpen && (!workLayout.docks || (expanded && anyViewer));
   const workNeeds = workNeedsYou(tasks);
@@ -1482,6 +1487,7 @@ function App({ selected }: { selected?: string }) {
   const closeWork = () => {
     setExpanded(false);
     setStepsTarget(undefined);
+    setWorkTabOpen(false);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(false);
     // What was open in the viewer goes with the panel: opened again, it shows its tab.
@@ -1717,6 +1723,7 @@ function App({ selected }: { selected?: string }) {
     setHeld(undefined);
     setUnsent(undefined);
     setWorkFullOpen(false);
+    setWorkTabOpen(false);
     setExpanded(false);
     setStepsTarget(undefined);
     setPanel('chat');
@@ -1727,10 +1734,13 @@ function App({ selected }: { selected?: string }) {
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
   const [loadingModelsKey, setLoadingModelsKey] = useState<string>();
   const modelsInFlight = useRef(new Set<string>());
+  const modelSeq = useRef(0);
+  const appliedModelSeq = useRef(new Map<string, number>());
   const modelKey = (agentName: string, dir = activeCwd) => `${agentName}\0${dir ?? ''}`;
   const loadModels = (agentName: string) => {
     const key = modelKey(agentName);
     if (!config?.models || !token || !agentName || modelsInFlight.current.has(key)) return;
+    const reqSeq = ++modelSeq.current;
     modelsInFlight.current.add(key);
     if (!discoveredModels[key]?.length) setLoadingModelsKey(key);
     void chatFetch(`/api/models?agent=${encodeURIComponent(agentName)}`, {
@@ -1740,9 +1750,13 @@ function App({ selected }: { selected?: string }) {
       .then((body) => {
         if (body && Array.isArray(body.models)) {
           // Key by the server-resolved directory when provided so a project switch in flight
-          // never stores another project's models under the displayed directory's cache key.
+          // never stores another project's models under the displayed directory's cache key,
+          // and ignore out-of-order responses older than the latest list applied for that key.
           const resolvedKey = typeof body.cwd === 'string' ? modelKey(agentName, body.cwd) : key;
-          setDiscoveredModels((prev) => ({ ...prev, [resolvedKey]: body.models! }));
+          if (reqSeq >= (appliedModelSeq.current.get(resolvedKey) ?? 0)) {
+            appliedModelSeq.current.set(resolvedKey, reqSeq);
+            setDiscoveredModels((prev) => ({ ...prev, [resolvedKey]: body.models! }));
+          }
         }
       })
       .catch(() => {})
@@ -2144,8 +2158,16 @@ function App({ selected }: { selected?: string }) {
                       onSelectTab: (nextTab) => {
                         setExpanded(false);
                         setStepsTarget(undefined);
+                        setWorkTabOpen(true);
                         viewerOpenedPanel.current = false;
-                        setWorkView({ ...workView, tab: nextTab, task: undefined, viewing: undefined });
+                        if (!workLayout.docks) setWorkFullOpen(true);
+                        setWorkView({
+                          ...workView,
+                          ...(workLayout.docks ? { open: true } : {}),
+                          tab: nextTab,
+                          task: undefined,
+                          viewing: undefined,
+                        });
                       },
                       render: (controls) => {
                         const turn = session.turns.find((candidate) => candidate.id === activeStepsTarget.turnId);

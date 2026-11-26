@@ -1,5 +1,5 @@
 import { attentionOf, type SessionInfo } from '../agents/sessions/group.js';
-import { personText } from '../agents/host-text.js';
+import { personTitle } from '../agents/host-text.js';
 import { askingStore, sessionStores } from './sessions.js';
 import type { RateLimit } from '../agents/types.js';
 
@@ -150,7 +150,7 @@ export function isOpenChat(chat: Pick<SessionInfo, 'source' | 'id'>, open: { id?
  * a briefing or takeover recap genaicode added (`personText`) does not count.
  */
 export function chatTitle(session: SessionInfo): string {
-  const said = (text: string | undefined) => (text ? personText(text) : '');
+  const said = (text: string | undefined) => (text ? personTitle(text) : '');
   const text = said(session.title) || said(session.firstPrompt) || said(session.lastPrompt) || session.id || 'New chat';
   return text.split('\n', 1)[0]!.trim() || 'New chat';
 }
