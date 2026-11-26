@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, it, vi } from 'vitest';
@@ -7,6 +7,7 @@ import { TowerInbox } from '../agents/sessions/tower.js';
 import { scopedMcpServers } from '../agents/mcp-server.js';
 import { SessionSendGate } from '../agents/sessions/send-tool.js';
 import { ArtifactPool, createArtifactStore } from '../agents/artifacts.js';
+import { chatStore } from './chat-store.js';
 import { runWeb } from './index.js';
 import { ChatHub, type ChatSummary } from './hub.js';
 import { createChatController } from './controller.js';
@@ -75,16 +76,22 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       };
     },
   };
-  const launch = async (restoreChats = false) => {
+  const launch = async (restoreChats = false, stateDir = join(root, 'state')) => {
     const stdin = new PassThrough();
     let address = '';
-    const env = { HOME: root, GENAICODE_HOME: join(root, 'state') };
+    const env = { HOME: root, GENAICODE_HOME: stateDir };
+    const stderr = new PassThrough();
+    let warnings = '';
+    stderr.on('data', (chunk) => {
+      warnings += chunk;
+    });
     const done = runWeb({
       towerInbox: new TowerInbox([agent], env),
       agents: [agent],
       cwd: root,
       home: true,
       budget: { maxCostUsd: 10 },
+      maxChats: 2,
       restoreChats,
       env,
       openUrl: (url) => {
@@ -96,7 +103,7 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       assets: new Map(),
       stdin: stdin as unknown as NodeJS.ReadStream,
       stdout: new PassThrough() as unknown as NodeJS.WriteStream,
-      stderr: new PassThrough(),
+      stderr,
     });
     await vi.waitFor(() => expect(address).toBeTruthy());
     const token = new URL(address).searchParams.get('token')!;
@@ -116,6 +123,7 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       return first;
     };
     return {
+      warnings: () => warnings,
       call,
       send,
       rows,
@@ -139,6 +147,43 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       await server.send(chat, { type: 'submit', text: 'ask' });
     }
     await vi.waitFor(async () => expect((await server.rows()).filter((c) => c.approvals.length)).toHaveLength(2));
+    const { chat: queued } = await server.send(first, { type: 'home-chat' });
+    await server.send(queued, { type: 'submit', text: 'keep this for later' });
+    expect(await (await server.call('/api/chats?running=1')).json()).toEqual({ running: 3 });
+    const disk = chatStore({ GENAICODE_HOME: join(root, 'state') }, root, true);
+    await vi.waitFor(
+      async () => {
+        expect((await disk.read(queued))?.drafts).toContain('keep this for later');
+        expect((await disk.index())?.ids).toContain(queued);
+      },
+      { timeout: 5000 },
+    );
+    // Boot from the live checkpoint, without giving the original process a chance to shut down.
+    const copy = join(root, 'crash');
+    await cp(join(root, 'state'), copy, { recursive: true });
+    const crash = chatStore({ GENAICODE_HOME: copy }, root, true);
+    const previous = (await crash.read(ids[0]!))!;
+    previous.session.agent = 'retired-team';
+    previous.session.sessionId = 'foreign-session';
+    await crash.save(previous);
+    const broken = (await crash.read(ids[1]!))!;
+    await crash.save({ ...broken, session: { ...broken.session, turns: JSON.parse('[null]') } });
+    const catalog = (await crash.index())!;
+    await crash.saveIndex(catalog.ids, ids[0]!, catalog.chats!);
+    const runsBefore = budgets.length;
+    const recovered = await launch(true, copy);
+    try {
+      const view = await recovered.view(queued);
+      expect(view).toContain('keep this for later');
+      expect(recovered.warnings()).toContain('Skipping saved chat ' + ids[1]);
+      expect((await recovered.rows()).find((row) => row.chat === queued)?.interrupted).toBe(true);
+      expect((await recovered.rows()).find((row) => row.chat === ids[0])?.agent).toBe('helper');
+      expect(await recovered.view(ids[0]!)).not.toContain('foreign-session');
+      expect(budgets).toHaveLength(runsBefore);
+    } finally {
+      await recovered.close();
+    }
+    expect(await server.send(queued, { type: 'stop' })).toMatchObject({ draft: 'keep this for later' });
     expect(
       (
         await server.call('/api/command?chat=' + ids[0], {
@@ -277,18 +322,25 @@ it('isolates send consent and artifact contents while sharing recipient order an
   expect(active.read(current.id)?.body.toString()).toBe('123456');
 });
 
+const placeholder: CodingAgent = {
+  name: 'placeholder',
+  command: 'genaicode-test-uninstalled',
+  capabilities: {},
+  run() {
+    throw new Error('Unexpected agent run');
+  },
+};
+
 it('keeps shown chats and active shell groups, gives reconnects time and unloads the oldest idle controllers', async () => {
   const cwd = process.cwd();
   const hub = new ChatHub(async (chatId) => {
-    const placeholder: CodingAgent = {
-      name: 'placeholder',
-      command: 'genaicode-test-uninstalled',
-      capabilities: {},
-      run() {
-        throw new Error('Unexpected agent run');
-      },
-    };
-    const controller = createChatController({ agents: [placeholder], allowNoAgent: true, cwd, chatId });
+    const controller = createChatController({
+      agents: [placeholder],
+      allowNoAgent: true,
+      cwd,
+      chatId,
+      artifactChannel: { store: createArtifactStore({ cwd }) },
+    });
     return {
       controller,
       files: createProjectFiles(cwd),
@@ -309,6 +361,9 @@ it('keeps shown chats and active shell groups, gives reconnects time and unloads
     expect(hub.chats.size).toBe(15);
     await hub.evict(Date.now() + 40_000);
     expect(hub.chats.has('idle-1')).toBe(false);
+    expect(hub.summaries().some((row) => row.chat === 'idle-1')).toBe(false);
+    const artifacts = (await hub.load('artifact-chat')).controller.artifacts!;
+    const artifact = await artifacts.publish({ title: 'Report', content: 'still here' });
     expect(hub.chats.has('idle-0')).toBe(true);
     for (let i = 0; i < 4; i++) {
       const chat = await hub.load('shell-' + i);
@@ -319,7 +374,16 @@ it('keeps shown chats and active shell groups, gives reconnects time and unloads
       timeout: 5000,
     });
     await hub.evict(Date.now() + 610_000);
-    expect([...hub.chats.keys()]).toEqual([hub.initial, 'idle-0', 'shell-0', 'shell-1', 'shell-2', 'shell-3']);
+    expect([...hub.chats.keys()]).toEqual([
+      hub.initial,
+      'idle-0',
+      'artifact-chat',
+      'shell-0',
+      'shell-1',
+      'shell-2',
+      'shell-3',
+    ]);
+    expect(hub.chats.get('artifact-chat')?.controller.artifacts?.read(artifact.id)?.body.toString()).toBe('still here');
     hide();
     await hub.evict(Date.now() + 610_000);
     expect(hub.chats.has('idle-0')).toBe(false);
@@ -330,3 +394,53 @@ it('keeps shown chats and active shell groups, gives reconnects time and unloads
     expect(Date.now() - start).toBeLessThan(10_000);
   }
 }, 20_000);
+
+it('saves all chats and the catalog before waiting for a slow or failing shutdown', async () => {
+  const cwd = process.cwd();
+  const saved = new Set<string>();
+  const indexed = vi.fn(async () => {});
+  let unblock!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const closing = vi.fn();
+  const hub = new ChatHub(
+    async (id) => {
+      const controller = createChatController({
+        agents: [placeholder],
+        allowNoAgent: true,
+        cwd,
+        chatId: id,
+      });
+      return {
+        controller,
+        files: createProjectFiles(cwd),
+        uploads: createUploads(cwd),
+        async save() {
+          saved.add(id);
+        },
+        async close() {
+          controller.close();
+          closing(id);
+          if (id === 'slow') await blocked;
+          else throw new Error('close failed');
+        },
+      };
+    },
+    2,
+    'slow',
+    undefined,
+    indexed,
+  );
+  await hub.load('slow');
+  await hub.load('failed');
+  const result = expect(hub.close()).rejects.toThrow('Could not save or close every chat');
+  try {
+    await vi.waitFor(() => expect(closing).toHaveBeenCalledTimes(2));
+    expect(indexed).toHaveBeenCalled();
+    expect([...saved].sort()).toEqual(['failed', 'slow']);
+  } finally {
+    unblock();
+    await result;
+  }
+});

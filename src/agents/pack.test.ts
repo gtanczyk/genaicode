@@ -2515,3 +2515,59 @@ it('queues workers across packs, releases each slot once and serializes mutation
   await Promise.all([one, two]);
   expect(entries).toEqual(['first', 'other', 'second']);
 });
+
+it('cancels a queued delegation when the caller cancels the MCP request or disconnects', async () => {
+  const { PackPool } = await import('./pack-pool.js');
+  const cwd = repo();
+  const pool = new PackPool(1);
+  const release = pool.take('busy')!;
+  const acquire = vi.spyOn(pool, 'acquire');
+  const starts: string[] = [];
+  const worker = fake('worker', async (task) => {
+    starts.push(task.prompt);
+  });
+  const lead = fake(
+    'lead',
+    async (task) => {
+      const server = task.mcpServers!.find((s) => s.name === 'pack')!;
+      if (!('url' in server)) throw new Error('Expected an HTTP server');
+      const post = (body: unknown, signal?: AbortSignal) =>
+        fetch(server.url, {
+          method: 'POST',
+          headers: { ...server.headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal,
+        });
+      for (const id of [1, 2]) {
+        const abort = new AbortController();
+        const answer = post(
+          {
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: { name: 'delegate', arguments: { agent: 'worker', prompt: 'canceled', mode: 'shared' } },
+          },
+          abort.signal,
+        ).catch(() => undefined);
+        await vi.waitFor(() => expect(acquire).toHaveBeenCalledTimes(id));
+        if (id === 1) await post({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } });
+        else abort.abort();
+        await answer;
+        await vi.waitFor(() => expect(acquire.mock.calls[id - 1]![0].aborted).toBe(true));
+      }
+      release();
+      await tool(task, 'delegate', { agent: 'worker', prompt: 'wanted', mode: 'shared' });
+      await tool(task, 'wait');
+    },
+    { mcp: true },
+  );
+  const team = pack({ lead, members: [worker], pool, maxParallel: 1 });
+  try {
+    const result = await team.run({ prompt: 'go', cwd }).result;
+    expect(result.ok, result.error).toBe(true);
+    expect(starts).toEqual(['wanted']);
+  } finally {
+    release();
+    await team.close();
+  }
+});

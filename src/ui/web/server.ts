@@ -35,7 +35,7 @@ import {
 } from '../transcript.js';
 import type { UiRelease } from './release.js';
 import { pageHtml } from './page.js';
-import { parseShell, parseSlash, withAttached } from '../format.js';
+import { splitAttached, parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 import type { FileRaw, ProjectFiles } from '../files.js';
 import { PullRequestBusy, type PullRequestLookup } from '../pull-requests.js';
@@ -189,7 +189,7 @@ export interface HostApp {
   /** Reveal an existing file on disk in Finder / the OS file manager. */
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
-  saveSettings?(settings: { artifactCdn: readonly string[]; maxChats?: number }): void;
+  saveSettings?(settings: { artifactCdn?: readonly string[]; maxChats?: number }): void;
   /**
    * Ask the person for a folder with the host's own dialog (the project a new chat starts in).
    * Resolves to its absolute path, or undefined when they chose none.
@@ -634,6 +634,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     res.end(body);
   };
 
+  const sentSummaries = new WeakMap<ServerResponse, string>();
+  const sendSummaries = (stream: ServerResponse, data: string) => {
+    if (!data || sentSummaries.get(stream) === data) return;
+    stream.write(data);
+    sentSummaries.set(stream, data);
+  };
   let pending: NodeJS.Timeout | undefined;
   // Coalesce bursts of changes (streamed text) into one message carrying the latest view.
   const broadcast = () => {
@@ -648,7 +654,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           stream.write(`event: view\ndata: ${JSON.stringify(view)}\n\n`);
           sentViews.set(stream, view);
         }
-        if (summaries) stream.write(summaries);
+        sendSummaries(stream, summaries);
       }
     }, 40);
   };
@@ -798,7 +804,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         'application/json',
         JSON.stringify(
           url.searchParams.has('running')
-            ? { running: hub.running }
+            ? { running: hub.active }
             : { running: hub.running, limit: hub.limit, chats: hub.summaries() },
         ),
       );
@@ -1047,7 +1053,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (hosts) options.settings?.setArtifactCdn(hosts);
       if (limit !== undefined) hub?.setLimit(limit);
       options.hostApp?.saveSettings?.({
-        artifactCdn: hosts ?? options.settings?.artifactCdn() ?? [],
+        ...(hosts || options.settings ? { artifactCdn: hosts ?? options.settings?.artifactCdn() } : {}),
         ...(hub ? { maxChats: hub.limit } : {}),
       });
       broadcastConfig();
@@ -1078,7 +1084,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         }
       }
       const hide = chatId ? hub?.shown(chatId) : undefined;
-      if (hub) res.write(`event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n`);
+      if (hub) sendSummaries(res, `event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n`);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
         clearInterval(ping);
@@ -1543,7 +1549,19 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 409, 'application/json', '{"ok":false,"reason":"turn"}');
       if (command.type === 'stop' && hub && chatId) {
         const draft = hub.cancel(chatId);
-        if (draft) return send(res, 200, 'application/json', JSON.stringify({ ok: true, draft }));
+        if (draft) {
+          const parts = draft.map(splitAttached);
+          return send(
+            res,
+            200,
+            'application/json',
+            JSON.stringify({
+              ok: true,
+              draft: parts.map((p) => p.text).join('\n\n'),
+              files: parts.flatMap((p) => p.files.map(({ id, name }) => ({ id, name }))),
+            }),
+          );
+        }
       }
       if (command.type === 'stop' && command.turn !== undefined) {
         const turns = controller.get().session.turns;

@@ -50,7 +50,7 @@ import {
   listSessions,
   readSession,
 } from '../agents/sessions/index.js';
-import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { serveMcpStdio, SESSION_SEND_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
 import { sessionSendMcpTool } from '../agents/sessions/send-mcp.js';
 import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
@@ -1000,7 +1000,7 @@ async function runUi(
     ? await startLocalMcpServer({
         name: 'sessions',
         tools,
-        instructions: `${SESSION_TOOLS_INSTRUCTIONS} When the user asks you to tell, ask or pass something to another session, send it with sessions_send.`,
+        instructions: SESSION_SEND_INSTRUCTIONS,
       })
     : undefined;
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];

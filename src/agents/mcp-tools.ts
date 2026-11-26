@@ -24,6 +24,7 @@ export interface McpToolTask {
 
 /** What a call knows about the request it answers (MCP 2026-07-28; empty for older clients). */
 export interface McpCallContext {
+  signal?: AbortSignal;
   /** The client's capabilities, as this request declares them. */
   capabilities: Readonly<Record<string, unknown>>;
   /** The answers to what an earlier attempt of this call asked for (`McpInputRequired`), by key. */
@@ -151,6 +152,7 @@ export async function handleMcpMessage(
   serverInfo: McpServerInfo,
   state?: McpServerState,
   onNotify?: (notification: object) => void,
+  signal?: AbortSignal,
 ): Promise<object | null> {
   if (!isRequest(message)) return rpcError(null, -32600, 'invalid request');
   const { id, method, params } = message;
@@ -241,6 +243,7 @@ export async function handleMcpMessage(
       const token = meta.progressToken;
       const progressToken = typeof token === 'string' || typeof token === 'number' ? token : undefined;
       const context: McpCallContext = {
+        ...(signal ? { signal } : {}),
         capabilities,
         ...(stateless && isObject(params?.inputResponses) ? { inputResponses: params.inputResponses } : {}),
         ...(stateless && typeof params?.requestState === 'string' ? { requestState: params.requestState } : {}),

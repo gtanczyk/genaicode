@@ -394,7 +394,9 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
                     }
                 }
             } else if opened && line.starts_with(nav::SETTINGS_PREFIX) {
-                if let Some(updated) = nav::parse_settings_line(&line) {
+                if let Some(updated) =
+                    nav::parse_settings_line(&line, nav::load_settings(&settings_path))
+                {
                     let _ = nav::save_settings(&settings_path, &updated);
                 }
             } else if opened {

@@ -15,6 +15,7 @@ export interface SavedChat {
   >;
   packs: Record<string, SavedPackTask[]>;
   interrupted: boolean;
+  drafts?: string[];
 }
 
 export function chatStore(env: NodeJS.ProcessEnv, cwd: string, home: boolean) {
@@ -23,12 +24,23 @@ export function chatStore(env: NodeJS.ProcessEnv, cwd: string, home: boolean) {
     .digest('hex');
   const dir = join(genaicodeHomeDir(env), 'ui-chats', workspace);
   const valid = (id: unknown): id is string => typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id);
-  const write = async (name: string, data: unknown) => {
-    await mkdir(dir, { recursive: true, mode: 0o700 });
-    const file = join(dir, name);
-    const tmp = file + '.' + randomUUID() + '.tmp';
-    await writeFile(tmp, JSON.stringify(data), { mode: 0o600 });
-    await rename(tmp, file);
+  // Queue atomic replacements in submission order. Capture the snapshot before the next turn changes it.
+  const writes = new Map<string, Promise<void>>();
+  const write = (name: string, data: unknown) => {
+    const json = JSON.stringify(data);
+    const work = (writes.get(name) ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+        const file = join(dir, name);
+        const tmp = file + '.' + randomUUID() + '.tmp';
+        await writeFile(tmp, json, { mode: 0o600 });
+        await rename(tmp, file);
+      });
+    writes.set(name, work);
+    return work.finally(() => {
+      if (writes.get(name) === work) writes.delete(name);
+    });
   };
   return {
     async read(id: string): Promise<SavedChat | undefined> {

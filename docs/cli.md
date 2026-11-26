@@ -488,7 +488,8 @@ window selects its own chat. Up to four lead turns can run at once. Set `--max-c
 `--max-chats 8` to change the limit. Prompts above the limit wait in order. Cancel returns the
 waiting text to the composer. The packs share eight worker slots across chats.
 
-With `--restore`, the UI reopens the chats saved at shutdown and selects the last one shown.
+With `--restore`, the UI reopens the latest saved chats and selects the last one shown.
+The server saves changes during use. Prompts still waiting for capacity come back as drafts.
 Interrupted work waits for your next prompt. A completed worker's unmerged edits remain in its
 worktree and can be inspected and merged from the reopened chat. On the first launch after an
 upgrade, the UI falls back to the last native session for the directory. Use `--from` or `--resume`

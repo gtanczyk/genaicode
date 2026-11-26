@@ -1184,9 +1184,11 @@ export function pack(options: PackOptions): Pack {
         return sub;
       };
 
-      const acquireWorker = (context?: McpCallContext) =>
+      const callSignal = (context?: McpCallContext) =>
+        context?.signal ? AbortSignal.any([ended.signal, context.signal]) : ended.signal;
+      const acquireWorker = (signal: AbortSignal, context?: McpCallContext) =>
         options.pool?.acquire(
-          ended.signal,
+          signal,
           () => context?.progress?.(0, undefined, 'Waiting for a pack worker'),
           options.poolChat,
         );
@@ -1228,10 +1230,11 @@ export function pack(options: PackOptions): Pack {
           turnStarting -= 1;
         };
         const reserve = async () => {
-          const release = await acquireWorker(context);
+          const signal = callSignal(context);
+          const release = await acquireWorker(signal, context);
           try {
-            ended.signal.throwIfAborted();
-            return await start(agent, prompt, args, base, roster, releaseTurnSlot, release);
+            signal.throwIfAborted();
+            return await start(agent, prompt, args, base, roster, releaseTurnSlot, signal, release);
           } catch (error) {
             release?.();
             throw error;
@@ -1422,6 +1425,7 @@ export function pack(options: PackOptions): Pack {
         base: string,
         roster: readonly CodingAgent[],
         releaseTurnSlot: () => void,
+        signal: AbortSignal,
         release?: () => void,
       ): Promise<string> => {
         const wanted = args.mode;
@@ -1444,6 +1448,7 @@ export function pack(options: PackOptions): Pack {
             'The working directory is not a git repository, so there are no worktrees. Use mode `shared`.',
           );
 
+        signal.throwIfAborted();
         const id = `t${nextId++}`;
         // Only inside a repository the lead named, never `/` or the home folder as a whole.
         const readOnly =
@@ -1494,7 +1499,7 @@ export function pack(options: PackOptions): Pack {
             mkdirSync(sub.cwd, { recursive: true });
             await options.prepareWorktree?.(dir, repo);
             // The lead finished while the worktree was being set up: nobody would follow the task.
-            if (ended.signal.aborted) throw new Error('The run has ended.');
+            signal.throwIfAborted();
           } catch (error) {
             await drop(sub);
             throw error;
@@ -1779,9 +1784,11 @@ export function pack(options: PackOptions): Pack {
         starting += 1;
         const setup = (async () => {
           const roster = await rosterAt(sub.base);
-          const release = await acquireWorker(context);
+          const signal = callSignal(context);
+          const release = await acquireWorker(signal, context);
           try {
             return await withWorktree(async () => {
+              signal.throwIfAborted();
               if (ended.signal.aborted || sub.closing)
                 throw new PackActionError('not-running', 'The turn has ended; start a new prompt to continue.');
               if (sub.status === 'running') throw new PackActionError('running', `${sub.id} is already running.`);

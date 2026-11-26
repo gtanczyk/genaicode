@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { chatStore } from './chat-store.js';
 import { ChatHub, type HubChat } from './hub.js';
 import { PackPool } from '../agents/pack-pool.js';
 import type { Pack } from '../agents/pack.js';
 import { scopedMcpServers, type startLocalMcpServer } from '../agents/mcp-server.js';
-import { sessionTools, SESSION_TOOLS_INSTRUCTIONS } from '../agents/sessions/tools.js';
+import { sessionTools, SESSION_SEND_INSTRUCTIONS } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
 import { sessionSendTool } from '../agents/sessions/send-tool.js';
 import { spawn } from 'node:child_process';
@@ -604,6 +605,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       artifactPool,
     );
     const agents = webOptions.agents.map((agent) => (agent as Partial<Pack>).forChat?.(id, pool) ?? agent);
+    const sameAgent = saved && agents.some((a) => a.name === saved.session.agent);
+    const previous = sameAgent ? saved.session : undefined;
     const sessionSend = webOptions.sessionSend?.fork();
     const sends = new AbortController();
     const localTools = sessionSend
@@ -617,7 +620,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         ]
       : undefined;
     const index = localTools
-      ? await channels.open({ name: 'sessions', tools: localTools, instructions: SESSION_TOOLS_INSTRUCTIONS })
+      ? await channels.open({ name: 'sessions', tools: localTools, instructions: SESSION_SEND_INSTRUCTIONS })
       : undefined;
     try {
       current = createChatController({
@@ -634,11 +637,11 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         onRoot: addRoot,
         restoredConversation: saved?.conversation,
         initialUsage: saved?.session,
-        agent: saved?.session.agent ?? options.agent,
-        model: saved?.session.model ?? options.model,
-        effort: saved?.session.effort ?? options.effort,
-        mode: saved?.session.mode ?? options.mode,
-        resume: saved?.session.sessionId ?? (id === hub.initial ? options.resume : undefined),
+        agent: previous?.agent ?? (!saved || agents.some((a) => a.name === options.agent) ? options.agent : undefined),
+        model: previous?.model ?? options.model,
+        effort: previous?.effort ?? options.effort,
+        mode: previous?.mode ?? options.mode,
+        resume: saved ? previous?.sessionId : id === hub.initial ? options.resume : undefined,
         sessionSend,
         sessionTools: localTools ?? webOptions.sessionTools,
         task: index
@@ -665,28 +668,42 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       throw error;
     }
     const chat = current;
-    if (saved) {
-      const state = saved.session;
-      chat.session.adopt(state.turns, {
-        replace: true,
-        sessionId: state.sessionId,
-        cwd: state.cwd,
-        mode: state.mode,
-        truncatedReason: state.truncatedReason,
-        recoverPack(turn) {
-          const agent = agents.find((a) => a.name === turn.agent);
-          const pack = agent as Partial<Pack> | undefined;
-          const records = saved.packs[turn.agent]?.filter((r) =>
-            turn.pack?.tasks.some((t) => t.id === r.task.id && t.worktree === r.task.worktree),
-          );
-          if (!agent || !pack?.recover || !records?.length) return;
-          return {
-            agent,
-            controls: pack.recover({ cwd: state.cwd, prompt: turn.prompt, mode: state.mode, env: liveEnv }, records),
-          };
-        },
-      });
-      if (saved.interrupted) chat.note('Stopped when the app quit. Send a prompt to continue.');
+    try {
+      if (saved) {
+        const state = saved.session;
+        const turns = state.turns.map((turn) =>
+          !turn.result && saved.interrupted
+            ? { ...turn, result: { status: 'aborted' as const, ok: false, exitCode: null, signal: null } }
+            : turn,
+        );
+        chat.session.adopt(turns, {
+          replace: true,
+          sessionId: previous?.sessionId,
+          cwd: state.cwd,
+          mode: previous?.mode,
+          truncatedReason: state.truncatedReason,
+          recoverPack(turn) {
+            const agent = agents.find((a) => a.name === turn.agent);
+            const pack = agent as Partial<Pack> | undefined;
+            const records = saved.packs[turn.agent]?.filter((r) =>
+              turn.pack?.tasks.some((t) => t.id === r.task.id && t.worktree === r.task.worktree),
+            );
+            if (!agent || !pack?.recover || !records?.length) return;
+            return {
+              agent,
+              controls: pack.recover({ cwd: state.cwd, prompt: turn.prompt, mode: state.mode, env: liveEnv }, records),
+            };
+          },
+        });
+        if (saved.drafts?.length) chat.recoverPrompts(saved.drafts);
+        if (!sameAgent)
+          chat.note(`Saved agent ${state.agent} is unavailable. Continuing with ${chat.get().session.agent}.`);
+        if (saved.interrupted) chat.note('Stopped when the app quit. Send a prompt to continue.');
+      }
+    } catch (error) {
+      chat.close();
+      await Promise.allSettled([index?.close(), chatChannels.closeChannels()]);
+      throw error;
     }
     return {
       controller: chat,
@@ -694,8 +711,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       addRoot,
       files: createProjectFiles(roots),
       uploads: createUploads(() => chat.get().session.cwd),
-      async save(interrupted) {
-        const { conversation, session } = chat.get();
+      async save(interrupted, waiting = []) {
+        const { conversation, session, recoveredDraft } = chat.get();
         if (!conversation) return;
         const { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason } = session;
         const packs = Object.fromEntries(agents.map((a) => [a.name, (a as Partial<Pack>).records?.() ?? []]));
@@ -703,6 +720,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           conversation,
           session: { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason },
           packs,
+          drafts: [...(recoveredDraft?.prompts ?? []), ...waiting, ...session.queued],
           interrupted,
         });
       },
@@ -734,6 +752,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     },
     options.home,
     catalog?.chats,
+    (error) => options.stderr.write(`Could not checkpoint chats: ${String(error)}\n`),
   );
   hub.setArchive(await readArchive(liveEnv));
   hub.busyPacks = () => pool.busyChats;
@@ -748,12 +767,32 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     hub,
   );
   const closeChannels = async () => {
-    await hub.close();
-    await Promise.all([channels.close(), progress?.close()]);
+    try {
+      await hub.close();
+    } finally {
+      await Promise.all([channels.close(), progress?.close()]);
+    }
   };
   try {
-    controller = (await hub.load(hub.initial)).controller;
-    await Promise.all((restored?.ids ?? []).filter((id) => id !== hub.initial).map((id) => hub.reopen(id)));
+    try {
+      controller = (await hub.load(hub.initial)).controller;
+    } catch (error) {
+      if (!restored) throw error;
+      options.stderr.write(`Skipping saved chat ${hub.initial}: ${String(error)}\n`);
+      hub.lastShown = hub.initial = randomUUID();
+      controller = (await hub.load(hub.initial)).controller;
+    }
+    await Promise.all(
+      (restored?.ids ?? [])
+        .filter((id) => id !== hub.initial && id !== restored?.shown)
+        .map(async (id) => {
+          try {
+            await hub.reopen(id);
+          } catch (error) {
+            options.stderr.write(`Skipping saved chat ${id}: ${String(error)}\n`);
+          }
+        }),
+    );
   } catch (error) {
     host?.close();
     await closeChannels();
@@ -807,9 +846,9 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
   let confirmUntil = 0;
   const canQuit = () => {
-    if (!hub.running || Date.now() < confirmUntil) return true;
+    if (!hub.active || Date.now() < confirmUntil) return true;
     confirmUntil = Date.now() + 5000;
-    options.stderr.write(`${hub.running} active chats. To stop them and quit, repeat within five seconds.\n`);
+    options.stderr.write(`${hub.active} active chats. To stop them and quit, repeat within five seconds.\n`);
     return false;
   };
   if (terminal) options.setInterruptGuard?.(canQuit);

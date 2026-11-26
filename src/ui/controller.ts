@@ -97,6 +97,7 @@ export interface Notice {
 
 /** Metadata of the active conversation in `--home` mode. */
 export interface ConversationMeta {
+  recordId?: string;
   id: string;
   cwd: string;
   origin: ConversationOrigin;
@@ -104,7 +105,12 @@ export interface ConversationMeta {
   topic?: { id: string; name: string };
 }
 
+export interface RecoveredDraft {
+  id: string;
+  prompts: string[];
+}
 export interface ChatView {
+  recoveredDraft?: RecoveredDraft;
   session: SessionState;
   notices: Notice[];
   agents: AgentChoice[];
@@ -237,6 +243,7 @@ export interface SwitchOrder {
 export type SwitchResult = 'done' | 'refused' | 'superseded';
 
 export interface ChatController {
+  recoverPrompts(prompts: string[]): void;
   setBark(on: boolean): void;
   hasShellProcesses(): boolean;
   resourcesIdle(): Promise<void>;
@@ -391,6 +398,7 @@ export function createChatController(options: ChatOptions): ChatController {
     (homeMode || options.chatId
       ? { id: options.chatId ?? randomUUID(), cwd: homeDir, origin: homeMode ? 'home' : 'project' }
       : undefined);
+  let recoveredDraft: RecoveredDraft | undefined;
   let spent = options.initialUsage;
   let pendingSave = Promise.resolve();
   let lastSavedKey = '';
@@ -406,7 +414,7 @@ export function createChatController(options: ChatOptions): ChatController {
     if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
     if (!next.title && state.turns.length) next = { ...next, title: promptLine(state.turns[0]!.prompt, 120) };
     conversation = next;
-    if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
+    if (setup || (!state.turns.length && !state.sessionId && !(homeMode && next.origin === 'project'))) return;
     const source = byName.get(state.agent)?.sessions?.name;
     if (state.status === 'idle') spent = { usage: state.usage, costUsd: state.costUsd };
     const key = JSON.stringify([
@@ -425,7 +433,7 @@ export function createChatController(options: ChatOptions): ChatController {
       {
         usage: spent?.usage,
         costUsd: spent?.costUsd,
-        id: next.id,
+        id: next.recordId ?? next.id,
         cwd: next.cwd,
         origin: next.origin,
         ...(next.title ? { title: next.title } : {}),
@@ -444,6 +452,7 @@ export function createChatController(options: ChatOptions): ChatController {
     return {
       session: state,
       notices,
+      ...(recoveredDraft ? { recoveredDraft } : {}),
       agents,
       bark,
       autoApprove,
@@ -708,8 +717,15 @@ export function createChatController(options: ChatOptions): ChatController {
         contextEpoch += 1;
         relayNotices.clear();
         notices = [];
-        if (homeMode) {
-          conversation = { id: options.chatId ?? randomUUID(), cwd: homeDir, origin: 'home' };
+        if (conversation) {
+          recoveredDraft = undefined;
+          const fresh = randomUUID();
+          conversation = {
+            id: options.chatId ?? fresh,
+            ...(options.chatId ? { recordId: fresh } : {}),
+            cwd: session.get().cwd,
+            origin: homeMode ? 'home' : 'project',
+          };
           lastSavedKey = '';
         }
       }
@@ -1278,12 +1294,21 @@ export function createChatController(options: ChatOptions): ChatController {
   };
 
   const sendPrompt = (text: string) => {
+    if (recoveredDraft) {
+      recoveredDraft = undefined;
+      publish();
+    }
     if (options.schedule) options.schedule(text, () => session.send(text));
     else session.send(text);
   };
 
   return {
     session,
+    recoverPrompts(prompts) {
+      if (!prompts.length) return;
+      recoveredDraft = { id: randomUUID(), prompts: [...(recoveredDraft?.prompts ?? []), ...prompts] };
+      publish();
+    },
     get: () => view,
     subscribe(listener) {
       listeners.add(listener);

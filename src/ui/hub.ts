@@ -11,7 +11,7 @@ export interface HubChat {
   addRoot?(dir: string): void;
   files: ProjectFiles;
   uploads: Uploads;
-  save?(interrupted: boolean): Promise<void>;
+  save?(interrupted: boolean, drafts?: string[]): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -49,12 +49,15 @@ export class ChatHub {
   private readonly navigation = new Map<string, number>();
   private opening: Promise<unknown> = Promise.resolve();
   private closing = false;
+  private dirty = new Set<string>();
+  private checkpointTimer?: NodeJS.Timeout;
+  private writing: Promise<void> = Promise.resolve();
   private draining = false;
 
   constructor(
     private readonly create: (id: string) => Promise<HubChat>,
     public limit = 4,
-    readonly initial: string = randomUUID(),
+    public initial: string = randomUUID(),
     private readonly exists?: (id: string) => Promise<boolean>,
     private readonly saveIndex?: (ids: string[], shown: string, chats: ChatSummary[]) => Promise<void>,
     private readonly resolveSession?: (
@@ -63,15 +66,17 @@ export class ChatHub {
     ) => Promise<Pick<SessionInfo, 'id' | 'source' | 'agent'> | undefined>,
     private readonly home = false,
     catalog?: ChatSummary[],
+    private readonly onSaveError?: (error: unknown) => void,
   ) {
     this.lastShown = initial;
     for (const row of catalog ?? []) {
-      if (row.chat && row.chat !== initial) this.dormant.set(row.chat, row);
+      if (row.chat) this.dormant.set(row.chat, row);
     }
   }
 
   shown(id: string) {
     this.lastShown = id;
+    this.checkpoint(id);
     this.unseen.delete(id);
     this.views.set(id, (this.views.get(id) ?? 0) + 1);
     this.lastSeen.set(id, Date.now());
@@ -103,6 +108,7 @@ export class ChatHub {
       id !== this.initial &&
       !this.views.get(id) &&
       !this.waiting.has(id) &&
+      !controller.artifacts?.list().length &&
       !controller.hasShellProcesses() &&
       session.status === 'idle' &&
       !session.approvals.length &&
@@ -125,11 +131,12 @@ export class ChatHub {
     const chat = this.chats.get(id);
     if (!chat || !this.mayUnload(id, chat)) return false;
     const row = this.summaries().find((row) => row.chat === id)!;
-    this.dormant.set(id, row);
+    if (this.hasHistory(chat)) this.dormant.set(id, row);
+    else if (this.lastShown === id) this.lastShown = this.initial;
     this.chats.delete(id);
     const work = (async () => {
       try {
-        await chat.save?.(!!chat.interrupted);
+        if (this.hasHistory(chat)) await chat.save?.(!!chat.interrupted);
       } catch (error) {
         this.dormant.delete(id);
         this.chats.set(id, chat);
@@ -143,6 +150,7 @@ export class ChatHub {
       return true;
     } finally {
       this.unloading.delete(id);
+      this.checkpoint();
       this.changed();
     }
   }
@@ -157,6 +165,74 @@ export class ChatHub {
         if (age >= 30_000 && (age >= 600_000 || i < idle.length - 12)) await this.unload(id);
       }),
     );
+  }
+
+  private hasHistory(chat: HubChat) {
+    const { session, recoveredDraft } = chat.controller.get();
+    return !!(session.turns.length || session.sessionId || recoveredDraft || chat.interrupted);
+  }
+
+  private snapshot(
+    id: string,
+    chat: HubChat,
+    interrupted = !!chat.interrupted || this.waiting.has(id) || chat.controller.get().session.status === 'running',
+  ) {
+    return chat.save?.(
+      interrupted,
+      this.waiting.get(id)?.map((p) => p.text),
+    );
+  }
+
+  private index() {
+    const rows = this.summaries()
+      .filter((row) => {
+        const chat = this.chats.get(row.chat);
+        return !chat || this.hasHistory(chat) || row.chat === this.lastShown || this.waiting.has(row.chat);
+      })
+      .map((row) =>
+        row.turnInProgress || row.position
+          ? {
+              ...row,
+              turnInProgress: undefined,
+              position: undefined,
+              approvals: [],
+              waitingFor: undefined,
+              state: 'unfinished' as const,
+              interrupted: true,
+              glyph: 'err' as const,
+              unread: true,
+            }
+          : row,
+      );
+    return this.saveIndex?.(
+      rows.filter((row) => this.chats.has(row.chat)).map((row) => row.chat),
+      this.lastShown,
+      rows,
+    );
+  }
+
+  // Coalesce streamed events and write only changed controllers. Shutdown takes its own immediate checkpoint.
+  private checkpoint(id?: string) {
+    if (this.closing || !this.saveIndex) return;
+    if (id) this.dirty.add(id);
+    this.checkpointTimer ??= setTimeout(() => {
+      this.checkpointTimer = undefined;
+      const ids = [...this.dirty];
+      this.dirty.clear();
+      this.writing = this.writing
+        .then(async () => {
+          if (this.closing) return;
+          await Promise.all(
+            ids.map((id) => {
+              const chat = this.chats.get(id);
+              if (chat && (this.hasHistory(chat) || this.lastShown === id || this.waiting.has(id)))
+                return this.snapshot(id, chat);
+            }),
+          );
+          await this.index();
+        })
+        .catch((error) => this.onSaveError?.(error));
+    }, 250).unref();
   }
 
   private changed = () => {
@@ -178,10 +254,12 @@ export class ChatHub {
     let working = chat.controller.get().session.status === 'running';
     chat.controller.subscribe((view) => {
       if (working && view.session.status === 'idle' && !this.views.get(id)) this.unseen.add(id);
-      if (view.session.status === 'running') chat.interrupted = false;
+      if (!this.closing && view.session.status === 'running') chat.interrupted = false;
+      this.checkpoint(id);
       working = view.session.status === 'running';
       this.changed();
     });
+    this.checkpoint(id);
     this.changed();
     return chat;
   }
@@ -305,6 +383,10 @@ export class ChatHub {
     return work;
   }
 
+  get active() {
+    return this.running + this.waiting.size;
+  }
+
   get running() {
     return [...this.chats.values()].filter((chat) => chat.controller.get().session.status === 'running').length;
   }
@@ -321,6 +403,7 @@ export class ChatHub {
     const queue = this.waiting.get(id) ?? [];
     queue.push(prompt);
     this.waiting.set(id, queue);
+    this.checkpoint(id);
     this.changed();
   }
 
@@ -333,7 +416,10 @@ export class ChatHub {
     const prompts = this.waiting.get(id);
     this.waiting.delete(id);
     this.changed();
-    return prompts?.map((p) => p.text).join('\n\n');
+    if (!prompts?.length) return;
+    this.chats.get(id)?.controller.recoverPrompts(prompts.map((p) => p.text));
+    this.checkpoint(id);
+    return prompts.map((p) => p.text);
   }
 
   private drain() {
@@ -354,29 +440,28 @@ export class ChatHub {
   async close() {
     this.closing = true;
     clearInterval(this.cleanup);
-    await this.opening;
-    this.waiting.clear();
+    clearTimeout(this.checkpointTimer);
     this.listeners.clear();
-    await Promise.all([...this.unloading.values(), ...this.loading.values()]);
-    const ids = [...this.chats.keys()];
-    const interruptedIds = new Set(
-      this.summaries()
-        .filter((row) => row.turnInProgress)
-        .map((row) => row.chat),
-    );
-    await Promise.all(
-      [...this.chats.values()].map(async (chat) => {
-        const interrupted = chat.interrupted || chat.controller.get().session.status === 'running';
+    await Promise.allSettled([this.opening, this.writing, ...this.unloading.values(), ...this.loading.values()]);
+    const entries = [...this.chats];
+    for (const [id, chat] of entries) {
+      if (this.waiting.has(id) || chat.controller.get().session.status === 'running') chat.interrupted = true;
+      this.cancel(id);
+    }
+    const sessionQueues = new Map(entries.map(([id, chat]) => [id, [...chat.controller.get().session.queued]]));
+    const before = await Promise.allSettled([this.index(), ...entries.map(([id, chat]) => this.snapshot(id, chat))]);
+    const after = await Promise.allSettled(
+      entries.map(async ([id, chat]) => {
         await chat.close();
-        await chat.save?.(interrupted);
+        await chat.save?.(!!chat.interrupted, sessionQueues.get(id));
       }),
     );
-    const catalog = this.summaries()
-      .filter((row) => row.title !== 'New chat' || row.id !== row.chat || row.chat === this.lastShown)
-      .map((row) =>
-        interruptedIds.has(row.chat) ? { ...row, glyph: 'err' as const, unread: true, interrupted: true } : row,
-      );
-    await this.saveIndex?.(ids, this.lastShown, catalog);
     this.chats.clear();
+    const errors = [...before, ...after].filter((r) => r.status === 'rejected');
+    if (errors.length)
+      throw new AggregateError(
+        errors.map((r) => r.reason),
+        'Could not save or close every chat',
+      );
   }
 }

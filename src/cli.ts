@@ -28,10 +28,15 @@ if (argv[0] === 'hook') {
   const { main } = await import('./cli/main.js');
   const controller = new AbortController();
   let interruptGuard: (() => boolean) | undefined;
-  process.on('SIGINT', () => {
-    if (!interruptGuard || interruptGuard()) controller.abort();
-  });
-  process.once('SIGTERM', () => controller.abort());
+  const abort = () => {
+    process.off('SIGINT', interrupt);
+    controller.abort();
+  };
+  const interrupt = () => {
+    if (!interruptGuard || interruptGuard()) abort();
+  };
+  process.on('SIGINT', interrupt);
+  process.once('SIGTERM', abort);
 
   process.exitCode = await main({
     argv,

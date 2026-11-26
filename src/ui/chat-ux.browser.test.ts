@@ -171,13 +171,27 @@ it('runs two chats independently, restores drafts, and queues a third at the con
 
     await newChat.click();
     await vi.waitFor(async () => expect(await title.textContent()).toBe('New chat'));
+    const submittedFiles: string[][] = [];
+    page.on('request', (request) => {
+      if (request.method() !== 'POST' || new URL(request.url()).pathname !== '/api/command') return;
+      const body = request.postDataJSON();
+      if (body?.text === 'Third prompt') submittedFiles.push(body.files);
+    });
     await composer.fill('Third prompt');
+    await fileInput.setInputFiles({
+      name: 'third.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('third attachment'),
+    });
     await composer.press('Enter');
     await page.getByText(/Waiting for a free slot/).waitFor();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await vi.waitFor(async () => expect(await composer.inputValue()).toBe('Third prompt'));
+    await page.locator('.gc-attachment-name').filter({ hasText: 'third.txt' }).waitFor();
     await composer.press('Enter');
     await page.getByText(/Waiting for a free slot/).waitFor();
+    expect(submittedFiles[0]).toEqual([expect.any(String)]);
+    expect(submittedFiles[1]).toEqual(submittedFiles[0]);
     slow.shift()!();
     await page.getByRole('log').getByText('Finished.').waitFor();
     expect(aborted).toBe(0);

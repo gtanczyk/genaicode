@@ -1,5 +1,14 @@
 import type { ChatSummary } from '../hub.js';
-import { chatFetch, chatUrl, pageChat, showChat, savedDraft, rememberDraft, restoreQueued } from './chat-route.js';
+import {
+  chatFetch,
+  chatUrl,
+  pageChat,
+  showChat,
+  savedDraft,
+  rememberDraft,
+  uploadedFiles,
+  restoreQueued,
+} from './chat-route.js';
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { ReleaseNotes } from './release-notes.js';
 import { takeEvents } from './sse.js';
@@ -135,6 +144,11 @@ async function sendPrompt(
   const ids: string[] = [];
   for (const file of files) {
     if (dropped.aborted) return STOPPED;
+    const existing = uploadedFiles.get(file);
+    if (existing) {
+      ids.push(existing);
+      continue;
+    }
     const name = file.name || 'file';
     const res = await chatFetch(`/api/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
@@ -976,10 +990,13 @@ function App() {
   const { view, config, release, connected, rejected, loaded } = useView((text) => showToast(text));
   const [returnedDraft, setReturnedDraft] = useState<{ text: string; files: File[]; stamp: number }>();
   const currentRow = loaded.find((row) => row.chat === pageChat());
-  const cancelQueue = async () => {
-    const result = await postCommand({ type: 'stop' });
-    if (result.draft) setReturnedDraft({ ...restoreQueued(result.draft), stamp: Date.now() });
-  };
+  const cancelQueue = () => postCommand({ type: 'stop' });
+  useEffect(() => {
+    const id = pageChat();
+    if (!id || !view?.recoveredDraft) return;
+    const draft = restoreQueued(id, view.recoveredDraft);
+    if (draft) setReturnedDraft({ ...draft, stamp: Date.now() });
+  }, [view?.recoveredDraft?.id]);
   const prior = useRef<ChatSummary[]>([]);
   useEffect(() => {
     for (const chat of loaded) {

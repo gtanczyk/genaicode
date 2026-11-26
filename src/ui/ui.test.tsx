@@ -189,6 +189,30 @@ describe('format helpers', () => {
 });
 
 describe('chat controller', () => {
+  it.each([false, true])(
+    'terminal /clear preserves the old record and starts an untitled conversation (home=%s)',
+    async (home) => {
+      const isolated = { ...env, GENAICODE_HOME: join(bin, 'clear-' + home) };
+      const chat = createChatController({ agents: [echoAgent()], cwd: bin, home, env: isolated, chatId: 'stable' });
+      try {
+        await chat.resourcesIdle();
+        expect(await readConversations(isolated)).toEqual([]);
+        chat.submit('Fix login');
+        await chat.session.idle();
+        chat.submit('/clear');
+        expect(chat.get().conversation?.title).toBeUndefined();
+        chat.submit('Write docs');
+        await chat.session.idle();
+        await chat.resourcesIdle();
+        const rows = await readConversations(isolated);
+        expect(new Set(rows.map((r) => r.id)).size).toBe(2);
+        expect(rows.map((r) => r.title).sort()).toEqual(['Fix login', 'Write docs']);
+      } finally {
+        chat.close();
+      }
+    },
+  );
+
   it('opens a short queue, refreshes it by project and previews a foreign session without an agent turn', async () => {
     const agent = echoAgent();
     const indexEnv = { ...env, GENAICODE_HOME: join(bin, 'tower-state') };
