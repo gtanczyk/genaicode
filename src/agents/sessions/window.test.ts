@@ -326,26 +326,31 @@ it('counts Antigravity transcript tokens in the period without cache reads, and 
   expect((await reloaded.partsSince([legacySession], since, { env: legacyEnv })).get(legacySession)?.tokens).toBe(256);
   expect(readdirSync(hugeCacheDir).length).toBeGreaterThanOrEqual(1);
 
-  // Oversized extractor matches JSON.parse on escaped keys, escaped timestamps, malformed scalars, and duplicate null keys.
+  // Oversized extractor matches JSON.parse on escaped keys, escaped timestamps, malformed scalars/nesting, and duplicate null keys.
   const rawHuge = join(dir, 'agy-escapes.jsonl');
   const pad = 'p'.repeat(1_100_000);
   const fullEscape = (value: string) =>
     [...value].map((ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`).join('');
-  const oldTsFullEscaped = fullEscape(at(20));
+  // 35-char ISO timestamp -> 210 bytes when fully Unicode-escaped (> old 192-byte cap), older than `since`.
+  const oldTsLong = `${at(20).slice(0, 19)}.123456789+01:30`;
+  const oldTsFullEscaped = fullEscape(oldTsLong);
+  expect(oldTsFullEscaped.length).toBeGreaterThan(200);
   const recentTsEscaped = at(1).replace(/Z$/, '\\u005a');
   writeFileSync(
     rawHuge,
     [
-      // Escaped quote in second key `"input_tokens\""` must NOT overwrite `"input_tokens":3`, and fully Unicode-escaped old timestamp (>192 raw bytes) still keeps it before `since`.
+      // Escaped quote in second key `"input_tokens\""` must NOT overwrite `"input_tokens":3`, and 210-byte Unicode-escaped old timestamp keeps it before `since`.
       `{"payload":"${pad}","input_tokens":3,"input_tokens\\"":700,"created_at":"${oldTsFullEscaped}"}`,
       // Valid recent oversized record with escaped key `\u0069nput_tokens` and escaped timestamp `\u005a`.
       `{"payload":"${pad}","\\u0069nput_tokens":40,"output_tokens":10,"created_at":"${recentTsEscaped}"}`,
-      // Valid small (< 1 MiB) record with escaped key `\u0069nput_tokens` also counts identically.
-      `{"\\u0069nput_tokens":8,"output_tokens":2,"created_at":"${recentTsEscaped}"}`,
-      // Malformed split scalar `1 2`, missing value after `:`, and trailing comma must all be rejected like JSON.parse.
+      // Valid small (< 1 MiB) record with ONLY an escaped usage key (no literal `input_tokens`/`output_tokens`).
+      `{"\\u0069nput_tokens":10,"created_at":"${recentTsEscaped}"}`,
+      // Malformed split scalar, missing value after `:`, trailing comma, bad string escape, and malformed nested object must all be rejected like JSON.parse.
       `{"payload":"${pad}","input_tokens":1 2,"created_at":"${recentTsEscaped}"}`,
       `{"payload":"${pad}","input_tokens":7,"output_tokens":}`,
       `{"payload":"${pad}","input_tokens":7,}`,
+      `{"payload":"${pad}","input_tokens":7,"output_tokens":"\\q"}`,
+      `{"payload":"${pad}","input_tokens":7,"tool_calls":[{"args":}]}`,
       // Duplicate `"input_tokens":null` replaces earlier numeric value (leaving only output_tokens: 7).
       `{"payload":"${pad}","input_tokens":500,"input_tokens":null,"output_tokens":7,"created_at":"${recentTsEscaped}"}`,
     ].join('\n') + '\n',

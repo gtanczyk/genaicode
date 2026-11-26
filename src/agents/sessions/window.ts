@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { StringDecoder } from 'node:string_decoder';
 import type { TokenUsage } from '../../core/types.js';
 import { homeOf } from './files.js';
 import { zstdFile } from './transcript.js';
@@ -191,28 +192,51 @@ function takeAntigravityLine(scan: AntigravityScan, text: string): void {
 }
 
 /**
- * Streaming top-level JSON extractor for oversized (> 1 MiB) Antigravity transcript lines.
- * Extracts only the four scalar usage/timestamp fields at object depth 1 in O(1) memory,
- * using `JSON.parse()` on bounded raw string/number tokens so escape sequences, duplicate keys,
- * and scalar boundaries match `JSON.parse()` of the full line.
+ * Streaming RFC-8259 JSON validator & top-level extractor for oversized (> 1 MiB) Antigravity
+ * transcript lines. Validates the full JSON syntax at every nesting depth in O(1) memory (bounded
+ * nesting stack + bounded key/timestamp buffers) while retaining only the four scalar top-level
+ * fields (`input_tokens`, `output_tokens`, `cache_read_tokens`, `created_at`).
  */
+type ExtractorState =
+  | 'start'
+  | 'obj-key-or-end'
+  | 'obj-key'
+  | 'obj-colon'
+  | 'value'
+  | 'obj-comma-or-end'
+  | 'arr-val-or-end'
+  | 'arr-comma-or-end'
+  | 'done';
+type NumState = 'sign' | 'zero' | 'int' | 'fracDot' | 'frac' | 'expSign' | 'expDigit' | 'exp';
+type TrackedKey = 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'created_at';
+
+const isJsonWs = (code: number) => code === 0x20 || code === 0x09 || code === 0x0d || code === 0x0a;
+const isDigit = (code: number) => code >= 0x30 && code <= 0x39;
+const isHex = (code: number) =>
+  (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x46) || (code >= 0x61 && code <= 0x66);
+
 class OversizedAntigravityExtractor {
-  private depth = 0;
-  private inString = false;
-  private escaped = false;
-  private started = false;
-  private closed = false;
+  private readonly decoder = new StringDecoder('utf8');
+  private readonly stack: Array<'{' | '['> = [];
+  private state: ExtractorState = 'start';
   private invalid = false;
-  private phase: 'key' | 'colon' | 'value' | 'after' = 'key';
-  private expectMember = false;
-  private keyBytes: number[] = [];
-  private keyOverflow = false;
-  private activeKey: 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'created_at' | undefined;
-  private valBytes: number[] = [];
-  private valOverflow = false;
-  private valString = false;
-  private valStarted = false;
-  private valEnded = false;
+
+  private inString = false;
+  private strPurpose: 'key' | 'val' | 'skip' = 'skip';
+  private strEsc = false;
+  private strUHex = 0;
+  private strBuf = '';
+  private strOverflow = false;
+
+  private numState: NumState | undefined;
+  private numCapture = false;
+  private numBuf = '';
+  private numOverflow = false;
+
+  private litTarget: 'true' | 'false' | 'null' | undefined;
+  private litPos = 0;
+
+  private activeKey: TrackedKey | undefined;
   private inputTokens: number | undefined;
   private outputTokens: number | undefined;
   private cacheReadTokens: number | undefined;
@@ -224,264 +248,357 @@ class OversizedAntigravityExtractor {
     else if (this.activeKey === 'cache_read_tokens')
       this.cacheReadTokens = typeof value === 'number' ? value : undefined;
     else if (this.activeKey === 'created_at') this.createdAt = typeof value === 'string' ? value : undefined;
-  }
-
-  private resetValue(): void {
     this.activeKey = undefined;
-    this.valBytes = [];
-    this.valOverflow = false;
-    this.valString = false;
-    this.valStarted = false;
-    this.valEnded = false;
   }
 
-  private finishScalarValue(): void {
-    if (!this.valStarted) {
-      // Missing value after `:` (e.g. `"output_tokens":}` or `"output_tokens":,`) is invalid JSON.
-      this.invalid = true;
-      this.resetValue();
-      return;
-    }
-    if (!this.activeKey) {
-      this.resetValue();
-      return;
-    }
-    if (this.valOverflow) {
-      // A duplicate key whose newer value overflows replaces any earlier value.
-      this.assignActiveKey(undefined);
-      this.resetValue();
-      return;
-    }
-    const raw = Buffer.from(this.valBytes).toString('utf8');
-    if (this.valString) {
-      if (this.activeKey !== 'created_at') {
-        this.assignActiveKey(undefined);
-        this.resetValue();
-        return;
-      }
-      let decoded: unknown;
-      try {
-        decoded = JSON.parse(`"${raw}"`);
-      } catch {
-        this.invalid = true;
-        this.resetValue();
-        return;
-      }
-      this.assignActiveKey(typeof decoded === 'string' && decoded.length <= 64 ? decoded : undefined);
-    } else if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
-      const n = Number(raw);
-      this.assignActiveKey(Number.isFinite(n) ? n : undefined);
-    } else if (raw === 'null' || raw === 'true' || raw === 'false') {
-      // Valid non-numeric JSON literal replaces any earlier numeric value for the same key.
-      this.assignActiveKey(undefined);
+  private afterValue(): void {
+    if (this.stack.length === 0) {
+      this.state = 'done';
     } else {
-      this.invalid = true;
+      this.state = this.stack[this.stack.length - 1] === '{' ? 'obj-comma-or-end' : 'arr-comma-or-end';
     }
-    this.resetValue();
+  }
+
+  private finishNumber(): boolean {
+    const end = this.numState;
+    this.numState = undefined;
+    if (end !== 'zero' && end !== 'int' && end !== 'frac' && end !== 'exp') {
+      this.invalid = true;
+      return false;
+    }
+    if (this.numCapture) {
+      if (this.numOverflow) {
+        this.assignActiveKey(undefined);
+      } else {
+        const n = Number(this.numBuf);
+        this.assignActiveKey(Number.isFinite(n) ? n : undefined);
+      }
+    }
+    this.numCapture = false;
+    this.numBuf = '';
+    this.numOverflow = false;
+    this.afterValue();
+    return true;
+  }
+
+  private feedText(text: string): void {
+    for (let i = 0; i < text.length; i++) {
+      if (this.invalid) return;
+      const ch = text[i]!;
+      const code = ch.charCodeAt(0);
+
+      if (this.inString) {
+        const capture = this.strPurpose !== 'skip' && !this.strOverflow;
+        const cap = this.strPurpose === 'key' ? 256 : 512;
+        if (this.strUHex > 0) {
+          if (!isHex(code)) {
+            this.invalid = true;
+            return;
+          }
+          this.strUHex -= 1;
+          if (capture) {
+            if (this.strBuf.length < cap) this.strBuf += ch;
+            else this.strOverflow = true;
+          }
+          continue;
+        }
+        if (this.strEsc) {
+          this.strEsc = false;
+          if (
+            ch !== '"' &&
+            ch !== '\\' &&
+            ch !== '/' &&
+            ch !== 'b' &&
+            ch !== 'f' &&
+            ch !== 'n' &&
+            ch !== 'r' &&
+            ch !== 't' &&
+            ch !== 'u'
+          ) {
+            this.invalid = true;
+            return;
+          }
+          if (ch === 'u') this.strUHex = 4;
+          if (capture) {
+            if (this.strBuf.length < cap) this.strBuf += ch;
+            else this.strOverflow = true;
+          }
+          continue;
+        }
+        if (ch === '\\') {
+          this.strEsc = true;
+          if (capture) {
+            if (this.strBuf.length < cap) this.strBuf += ch;
+            else this.strOverflow = true;
+          }
+          continue;
+        }
+        if (ch === '"') {
+          this.inString = false;
+          if (this.strPurpose === 'key') {
+            let key: unknown;
+            if (!this.strOverflow) {
+              try {
+                key = JSON.parse(`"${this.strBuf}"`);
+              } catch {
+                this.invalid = true;
+                return;
+              }
+            }
+            this.activeKey =
+              key === 'input_tokens' || key === 'output_tokens' || key === 'cache_read_tokens' || key === 'created_at'
+                ? key
+                : undefined;
+            this.state = 'obj-colon';
+          } else if (this.strPurpose === 'val') {
+            if (this.strOverflow) {
+              this.assignActiveKey(undefined);
+            } else {
+              let decoded: unknown;
+              try {
+                decoded = JSON.parse(`"${this.strBuf}"`);
+              } catch {
+                this.invalid = true;
+                return;
+              }
+              this.assignActiveKey(typeof decoded === 'string' && decoded.length <= 64 ? decoded : undefined);
+            }
+            this.afterValue();
+          } else {
+            if (this.state === 'obj-key' || this.state === 'obj-key-or-end') {
+              this.state = 'obj-colon';
+            } else {
+              if (this.stack.length === 1 && this.activeKey) this.assignActiveKey(undefined);
+              this.afterValue();
+            }
+          }
+          this.strPurpose = 'skip';
+          this.strBuf = '';
+          this.strOverflow = false;
+          continue;
+        }
+        if (code < 0x20) {
+          this.invalid = true;
+          return;
+        }
+        if (capture) {
+          if (this.strBuf.length < cap) this.strBuf += ch;
+          else this.strOverflow = true;
+        }
+        continue;
+      }
+
+      if (this.litTarget !== undefined) {
+        if (ch !== this.litTarget[this.litPos]) {
+          this.invalid = true;
+          return;
+        }
+        this.litPos += 1;
+        if (this.litPos === this.litTarget.length) {
+          this.litTarget = undefined;
+          this.litPos = 0;
+          if (this.stack.length === 1 && this.activeKey) this.assignActiveKey(undefined);
+          this.afterValue();
+        }
+        continue;
+      }
+
+      if (this.numState !== undefined) {
+        let consumed = true;
+        if (this.numState === 'sign') {
+          if (code === 0x30) this.numState = 'zero';
+          else if (code >= 0x31 && code <= 0x39) this.numState = 'int';
+          else {
+            this.invalid = true;
+            return;
+          }
+        } else if (this.numState === 'zero') {
+          if (ch === '.') this.numState = 'fracDot';
+          else if (ch === 'e' || ch === 'E') this.numState = 'expSign';
+          else consumed = false;
+        } else if (this.numState === 'int') {
+          if (isDigit(code)) {
+            // stay in 'int'
+          } else if (ch === '.') this.numState = 'fracDot';
+          else if (ch === 'e' || ch === 'E') this.numState = 'expSign';
+          else consumed = false;
+        } else if (this.numState === 'fracDot') {
+          if (isDigit(code)) this.numState = 'frac';
+          else {
+            this.invalid = true;
+            return;
+          }
+        } else if (this.numState === 'frac') {
+          if (isDigit(code)) {
+            // stay in 'frac'
+          } else if (ch === 'e' || ch === 'E') this.numState = 'expSign';
+          else consumed = false;
+        } else if (this.numState === 'expSign') {
+          if (ch === '+' || ch === '-') this.numState = 'expDigit';
+          else if (isDigit(code)) this.numState = 'exp';
+          else {
+            this.invalid = true;
+            return;
+          }
+        } else if (this.numState === 'expDigit') {
+          if (isDigit(code)) this.numState = 'exp';
+          else {
+            this.invalid = true;
+            return;
+          }
+        } else if (this.numState === 'exp') {
+          if (isDigit(code)) {
+            // stay in 'exp'
+          } else consumed = false;
+        }
+        if (consumed) {
+          if (this.numCapture && !this.numOverflow) {
+            if (this.numBuf.length < 64) this.numBuf += ch;
+            else this.numOverflow = true;
+          }
+          continue;
+        }
+        if (!this.finishNumber()) return;
+        i -= 1;
+        continue;
+      }
+
+      if (isJsonWs(code)) continue;
+
+      switch (this.state) {
+        case 'start':
+          if (ch !== '{') {
+            this.invalid = true;
+            return;
+          }
+          this.stack.push('{');
+          this.state = 'obj-key-or-end';
+          break;
+        case 'obj-key-or-end':
+          if (ch === '}') {
+            this.stack.pop();
+            this.afterValue();
+            break;
+          }
+          if (ch !== '"') {
+            this.invalid = true;
+            return;
+          }
+          this.inString = true;
+          this.strPurpose = this.stack.length === 1 ? 'key' : 'skip';
+          this.strBuf = '';
+          this.strOverflow = false;
+          break;
+        case 'obj-key':
+          if (ch !== '"') {
+            this.invalid = true;
+            return;
+          }
+          this.inString = true;
+          this.strPurpose = this.stack.length === 1 ? 'key' : 'skip';
+          this.strBuf = '';
+          this.strOverflow = false;
+          break;
+        case 'obj-colon':
+          if (ch !== ':') {
+            this.invalid = true;
+            return;
+          }
+          this.state = 'value';
+          break;
+        case 'arr-val-or-end':
+          if (ch === ']') {
+            this.stack.pop();
+            this.afterValue();
+            break;
+          }
+          this.state = 'value';
+          i -= 1;
+          break;
+        case 'value': {
+          const atTop = this.stack.length === 1;
+          if (ch === '"') {
+            this.inString = true;
+            this.strPurpose = atTop && this.activeKey === 'created_at' ? 'val' : 'skip';
+            this.strBuf = '';
+            this.strOverflow = false;
+          } else if (ch === '{' || ch === '[') {
+            if (this.stack.length >= 4096) {
+              this.invalid = true;
+              return;
+            }
+            if (atTop && this.activeKey) this.assignActiveKey(undefined);
+            this.stack.push(ch);
+            this.state = ch === '{' ? 'obj-key-or-end' : 'arr-val-or-end';
+          } else if (ch === '-' || isDigit(code)) {
+            this.numState = ch === '-' ? 'sign' : ch === '0' ? 'zero' : 'int';
+            this.numCapture = atTop && this.activeKey !== undefined;
+            this.numBuf = this.numCapture ? ch : '';
+            this.numOverflow = false;
+          } else if (ch === 't') {
+            this.litTarget = 'true';
+            this.litPos = 1;
+          } else if (ch === 'f') {
+            this.litTarget = 'false';
+            this.litPos = 1;
+          } else if (ch === 'n') {
+            this.litTarget = 'null';
+            this.litPos = 1;
+          } else {
+            this.invalid = true;
+            return;
+          }
+          break;
+        }
+        case 'obj-comma-or-end':
+          if (ch === ',') {
+            this.state = 'obj-key';
+          } else if (ch === '}') {
+            this.stack.pop();
+            this.afterValue();
+          } else {
+            this.invalid = true;
+            return;
+          }
+          break;
+        case 'arr-comma-or-end':
+          if (ch === ',') {
+            this.state = 'value';
+          } else if (ch === ']') {
+            this.stack.pop();
+            this.afterValue();
+          } else {
+            this.invalid = true;
+            return;
+          }
+          break;
+        case 'done':
+          this.invalid = true;
+          return;
+      }
+    }
   }
 
   feed(chunk: Buffer): void {
     if (this.invalid) return;
-    for (let i = 0; i < chunk.length; i++) {
-      const b = chunk[i]!;
-      if (this.closed) {
-        if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) this.invalid = true;
-        continue;
-      }
-      if (!this.started) {
-        if (b === 0x20 || b === 0x09 || b === 0x0d) continue;
-        if (b === 0x7b) {
-          this.started = true;
-          this.depth = 1;
-          this.phase = 'key';
-          this.expectMember = false;
-          continue;
-        }
-        this.invalid = true;
-        return;
-      }
-      if (this.inString) {
-        const capturingKey = this.depth === 1 && this.phase === 'key';
-        const capturingVal = this.depth === 1 && this.phase === 'value' && this.activeKey === 'created_at';
-        // Up to 6 raw bytes per `\uXXXX`-escaped character: 256 B covers any 32-char key, 512 B covers any 64-char timestamp.
-        if (this.escaped) {
-          this.escaped = false;
-          if (capturingKey && !this.keyOverflow) {
-            if (this.keyBytes.length < 256) this.keyBytes.push(b);
-            else this.keyOverflow = true;
-          } else if (capturingVal && !this.valOverflow) {
-            if (this.valBytes.length < 512) this.valBytes.push(b);
-            else this.valOverflow = true;
-          }
-          continue;
-        }
-        if (b === 0x5c) {
-          this.escaped = true;
-          if (capturingKey && !this.keyOverflow) {
-            if (this.keyBytes.length < 256) this.keyBytes.push(b);
-            else this.keyOverflow = true;
-          } else if (capturingVal && !this.valOverflow) {
-            if (this.valBytes.length < 512) this.valBytes.push(b);
-            else this.valOverflow = true;
-          }
-          continue;
-        }
-        if (b === 0x22) {
-          this.inString = false;
-          if (this.depth === 1) {
-            if (this.phase === 'key') {
-              let key: unknown;
-              if (!this.keyOverflow) {
-                try {
-                  key = JSON.parse(`"${Buffer.from(this.keyBytes).toString('utf8')}"`);
-                } catch {
-                  this.invalid = true;
-                  return;
-                }
-              }
-              if (
-                key === 'input_tokens' ||
-                key === 'output_tokens' ||
-                key === 'cache_read_tokens' ||
-                key === 'created_at'
-              ) {
-                this.activeKey = key;
-              } else {
-                this.activeKey = undefined;
-              }
-              this.keyBytes = [];
-              this.keyOverflow = false;
-              this.phase = 'colon';
-            } else if (this.phase === 'value') {
-              this.finishScalarValue();
-              if (this.invalid) return;
-              this.phase = 'after';
-            }
-          }
-          continue;
-        }
-        if (capturingKey && !this.keyOverflow) {
-          if (this.keyBytes.length < 256) this.keyBytes.push(b);
-          else this.keyOverflow = true;
-        } else if (capturingVal && !this.valOverflow) {
-          if (this.valBytes.length < 512) this.valBytes.push(b);
-          else this.valOverflow = true;
-        }
-        continue;
-      }
-      if (b === 0x22) {
-        if (this.depth === 1) {
-          if (this.phase === 'key') {
-            this.expectMember = false;
-          } else if (this.phase === 'value') {
-            if (this.valStarted) {
-              this.invalid = true;
-              return;
-            }
-            this.valString = true;
-            this.valStarted = true;
-            this.valBytes = [];
-            this.valOverflow = false;
-          } else {
-            this.invalid = true;
-            return;
-          }
-        }
-        this.inString = true;
-        continue;
-      }
-      if (b === 0x7b || b === 0x5b) {
-        if (this.depth === 1) {
-          if (this.phase !== 'value' || this.valStarted) {
-            this.invalid = true;
-            return;
-          }
-          // Non-scalar replacement for a tracked key clears any previous scalar value.
-          if (this.activeKey) this.assignActiveKey(undefined);
-          this.resetValue();
-        }
-        this.depth += 1;
-        continue;
-      }
-      if (b === 0x7d || b === 0x5d) {
-        if (this.depth === 1) {
-          if (b === 0x5d) {
-            this.invalid = true;
-            return;
-          }
-          if (this.phase === 'colon' || (this.phase === 'key' && this.expectMember)) {
-            this.invalid = true;
-            return;
-          }
-          if (this.phase === 'value') {
-            this.finishScalarValue();
-            if (this.invalid) return;
-          }
-          this.depth = 0;
-          this.closed = true;
-          continue;
-        }
-        this.depth -= 1;
-        if (this.depth === 1 && this.phase === 'value') this.phase = 'after';
-        continue;
-      }
-      if (this.depth === 1) {
-        if (this.phase === 'key') {
-          if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {
-            this.invalid = true;
-            return;
-          }
-        } else if (this.phase === 'colon') {
-          if (b === 0x3a) {
-            this.phase = 'value';
-            this.valBytes = [];
-            this.valOverflow = false;
-            this.valString = false;
-            this.valStarted = false;
-            this.valEnded = false;
-          } else if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {
-            this.invalid = true;
-            return;
-          }
-        } else if (this.phase === 'value') {
-          if (b === 0x2c) {
-            this.finishScalarValue();
-            if (this.invalid) return;
-            this.phase = 'key';
-            this.expectMember = true;
-            this.keyBytes = [];
-            this.keyOverflow = false;
-          } else if (b === 0x20 || b === 0x09 || b === 0x0d || b === 0x0a) {
-            if (this.valStarted) this.valEnded = true;
-          } else {
-            if (this.valEnded) {
-              // Reject malformed split scalars like `1 2`.
-              this.invalid = true;
-              return;
-            }
-            this.valStarted = true;
-            if (this.activeKey && !this.valOverflow) {
-              if (this.valBytes.length < 64) this.valBytes.push(b);
-              else this.valOverflow = true;
-            }
-          }
-        } else if (this.phase === 'after') {
-          if (b === 0x2c) {
-            this.phase = 'key';
-            this.expectMember = true;
-            this.keyBytes = [];
-            this.keyOverflow = false;
-          } else if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {
-            this.invalid = true;
-            return;
-          }
-        }
-      }
-    }
+    const text = this.decoder.write(chunk);
+    if (text) this.feedText(text);
   }
 
   finish(scan: AntigravityScan): void {
-    if (this.invalid || !this.closed) return;
+    if (!this.invalid) {
+      const tail = this.decoder.end();
+      if (tail) this.feedText(tail);
+    }
+    if (
+      this.invalid ||
+      this.inString ||
+      this.numState !== undefined ||
+      this.litTarget !== undefined ||
+      this.state !== 'done'
+    ) {
+      return;
+    }
     recordAntigravityUsage(scan, {
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
