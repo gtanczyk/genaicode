@@ -139,7 +139,8 @@ export function stableCliPath(packageRoot: string): string {
 /**
  * The `cli.js` that agents' own settings (MCP servers, hooks) should start, and whether it is
  * the installed command's. Run from npx, this package sits in npx's cache, which npm clears: the
- * installed command is used instead when there is one, and `transient` says there is none.
+ * installed command is used instead when there is one, and `transient` says there is none. In a
+ * Linux AppImage it sits in a mount that moves on every start, and its Node with it: `transient`.
  */
 export function durableCliPath(
   packageRoot: string,
@@ -153,6 +154,8 @@ export function durableCliPath(
   } catch {
     // A path that is not there is not npx's either.
   }
+  const appImage = (env.APPDIR && real.startsWith(env.APPDIR)) || real.startsWith('/tmp/.mount_');
+  if (appImage) return { path: own, installed: false, transient: true };
   if (!real.split(/[\\/]/).includes('_npx')) return { path: own, installed: false, transient: false };
   const home = resolve(env.GENAICODE_HOME || join(env.HOME ?? homedir(), '.genaicode'));
   const current = join(home, 'current', 'node_modules', PACKAGE_NAME, 'dist', 'cli.js');

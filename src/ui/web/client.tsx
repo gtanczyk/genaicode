@@ -252,6 +252,7 @@ interface PageConfig {
   agents?: boolean;
   uploads?: boolean;
   projectTeams?: boolean;
+  agentTools?: boolean;
   /** True when the plan limits last seen of every agent are served (`/api/limits`). */
   limits?: boolean;
   files?: boolean;
@@ -2231,6 +2232,7 @@ function App({ selected }: { selected?: string }) {
                     focusAgent,
                     onCheckAgain: () => checkAgents({ env: true }),
                     holding,
+                    ...(config?.agentTools ? { agentTools: { token } } : {}),
                     onUse: inSetup
                       ? undefined
                       : (name) => {

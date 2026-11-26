@@ -8,6 +8,12 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **Give Claude Code, Codex and Cursor the session tools from Settings › Agents.** (#PR)
+  - One click per agent adds, updates or removes the `genaicode` MCP server that `genaicode mcp install` adds. From the desktop app the agents start the app's own Node and genaicode, which update with the app.
+  - Run from npx's cache or a Linux AppImage with no installed command, it says how to install the command instead.
+
 ### Fixed
 
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)

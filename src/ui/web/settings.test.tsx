@@ -12,6 +12,7 @@ import {
   chatLimits,
   agentsNeedingYou,
   AgentsSection,
+  AgentToolsCard,
   ArtifactsSection,
   cdnChoice,
   GeneralSection,
@@ -176,6 +177,72 @@ describe('<GeneralSection>', () => {
 
     render(<GeneralSection theme="light" onTheme={vi.fn()} bark={false} onBark={onBark} />);
     expect(host.querySelector('[role="switch"]')!.getAttribute('aria-checked')).toBe('false');
+  });
+});
+
+describe('<AgentToolsCard>', () => {
+  const agents = [agent('claude', {}), agent('codex', {})];
+  const entry = (name: string, installed: boolean, current = installed) => ({
+    agent: name,
+    installed,
+    current,
+    send: false,
+    file: `/home/${name}.json`,
+  });
+  const row = (name: string) => host.querySelector<HTMLElement>(`.agent-tools [data-agent="${name}"]`)!;
+
+  it('adds, updates and removes the session tools on a click only', async () => {
+    let listing = { durable: true, agents: [entry('claude', false), entry('codex', true, false)] };
+    const calls = stubFetch({
+      '/api/agent-tools': (init) => {
+        if (init?.method === 'POST') {
+          const { agent: name, add } = JSON.parse(init.body as string) as { agent: string; add: boolean };
+          listing = { ...listing, agents: listing.agents.map((one) => (one.agent === name ? entry(name, add) : one)) };
+        }
+        return { body: listing };
+      },
+    });
+    render(<AgentToolsCard token="tok" agents={agents} />);
+    await flush();
+    expect(calls).toHaveLength(1);
+    expect(row('claude').textContent).toContain('Not added');
+    expect(row('codex').textContent).toContain('Added by another genaicode');
+    click(button(`Add session tools in ${agents[0]!.guide.title}`));
+    await flush();
+    const post = calls[1]!;
+    expect(post.init?.method).toBe('POST');
+    expect(JSON.parse(post.init!.body as string)).toEqual({ agent: 'claude', add: true });
+    expect((post.init!.headers as Record<string, string>)['x-genaicode-token']).toBe('tok');
+    expect(row('claude').textContent).toContain('/home/claude.json');
+    click(button(`Update session tools in ${agents[1]!.guide.title}`));
+    await flush();
+    expect(JSON.parse(calls[2]!.init!.body as string)).toEqual({ agent: 'codex', add: true });
+    click(button(`Remove session tools in ${agents[0]!.guide.title}`));
+    await flush();
+    expect(JSON.parse(calls[3]!.init!.body as string)).toEqual({ agent: 'claude', add: false });
+    expect(row('claude').textContent).toContain('Not added');
+  });
+
+  it('offers nothing to add from a temporary place, and says how to install', async () => {
+    stubFetch({ '/api/agent-tools': () => ({ body: { durable: false, agents: [entry('claude', false)] } }) });
+    render(<AgentToolsCard token="tok" agents={agents} />);
+    await flush();
+    expect(host.querySelector('.agent-tools [data-agent]')).toBeNull();
+    expect(host.textContent).toContain('npx genaicode install && genaicode mcp install');
+  });
+
+  it('says why a change failed', async () => {
+    stubFetch({
+      '/api/agent-tools': (init) =>
+        init?.method === 'POST'
+          ? { status: 400, body: { error: 'claude mcp add failed' } }
+          : { body: { durable: true, agents: [entry('claude', false)] } },
+    });
+    render(<AgentToolsCard token="tok" agents={agents} />);
+    await flush();
+    click(button(`Add session tools in ${agents[0]!.guide.title}`));
+    await flush();
+    expect(host.querySelector('[role="status"]')!.textContent).toBe('claude mcp add failed');
   });
 });
 
