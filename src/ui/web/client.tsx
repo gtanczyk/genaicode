@@ -1489,7 +1489,7 @@ function App({ selected }: { selected?: string }) {
     setStepsTarget(undefined);
     setWorkTabOpen(false);
     viewerOpenedPanel.current = false;
-    if (!workLayout.docks) setWorkFullOpen(false);
+    setWorkFullOpen(false);
     // What was open in the viewer goes with the panel: opened again, it shows its tab.
     setWorkView({ ...workView, ...(workLayout.docks ? { open: false } : {}), viewing: undefined });
     // The panel's view covered the chat, or held the focus: the next key goes to the message field.

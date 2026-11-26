@@ -174,7 +174,7 @@ function recordAntigravityUsage(
  * kept for display but left out of `total`, or a long thread would weigh by its length alone.
  */
 function takeAntigravityLine(scan: AntigravityScan, text: string): void {
-  if (!text.includes('"input_tokens"') && !text.includes('"output_tokens"')) return;
+  if (!text.includes('"input_tokens"') && !text.includes('"output_tokens"') && !text.includes('\\u')) return;
   let line: unknown;
   try {
     line = JSON.parse(text);
@@ -204,6 +204,7 @@ class OversizedAntigravityExtractor {
   private closed = false;
   private invalid = false;
   private phase: 'key' | 'colon' | 'value' | 'after' = 'key';
+  private expectMember = false;
   private keyBytes: number[] = [];
   private keyOverflow = false;
   private activeKey: 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'created_at' | undefined;
@@ -235,18 +236,29 @@ class OversizedAntigravityExtractor {
   }
 
   private finishScalarValue(): void {
+    if (!this.valStarted) {
+      // Missing value after `:` (e.g. `"output_tokens":}` or `"output_tokens":,`) is invalid JSON.
+      this.invalid = true;
+      this.resetValue();
+      return;
+    }
     if (!this.activeKey) {
       this.resetValue();
       return;
     }
-    if (this.valOverflow || !this.valStarted) {
-      // A duplicate key whose newer value overflows or is non-scalar replaces any earlier value.
+    if (this.valOverflow) {
+      // A duplicate key whose newer value overflows replaces any earlier value.
       this.assignActiveKey(undefined);
       this.resetValue();
       return;
     }
     const raw = Buffer.from(this.valBytes).toString('utf8');
     if (this.valString) {
+      if (this.activeKey !== 'created_at') {
+        this.assignActiveKey(undefined);
+        this.resetValue();
+        return;
+      }
       let decoded: unknown;
       try {
         decoded = JSON.parse(`"${raw}"`);
@@ -255,7 +267,7 @@ class OversizedAntigravityExtractor {
         this.resetValue();
         return;
       }
-      this.assignActiveKey(typeof decoded === 'string' ? decoded : undefined);
+      this.assignActiveKey(typeof decoded === 'string' && decoded.length <= 64 ? decoded : undefined);
     } else if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
       const n = Number(raw);
       this.assignActiveKey(Number.isFinite(n) ? n : undefined);
@@ -282,6 +294,7 @@ class OversizedAntigravityExtractor {
           this.started = true;
           this.depth = 1;
           this.phase = 'key';
+          this.expectMember = false;
           continue;
         }
         this.invalid = true;
@@ -290,13 +303,14 @@ class OversizedAntigravityExtractor {
       if (this.inString) {
         const capturingKey = this.depth === 1 && this.phase === 'key';
         const capturingVal = this.depth === 1 && this.phase === 'value' && this.activeKey === 'created_at';
+        // Up to 6 raw bytes per `\uXXXX`-escaped character: 256 B covers any 32-char key, 512 B covers any 64-char timestamp.
         if (this.escaped) {
           this.escaped = false;
           if (capturingKey && !this.keyOverflow) {
-            if (this.keyBytes.length < 128) this.keyBytes.push(b);
+            if (this.keyBytes.length < 256) this.keyBytes.push(b);
             else this.keyOverflow = true;
           } else if (capturingVal && !this.valOverflow) {
-            if (this.valBytes.length < 192) this.valBytes.push(b);
+            if (this.valBytes.length < 512) this.valBytes.push(b);
             else this.valOverflow = true;
           }
           continue;
@@ -304,10 +318,10 @@ class OversizedAntigravityExtractor {
         if (b === 0x5c) {
           this.escaped = true;
           if (capturingKey && !this.keyOverflow) {
-            if (this.keyBytes.length < 128) this.keyBytes.push(b);
+            if (this.keyBytes.length < 256) this.keyBytes.push(b);
             else this.keyOverflow = true;
           } else if (capturingVal && !this.valOverflow) {
-            if (this.valBytes.length < 192) this.valBytes.push(b);
+            if (this.valBytes.length < 512) this.valBytes.push(b);
             else this.valOverflow = true;
           }
           continue;
@@ -340,37 +354,45 @@ class OversizedAntigravityExtractor {
               this.phase = 'colon';
             } else if (this.phase === 'value') {
               this.finishScalarValue();
+              if (this.invalid) return;
               this.phase = 'after';
             }
           }
           continue;
         }
         if (capturingKey && !this.keyOverflow) {
-          if (this.keyBytes.length < 128) this.keyBytes.push(b);
+          if (this.keyBytes.length < 256) this.keyBytes.push(b);
           else this.keyOverflow = true;
         } else if (capturingVal && !this.valOverflow) {
-          if (this.valBytes.length < 192) this.valBytes.push(b);
+          if (this.valBytes.length < 512) this.valBytes.push(b);
           else this.valOverflow = true;
         }
         continue;
       }
       if (b === 0x22) {
-        if (this.depth === 1 && this.phase === 'value' && this.valStarted) {
-          this.invalid = true;
-          return;
+        if (this.depth === 1) {
+          if (this.phase === 'key') {
+            this.expectMember = false;
+          } else if (this.phase === 'value') {
+            if (this.valStarted) {
+              this.invalid = true;
+              return;
+            }
+            this.valString = true;
+            this.valStarted = true;
+            this.valBytes = [];
+            this.valOverflow = false;
+          } else {
+            this.invalid = true;
+            return;
+          }
         }
         this.inString = true;
-        if (this.depth === 1 && this.phase === 'value' && this.activeKey) {
-          this.valString = true;
-          this.valStarted = true;
-          this.valBytes = [];
-          this.valOverflow = false;
-        }
         continue;
       }
       if (b === 0x7b || b === 0x5b) {
-        if (this.depth === 1 && this.phase === 'value') {
-          if (this.valStarted) {
+        if (this.depth === 1) {
+          if (this.phase !== 'value' || this.valStarted) {
             this.invalid = true;
             return;
           }
@@ -387,7 +409,14 @@ class OversizedAntigravityExtractor {
             this.invalid = true;
             return;
           }
-          if (this.phase === 'value') this.finishScalarValue();
+          if (this.phase === 'colon' || (this.phase === 'key' && this.expectMember)) {
+            this.invalid = true;
+            return;
+          }
+          if (this.phase === 'value') {
+            this.finishScalarValue();
+            if (this.invalid) return;
+          }
           this.depth = 0;
           this.closed = true;
           continue;
@@ -397,7 +426,12 @@ class OversizedAntigravityExtractor {
         continue;
       }
       if (this.depth === 1) {
-        if (this.phase === 'colon') {
+        if (this.phase === 'key') {
+          if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {
+            this.invalid = true;
+            return;
+          }
+        } else if (this.phase === 'colon') {
           if (b === 0x3a) {
             this.phase = 'value';
             this.valBytes = [];
@@ -412,7 +446,9 @@ class OversizedAntigravityExtractor {
         } else if (this.phase === 'value') {
           if (b === 0x2c) {
             this.finishScalarValue();
+            if (this.invalid) return;
             this.phase = 'key';
+            this.expectMember = true;
             this.keyBytes = [];
             this.keyOverflow = false;
           } else if (b === 0x20 || b === 0x09 || b === 0x0d || b === 0x0a) {
@@ -432,6 +468,7 @@ class OversizedAntigravityExtractor {
         } else if (this.phase === 'after') {
           if (b === 0x2c) {
             this.phase = 'key';
+            this.expectMember = true;
             this.keyBytes = [];
             this.keyOverflow = false;
           } else if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {

@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { SessionInfo, SessionQuery } from './types.js';
-import { personText } from '../host-text.js';
+import { personTitle } from '../host-text.js';
 
 export interface SessionFile {
   path: string;
@@ -199,9 +199,9 @@ export function oneLine(text: string, max = 200): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
-/** A prompt as a one-line preview: the person's words, without a briefing genaicode added (`personText`). */
+/** A prompt as a one-line preview: the person's words, without a briefing genaicode added (`personTitle`). */
 export function promptLine(text: string, max = 200): string {
-  return oneLine(personText(text), max);
+  return oneLine(personTitle(text), max);
 }
 
 /** Keep previews on one terminal-safe line, including the ellipsis in the limit. */
