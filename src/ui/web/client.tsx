@@ -12,7 +12,7 @@ import {
   uploadedFiles,
   restoreQueued,
 } from './chat-route.js';
-import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { ReleaseNotes } from './release-notes.js';
 import { takeEvents } from './sse.js';
 import { createRoot } from 'react-dom/client';
@@ -391,6 +391,33 @@ function useAgents(
   };
 }
 
+/** Keep completed turn references stable across SSE snapshots so memoized turns skip re-rendering while streaming. */
+function reuseCompletedTurns(prev: ChatView | undefined, next: ChatView): ChatView {
+  if (!prev || prev.generation !== next.generation || !prev.session.turns.length || !next.session.turns.length) {
+    return next;
+  }
+  const prevTurns = prev.session.turns;
+  let reused = false;
+  const turns = next.session.turns.map((turn, i) => {
+    const old = prevTurns[i];
+    if (
+      old &&
+      old.id === turn.id &&
+      old.result &&
+      turn.result &&
+      old.endedAt === turn.endedAt &&
+      !old.pack &&
+      !turn.pack &&
+      old.entries.length === turn.entries.length
+    ) {
+      reused = true;
+      return old;
+    }
+    return turn;
+  });
+  return reused ? { ...next, session: { ...next.session, turns } } : next;
+}
+
 function useView(
   route: string | undefined,
   onToast?: (text: string) => void,
@@ -451,8 +478,9 @@ function useView(
           buffer = taken.rest;
           for (const { event, data: payload } of taken.events) {
             if (event === 'view') {
-              const view = JSON.parse(payload) as ChatView;
-              const id = route ?? view.conversation?.id;
+              const parsed = JSON.parse(payload) as ChatView;
+              const id = route ?? parsed.conversation?.id;
+              const view = reuseCompletedTurns(snapshots.current.get(id), parsed);
               snapshots.current.delete(id);
               snapshots.current.set(id, view);
               if (snapshots.current.size > 8) snapshots.current.delete(snapshots.current.keys().next().value);
@@ -613,7 +641,7 @@ function useLocalImages(
     const found: string[] = [];
     for (const turn of turns ?? []) {
       for (const entry of turn.entries) {
-        if (entry.kind !== 'text') continue;
+        if (entry.kind !== 'text' || !entry.text.includes('![')) continue;
         for (const path of extractLocalImagePaths(entry.text)) {
           if (!found.includes(path)) found.push(path);
         }
@@ -621,7 +649,7 @@ function useLocalImages(
     }
     for (const notice of notices ?? []) {
       const relay = notice.relay;
-      if (relay?.status !== 'answered' || !relay.reply) continue;
+      if (relay?.status !== 'answered' || !relay.reply || !relay.reply.includes('![')) continue;
       for (const rawPath of extractLocalImagePaths(relay.reply)) {
         const path = relay.cwd ? resolveFilePath(rawPath, relay.cwd) : rawPath;
         const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (cwd && isPathWithin(path, cwd));
@@ -1292,7 +1320,11 @@ function App({ selected }: { selected?: string }) {
     token,
     hasSessions,
     config?.multiChat
-      ? JSON.stringify(loaded.map((chat) => [chat.chat, chat.id, chat.turn, chat.turnInProgress]))
+      ? JSON.stringify(
+          loaded
+            .filter((chat) => chat.turn !== undefined || !chat.source.startsWith('genaicode:open:'))
+            .map((chat) => [chat.chat, chat.id, chat.turn, chat.turnInProgress]),
+        )
       : `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
   );
   // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
@@ -1872,6 +1904,18 @@ function App({ selected }: { selected?: string }) {
     if (!queue.length) needs.title = 'Nothing needs you now';
     else if (queue.some((item) => item.source === 'app')) needs.title = `Needs you: ${needs.total} across all projects`;
   }
+  const sidebarNeeds = useMemo(
+    () => ({ total: needs.total, here: needs.here, sessions: needs.sessions, title: needs.title }),
+    [needs.total, needs.here, needs.sessions, needs.title],
+  );
+  const canNewChatIn = useCallback(
+    (project: { key: string }) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
+    [isHome, cwd],
+  );
+  const artifactUrl = useCallback(
+    (artifact: { id: string; version: number }) => chatUrl(`/artifacts/${artifact.id}?v=${artifact.version}`, route),
+    [route],
+  );
   const decideNeed = async (decision: NeedsDecision): Promise<boolean> => {
     if (decision.via === 'chat')
       return (
@@ -2132,7 +2176,7 @@ function App({ selected }: { selected?: string }) {
                     : 'sessions',
           onNewChat: startHomeChat,
           busyWith: running && !config?.multiChat ? runningName : undefined,
-          needs,
+          needs: sidebarNeeds,
           onNeedsYou: openNeedsYou,
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
           onAllChats: hasSessions ? () => openSessions('own') : undefined,
@@ -2168,7 +2212,7 @@ function App({ selected }: { selected?: string }) {
             void startProjectChat(project.key, project.name);
           },
           // Outside --home the chat has one folder: a new chat starts there and nowhere else.
-          canNewChatIn: (project) => isHome || project.key === cwd.replace(/(?!^)[\\/]+$/, ''),
+          canNewChatIn,
           others,
           update: config?.update,
           relaunching,
@@ -2358,7 +2402,7 @@ function App({ selected }: { selected?: string }) {
               }
               placeholder={inSetup ? 'Connect an agent to start' : undefined}
               notices={view?.notices}
-              artifactUrl={(artifact) => chatUrl(`/artifacts/${artifact.id}?v=${artifact.version}`)}
+              artifactUrl={artifactUrl}
               onOpenArtifact={openArtifactInPanel}
               imageUrl={imageUrl}
               completions={SLASH_COMMANDS}
