@@ -40,7 +40,10 @@ export interface MarkdownProps {
 function destination(prefix: RegExp): string {
   return String.raw`(?:<${prefix.source}[^<>\r\n]{1,2000}>|${prefix.source}[^)\s]{1,2000})`;
 }
-const localTarget = destination(/(?:\/|\.{1,2}\/|[A-Za-z]:[\\/])/);
+const localTarget = destination(
+  /(?:[Ff][Ii][Ll][Ee]:\/\/(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt])?\/|\/|\.{1,2}\/|[A-Za-z]:[\\/])/,
+);
+const FILE_URI_PREFIX = /^[Ff][Ii][Ll][Ee]:\/\/(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt])?(?=\/)/;
 const imageLabel = /!\[[^[\]\n]{0,500}\]\(/;
 const linkLabel = /\[[^[\]\n]{1,500}\]\(/;
 const LOCAL_IMAGE = new RegExp(String.raw`${imageLabel.source}(?<localImage>${localTarget})\)`, 'g');
@@ -60,17 +63,28 @@ function unwrapDestination(target: string): string {
   return target.startsWith('<') ? target.slice(1, -1) : target;
 }
 
-/** Split a file link target into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
+/** Split a file link target (path or `file://` URI) into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
 export function parseFileTarget(target: string): { path: string; position?: FilePosition } {
-  const hash = target.lastIndexOf('#L');
+  const isFileUri = FILE_URI_PREFIX.test(target);
+  let normalized = isFileUri ? target.replace(FILE_URI_PREFIX, '') : target;
+  if (isFileUri && /^\/[A-Za-z]:[\\/]/.test(normalized)) normalized = normalized.slice(1);
+  const decodePath = (raw: string): string => {
+    if (!isFileUri) return raw;
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  };
+  const hash = normalized.lastIndexOf('#L');
   if (hash > 0) {
-    const tail = target.slice(hash + 2);
+    const tail = normalized.slice(hash + 2);
     const range = /^(\d{1,7})(?:C(\d{1,5}))?(?:-L(\d{1,7})(?:C\d{1,5})?)?$/.exec(tail);
     if (range) {
       const line = Number(range[1]);
       const col = range[2] ? Number(range[2]) : undefined;
       const end = range[3] ? Number(range[3]) : undefined;
-      const path = target.slice(0, hash);
+      const path = decodePath(normalized.slice(0, hash));
       if (line >= 1) {
         const position: FilePosition = {
           line,
@@ -83,15 +97,15 @@ export function parseFileTarget(target: string): { path: string; position?: File
     }
   }
   const nums: number[] = [];
-  let end = target.length;
+  let end = normalized.length;
   for (let part = 0; part < 2; part++) {
     let at = end;
-    while (at > 0 && target[at - 1] >= '0' && target[at - 1] <= '9') at--;
-    if (at === end || at < 2 || target[at - 1] !== ':') break;
-    nums.unshift(Number(target.slice(at, end)));
+    while (at > 0 && normalized[at - 1] >= '0' && normalized[at - 1] <= '9') at--;
+    if (at === end || at < 2 || normalized[at - 1] !== ':') break;
+    nums.unshift(Number(normalized.slice(at, end)));
     end = at - 1;
   }
-  const path = target.slice(0, end);
+  const path = decodePath(normalized.slice(0, end));
   if (nums.length >= 1 && nums[0]! >= 1 && nums[0]! <= 9_999_999) {
     const position: FilePosition = {
       line: nums[0]!,

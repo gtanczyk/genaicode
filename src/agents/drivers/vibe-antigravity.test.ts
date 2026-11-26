@@ -581,4 +581,68 @@ describe('antigravity driver', () => {
       },
     ]);
   });
+
+  it('maps ACP plan updates and update_steps calls into progress events', () => {
+    const planEvents = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'plan',
+        entries: [
+          { content: 'Inspect files', status: 'completed' },
+          { content: 'Apply fix', status: 'in_progress' },
+          { content: 'Run tests', status: 'pending' },
+        ],
+      },
+      new Map(),
+      () => {},
+    );
+    expect(planEvents).toEqual([
+      {
+        type: 'progress',
+        message: 'Apply fix',
+        plan: [
+          { step: 'Inspect files', status: 'completed' },
+          { step: 'Apply fix', status: 'in_progress' },
+          { step: 'Run tests', status: 'pending' },
+        ],
+      },
+    ]);
+
+    const tools = new Map();
+    const first = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 's1',
+        name: 'update_steps',
+        status: 'in_progress',
+        rawInput: {
+          steps: [
+            { title: 'Step one', status: 'done' },
+            { title: 'Step two', status: 'in_progress' },
+          ],
+        },
+      },
+      tools,
+      () => {},
+    );
+    expect(first).toContainEqual({
+      type: 'progress',
+      message: 'Step two',
+      plan: [
+        { step: 'Step one', status: 'completed' },
+        { step: 'Step two', status: 'in_progress' },
+      ],
+    });
+    // Subsequent completion of the same update_steps call does not emit a duplicate progress entry.
+    const second = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 's1',
+        name: 'update_steps',
+        status: 'completed',
+      },
+      tools,
+      () => {},
+    );
+    expect(second.some((event) => event.type === 'progress')).toBe(false);
+  });
 });

@@ -133,6 +133,13 @@ export interface AgentChatProps {
    */
   onOpenTasks?(turn: SessionTurn): void;
   /**
+   * Opens a folded stretch of turn steps in the host's side panel instead of expanding them inline
+   * in the transcript. Without it the steps pill expands inline inside a scrollable block.
+   */
+  onOpenSteps?(turn: SessionTurn, stretch: number): void;
+  /** The turn and stretch currently open in the host's steps panel, so its pill highlights. */
+  activeSteps?: { turnId: number; stretch: number };
+  /**
    * Shows the mission strip (`<MissionStrip>`) above the message box while delegated work runs: the
    * tasks counted by state, what the lead does now, and the next approval a task waits for, with
    * Approve and Deny (`onApprove`). With its `onOpenGroup` and `onOpenTasks`, an approval of a
@@ -483,6 +490,8 @@ export function AgentChat(props: AgentChatProps) {
           onAutoApprove={props.onAutoApprove}
           onPackAction={props.disabled ? undefined : props.onPackAction}
           onOpenTasks={props.onOpenTasks}
+          onOpenSteps={props.onOpenSteps}
+          activeSteps={props.activeSteps}
           taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
           prompt={props.renderPrompt}
           toolName={props.formatToolName ?? toolLabel}
@@ -898,6 +907,8 @@ function Turn({
   onAutoApprove,
   onPackAction,
   onOpenTasks,
+  onOpenSteps,
+  activeSteps,
   taskApprovalsElsewhere,
   prompt,
   toolName,
@@ -921,6 +932,8 @@ function Turn({
   onAutoApprove?: AgentChatProps['onAutoApprove'];
   onPackAction?: PackActionHandler;
   onOpenTasks?: AgentChatProps['onOpenTasks'];
+  onOpenSteps?: AgentChatProps['onOpenSteps'];
+  activeSteps?: AgentChatProps['activeSteps'];
   /** The mission strip has the approvals of delegated tasks: they are not repeated here. */
   taskApprovalsElsewhere?: boolean;
   prompt?: AgentChatProps['renderPrompt'];
@@ -1008,7 +1021,16 @@ function Turn({
           <div className="gc-steps">
             {transcript.entries.length ? (
               fold ? (
-                <Folded turn={transcript} pending={pending} toolName={toolName} entry={entry} entryProps={entryProps} />
+                <Folded
+                  turn={transcript}
+                  pending={pending}
+                  toolName={toolName}
+                  prompt={prompt}
+                  entry={entry}
+                  entryProps={entryProps}
+                  onOpenSteps={onOpenSteps ? (stretch) => onOpenSteps(turn, stretch) : undefined}
+                  activeStretch={activeSteps?.turnId === turn.id ? activeSteps.stretch : undefined}
+                />
               ) : (
                 transcript.entries.map(entry)
               )
@@ -1034,7 +1056,8 @@ function Turn({
       ) : null}
       {running ? (
         <div className="gc-working">
-          <span className="gc-spin" /> {speaker} is working
+          <span className="gc-spin" />
+          <span className="gc-working-label">{speaker} is working</span>
           {/* The ticking time stays out of the transcript's live region. */}
           <span aria-hidden="true">· {formatDuration(now - turn.startedAt)}</span>
           {/* The step it is on, here at the bottom: the steps themselves sit above the messages sent since. */}
@@ -1058,20 +1081,22 @@ function Turn({
   );
 }
 
-/** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
-function Folded({
-  turn,
-  pending,
-  toolName,
-  entry,
-  entryProps,
-}: {
-  turn: SessionTurn;
-  pending: SessionState['approvals'];
-  toolName: (name: string) => string;
-  entry: (item: SessionEntry, i: number) => ReactNode;
-  entryProps: (item: SessionEntry) => EntryProps;
-}) {
+/**
+ * Compute the folded step stretches of a turn (shared between `<Folded>` and the side Steps panel).
+ */
+export function turnFoldStretches(
+  turn: SessionTurn,
+  pending: SessionState['approvals'],
+  renderPrompt?: AgentChatProps['renderPrompt'],
+): {
+  stretchSteps: (readonly [SessionEntry, number])[][];
+  segment: number[];
+  segments: number;
+  update: number;
+  plan: SessionEntry | undefined;
+  splits: (item: SessionEntry) => boolean;
+  inView: (item: SessionEntry, i: number) => boolean;
+} {
   const { entries } = turn;
   const lastText = entries.findLastIndex((item) => item.kind === 'text');
   const answer = turn.result ? lastText : -1;
@@ -1085,8 +1110,7 @@ function Folded({
   // A message the host hides (`renderPrompt` gives nothing) starts no stretch.
   const splits = (item: SessionEntry) => {
     if (item.kind !== 'input') return false;
-    const render = entryProps(item).prompt;
-    const shown = render ? render(item.text) : item.text;
+    const shown = renderPrompt ? renderPrompt(item.text) : item.text;
     return shown !== null && shown !== undefined && shown !== false;
   };
   const segment: number[] = [];
@@ -1113,6 +1137,31 @@ function Folded({
   entries.forEach((item, i) => {
     if (i !== update && !inView(item, i)) stretchSteps[segment[i]].push([item, i]);
   });
+  return { stretchSteps, segment, segments, update, plan, splits, inView };
+}
+
+/** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
+function Folded({
+  turn,
+  pending,
+  toolName,
+  prompt,
+  entry,
+  entryProps,
+  onOpenSteps,
+  activeStretch,
+}: {
+  turn: SessionTurn;
+  pending: SessionState['approvals'];
+  toolName: (name: string) => string;
+  prompt?: AgentChatProps['renderPrompt'];
+  entry: (item: SessionEntry, i: number) => ReactNode;
+  entryProps: (item: SessionEntry) => EntryProps;
+  onOpenSteps?(stretch: number): void;
+  activeStretch?: number;
+}) {
+  const { entries } = turn;
+  const { stretchSteps, segment, segments, update, plan, splits, inView } = turnFoldStretches(turn, pending, prompt);
   // The newest tool still open; an edit's `files` entry can arrive before the tool ends.
   const openIndex = turn.result ? -1 : entries.findLastIndex((item) => item.kind === 'tool' && !item.done);
   const open = entries[openIndex];
@@ -1128,18 +1177,36 @@ function Folded({
     const count = tools || steps.length;
     // The spinner and the step it is on go on the fold that holds the open call, else the newest.
     const latest = openIndex >= 0 ? segment[openIndex] === s : s === segments - 1;
+    const label = (
+      <>
+        {turn.result || !latest ? null : <span className="gc-spin" />}
+        {count} {count === 1 ? 'step' : 'steps'}
+        {now && latest ? <span className="gc-fold-now"> · {now}</span> : null}
+        {failed ? <span className="gc-err"> · errors</span> : null}
+      </>
+    );
+    if (onOpenSteps) {
+      return (
+        <button
+          key={s ? `fold-${s}` : 'fold'}
+          type="button"
+          className="gc-fold-btn"
+          aria-pressed={activeStretch === s}
+          title="Open steps in the side panel"
+          onClick={() => onOpenSteps(s)}
+        >
+          {label}
+          <span className="gc-fold-open" aria-hidden="true">
+            ›
+          </span>
+        </button>
+      );
+    }
     return (
       <LazyDetails
         key={s ? `fold-${s}` : 'fold'}
         className="gc-fold"
-        summary={
-          <summary>
-            {turn.result || !latest ? null : <span className="gc-spin" />}
-            {count} {count === 1 ? 'step' : 'steps'}
-            {now && latest ? <span className="gc-fold-now"> · {now}</span> : null}
-            {failed ? <span className="gc-err"> · errors</span> : null}
-          </summary>
-        }
+        summary={<summary>{label}</summary>}
         data={() => steps.map(([item, i]) => [i, entryProps(item)] as const)}
         Body={FoldBody}
       />

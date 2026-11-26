@@ -26,6 +26,15 @@ describe('personText', () => {
     expect(personText(briefed)).toBe('fix the header');
     expect(personText(briefed.slice(0, briefed.length - 200))).toBe('fix the header');
     expect(withBriefing('fix it', '  ')).toBe('fix it');
+    // Merging two briefings keeps one trailing block that personText strips cleanly.
+    const merged = withBriefing(withBriefing('fix it', 'first note'), 'second note');
+    expect(merged.match(/<genaicode-briefing>/g)).toHaveLength(1);
+    expect(merged).toContain('first note');
+    expect(merged).toContain('second note');
+    expect(personText(merged)).toBe('fix it');
+    // Also when flattened onto one line and cut short in a title/preview.
+    const oneLine = briefed.replace(/\s+/g, ' ').slice(0, 95) + '…';
+    expect(personText(oneLine)).toBe('fix the header');
   });
 
   it('keeps a prompt that only mentions the tag', () => {

@@ -32,7 +32,7 @@ import {
   type ConversationOrigin,
   type TopicStore,
 } from '../agents/sessions/index.js';
-import { isWithin, oneLine, promptLine } from '../agents/sessions/files.js';
+import { isWithin, promptLine } from '../agents/sessions/files.js';
 import type { SessionSource } from '../agents/sessions/types.js';
 import type { TowerInbox, TowerDecision, TowerView } from '../agents/sessions/tower.js';
 import {
@@ -1020,7 +1020,7 @@ export function createChatController(options: ChatOptions): ChatController {
             id: saved?.id ?? randomUUID(),
             cwd: resolved.cwd,
             origin: resolved.origin,
-            title: oneLine(name, 120),
+            title: promptLine(name, 120),
             ...(topicObj ? { topic: { id: topicObj.id, name: topicObj.name } } : {}),
           };
           lastSavedKey = '';

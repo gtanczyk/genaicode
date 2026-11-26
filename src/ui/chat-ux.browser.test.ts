@@ -196,17 +196,20 @@ it('says while a turn runs that other chats open when it finishes, and offers to
     await chip.click();
     const model = page.getByRole('combobox', { name: 'Model' });
     await model.waitFor();
+    await model.click();
     const options = () =>
       page
-        .locator('#agent-models option')
-        .evaluateAll((items) => items.map((item) => (item as HTMLOptionElement).value));
-    expect(await options()).toEqual(['fast', 'smart']);
-    expect(await page.locator('#agent-models option').first().getAttribute('label')).toMatch(
-      /^ran in \d+ sessions?, last today$/,
+        .locator('#agent-models [role="option"]')
+        .evaluateAll((items) => items.map((item) => item.getAttribute('data-value') ?? ''));
+    expect(await options()).toEqual(['', 'fast', 'smart']);
+    expect(await page.locator('#agent-models [role="option"]').nth(1).textContent()).toMatch(
+      /ran in \d+ sessions?, last today/,
     );
     await model.fill('bogus');
     await model.press('Enter');
-    await vi.waitFor(async () => expect(await options()).toEqual(['bogus', 'fast', 'smart']));
+    await model.click();
+    await vi.waitFor(async () => expect(await options()).toEqual(['', 'bogus', 'fast', 'smart']));
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
     // A name the agent does not take: said with the model and the agent, and one click back to its default.
@@ -219,7 +222,9 @@ it('says while a turn runs that other chats open when it finishes, and offers to
     await rejected.waitFor({ state: 'detached' });
     await vi.waitFor(async () => expect(await page.getByRole('log').getByText('Finished.').count()).toBeGreaterThan(0));
     await chip.click();
-    await vi.waitFor(async () => expect(await options()).toEqual(['fast', 'smart']));
+    await model.click();
+    await vi.waitFor(async () => expect(await options()).toEqual(['', 'fast', 'smart']));
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
     expect(errors).toEqual([]);

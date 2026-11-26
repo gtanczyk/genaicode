@@ -1,4 +1,5 @@
 import { trackReply } from './reply.js';
+import { withBriefing } from './host-text.js';
 import { addUsage, remainingBudget } from './usage.js';
 import type { TokenUsage } from '../core/types.js';
 import { shouldFailOver } from './failover.js';
@@ -651,6 +652,13 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
           return { ...turn, entries };
         });
         return;
+      case 'progress':
+        addProgress(turnId, {
+          kind: 'progress',
+          message: event.message,
+          ...(event.plan ? { plan: event.plan } : {}),
+        });
+        return;
       case 'file-change':
         addEntry(turnId, {
           kind: 'files',
@@ -1046,12 +1054,19 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const basePrompt = rewritten ?? toAgent(prompt);
       contextBatch = takeContext();
       const contextPrefix = contextBatch ? `${contextBatch.texts.join('\n\n')}\n\n` : '';
+      const rawPrompt = preamble + prefix + contextPrefix + basePrompt + suffix;
+      // On a new session with the progress channel attached, remind the agent to use `report_progress`
+      // since not every CLI forwards MCP server `instructions` into the model's prompt.
+      const progressBrief =
+        progressScope && !resume
+          ? `For multi-step work, call \`report_progress\` (from the \`${progressScope.mcpServer.name}\` MCP server) to share brief status updates and your plan in the chat, in the user's language.`
+          : '';
       current = turnAgent.run({
         ...options.task,
         ...(extraServers.length ? { mcpServers: withSessionChannels(options.task?.mcpServers, extraServers) } : {}),
         ...(budget ? { budget } : {}),
         ...(taskMode ? { mode: taskMode } : {}),
-        prompt: preamble + prefix + contextPrefix + basePrompt + suffix,
+        prompt: progressBrief ? withBriefing(rawPrompt, progressBrief) : rawPrompt,
         cwd: state.cwd,
         model: (runningModel = state.model),
         effort: turnEffort,

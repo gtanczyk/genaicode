@@ -7,6 +7,7 @@ import { startQuestionChannel } from '../agents/ask-user.js';
 import { startProgressChannel } from '../agents/progress.js';
 import type { CodingAgent } from '../agents/types.js';
 import { detectAgents } from '../agents/discovery.js';
+import { createModelCatalog, type ModelCatalog } from '../agents/models.js';
 import { createAgentInspector, type AgentInspector } from '../agents/status.js';
 import { sendSession } from '../agents/sessions/send.js';
 import { knownLimits } from '../agents/sessions/limits.js';
@@ -223,6 +224,10 @@ export async function runChat(options: WebRunOptions): Promise<number> {
     getEnv: () => liveEnv,
     onUpdate: (inspections) => controller?.updateAgents(inspections),
   });
+  const modelCatalog = createModelCatalog({
+    agents: options.agents,
+    getEnv: () => liveEnv,
+  });
   const localRoots = new Set<string>();
   const addRoot = (dir: string) => {
     localRoots.add(dir);
@@ -231,7 +236,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
   const chatOptions: WebRunOptions = { ...options, env: liveEnv };
   const roots = makeRoots(chatOptions, () => controller, localRoots);
   const cdnHosts = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
-  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, undefined, inspector);
+  const web = webLink(chatOptions, () => controller!, roots, addRoot, undefined, undefined, inspector, modelCatalog);
   const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
     chatOptions,
     () => controller,
@@ -249,6 +254,7 @@ export async function runChat(options: WebRunOptions): Promise<number> {
       openProjectChannel,
       onAuthFailure: () => {
         inspector.invalidate();
+        modelCatalog.invalidate();
         void inspector.check({ refresh: true });
       },
     });
@@ -530,6 +536,10 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     refreshEnv: host?.refreshEnv,
     onUpdate: (inspections) => controller?.updateAgents(inspections),
   });
+  const modelCatalog = createModelCatalog({
+    agents: webOptions.agents,
+    getEnv: () => liveEnv,
+  });
   const localRoots = new Set<string>();
   const addRoot = (dir: string) => {
     localRoots.add(dir);
@@ -547,7 +557,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector);
+  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector, modelCatalog);
   const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
     webOptions,
     () => controller,
@@ -566,6 +576,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       allowNoAgent: true,
       onAuthFailure: () => {
         inspector.invalidate();
+        modelCatalog.invalidate();
         void inspector.check({ refresh: true });
       },
     });
@@ -683,6 +694,7 @@ function webLink(
   settings?: WebSettings,
   release = uiRelease(options.version, options.env ?? process.env, false),
   inspector?: AgentInspector,
+  modelCatalog?: ModelCatalog,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
@@ -708,7 +720,15 @@ function webLink(
       port: options.port,
       token: options.token,
       hostApp: options.hostApp,
-      ...(inspector ? { agents: (query) => inspector.check(query) } : {}),
+      ...(inspector
+        ? {
+            agents: (query) => {
+              if (query?.refresh || query?.refreshEnv) modelCatalog?.invalidate();
+              return inspector.check(query);
+            },
+          }
+        : {}),
+      ...(modelCatalog ? { models: (agent, query) => modelCatalog.list(agent, query) } : {}),
       release,
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),

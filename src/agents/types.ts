@@ -1,5 +1,6 @@
 import type { TokenUsage } from '../core/types.js';
 import type { PackControls } from './pack.js';
+import type { ProgressStep } from './progress.js';
 import type { SessionSource } from './sessions/types.js';
 
 /**
@@ -261,6 +262,8 @@ export type AgentEvent =
   | { type: 'message'; text: string }
   | { type: 'tool-start'; id?: string; name: string; input?: unknown }
   | { type: 'tool-end'; id?: string; name?: string; isError?: boolean; output?: string }
+  /** Brief progress status and/or plan checklist reported natively by a driver. */
+  | { type: 'progress'; message: string; plan?: ProgressStep[] }
   /**
    * `diff`: what changed, as a unified patch, when the agent says. `toolId`: the tool call making the
    * change, when it is announced as the call starts: the change did not happen if that call fails.

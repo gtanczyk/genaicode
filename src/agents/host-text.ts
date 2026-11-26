@@ -11,6 +11,8 @@ const CLOSE = `</${BRIEFING_TAG}>`;
 const PREAMBLE = 'Added by genaicode, not written by the person: how to use the tools this session has.';
 /** How a generated block starts; a person mentioning the tag does not write this. */
 const BLOCK_START = `\n\n${OPEN}\n\n${PREAMBLE}\n\n`;
+/** Matches the generated block's start both multi-line and flattened/truncated in a one-line title. */
+const BLOCK_OPEN = new RegExp(`(?:^|\\s+)${OPEN}\\s+Added by genaicode, not written by the person:`, 'g');
 
 /**
  * Briefings earlier genaicode versions put in front of the prompt: `pack()`'s default and
@@ -46,8 +48,18 @@ function withoutHandoff(text: string): string {
 
 /** The person's prompt first, so an agent that names a session after its first words names it after the request. */
 export function withBriefing(prompt: string, brief: string): string {
-  if (!brief.trim()) return prompt;
-  return `${prompt}${BLOCK_START}${brief.trim()}\n\n${CLOSE}`;
+  const note = brief.trim();
+  if (!note) return prompt;
+  // Merge into an existing trailing briefing block so there is at most one `<genaicode-briefing>` block.
+  const at = prompt.lastIndexOf(BLOCK_START);
+  if (at >= 0) {
+    const tail = prompt.slice(at + BLOCK_START.length);
+    if (tail.endsWith(CLOSE)) {
+      const existing = tail.slice(0, -CLOSE.length).trimEnd();
+      return `${prompt.slice(0, at)}${BLOCK_START}${existing}\n\n${note}\n\n${CLOSE}`;
+    }
+  }
+  return `${prompt}${BLOCK_START}${note}\n\n${CLOSE}`;
 }
 
 /**
@@ -68,9 +80,14 @@ export function hasLeadingBriefing(text: string): boolean {
 export function personText(text: string): string {
   let out = withoutHandoff(text.trimStart());
   for (const lead of LEGACY) out = out.replace(lead, '');
-  const at = out.lastIndexOf(BLOCK_START);
+  let at = -1;
+  let after = -1;
+  for (const match of out.matchAll(BLOCK_OPEN)) {
+    at = match.index;
+    after = match.index + match[0].length;
+  }
   if (at >= 0) {
-    const block = out.slice(at + BLOCK_START.length).trimEnd();
+    const block = out.slice(after).trimEnd();
     const close = block.indexOf(CLOSE);
     if (close < 0 || close === block.length - CLOSE.length) out = out.slice(0, at);
   }

@@ -485,26 +485,58 @@
   color: var(--_muted);
   font-size: 0.85em;
 }
-.gc-fold > summary {
+.gc-fold > summary,
+.gc-fold-btn {
   cursor: pointer;
   width: fit-content;
+  max-width: 100%;
   padding: 3px 10px;
   border: 1px solid var(--_border);
   border-radius: 999px;
+  background: transparent;
+  font: inherit;
   font-size: 0.85em;
   color: var(--_muted);
 }
-.gc-fold > summary .gc-spin {
-  margin-right: 6px;
-  vertical-align: -1px;
+.gc-fold-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.gc-fold > summary:hover {
+.gc-fold > summary .gc-spin,
+.gc-fold-btn .gc-spin {
+  margin-right: 4px;
+  vertical-align: -1px;
+  flex: none;
+}
+.gc-fold > summary:hover,
+.gc-fold-btn:hover {
   color: var(--_text);
+  border-color: var(--_accent);
+}
+.gc-fold-btn[aria-pressed='true'] {
+  color: var(--_text);
+  border-color: var(--_accent);
+  background: color-mix(in srgb, var(--_accent) 12%, transparent);
+}
+.gc-fold-btn:focus-visible {
+  outline: 2px solid var(--_accent);
+  outline-offset: 2px;
+}
+.gc-fold-open {
+  margin-left: 2px;
+  opacity: 0.7;
 }
 .gc-fold-now {
   font-family: var(--_mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.gc-fold > summary .gc-err {
+.gc-fold > summary .gc-err,
+.gc-fold-btn .gc-err {
   color: var(--_error);
 }
 .gc-fold-body {
@@ -514,6 +546,8 @@
   margin-top: 8px;
   padding-left: 12px;
   border-left: 2px solid var(--_border);
+  max-height: min(45vh, 360px);
+  overflow: auto;
 }
 
 /* Tool calls */
@@ -828,8 +862,14 @@
   align-items: center;
   gap: 8px;
   color: var(--_muted);
+  min-width: 0;
+}
+.gc-working > :not(.gc-working-now) {
+  flex: none;
+  white-space: nowrap;
 }
 .gc-working-now {
+  flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

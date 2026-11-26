@@ -62,10 +62,12 @@ import {
 import { holdsTypedText, Shell } from './shell.js';
 import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, ModelRejected, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
+import type { DiscoveredModel } from '../../agents/models.js';
 import { forgetModel, modelSuggestions, readRecentModels, rememberModel, rejectsModel } from '../models.js';
 import { SessionReplies } from './session-reply.js';
 import { Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
+import { StepsPanel } from './steps-panel.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
 import { needsItems, needsSessions, type NeedsDecision } from '../needs-you.js';
@@ -228,6 +230,8 @@ interface PageConfig {
   /** True when the plan limits last seen of every agent are served (`/api/limits`). */
   limits?: boolean;
   files?: boolean;
+  /** True when `GET /api/models?agent=` can discover available models from installed CLIs. */
+  models?: boolean;
   /** True when the desktop host app opens a native Save dialog via `POST /api/save-transcript`. */
   nativeSave?: boolean;
   reveal?: boolean;
@@ -1340,8 +1344,8 @@ function App() {
       seen: tasks.length,
     });
   };
-  /** Opens a file or an artifact in the panel's viewer, from the chat or from inside the viewer. */
-  const openViewer = (target: ViewerTarget) => {
+  /** Opens a file, artifact or turn steps in the panel's viewer, from the chat or from inside the viewer. */
+  const openViewer = (target: ViewerTarget | { kind: 'steps'; turnId: number; stretch: number }) => {
     setPanel('chat');
     if (!workOpen) viewerOpenedPanel.current = true;
     if (!workLayout.docks) setWorkFullOpen(true);
@@ -1351,6 +1355,13 @@ function App() {
       // A link followed inside the viewer keeps the way back of what was open.
       viewing: { ...target, from: viewing?.from ?? 'chat' },
     });
+  };
+  const openStepsInPanel = (turn: SessionTurn, stretch: number) => {
+    if (viewing?.kind === 'steps' && viewing.turnId === turn.id && viewing.stretch === stretch) {
+      closeViewer();
+      return;
+    }
+    openViewer({ kind: 'steps', turnId: turn.id, stretch });
   };
   /** Closes the viewer: back to the list it was opened from, or (opened from the chat) to the chat. */
   const closeViewer = (next: WorkPanelView = workView) => {
@@ -1398,10 +1409,11 @@ function App() {
     [config?.files, localImages],
   );
 
-  // Close the viewer if the conversation was cleared and the open artifact no longer exists.
+  // Close the viewer if the conversation was cleared and the open artifact or turn no longer exists.
   useEffect(() => {
     if (viewing?.kind === 'artifact' && !sessionArtifacts.some((g) => g.id === viewing.id)) closeViewer();
-  }, [viewing, sessionArtifacts]);
+    if (viewing?.kind === 'steps' && !session?.turns.some((turn) => turn.id === viewing.turnId)) closeViewer();
+  }, [viewing, sessionArtifacts, session?.turns]);
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1474,8 +1486,28 @@ function App() {
 
   const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
   const efforts = currentAgent?.effort ?? [];
-  // The Model field's list: picked here lately, run by this agent (the index, this chat), known to it.
+  // The Model field's list: picked here lately, run by this agent (the index, this chat), discovered from CLI, known to it.
   const [recentModels, setRecentModels] = useState<string[]>([]);
+  const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
+  const [loadingModelsAgent, setLoadingModelsAgent] = useState<string>();
+  const modelsInFlight = useRef(new Set<string>());
+  const loadModels = (agentName: string) => {
+    if (!config?.models || !token || !agentName || modelsInFlight.current.has(agentName)) return;
+    modelsInFlight.current.add(agentName);
+    if (!discoveredModels[agentName]?.length) setLoadingModelsAgent(agentName);
+    void fetch(`/api/models?agent=${encodeURIComponent(agentName)}`, { headers: { 'x-genaicode-token': token } })
+      .then((res) => (res.ok ? (res.json() as Promise<{ models?: DiscoveredModel[] }>) : undefined))
+      .then((body) => {
+        if (body && Array.isArray(body.models)) {
+          setDiscoveredModels((prev) => ({ ...prev, [agentName]: body.models! }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        modelsInFlight.current.delete(agentName);
+        setLoadingModelsAgent((current) => (current === agentName ? undefined : current));
+      });
+  };
   useEffect(() => {
     setRecentModels(session?.agent ? readRecentModels(workStore(), session.agent) : []);
   }, [session?.agent]);
@@ -1493,10 +1525,11 @@ function App() {
       ...(currentAgent?.store ? { store: currentAgent.store } : {}),
       sessions,
       reported: session.reportedModel,
+      discovered: discoveredModels[session.agent],
       known: currentAgent?.models,
       recent: recentModels,
     });
-  }, [session?.agent, session?.reportedModel, currentAgent, chats.own, chats.all, recentModels]);
+  }, [session?.agent, session?.reportedModel, currentAgent, chats.own, chats.all, recentModels, discoveredModels]);
   const pickModel = (model: string) => {
     if (session?.agent) setRecentModels(rememberModel(workStore(), session.agent, model));
     return inChat({ type: 'model', model });
@@ -1512,12 +1545,16 @@ function App() {
           model={session.model}
           reportedModel={session.reportedModel}
           models={models}
+          modelsLoading={loadingModelsAgent === session.agent}
           effort={session.effort}
           efforts={efforts}
           fallback={session.fallback ?? []}
           agents={agentList}
           noQuestions={new Set(view.agents.filter((agent) => agent.canAsk === false).map((agent) => agent.name))}
           running={running}
+          onOpen={() => {
+            if (session.agent) loadModels(session.agent);
+          }}
           onAgent={(name) => {
             // What still waits here was meant for the other agent.
             dropWaiting();
@@ -1751,36 +1788,55 @@ function App() {
                 if (commit) workWidth.set(width);
               }}
               viewsFiles={!!config?.files}
-              renderViewer={(target, controls) => (
-                <ViewerPanel
-                  target={target}
-                  token={token}
-                  artifacts={sessionArtifacts}
-                  canReveal={config?.reveal}
-                  onReveal={revealFile}
-                  onOpenFile={openFile}
-                  imageUrl={imageUrl}
-                  onSelectArtifactVersion={(version) =>
-                    target.kind === 'artifact'
-                      ? setWorkView({ ...workView, viewing: { ...target, version } })
-                      : undefined
-                  }
-                  onArtifactSubmit={
-                    connected && !inSetup
-                      ? (artifact, data) => void submit(artifactSubmission(artifact, data))
-                      : undefined
-                  }
-                  // The lead's own edit, opened from Changes: its diff first.
-                  diff={
-                    target.kind === 'file' && target.from === 'changes'
-                      ? changes.lead.find((row) => row.path === target.path)?.diff
-                      : undefined
-                  }
-                  back={{ label: controls.backLabel, onBack: controls.onBack }}
-                  expanded={expanded && workLayout.docks}
-                  onExpand={workLayout.docks ? setExpanded : undefined}
-                />
-              )}
+              renderViewer={(target, controls) => {
+                if (target.kind === 'steps') {
+                  const turn = session?.turns.find((candidate) => candidate.id === target.turnId);
+                  if (!turn) return null;
+                  return (
+                    <StepsPanel
+                      turn={turn}
+                      stretch={target.stretch}
+                      cwd={session.cwd}
+                      pending={turn.result ? [] : session.approvals}
+                      renderPrompt={promptBubble}
+                      onOpenFile={openFile}
+                      back={{ label: controls.backLabel, onBack: controls.onBack }}
+                      expanded={expanded && workLayout.docks}
+                      onExpand={workLayout.docks ? setExpanded : undefined}
+                    />
+                  );
+                }
+                return (
+                  <ViewerPanel
+                    target={target}
+                    token={token}
+                    artifacts={sessionArtifacts}
+                    canReveal={config?.reveal}
+                    onReveal={revealFile}
+                    onOpenFile={openFile}
+                    imageUrl={imageUrl}
+                    onSelectArtifactVersion={(version) =>
+                      target.kind === 'artifact'
+                        ? setWorkView({ ...workView, viewing: { ...target, version } })
+                        : undefined
+                    }
+                    onArtifactSubmit={
+                      connected && !inSetup
+                        ? (artifact, data) => void submit(artifactSubmission(artifact, data))
+                        : undefined
+                    }
+                    // The lead's own edit, opened from Changes: its diff first.
+                    diff={
+                      target.kind === 'file' && target.from === 'changes'
+                        ? changes.lead.find((row) => row.path === target.path)?.diff
+                        : undefined
+                    }
+                    back={{ label: controls.backLabel, onBack: controls.onBack }}
+                    expanded={expanded && workLayout.docks}
+                    onExpand={workLayout.docks ? setExpanded : undefined}
+                  />
+                );
+              }}
               // While the window moves to another chat nothing here may act: it would act on the chat left.
               disabled={!connected || switching}
               onPackAction={async (turnId, id, action, intent) => {
@@ -2237,6 +2293,8 @@ function App() {
               onAutoApprove={view?.autoApprove ? undefined : () => setAutoApprove(true)}
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}
+              onOpenSteps={openStepsInPanel}
+              activeSteps={viewing?.kind === 'steps' ? { turnId: viewing.turnId, stretch: viewing.stretch } : undefined}
               // The team's counts and the next approval of a task, above the message box at every width.
               missionStrip={{
                 pullRequests,

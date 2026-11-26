@@ -263,9 +263,20 @@ button.chip:hover { border-color: var(--accent); }
 .opt-name { font-weight: 500; white-space: nowrap; }
 .shell .agent-opt.picker-connect { color: var(--accent); border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; margin-top: 4px; padding-top: 8px; }
 .picker-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--faint); }
-.picker-dot[data-state='ready'] { background: var(--gc-color-ok); }
+.picker-dot[data-state='ready'], .picker-dot[data-state='installed'] { background: var(--gc-color-ok); }
 .picker-dot[data-state='signed-out'], .picker-dot[data-state='broken'] { background: var(--gc-color-warn); }
-.picker-dot[data-state='installed'] { background: var(--accent); }
+.model-combo { position: relative; display: grid; gap: 4px; }
+.model-combo-input { position: relative; display: flex; align-items: center; }
+.model-combo-input .field { width: 100%; padding-right: 28px; }
+.shell .model-combo-toggle { position: absolute; right: 2px; top: 2px; bottom: 2px; width: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: 11px; padding: 0; }
+.shell .model-combo-toggle:hover { color: var(--text); background: var(--gc-color-sunken); }
+.model-combo-menu { display: grid; gap: 2px; max-height: 200px; overflow: auto; padding: 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--gc-color-sunken); }
+.shell .model-opt { display: grid; gap: 1px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; width: 100%; text-align: left; color: var(--text); cursor: pointer; min-width: 0; }
+.shell .model-opt:hover, .shell .model-opt[data-active='true'] { background: var(--panel); }
+.shell .model-opt[aria-selected='true'] { background: var(--gc-color-accent-soft); }
+.model-opt-id { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-opt-note { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-combo-status { padding: 5px 8px; font-size: 11px; color: var(--muted); }
 .picker-section { display: grid; gap: 2px; }
 .picker-heading { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 8px 2px; border-top: 1px solid var(--line); margin-top: 4px; }
 .picker-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; font-size: 13px; }
@@ -308,6 +319,11 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .viewer-panel header .chip[aria-pressed='true'] { color: var(--text); border-color: var(--accent); }
 .viewer-back { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 600; }
 .viewer-diff { padding: 0 12px; }
+.steps-panel .viewer-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: var(--text); }
+.steps-panel-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+.steps-list { display: flex; flex-direction: column; gap: 6px; }
+.steps-note { font-size: 12px; color: var(--muted); padding: 6px 8px; border-left: 2px solid var(--line); white-space: pre-wrap; }
+.steps-empty { color: var(--muted); font-size: 13px; margin: 12px 0; }
 .viewer-diff .gc-work-diff { max-height: none; margin: 10px 0; }
 .viewer-icon { color: var(--accent); }
 .viewer-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 38ch; }
