@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { SessionInfo } from '../agents/sessions/types.js';
-import type { ChatController, ChatSwitch, ChatView } from './controller.js';
+import type { ChatController, ChatSwitch, ChatView, SwitchOrder } from './controller.js';
 import type { ProjectFiles } from './files.js';
 import type { Uploads } from './uploads.js';
 
@@ -19,6 +19,7 @@ export interface ChatSummary extends SessionInfo {
   position?: number;
   glyph?: 'run' | 'ask' | 'idle' | 'err' | 'ok' | 'wait';
   unread?: boolean;
+  interrupted?: boolean;
 }
 
 type QueuedPrompt = { text: string; send(): void };
@@ -36,10 +37,12 @@ export class ChatHub {
     void this.evict().catch(() => {});
   }, 30_000).unref();
   lastShown: string;
+  busyPacks?: () => string[];
   onOpen?: (id: string) => void;
   private readonly waiting = new Map<string, QueuedPrompt[]>();
   private readonly listeners = new Set<() => void>();
   private readonly created = new Map<string, number>();
+  private readonly navigation = new Map<string, number>();
   private opening: Promise<unknown> = Promise.resolve();
   private closing = false;
   private draining = false;
@@ -49,9 +52,18 @@ export class ChatHub {
     public limit = 4,
     readonly initial: string = randomUUID(),
     private readonly exists?: (id: string) => Promise<boolean>,
-    private readonly saveIndex?: (ids: string[], shown: string) => Promise<void>,
+    private readonly saveIndex?: (ids: string[], shown: string, chats: ChatSummary[]) => Promise<void>,
+    private readonly resolveSession?: (
+      id: string,
+      source?: string,
+    ) => Promise<Pick<SessionInfo, 'id' | 'source' | 'agent'> | undefined>,
+    private readonly home = false,
+    catalog?: ChatSummary[],
   ) {
     this.lastShown = initial;
+    for (const row of catalog ?? []) {
+      if (row.chat && row.chat !== initial) this.dormant.set(row.chat, row);
+    }
   }
 
   shown(id: string) {
@@ -81,54 +93,66 @@ export class ChatHub {
     }
   }
 
+  private mayUnload(id: string, { controller }: HubChat) {
+    const { session } = controller.get();
+    return (
+      id !== this.initial &&
+      !this.views.get(id) &&
+      !this.waiting.has(id) &&
+      !controller.hasShellProcesses() &&
+      session.status === 'idle' &&
+      !session.approvals.length &&
+      !session.queued.length &&
+      !session.turns.some(
+        (t) =>
+          t.pack?.interactive &&
+          t.pack.tasks.some(
+            (w) =>
+              w.state === 'unmerged' ||
+              w.status === 'running' ||
+              w.checks?.review?.status === 'running' ||
+              w.checks?.verify?.status === 'running',
+          ),
+      )
+    );
+  }
+
+  async unload(id: string) {
+    const chat = this.chats.get(id);
+    if (!chat || !this.mayUnload(id, chat)) return false;
+    const row = this.summaries().find((row) => row.chat === id)!;
+    this.dormant.set(id, row);
+    this.chats.delete(id);
+    const work = (async () => {
+      try {
+        await chat.save?.(false);
+      } catch (error) {
+        this.dormant.delete(id);
+        this.chats.set(id, chat);
+        throw error;
+      }
+      await chat.close();
+    })();
+    this.unloading.set(id, work);
+    try {
+      await work;
+      return true;
+    } finally {
+      this.unloading.delete(id);
+      this.changed();
+    }
+  }
+
   async evict(now = Date.now()) {
     const idle = [...this.chats]
-      .filter(([id, { controller }]) => {
-        const { session, shells } = controller.get();
-        return (
-          id !== this.initial &&
-          !this.views.get(id) &&
-          !this.waiting.has(id) &&
-          !shells &&
-          session.status === 'idle' &&
-          !session.approvals.length &&
-          !session.queued.length &&
-          !session.turns.some(
-            (t) =>
-              t.pack?.interactive &&
-              t.pack.tasks.some(
-                (w) =>
-                  w.state === 'unmerged' ||
-                  w.status === 'running' ||
-                  w.checks?.review?.status === 'running' ||
-                  w.checks?.verify?.status === 'running',
-              ),
-          )
-        );
-      })
+      .filter(([id, chat]) => this.mayUnload(id, chat))
       .sort(([a], [b]) => this.lastSeen.get(a)! - this.lastSeen.get(b)!);
-    for (const [i, [id, chat]] of idle.entries()) {
-      const age = now - this.lastSeen.get(id)!;
-      if (age < 30_000 || (age < 600_000 && i >= idle.length - 12)) continue;
-      this.dormant.set(id, this.summaries().find((row) => row.chat === id)!);
-      this.chats.delete(id);
-      const work = (async () => {
-        try {
-          await chat.save?.(false);
-        } catch (error) {
-          this.chats.set(id, chat);
-          throw error;
-        }
-        await chat.close();
-      })();
-      this.unloading.set(id, work);
-      try {
-        await work;
-      } finally {
-        this.unloading.delete(id);
-        this.changed();
-      }
-    }
+    await Promise.all(
+      idle.map(async ([id], i) => {
+        const age = now - this.lastSeen.get(id)!;
+        if (age >= 30_000 && (age >= 600_000 || i < idle.length - 12)) await this.unload(id);
+      }),
+    );
   }
 
   private changed = () => {
@@ -196,9 +220,17 @@ export class ChatHub {
       .concat([...this.dormant.values()]);
   }
 
-  open(from: string, target: ChatSwitch): Promise<string | undefined> {
+  open(from: string, target: ChatSwitch, order?: SwitchOrder): Promise<string | null | undefined> {
+    if (order) {
+      if (order.seq <= (this.navigation.get(order.window) ?? 0)) return Promise.resolve(null);
+      this.navigation.delete(order.window);
+      this.navigation.set(order.window, order.seq);
+      if (this.navigation.size > 256) this.navigation.delete(this.navigation.keys().next().value!);
+    }
+    const stale = () => order && this.navigation.get(order.window) !== order.seq;
     // Resolve ownership and register it as one operation, even for simultaneous opens.
     const work = this.opening.then(async () => {
+      if (stale()) return null;
       if (this.closing) return;
       const current = this.chats.get(from);
       if (!current) return;
@@ -208,7 +240,15 @@ export class ChatHub {
           (row) => row.id === target.id && (!target.source || row.source === target.source),
         );
         if (owner) return (await this.reopen(owner.chat)) ? owner.chat : undefined;
-        if (target.takeover)
+        const stored = await this.resolveSession?.(target.id, target.source);
+        if (stale()) return null;
+        if (stored) {
+          const live = this.summaries().find(
+            (row) => row.id === stored.id && (row.source === stored.source || row.agent === stored.agent),
+          );
+          if (live) return (await this.reopen(live.chat)) ? live.chat : undefined;
+        }
+        if (target.takeover && !this.home)
           return (await current.controller.continueSession(target.id, { source: target.source })) ? from : undefined;
       }
       const id = randomUUID();
@@ -216,6 +256,10 @@ export class ChatHub {
       let opened = false;
       try {
         opened = target.type === 'home' || (await chat.controller.switchChat(target)) === 'done';
+        if (stale()) {
+          opened = false;
+          return null;
+        }
         if (opened) return id;
         current.controller.note(chat.controller.get().notices.at(-1)?.text ?? 'Could not open the chat.', 'error');
       } finally {
@@ -286,6 +330,11 @@ export class ChatHub {
     this.listeners.clear();
     await Promise.all([...this.unloading.values(), ...this.loading.values()]);
     const ids = [...this.chats.keys()];
+    const interruptedIds = new Set(
+      this.summaries()
+        .filter((row) => row.turnInProgress)
+        .map((row) => row.chat),
+    );
     await Promise.all(
       [...this.chats.values()].map(async (chat) => {
         const interrupted = chat.controller.get().session.status === 'running';
@@ -293,7 +342,12 @@ export class ChatHub {
         await chat.save?.(interrupted);
       }),
     );
-    await this.saveIndex?.(ids, this.lastShown);
+    const catalog = this.summaries()
+      .filter((row) => row.title !== 'New chat' || row.id !== row.chat || row.chat === this.lastShown)
+      .map((row) =>
+        interruptedIds.has(row.chat) ? { ...row, glyph: 'err' as const, unread: true, interrupted: true } : row,
+      );
+    await this.saveIndex?.(ids, this.lastShown, catalog);
     this.chats.clear();
   }
 }

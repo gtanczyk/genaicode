@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { PackPool } from './pack-pool.js';
 import { checkedForMerge, isPassingVerdict, replyVerdict } from './pack-verdict.js';
 import { trackReply } from './reply.js';
@@ -55,6 +56,7 @@ import type {
 
 export interface PackOptions {
   pool?: PackPool;
+  poolChat?: string;
   /** The agent that takes the prompt and hands work out. Needs `capabilities.mcp`. */
   lead: CodingAgent;
   /** Agents the lead may delegate to. The lead may be one of them. */
@@ -972,7 +974,13 @@ export function pack(options: PackOptions): Pack {
       pack({
         ...options,
         pool,
-        worktreeDir: path.join(options.worktreeDir ?? '.genaicode/worktrees', id, options.name ?? 'pack'),
+        poolChat: id,
+        worktreeDir: path.join(
+          options.worktreeDir ?? '.genaicode/worktrees',
+          createHash('sha256')
+            .update(JSON.stringify([id, options.name ?? 'pack']))
+            .digest('hex'),
+        ),
       }),
     async shutdown() {
       const all = [...subs.values()];
@@ -1176,6 +1184,13 @@ export function pack(options: PackOptions): Pack {
         return sub;
       };
 
+      const acquireWorker = (context?: McpCallContext) =>
+        options.pool?.acquire(
+          ended.signal,
+          () => context?.progress?.(0, undefined, 'Waiting for a pack worker'),
+          options.poolChat,
+        );
+
       const delegate = async (args: Record<string, unknown>, context?: McpCallContext): Promise<string> => {
         const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
         if (!prompt) throw new Error('`prompt` is required.');
@@ -1213,9 +1228,7 @@ export function pack(options: PackOptions): Pack {
           turnStarting -= 1;
         };
         const reserve = async () => {
-          const release = await options.pool?.acquire(ended.signal, () =>
-            context?.progress?.(0, undefined, 'Waiting for a pack worker'),
-          );
+          const release = await acquireWorker(context);
           try {
             ended.signal.throwIfAborted();
             return await start(agent, prompt, args, base, roster, releaseTurnSlot, release);
@@ -1631,7 +1644,7 @@ export function pack(options: PackOptions): Pack {
           sub.changes = await listChanges(sub, revision);
           const checks = sub.checks;
           if (occupied() >= maxParallel) throw new PackActionError('capacity');
-          const release = options.pool?.take();
+          const release = options.pool?.take(options.poolChat);
           if (options.pool && !release) throw new PackActionError('capacity');
           const abort = new AbortController();
           const cancel = () => abort.abort();
@@ -1740,7 +1753,12 @@ export function pack(options: PackOptions): Pack {
         });
       };
 
-      const continueTask = async (sub: Sub, text: string, from: PackSteer['from']): Promise<string> => {
+      const continueTask = async (
+        sub: Sub,
+        text: string,
+        from: PackSteer['from'],
+        context?: McpCallContext,
+      ): Promise<string> => {
         if (ended.signal.aborted || sub.closing)
           throw new PackActionError('not-running', 'The turn has ended; start a new prompt to continue.');
         if (!sub.agent.capabilities.resume)
@@ -1756,11 +1774,12 @@ export function pack(options: PackOptions): Pack {
         if (findExecutable(sub.agent.command, task.env) === null)
           throw new Error(`${sub.agent.name} is not installed.`);
         if (sub.continuing) throw new PackActionError('checking', `${sub.id} is already resuming.`);
+        if (occupied() >= maxParallel) throw new PackActionError('capacity');
         sub.continuing = true;
         starting += 1;
         const setup = (async () => {
           const roster = await rosterAt(sub.base);
-          const release = await options.pool?.acquire(ended.signal);
+          const release = await acquireWorker(context);
           try {
             return await withWorktree(async () => {
               if (ended.signal.aborted || sub.closing)
@@ -1825,9 +1844,9 @@ export function pack(options: PackOptions): Pack {
         return setup;
       };
 
-      const steer = async (sub: Sub, text: unknown, from: PackSteer['from']) => {
+      const steer = async (sub: Sub, text: unknown, from: PackSteer['from'], context?: McpCallContext) => {
         if (typeof text !== 'string' || !text.trim()) throw new PackActionError('input', '`text` is required.');
-        if (sub.status !== 'running' || !sub.run) return continueTask(sub, text, from);
+        if (sub.status !== 'running' || !sub.run) return continueTask(sub, text, from, context);
         if (!sub.run.steer)
           throw new PackActionError(
             'cannot-steer',
@@ -2046,11 +2065,11 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, text: { type: 'string' } },
             required: ['id', 'text'],
           },
-          call: (args) => {
+          call: (args, context) => {
             const sub = find(args.id);
             if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
               throw new Error(`Cannot steer ${sub.id} while in Plan mode: it started outside Plan mode.`);
-            return steer(sub, args.text, 'lead');
+            return steer(sub, args.text, 'lead', context);
           },
         },
         {

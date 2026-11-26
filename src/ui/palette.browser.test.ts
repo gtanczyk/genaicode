@@ -315,7 +315,7 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
       const latePalette = late.getByRole('dialog', { name: 'Search chats and sessions' });
       await latePalette.waitFor();
       expect(await latePalette.locator('[role=option] small', { hasText: 'session' }).count()).toBe(0);
-      expect(await lateSide.getByText('Count the loaves').count()).toBe(0);
+      await lateSide.getByText('Count the loaves').waitFor();
       release();
       // Then this app's chats are chats, and only the other agent's session is a session.
       await vi.waitFor(async () =>
@@ -324,10 +324,14 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
             .getByRole('option')
             .evaluateAll((rows) =>
               rows
-                .filter((row) => row.querySelector('small')?.textContent !== 'command')
+                .filter(
+                  (row) =>
+                    row.querySelector('small')?.textContent !== 'command' &&
+                    row.querySelector('.grow')?.textContent !== 'New chat',
+                )
                 .map((row) => `${row.querySelector('.grow')?.textContent} ${row.querySelector('small')?.textContent}`),
             ),
-        ).toEqual(['Polish the armour chat', 'Count the loaves chat', 'Sourdough schedule session']),
+        ).toEqual(['Count the loaves chat', 'Polish the armour chat', 'Sourdough schedule session']),
       );
       await slow.close();
     }

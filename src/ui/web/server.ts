@@ -386,6 +386,18 @@ function parseCommandBody(command: Record<string, unknown>): WebCommandBody | un
   const text = (key: string, max: number) =>
     typeof command[key] === 'string' && (command[key] as string).length <= max ? (command[key] as string) : undefined;
   switch (command.type) {
+    case 'open': {
+      if (!command.target || typeof command.target !== 'object') return;
+      const target = command.target as Record<string, unknown>;
+      const types = new Map([
+        ['home', 'home-chat'],
+        ['project', 'project-chat'],
+        ['topic', 'topic-chat'],
+        ['continue', 'continue'],
+      ]);
+      const type = typeof target.type === 'string' && types.get(target.type);
+      return type ? parseCommandBody({ ...target, type, order: command.order }) : undefined;
+    }
     case 'submit': {
       const body = text('text', 32_000);
       if (body === undefined) return undefined;
@@ -564,6 +576,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const pageCookieSecret = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
   const sentViews = new WeakMap<ServerResponse, ReturnType<ChatController['get']>>();
+  const desktopStreams = new Set<ServerResponse>();
   const viewers = new Map<ServerResponse, ChatController>();
   const lifetime = new AbortController();
   let port = 0;
@@ -664,7 +677,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   };
   if (hub)
     hub.onOpen = (chat) => {
-      for (const stream of streams) stream.write(`event: open\ndata: ${JSON.stringify({ chat })}\n\n`);
+      for (const stream of desktopStreams) stream.write(`event: open\ndata: ${JSON.stringify({ chat })}\n\n`);
     };
   const broadcastConfig = () => {
     const data = configEvent();
@@ -722,7 +735,34 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       return res.end(asset.body);
     }
-    const chatId = url.searchParams.get('chat') ?? hub?.initial;
+    const queryChat = url.searchParams.get('chat');
+    let chatId = queryChat ?? hub?.initial;
+    let command: WebCommand | undefined;
+    if (req.method === 'POST' && url.pathname === '/api/command') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+
+      try {
+        const raw = JSON.parse(await readBody(req));
+        if (raw?.chat !== undefined) {
+          if (typeof raw.chat !== 'string' || !raw.chat || (queryChat && queryChat !== raw.chat))
+            return send(res, 409, 'application/json', '{"ok":false,"reason":"conversation"}');
+          chatId = raw.chat;
+        }
+        if (raw?.type === 'close' && hub && chatId) {
+          const ok = await hub.unload(chatId);
+          return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
+        }
+        command = parseCommand(raw);
+      } catch {
+        command = undefined;
+      }
+      if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+    }
     let chat = chatId ? hub?.chats.get(chatId) : undefined;
     if (
       !chat &&
@@ -1022,6 +1062,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (options.release) res.write(`event: release\ndata: ${JSON.stringify(options.release())}\n\n`);
       streams.add(res);
       viewers.set(res, controller);
+      if (url.searchParams.get('desktop') === '1') desktopStreams.add(res);
       const hide = chatId ? hub?.shown(chatId) : undefined;
       if (hub) res.write(`event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n`);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
@@ -1029,6 +1070,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         clearInterval(ping);
         hide?.();
         viewers.delete(res);
+        desktopStreams.delete(res);
         streams.delete(res);
       });
       return;
@@ -1455,20 +1497,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       options.hostApp.relaunch();
       return send(res, 200, 'application/json', '{"ok":true}');
     }
-    if (req.method === 'POST' && url.pathname === '/api/command') {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
-        return send(res, 403, 'application/json', '{"error":"bad token"}');
-      }
-      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
-        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
-      }
-      let command: WebCommand | undefined;
-      try {
-        command = parseCommand(JSON.parse(await readBody(req)));
-      } catch {
-        command = undefined;
-      }
-      if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+    if (command) {
       // A command pressed in one conversation never acts on the next one the window moved to.
       if (
         (!isSwitch(command) &&
@@ -1532,20 +1561,31 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
         } catch (error) {
           const refusal = publicPackRefusal(error);
-          if (refusal)
+          if (refusal) {
+            const names = refusal.reason === 'capacity' ? hub?.busyPacks?.() : undefined;
             return send(
               res,
               refusal.reason === 'missing' ? 404 : 409,
               'application/json',
-              JSON.stringify({ ok: false, error: refusal.message, reason: refusal.reason }),
+              JSON.stringify({
+                ok: false,
+                error: names?.length ? refusal.message + ' Working chats: ' + names.join(', ') : refusal.message,
+                reason: refusal.reason,
+              }),
             );
+          }
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }
       }
       if (isSwitch(command)) {
         if (hub && chatId) {
-          const opened = await hub.open(chatId, switchTarget(command, chosenFolders));
-          return send(res, 200, 'application/json', JSON.stringify({ ok: !!opened, chat: opened }));
+          const opened = await hub.open(chatId, switchTarget(command, chosenFolders), command.order);
+          return send(
+            res,
+            200,
+            'application/json',
+            JSON.stringify(opened === null ? { ok: false, superseded: true } : { ok: !!opened, chat: opened }),
+          );
         }
         const result = await controller.switchChat(
           switchTarget(command, chosenFolders),

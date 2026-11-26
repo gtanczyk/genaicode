@@ -2476,3 +2476,42 @@ it('reopens an unmerged worker after shutdown and uses the same worktree and sha
   expect(second.records()).toEqual([]);
   await second.close();
 });
+
+it('queues workers across packs, releases each slot once and serializes mutations only within a repository', async () => {
+  const { PackPool } = await import('./pack-pool.js');
+  const pool = new PackPool(2);
+  const a = pool.take('First')!;
+  const b = pool.take('Second')!;
+  expect(pool.take('Third')).toBeUndefined();
+  expect(pool.busyChats).toEqual(['First', 'Second']);
+  const stop = new AbortController();
+  const canceled = pool.acquire(stop.signal, undefined, 'Canceled');
+  const pending = pool.acquire(new AbortController().signal, undefined, 'Third');
+  stop.abort();
+  await expect(canceled).rejects.toThrow('Stopped waiting');
+  b();
+  const third = await pending;
+  b();
+  expect(pool.busyChats).toEqual(['First', 'Third']);
+  a();
+  third();
+  let finish!: () => void;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const entries: string[] = [];
+  const one = pool.inRepo('/one', async () => {
+    entries.push('first');
+    await held;
+  });
+  const two = pool.inRepo('/one', async () => {
+    entries.push('second');
+  });
+  await pool.inRepo('/other', async () => {
+    entries.push('other');
+  });
+  expect(entries).toEqual(['first', 'other']);
+  finish();
+  await Promise.all([one, two]);
+  expect(entries).toEqual(['first', 'other', 'second']);
+});

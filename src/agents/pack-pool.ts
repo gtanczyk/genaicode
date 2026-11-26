@@ -1,25 +1,30 @@
 /** Shared capacity and Git mutations for the packs of one UI server. */
 export class PackPool {
-  private used = 0;
+  private readonly holders = new Map<symbol, string>();
   private readonly waiting = new Set<() => void>();
   private readonly repositories = new Map<string, Promise<unknown>>();
-  constructor(readonly capacity = 8) {}
+  constructor(
+    readonly capacity = 8,
+    private readonly title = (id: string) => id,
+  ) {}
 
-  take(): (() => void) | undefined {
-    if (this.used >= this.capacity) return;
-    this.used++;
-    let held = true;
+  get busyChats() {
+    return [...new Set(this.holders.values())].filter(Boolean).map(this.title);
+  }
+
+  take(chat = ''): (() => void) | undefined {
+    if (this.holders.size >= this.capacity) return;
+    const slot = Symbol();
+    this.holders.set(slot, chat);
     return () => {
-      if (!held) return;
-      held = false;
-      this.used--;
+      if (!this.holders.delete(slot)) return;
       this.waiting.values().next().value?.();
     };
   }
 
-  async acquire(signal: AbortSignal, progress?: () => void): Promise<() => void> {
+  async acquire(signal: AbortSignal, progress?: () => void, chat = ''): Promise<() => void> {
     signal.throwIfAborted();
-    const free = this.take();
+    const free = this.take(chat);
     if (free) return free;
     return new Promise((resolve, reject) => {
       const finish = () => {
@@ -29,7 +34,7 @@ export class PackPool {
         signal.removeEventListener('abort', cancel);
       };
       const wake = () => {
-        const release = this.take();
+        const release = this.take(chat);
         if (!release) return;
         finish();
         resolve(release);
@@ -41,7 +46,7 @@ export class PackPool {
       const heartbeat = setInterval(() => progress?.(), 15_000);
       const deadline = setTimeout(() => {
         finish();
-        reject(new Error('All pack workers are busy in other chats. Try again later.'));
+        reject(new Error(`All ${this.capacity} pack workers are busy. ${this.busyChats.join(', ')}. Try again later.`));
       }, 240_000);
       this.waiting.add(wake);
       signal.addEventListener('abort', cancel, { once: true });

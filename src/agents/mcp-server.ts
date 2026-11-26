@@ -153,14 +153,14 @@ export function scopedMcpServers() {
   const open = async ({ tools, ...options }: LocalMcpServerOptions): Promise<LocalMcpServer> => {
     let pending = servers.get(options.name);
     if (!pending) {
-      pending = startScopedLocalMcpServer(options, (target) => scopes.get(target));
+      pending = startScopedLocalMcpServer(options, (target) => scopes.get(options.name + ':' + target));
       servers.set(options.name, pending);
       pending.catch(() => servers.delete(options.name));
     }
     const server = await pending;
     const url = new URL(server.mcpServer.url);
     url.searchParams.set('scope', randomBytes(24).toString('hex'));
-    const key = url.pathname + url.search;
+    const key = options.name + ':' + url.pathname + url.search;
     scopes.set(key, tools);
     return {
       mcpServer: { ...server.mcpServer, url: url.href },

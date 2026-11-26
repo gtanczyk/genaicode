@@ -368,7 +368,11 @@ export function Sidebar(props: SidebarProps) {
                   className={`nav chat${unavailable ? ' unavailable' : ''}`}
                   aria-current={selected ? 'page' : undefined}
                   aria-disabled={unavailable ? true : undefined}
-                  title={unavailable ?? `${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`}
+                  title={
+                    unavailable ??
+                    (live?.interrupted ? 'Interrupted when the app quit' : undefined) ??
+                    `${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`
+                  }
                   onClick={() => props.onOpenChat(chat)}
                 >
                   <StateGlyph state={glyph} />

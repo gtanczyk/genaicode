@@ -177,6 +177,7 @@ export interface ChatOptions {
   approveAll?: boolean;
   /** Start with the bark on. Default true; `/bark` toggles it. */
   bark?: boolean;
+  onBark?(on: boolean): void;
   /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
   transformPrompt?(prompt: string): string;
   /** Backs `/web`. Without it, `/web` only says the browser UI is not available here. */
@@ -234,6 +235,9 @@ export interface SwitchOrder {
 export type SwitchResult = 'done' | 'refused' | 'superseded';
 
 export interface ChatController {
+  setBark(on: boolean): void;
+  hasShellProcesses(): boolean;
+  resourcesIdle(): Promise<void>;
   get(): ChatView;
   subscribe(listener: (view: ChatView) => void): () => void;
   /** A prompt or a slash command. Returns 'quit' when the user asked to leave. Default source: terminal. */
@@ -386,11 +390,14 @@ export function createChatController(options: ChatOptions): ChatController {
       ? { id: options.chatId ?? randomUUID(), cwd: homeDir, origin: homeMode ? 'home' : 'project' }
       : undefined);
   let spent = options.initialUsage;
+  let pendingSave = Promise.resolve();
   let lastSavedKey = '';
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
   const shells = new Set<ChildProcess>();
+  const groups = new Map<ChildProcess, { stopping: boolean }>();
+  const onShellsStopped = new Set<() => void>();
   const syncConversation = (state: SessionState) => {
     if (!conversation) return;
     let next = conversation;
@@ -412,9 +419,10 @@ export function createChatController(options: ChatOptions): ChatController {
     ]);
     if (key === lastSavedKey) return;
     lastSavedKey = key;
-    void saveConversation(
+    pendingSave = saveConversation(
       {
-        ...spent,
+        usage: spent?.usage,
+        costUsd: spent?.costUsd,
         id: next.id,
         cwd: next.cwd,
         origin: next.origin,
@@ -485,11 +493,12 @@ export function createChatController(options: ChatOptions): ChatController {
   // Process groups to end on /stop and exit, while anything in them runs: a shell can exit
   // before what it started (`server &`, or on SIGTERM), so a group outlives its shell here
   // until it is empty, or until its SIGKILL once stopped.
-  const groups = new Map<ChildProcess, { stopping: boolean }>();
   let sweep: ReturnType<typeof setInterval> | undefined;
   const drop = (child: ChildProcess) => {
     groups.delete(child);
     if (groups.size) return;
+    for (const resolve of onShellsStopped) resolve();
+    onShellsStopped.clear();
     unwatchShells(onEnd);
     clearInterval(sweep);
     sweep = undefined;
@@ -1421,6 +1430,7 @@ export function createChatController(options: ChatOptions): ChatController {
             return 'ok';
           }
           bark = command.on ?? !bark;
+          options.onBark?.(bark);
           notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
           return 'ok';
         case 'auto':
@@ -1479,6 +1489,16 @@ export function createChatController(options: ChatOptions): ChatController {
     moveProject,
     setModel(model) {
       session.setModel(model || undefined);
+    },
+    setBark(on) {
+      if (bark === on) return;
+      bark = on;
+      publish();
+    },
+    hasShellProcesses: () => groups.size > 0,
+    async resourcesIdle() {
+      if (groups.size) await new Promise<void>((resolve) => onShellsStopped.add(resolve));
+      await pendingSave;
     },
     setAutoApprove(on, generation) {
       if (generation !== conversationEpoch) return false;

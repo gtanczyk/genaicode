@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { genaicodeHomeDir } from '../agents/sessions/workspace.js';
 import type { SavedPackTask } from '../agents/pack.js';
 import type { SessionState } from '../agents/session.js';
+import type { ChatSummary } from './hub.js';
 import type { ConversationMeta } from './controller.js';
 
 export interface SavedChat {
@@ -40,11 +41,16 @@ export function chatStore(env: NodeJS.ProcessEnv, cwd: string, home: boolean) {
       }
     },
     save: (data: SavedChat) => write(data.conversation.id + '.json', data),
-    saveIndex: (ids: string[], shown: string) => write('ui-chats.json', { ids, shown }),
-    async index(): Promise<{ ids: string[]; shown: string } | undefined> {
+    saveIndex: (ids: string[], shown: string, chats: ChatSummary[]) => write('ui-chats.json', { ids, shown, chats }),
+    async index(): Promise<{ ids: string[]; shown: string; chats?: ChatSummary[] } | undefined> {
       try {
         const data = JSON.parse(await readFile(join(dir, 'ui-chats.json'), 'utf8'));
-        if (valid(data.shown) && Array.isArray(data.ids) && data.ids.every(valid) && data.ids.includes(data.shown))
+        if (
+          valid(data.shown) &&
+          Array.isArray(data.ids) &&
+          data.ids.every(valid) &&
+          (data.ids.includes(data.shown) || data.chats?.some((row: ChatSummary) => row?.chat === data.shown))
+        )
           return data;
       } catch {
         /* Older installations have only the native session stores. */

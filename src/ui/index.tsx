@@ -574,10 +574,12 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         }
       : undefined;
   const disk = chatStore(liveEnv, options.cwd, !!options.home);
-  const restored = options.restoreChats ? await disk.index() : undefined;
+  const catalog = await disk.index();
+  const restored = options.restoreChats ? catalog : undefined;
+  let bark = options.bark ?? true;
   const channels = scopedMcpServers();
   const progress = await startProgressChannel().catch(() => undefined);
-  const pool = new PackPool();
+  const pool = new PackPool(8, (id) => hub.chats.get(id)?.controller.get().conversation?.title ?? id);
   const artifactPool = new ArtifactPool();
   const create = async (id: string): Promise<HubChat> => {
     const saved = await disk.read(id);
@@ -618,6 +620,11 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         ...chatChannels,
         agents,
         chatId: id,
+        bark,
+        onBark(on) {
+          bark = on;
+          for (const entry of hub.chats.values()) entry.controller.setBark(on);
+        },
         web,
         onRoot: addRoot,
         restoredConversation: saved?.conversation,
@@ -696,11 +703,13 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         chat.stop();
         await Promise.all([
           chat.session.idle(),
+          sessionSend?.settled(),
           ...agents.map((a) => (a as Partial<Pack>).shutdown?.()),
           chatChannels.closeChannels(),
           index?.close(),
         ]);
         chat.close();
+        await chat.resourcesIdle();
       },
     };
   };
@@ -710,7 +719,15 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     restored?.shown,
     async (id) => !!(await disk.read(id)),
     disk.saveIndex,
+    async (id, source) => {
+      const sources = webOptions.sessionSources ?? agentSessionSources(webOptions.agents);
+      return (await findSession(source ? sources.filter((s) => s.name === source) : sources, id, { env: liveEnv }))
+        ?.session;
+    },
+    options.home,
+    catalog?.chats,
   );
+  hub.busyPacks = () => pool.busyChats;
   const web: ReturnType<typeof webLink> = webLink(
     webOptions,
     () => controller!,

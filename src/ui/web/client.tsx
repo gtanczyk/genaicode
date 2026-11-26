@@ -99,6 +99,7 @@ const token = (() => {
  * This page among the pages the server talks to, new with every load: the requests for another
  * chat are numbered within it (`SwitchOrder`), so the server can tell an overtaken one by its number.
  */
+let navigationSequence = 0;
 const WINDOW_ID = `${Date.now().toString(36)}-${Array.from(crypto.getRandomValues(new Uint32Array(3)), (part) => part.toString(36)).join('')}`;
 
 async function postCommand(body: WebCommand, owner = pageChat(), turn?: number) {
@@ -393,7 +394,7 @@ function useView(onToast?: (text: string) => void): {
     let timer: number | undefined;
     const connect = async () => {
       try {
-        const res = await chatFetch('/api/events', {
+        const res = await chatFetch('__TAURI_INTERNALS__' in window ? '/api/events?desktop=1' : '/api/events', {
           headers: { 'x-genaicode-token': token },
           signal: abort.signal,
         });
@@ -964,10 +965,10 @@ const viewerWidth = storedSize(VIEWER_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
 function App() {
   const route = pageChat();
   const root = document.getElementById('root')!;
-  const [toast, setToast] = useState<{ text: string; error?: boolean }>();
+  const [toast, setToast] = useState<{ text: string; error?: boolean; chat?: string }>();
   const toastTimer = useRef<number>(undefined);
-  const showToast = (text: string, error = false) => {
-    setToast({ text, error });
+  const showToast = (text: string, error = false, chat?: string) => {
+    setToast({ text, error, chat });
     if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
   };
@@ -990,7 +991,7 @@ function App() {
       )
         continue;
       const text = (chat.approvals.length ? 'Needs you: ' : 'Finished: ') + chat.title;
-      showToast(text);
+      showToast(text, false, chat.chat);
       if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         const notice = new Notification(text);
         notice.onclick = () => {
@@ -1144,7 +1145,11 @@ function App() {
     refreshLookups();
     switchingRef.current = true;
     setSwitching(true);
-    return postCommand({ generation: view?.generation, ...request, order: { window: WINDOW_ID, seq: mine } })
+    return postCommand({
+      generation: view?.generation,
+      ...request,
+      order: { window: WINDOW_ID, seq: ++navigationSequence },
+    })
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
@@ -1488,6 +1493,7 @@ function App() {
         return Promise.resolve(false);
       }
       if (own.kind === 'plan') return orderedControl(text);
+      if (own.kind === 'stop' && currentRow?.position) return cancelQueue().then(() => true);
       // As the switch: for the conversation shown now, so a chat opened meanwhile is not approved.
       if (own.kind === 'auto' && own.invalid === undefined && view?.generation !== undefined) {
         setAutoApprove(own.on ?? !view.autoApprove);
@@ -2042,12 +2048,6 @@ function App() {
               })
             : undefined,
           onOpenChat: (chat) => {
-            const live = loaded.find((row) => sessionKey(row) === sessionKey(chat));
-            if (live) {
-              setPanel('chat');
-              showChat(live.chat);
-              return;
-            }
             const open = !!openRow && sessionKey(chat) === sessionKey(openRow);
             // Already here, and no other chat is on its way.
             if (open && !switchingRef.current) return backToChat();
@@ -2523,6 +2523,11 @@ function App() {
       {toast ? (
         <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
           {toast.text}
+          {toast.chat ? (
+            <button type="button" onClick={() => showChat(toast.chat!)}>
+              Open chat
+            </button>
+          ) : null}
         </div>
       ) : null}
     </>

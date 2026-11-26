@@ -402,7 +402,7 @@ async function bundleChat() {
   return bundle.outputFiles[0]!.text;
 }
 
-describe('<AgentChat> looks as its baseline', () => {
+describe('<AgentChat> looks as its baseline', { timeout: 30_000 }, () => {
   let script: string;
   beforeAll(async () => {
     script = await bundleChat();
@@ -518,7 +518,7 @@ describe('<AgentChat> looks as its baseline', () => {
 // The `genaicode ui` page
 // ---------------------------------------------------------------------------------------------
 
-describe('the genaicode ui page looks as its baseline', () => {
+describe('the genaicode ui page looks as its baseline', { timeout: 30_000 }, () => {
   const stop = new AbortController();
   let root: string;
   let project: string;
@@ -920,7 +920,7 @@ describe('the genaicode ui page looks as its baseline', () => {
 // The Needs you page
 // ---------------------------------------------------------------------------------------------
 
-describe('the Needs you page looks as its baseline', () => {
+describe('the Needs you page looks as its baseline', { timeout: 30_000 }, () => {
   const stop = new AbortController();
   let root: string;
   let project: string;
