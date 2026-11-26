@@ -502,7 +502,9 @@ plan limits, and **Check again** (also polling every few seconds), while the pro
 disabled ("Connect an agent to start") and the Sessions view keeps working. `GET /api/agents`
 reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
 binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
-(or installed), the onboarding collapses into the normal home; **Settings › Agents** lists every agent with its state, and **Connect another agent** stays in the
+(or installed), the onboarding collapses into the normal home; **Settings › Agents** lists every agent with its state (and, under
+**Session tools in your agents**, adds what `genaicode mcp install -a <agent>` adds, one agent per click: from the desktop app
+the agents then start its own Node and genaicode, which update with the app), and **Connect another agent** stays in the
 agent chip's popover alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
 a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
 **Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and

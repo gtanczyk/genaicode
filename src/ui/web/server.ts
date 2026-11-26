@@ -44,6 +44,8 @@ import { chatKey } from '../sidebar.js';
 export interface WebUiOptions {
   hub?: ChatHub;
   projectTeams?: import('../../agents/pack-profile.js').ProjectTeams;
+  /** The session index in the agents' own MCP configuration, at GET and POST /api/agent-tools. */
+  agentTools?: import('../agent-tools.js').AgentTools;
   controller: ChatController;
   /** The bundled browser script served at /app.js. */
   clientScript: string;
@@ -672,6 +674,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       agents: !!options.agents,
       uploads: !!options.uploads,
       ...(options.projectTeams ? { projectTeams: true } : {}),
+      ...(options.agentTools ? { agentTools: true } : {}),
       files: !!options.files,
       ...(options.hostApp?.saveTranscript ? { nativeSave: true } : {}),
       reveal: !!options.hostApp?.reveal,
@@ -1105,6 +1108,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const refreshEnv = req.method === 'POST' || url.searchParams.get('env') === '1';
       const status = await options.agents({ refresh, refreshEnv });
       return send(res, 200, 'application/json', JSON.stringify(status));
+    }
+    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/agent-tools') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      if (!options.agentTools) return send(res, 404, 'application/json', '{"error":"no agent tools here"}');
+      try {
+        if (req.method === 'GET')
+          return send(res, 200, 'application/json', JSON.stringify(await options.agentTools.list()));
+        if (!String(req.headers['content-type'] ?? '').startsWith('application/json'))
+          return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+        const body = JSON.parse(await readBody(req)) as { agent?: unknown; add?: unknown };
+        if (typeof body.agent !== 'string' || typeof body.add !== 'boolean')
+          return send(res, 400, 'application/json', '{"error":"expected { agent, add }"}');
+        return send(
+          res,
+          200,
+          'application/json',
+          JSON.stringify(await options.agentTools.change(body.agent, body.add)),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not change the agent.';
+        return send(res, 400, 'application/json', JSON.stringify({ error: message }));
+      }
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/pack-profile') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))

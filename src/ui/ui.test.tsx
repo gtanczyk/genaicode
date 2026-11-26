@@ -2359,6 +2359,64 @@ describe('web UI server', () => {
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
   });
 
+  it('serves /api/agent-tools with the token only, and passes a change on', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-tools-'));
+    let errors = '';
+    const abort = new AbortController();
+    const changes: Array<[string, boolean]> = [];
+    const listing = {
+      durable: true,
+      agents: [{ agent: 'claude', installed: false, current: false, send: false, file: '/c' }],
+    };
+    const done = runWeb({
+      agents: [echoAgent('claude', 'claude')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      agentTools: {
+        list: async () => listing,
+        change: async (agent, add) => {
+          changes.push([agent, add]);
+          if (agent !== 'claude') throw new Error(`${agent} is not an agent found here.`);
+          return listing;
+        },
+      },
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      openUrl: () => {},
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const tools = new URL('/api/agent-tools', url);
+      expect((await fetch(tools)).status).toBe(403);
+      expect(await (await fetch(tools, { headers })).json()).toEqual(listing);
+      const post = (body: unknown) =>
+        fetch(tools, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      expect((await post({ agent: 'claude', add: true })).status).toBe(200);
+      expect((await post({ agent: 'claude' })).status).toBe(400);
+      const refused = await post({ agent: 'muse', add: true });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toEqual({ error: 'muse is not an agent found here.' });
+      expect(changes).toEqual([
+        ['claude', true],
+        ['muse', true],
+      ]);
+    } finally {
+      abort.abort();
+      await done;
+    }
+  });
+
   it('starts in setup state with zero agents, serves /api/agents and /api/sessions, and leaves setup once an agent arrives', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
     let errors = '';
