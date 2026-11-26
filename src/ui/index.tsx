@@ -714,8 +714,20 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         const { conversation, session, recoveredDraft } = chat.get();
         if (!conversation) return;
         const { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason } = session;
-        const packs = Object.fromEntries(agents.map((a) => [a.name, (a as Partial<Pack>).records?.() ?? []]));
+        const packs = Object.fromEntries(
+          agents.map((a) => {
+            const tasks = turns.filter((turn) => turn.agent === a.name).flatMap((turn) => turn.pack?.tasks ?? []);
+            const records = (a as Partial<Pack>).records?.() ?? [];
+            return [
+              a.name,
+              records.filter((record) =>
+                tasks.some((task) => task.id === record.task.id && task.worktree === record.task.worktree),
+              ),
+            ];
+          }),
+        );
         await disk.save({
+          source: agents.find((a) => a.name === agent)?.sessions?.name,
           conversation,
           session: { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason },
           packs,
@@ -752,6 +764,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     options.home,
     restored?.chats,
     (error) => options.stderr.write(`Could not checkpoint chats: ${String(error)}\n`),
+    disk,
   );
   hub.setArchive(await readArchive(liveEnv));
   hub.busyPacks = () => pool.busyChats;
@@ -963,14 +976,15 @@ function webLink(
             : {}),
           ...(options.env ? { env: options.env } : {}),
         });
+        const visible = hub?.history ? await hub.history.visibleSessions(listing.sessions) : listing.sessions;
         const sessions =
           own && options.home
-            ? listing.sessions.filter(
+            ? visible.filter(
                 (session) =>
                   !!recordedConversation(recorded, session) ||
                   (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
               )
-            : listing.sessions;
+            : visible;
         // A chat can exist only in the app (e.g. an agent with no native store).
         // Keep its archived row reachable from All chats so it can be restored.
         if (own && hub) {

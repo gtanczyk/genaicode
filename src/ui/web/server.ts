@@ -1490,6 +1490,37 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const ok = await options.answer(asked[1]!, decision);
       return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
     }
+    if (req.method === 'POST' && url.pathname === '/api/delete-chat') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))
+        return send(res, 403, 'text/plain', 'Bad token');
+      if (!hub?.history || !options.sessions) return gone();
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json'))
+        return send(res, 415, 'text/plain', 'Expected JSON');
+      const target = await readBody(req)
+        .then((body) => JSON.parse(body))
+        .catch(() => null);
+      if (
+        typeof target?.source !== 'string' ||
+        typeof target.id !== 'string' ||
+        !Number.isFinite(target.updatedAt) ||
+        (target.chat !== undefined && typeof target.chat !== 'string')
+      )
+        return send(res, 400, 'text/plain', 'Invalid chat');
+      const same = (row: SessionInfo) => row.source === target.source && row.id === target.id;
+      const live = hub.summaries().find(same);
+      const row = live ?? (await options.sessions({ own: true })).sessions.find(same);
+      if (
+        !row ||
+        row.updatedAt !== target.updatedAt ||
+        row.where !== 'local' ||
+        row.state === 'active' ||
+        row.turnInProgress ||
+        !(await hub.deleteHistory(row, target.chat))
+      ) {
+        return send(res, 409, 'text/plain', 'The chat changed or still has active work. Check it before deleting.');
+      }
+      return send(res, 200, 'application/json', '{"ok":true}');
+    }
     if (req.method === 'POST' && url.pathname === '/api/archive') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');

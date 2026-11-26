@@ -10,7 +10,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- **Resize the sidebar and archive chats from their row menu.** (#382)
+- **Resize the sidebar and archive or delete chat history from its row menu.** (#382)
+
+  - Archive puts a chat in All chats → Archived. Delete chat history asks for confirmation and deletes the Genaicode copy. The agent keeps its own transcript.
   - Drag the right edge or focus it and use the arrow keys. The sidebar remembers its width. On macOS the app icon lines up with the window controls.
 
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)

@@ -8,6 +8,7 @@ import { SUPPORT_URL } from '../support.js';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
+import { chatStore } from './chat-store.js';
 import { runWeb } from './index.js';
 import { TERMS_URL } from './web/sidebar.js';
 
@@ -493,6 +494,38 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await held[0]!.answered;
     await inA();
     await page.unroute('**/api/command*');
+
+    // Delete has a separate confirmation. Cancelling preserves the chat; confirming erases the
+    // app's history even for the current chat, while the agent's session source keeps its copy.
+    const firstRow = home
+      .locator('.chat-actions')
+      .filter({ has: page.getByRole('button', { name: /What is waiting for me\?/ }) });
+    const deleteMenu = async () => {
+      await firstRow.hover();
+      await firstRow.getByRole('button', { name: 'Chat actions' }).click();
+      await firstRow.getByRole('menuitem', { name: 'Delete chat history…' }).click();
+    };
+    const confirm = page.getByRole('dialog', { name: 'Delete chat history?' });
+    await deleteMenu();
+    expect(await confirm.textContent()).toContain('What is waiting for me?');
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await first.waitFor();
+    await deleteMenu();
+    await confirm.getByRole('button', { name: 'Delete history' }).click();
+    await first.waitFor({ state: 'detached' });
+    await vi.waitFor(async () => expect(await topbar.locator('h1').textContent()).toBe('New chat'));
+    await page.reload();
+    await side.getByRole('button', { name: 'All chats', exact: true }).click();
+    await list.getByRole('combobox', { name: 'State' }).waitFor();
+    expect(await list.getByText('What is waiting for me?', { exact: true }).count()).toBe(0);
+    expect(made.some((row) => row.title === 'What is waiting for me?')).toBe(true);
+    const snapshot = await chatStore(env, made[0]!.cwd!, true).index();
+    // The workspace used by --home is Genaicode's home directory, the cwd of this chat's first turn.
+    expect(snapshot).toBeDefined();
+    expect(JSON.stringify(snapshot)).not.toContain('What is waiting for me?');
+    const ownStore = chatStore(env, made[0]!.cwd!, true);
+    const oldSnapshot = await ownStore.read(new URL(page.url()).hash.slice('#chat='.length));
+    expect(JSON.stringify(oldSnapshot ?? {})).not.toContain('What is waiting for me?');
 
     // A window under 980 px starts with the rail until the person chooses.
     const narrow = await browser.newContext({ viewport: { width: 900, height: 700 } });

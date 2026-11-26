@@ -185,13 +185,13 @@ it('refreshes the archive after a later batch fails', async () => {
     .mockResolvedValueOnce(new Response(null, { status: 500 }));
   vi.stubGlobal('fetch', send);
   const refresh = vi.fn();
-  window.addEventListener('genaicode-archive', refresh);
+  window.addEventListener('genaicode-history-changed', refresh);
   try {
     const rows = Array.from({ length: 501 }, (_, i) => ({ ...asking, id: String(i) }));
     await expect(setSessionArchive('token', rows, true)).rejects.toThrow('500');
     expect(send).toHaveBeenCalledTimes(2);
     expect(refresh).toHaveBeenCalledTimes(1);
   } finally {
-    window.removeEventListener('genaicode-archive', refresh);
+    window.removeEventListener('genaicode-history-changed', refresh);
   }
 });

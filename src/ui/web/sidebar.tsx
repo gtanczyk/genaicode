@@ -213,6 +213,7 @@ export interface SidebarProps {
   limit?: number;
   onStop?(chat: ChatSummary): void;
   onArchive?(chat: SessionInfo): void;
+  onDelete?(chat: SessionInfo): void;
   onOpenChat(chat: SessionInfo): void;
   /**
    * The title of the open chat while its turn runs: the window has one session, so other chats and
@@ -399,18 +400,34 @@ export function Sidebar(props: SidebarProps) {
                         button={<Icon name="dots" />}
                       >
                         {(close) => (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={!!busy}
-                            title={busy ? 'Available when the chat finishes' : undefined}
-                            onClick={() => {
-                              close();
-                              props.onArchive?.(chat);
-                            }}
-                          >
-                            Archive
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={!!busy}
+                              title={busy ? 'Available when the chat finishes' : undefined}
+                              onClick={() => {
+                                close();
+                                props.onArchive?.(chat);
+                              }}
+                            >
+                              Archive
+                            </button>
+                            {props.onDelete && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={!!busy}
+                                title={busy ? 'Available when the chat finishes' : undefined}
+                                onClick={() => {
+                                  close();
+                                  props.onDelete?.(chat);
+                                }}
+                              >
+                                Delete chat history…
+                              </button>
+                            )}
+                          </>
                         )}
                       </MenuButton>
                     )}

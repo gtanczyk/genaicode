@@ -151,7 +151,7 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .chat-main > .menu-anchor { position: absolute; right: 2px; opacity: 0; pointer-events: none; }
 .chat-actions:is(:hover, :focus-within, :has([aria-expanded='true'])) .menu-anchor { opacity: 1; pointer-events: auto; }
 .chat-actions:has(.menu-anchor):is(:hover, :focus-within, :has([aria-expanded='true'])) .nav small { visibility: hidden; }
-.chat-actions .menu { right: 100%; top: 50%; transform: translateY(-50%); min-width: 108px; }
+.chat-actions .menu { right: 100%; top: 0; min-width: 148px; }
 @media (hover: none) {
   .chat-main > .menu-anchor { position: relative; opacity: 1; pointer-events: auto; }
 }

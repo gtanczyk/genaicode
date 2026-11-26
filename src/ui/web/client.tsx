@@ -1006,6 +1006,13 @@ function App({ selected }: { selected?: string }) {
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
   const { view, config, release, connected, rejected, loaded } = useView(selected, (text) => showToast(text));
+  const [deleting, setDeleting] = useState<{ row: SessionInfo; chat?: string }>();
+  const deleteDialog = useRef<HTMLDialogElement>(null);
+  const askDelete = (row: SessionInfo) => {
+    const owner = loaded.find((entry) => sessionKey(entry) === sessionKey(row));
+    setDeleting({ row: owner ?? row, chat: owner?.chat });
+    deleteDialog.current?.showModal();
+  };
   const [returnedDraft, setReturnedDraft] = useState<{ chat: string; stamp: string }>();
   const currentRow = loaded.find((row) => row.chat === pageChat());
   const cancelQueue = () => postCommand({ type: 'stop' });
@@ -1295,6 +1302,29 @@ function App({ selected }: { selected?: string }) {
   // On a plan the measure is the plan's own: a price there would be an estimate nobody pays.
   const onPlan = rateLimits.some((limit) => limit.window !== 'quota');
   const usage = session ? formatUsage(session.usage, onPlan ? undefined : session.costUsd) : '';
+  const deleteHistory = async () => {
+    if (!deleting) return;
+    const { row, chat } = deleting;
+    deleteDialog.current?.close();
+    try {
+      const res = await fetch('/api/delete-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+        body: JSON.stringify({ source: row.source, id: row.id, updatedAt: row.updatedAt, chat }),
+      });
+      if (!res.ok)
+        throw new Error(
+          res.status === 409 ? 'The chat changed or still has active work.' : `The server answered ${res.status}.`,
+        );
+      if (chat) rememberDraft(chat, { text: '', files: [] });
+      window.dispatchEvent(new Event('genaicode-history-changed'));
+      showToast('Chat history deleted.');
+    } catch (error) {
+      showToast(`Could not delete chat history: ${error instanceof Error ? error.message : String(error)}`, true);
+    } finally {
+      chats.refresh();
+    }
+  };
   // A setting takes effect now: it does not wait behind a prompt whose files still upload.
   const inChat = (body: Exclude<WebCommand, { type: 'auto' }>) => command({ ...body, generation: view?.generation });
   const control = (text: string) => void inChat({ type: 'submit', text });
@@ -2110,6 +2140,7 @@ function App({ selected }: { selected?: string }) {
                   .catch((error: Error) => showToast(`Could not archive chat: ${error.message}`, true));
               }
             : undefined,
+          onDelete: config?.multiChat ? askDelete : undefined,
           onStop: (row) => {
             void postCommand({ type: 'stop', turn: row.turn }, row.chat);
           },
@@ -2161,6 +2192,7 @@ function App({ selected }: { selected?: string }) {
         {showSessions || openedSession ? (
           <Sessions
             onArchived={chats.refresh}
+            onDelete={config?.multiChat ? askDelete : undefined}
             selected={openedSession}
             onOpen={setOpenedSession}
             key={listed}
@@ -2599,6 +2631,25 @@ function App({ selected }: { selected?: string }) {
           }}
         />
       ) : null}
+      <dialog
+        ref={deleteDialog}
+        className="release-dialog"
+        aria-labelledby="delete-chat-title"
+        onClose={() => setDeleting(undefined)}
+      >
+        <h2 id="delete-chat-title">Delete chat history?</h2>
+        <p>
+          Permanently delete “{deleting && chatTitle(deleting.row)}” from Genaicode? The agent keeps its own transcript.
+        </p>
+        <form method="dialog">
+          <button type="submit" className="btn" autoFocus>
+            Cancel
+          </button>{' '}
+          <button type="button" className="btn danger" onClick={() => void deleteHistory()}>
+            Delete history
+          </button>
+        </form>
+      </dialog>
       {toast ? (
         <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
           {toast.text}
