@@ -80,7 +80,6 @@ interface ActiveTool {
   kind?: string;
   paths: string[];
   input?: JsonObject;
-  progressEmitted?: boolean;
 }
 
 async function driveAntigravity(session: LiveSession, options: AntigravityAgentOptions): Promise<AgentOutcome> {
@@ -328,14 +327,12 @@ export function antigravityUpdateEvents(
 
   const events: AgentEvent[] = [];
   const kept = raw ?? known?.input;
-  let progressEmitted = known?.progressEmitted ?? false;
   if (!known) {
     tools.set(key, {
       name,
       ...(toolKind ? { kind: toolKind } : {}),
       paths,
       ...(kept ? { input: kept } : {}),
-      ...(progressEmitted ? { progressEmitted: true } : {}),
     });
     events.push({ type: 'tool-start', ...withId, name, ...(input !== undefined ? { input } : {}) });
   } else {
@@ -344,17 +341,7 @@ export function antigravityUpdateEvents(
       ...(toolKind ? { kind: toolKind } : {}),
       paths,
       ...(kept ? { input: kept } : {}),
-      ...(progressEmitted ? { progressEmitted: true } : {}),
     });
-  }
-  if (!progressEmitted && name === 'update_steps' && kept) {
-    const progress = antigravityPlanProgress(kept.steps);
-    if (progress) {
-      progressEmitted = true;
-      const entry = tools.get(key);
-      if (entry) entry.progressEmitted = true;
-      events.push(progress);
-    }
   }
 
   if (status === 'completed' || status === 'failed') {
@@ -371,6 +358,11 @@ export function antigravityUpdateEvents(
       isError: status === 'failed',
       ...(output !== undefined ? { output } : {}),
     });
+    // Only commit `update_steps` as chat progress once the tool succeeds; a failed proposal must not announce completion.
+    if (status === 'completed' && name === 'update_steps' && kept) {
+      const progress = antigravityPlanProgress(kept.steps);
+      if (progress) events.push(progress);
+    }
     if (status === 'completed' && (toolKind === 'edit' || toolKind === 'delete') && paths.length > 0) {
       events.push({ type: 'file-change', paths });
     }

@@ -269,4 +269,29 @@ it('counts Antigravity transcript tokens in the period without cache reads, and 
   expect(readdirSync(join(dir, 'agy-home', 'cache', 'antigravity'))).toHaveLength(1);
   appendFileSync(long.path!, `\n${JSON.stringify(step(0, 300, 0, 200))}\n`);
   expect((await partsSince([long], since, { env })).get(long)).toEqual({ part: 1_000 / 6_000, tokens: 1_000 });
+
+  // Oversized (> 1 MiB) Antigravity records still report top-level usage without counting nested decoy fields.
+  const huge = session('antigravity', 'a-huge', {
+    path: file('agy-huge.jsonl', [
+      {
+        type: 'PLANNER_RESPONSE',
+        created_at: at(1),
+        tool_calls: [
+          {
+            name: 'write_file',
+            args: {
+              // Nested object and escaped string with decoy keys must not be counted.
+              input_tokens: 999_999,
+              content: '{"input_tokens":888888,"output_tokens":777777}' + 'a'.repeat(1_200_000),
+            },
+          },
+        ],
+        input_tokens: 200,
+        cache_read_tokens: 5_000,
+        output_tokens: 50,
+      },
+      step(1, 10, 0, 1),
+    ]),
+  });
+  expect((await partsSince([huge], since, { env })).get(huge)).toEqual({ part: 1, tokens: 261 });
 });

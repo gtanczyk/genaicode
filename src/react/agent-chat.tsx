@@ -747,18 +747,7 @@ export function AgentChat(props: AgentChatProps) {
               onDragOver={onDragOver}
               onContextMenu={onFileContextMenu}
               // A file link or local image thumbnail (`data-gc-file`, from Markdown) opens like any other path.
-              onClick={
-                onOpenFile
-                  ? (event) => {
-                      const el = (event.target as Element).closest?.('[data-gc-file]');
-                      const path = el?.getAttribute('data-gc-file');
-                      if (!el || !path) return;
-                      const position = readFileLinkPosition(el);
-                      if (position) onOpenFile(path, position);
-                      else onOpenFile(path);
-                    }
-                  : undefined
-              }
+              onClick={onOpenFile ? handleFileOpenClick(onOpenFile) : undefined}
             >
               {props.header !== undefined ? (
                 props.header
@@ -1243,6 +1232,17 @@ export function turnFoldStretches(
  * Renders folded turn step entries using the same `Entry` renderer as the transcript (preserving
  * tool diffs/output, answered approvals, file patches, completed plans and clickable file links).
  */
+function handleFileOpenClick(onOpenFile: NonNullable<AgentChatProps['onOpenFile']>) {
+  return (event: ReactMouseEvent<HTMLDivElement>) => {
+    const el = (event.target as Element).closest?.('[data-gc-file]');
+    const path = el?.getAttribute('data-gc-file');
+    if (!el || !path) return;
+    const position = readFileLinkPosition(el);
+    if (position) onOpenFile(path, position);
+    else onOpenFile(path);
+  };
+}
+
 export function TurnStepEntries({
   turn,
   entries,
@@ -1275,19 +1275,7 @@ export function TurnStepEntries({
       <OpenFile.Provider value={onOpenFile}>
         <div
           className={`gc-steps-entries${onOpenFile ? ' gc-opens-files' : ''}`}
-          onClick={
-            onOpenFile
-              ? (event) => {
-                  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('button[data-gc-file]');
-                  const path = target?.dataset.gcFile;
-                  if (path && target?.classList.contains('gc-file-link')) {
-                    const position = readFileLinkPosition(target);
-                    if (position) onOpenFile(path, position);
-                    else onOpenFile(path);
-                  }
-                }
-              : undefined
-          }
+          onClick={onOpenFile ? handleFileOpenClick(onOpenFile) : undefined}
         >
           {entries.map(([item, index]) => (
             <Entry

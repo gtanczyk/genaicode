@@ -11,6 +11,7 @@ import {
   parseFileTarget,
   type AgentChatProps,
 } from '../react.js';
+import { TurnStepEntries } from './agent-chat.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -2067,5 +2068,39 @@ describe('AgentChat', () => {
       'Stop',
       'Steer',
     ]);
+  });
+
+  it('opens local image thumbnails and file links clicked inside TurnStepEntries', () => {
+    const onOpenFile = vi.fn();
+    const turn = fixture().turns[0]!;
+    const entries: Array<readonly [SessionEntry, number]> = [
+      [
+        {
+          kind: 'text',
+          text: 'Preview:\n\n![shot](/work/app/shot.png)\n\nSee [app.ts](file:///work/app/src/app.ts#L10-L20)',
+          streaming: false,
+        },
+        0,
+      ],
+    ];
+    act(() =>
+      root.render(
+        <TurnStepEntries
+          turn={turn}
+          entries={entries}
+          cwd="/work/app"
+          pending={[]}
+          onOpenFile={onOpenFile}
+          imageUrl={(path) => `/files?path=${encodeURIComponent(path)}`}
+        />,
+      ),
+    );
+    const thumb = $<HTMLButtonElement>('.gc-md-image-btn');
+    expect(thumb).not.toBeNull();
+    click(thumb);
+    expect(onOpenFile).toHaveBeenCalledWith('/work/app/shot.png');
+    const link = $<HTMLButtonElement>('.gc-file-link');
+    click(link);
+    expect(onOpenFile).toHaveBeenCalledWith('/work/app/src/app.ts', { line: 10, endLine: 20 });
   });
 });

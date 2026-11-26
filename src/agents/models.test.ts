@@ -146,6 +146,37 @@ echo "$GENAICODE_ACCT/$dir"`,
     expect(otherDir).toEqual([{ id: `acct2/${dirB.split('/').pop()}` }]);
   });
 
+  it('does not let an older probe overwrite a newer refresh result in the cache', async () => {
+    const bin = mkdtempSync(join(root, 'refresh-race-'));
+    makeBin(
+      bin,
+      'opencode',
+      `if [ "$GENAICODE_REV" = "old" ]; then
+  /bin/sleep 0.25
+  echo "openai/old-model"
+else
+  echo "openai/new-model"
+fi`,
+    );
+    let rev = 'old';
+    const catalog = createModelCatalog({
+      agents: [{ name: 'opencode', command: 'opencode' }],
+      getEnv: () => ({ PATH: bin, GENAICODE_REV: rev }),
+    });
+    const slowOld = catalog.list('opencode');
+    rev = 'new';
+    const fastNew = await catalog.list('opencode', { refresh: true });
+    expect(fastNew).toEqual([{ id: 'openai/new-model' }]);
+    expect(await slowOld).toEqual([{ id: 'openai/old-model' }]);
+    // Subsequent cached lookup must return the newer refresh result, not the stale probe.
+    expect(await catalog.list('opencode')).toEqual([{ id: 'openai/new-model' }]);
+  });
+
+  it('ignores prototype property names like constructor in listAgentModels()', async () => {
+    expect(await listAgentModels({ name: 'constructor', command: process.execPath })).toEqual([]);
+    expect(await listAgentModels({ name: 'toString', command: process.execPath })).toEqual([]);
+  });
+
   it('returns empty array when CLI fails or is missing', async () => {
     const bin = mkdtempSync(join(root, 'fail-'));
     makeBin(bin, 'cursor-agent', 'echo "Authentication required" >&2; exit 1');

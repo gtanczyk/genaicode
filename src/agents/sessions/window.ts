@@ -144,6 +144,24 @@ function takeLine(scan: RolloutScan, text: string): void {
   if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
 }
 
+function recordAntigravityUsage(
+  scan: AntigravityScan,
+  usage: { inputTokens?: unknown; outputTokens?: unknown; cacheReadTokens?: unknown; createdAt?: unknown },
+): void {
+  if (typeof usage.inputTokens !== 'number' && typeof usage.outputTokens !== 'number') return;
+  scan.reports += 1;
+  const input = count(usage.inputTokens);
+  const output = count(usage.outputTokens);
+  const cached = count(usage.cacheReadTokens);
+  scan.inputTokens += input;
+  scan.outputTokens += output;
+  scan.cachedInputTokens += cached;
+  scan.total = scan.inputTokens + scan.outputTokens;
+  const at = typeof usage.createdAt === 'string' ? Date.parse(usage.createdAt) : NaN;
+  if (Number.isNaN(at)) return;
+  if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
+}
+
 /**
  * One line of an Antigravity `transcript.jsonl`: each `PLANNER_RESPONSE` (and `CHECKPOINT`) notes
  * that call's non-cached input, cached input and output tokens with `created_at`. Cached input is
@@ -158,18 +176,207 @@ function takeAntigravityLine(scan: AntigravityScan, text: string): void {
     return;
   }
   if (!isRecord(line)) return;
-  if (typeof line.input_tokens !== 'number' && typeof line.output_tokens !== 'number') return;
-  scan.reports += 1;
-  const input = count(line.input_tokens);
-  const output = count(line.output_tokens);
-  const cached = count(line.cache_read_tokens);
-  scan.inputTokens += input;
-  scan.outputTokens += output;
-  scan.cachedInputTokens += cached;
-  scan.total = scan.inputTokens + scan.outputTokens;
-  const at = typeof line.created_at === 'string' ? Date.parse(line.created_at) : NaN;
-  if (Number.isNaN(at)) return;
-  if (scan.points.at(-1)?.[1] !== scan.total) scan.points.push([at, scan.total]);
+  recordAntigravityUsage(scan, {
+    inputTokens: line.input_tokens,
+    outputTokens: line.output_tokens,
+    cacheReadTokens: line.cache_read_tokens,
+    createdAt: line.created_at,
+  });
+}
+
+/**
+ * Streaming top-level JSON extractor for oversized (> 1 MiB) Antigravity transcript lines.
+ * Extracts only the four scalar usage/timestamp fields at object depth 1 in O(1) memory,
+ * skipping large nested tool arguments and outputs without retaining them.
+ */
+class OversizedAntigravityExtractor {
+  private depth = 0;
+  private inString = false;
+  private escaped = false;
+  private started = false;
+  private closed = false;
+  private invalid = false;
+  private phase: 'key' | 'colon' | 'value' | 'after' = 'key';
+  private keyBuf = '';
+  private keyOverflow = false;
+  private activeKey: 'input_tokens' | 'output_tokens' | 'cache_read_tokens' | 'created_at' | undefined;
+  private valBuf = '';
+  private valOverflow = false;
+  private valString = false;
+  private valStarted = false;
+  private inputTokens: number | undefined;
+  private outputTokens: number | undefined;
+  private cacheReadTokens: number | undefined;
+  private createdAt: string | undefined;
+
+  private finishScalarValue(): void {
+    if (this.activeKey && !this.valOverflow && this.valStarted) {
+      if (this.activeKey === 'created_at') {
+        if (this.valString) this.createdAt = this.valBuf;
+      } else if (!this.valString) {
+        const raw = this.valBuf.trim();
+        if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
+          const n = Number(raw);
+          if (Number.isFinite(n)) {
+            if (this.activeKey === 'input_tokens') this.inputTokens = n;
+            else if (this.activeKey === 'output_tokens') this.outputTokens = n;
+            else if (this.activeKey === 'cache_read_tokens') this.cacheReadTokens = n;
+          }
+        }
+      }
+    }
+    this.activeKey = undefined;
+    this.valBuf = '';
+    this.valOverflow = false;
+    this.valString = false;
+    this.valStarted = false;
+  }
+
+  feed(chunk: Buffer): void {
+    if (this.invalid) return;
+    for (let i = 0; i < chunk.length; i++) {
+      const b = chunk[i]!;
+      if (this.closed) {
+        if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) this.invalid = true;
+        continue;
+      }
+      if (!this.started) {
+        if (b === 0x20 || b === 0x09 || b === 0x0d) continue;
+        if (b === 0x7b) {
+          this.started = true;
+          this.depth = 1;
+          this.phase = 'key';
+          continue;
+        }
+        this.invalid = true;
+        return;
+      }
+      if (this.inString) {
+        if (this.escaped) {
+          this.escaped = false;
+          if (this.depth === 1 && this.phase === 'value' && this.activeKey === 'created_at' && !this.valOverflow) {
+            if (this.valBuf.length < 64) this.valBuf += String.fromCharCode(b);
+            else this.valOverflow = true;
+          }
+          continue;
+        }
+        if (b === 0x5c) {
+          this.escaped = true;
+          continue;
+        }
+        if (b === 0x22) {
+          this.inString = false;
+          if (this.depth === 1) {
+            if (this.phase === 'key') {
+              if (
+                !this.keyOverflow &&
+                (this.keyBuf === 'input_tokens' ||
+                  this.keyBuf === 'output_tokens' ||
+                  this.keyBuf === 'cache_read_tokens' ||
+                  this.keyBuf === 'created_at')
+              ) {
+                this.activeKey = this.keyBuf;
+              } else {
+                this.activeKey = undefined;
+              }
+              this.keyBuf = '';
+              this.keyOverflow = false;
+              this.phase = 'colon';
+            } else if (this.phase === 'value') {
+              this.finishScalarValue();
+              this.phase = 'after';
+            }
+          }
+          continue;
+        }
+        if (this.depth === 1) {
+          if (this.phase === 'key' && !this.keyOverflow) {
+            if (this.keyBuf.length < 32) this.keyBuf += String.fromCharCode(b);
+            else this.keyOverflow = true;
+          } else if (this.phase === 'value' && this.activeKey === 'created_at' && !this.valOverflow) {
+            if (this.valBuf.length < 64) this.valBuf += String.fromCharCode(b);
+            else this.valOverflow = true;
+          }
+        }
+        continue;
+      }
+      if (b === 0x22) {
+        this.inString = true;
+        if (this.depth === 1 && this.phase === 'value' && this.activeKey) {
+          this.valString = true;
+          this.valStarted = true;
+          this.valBuf = '';
+          this.valOverflow = false;
+        }
+        continue;
+      }
+      if (b === 0x7b || b === 0x5b) {
+        if (this.depth === 1 && this.phase === 'value') this.activeKey = undefined;
+        this.depth += 1;
+        continue;
+      }
+      if (b === 0x7d || b === 0x5d) {
+        if (this.depth === 1) {
+          if (b === 0x5d) {
+            this.invalid = true;
+            return;
+          }
+          if (this.phase === 'value') this.finishScalarValue();
+          this.depth = 0;
+          this.closed = true;
+          continue;
+        }
+        this.depth -= 1;
+        if (this.depth === 1 && this.phase === 'value') this.phase = 'after';
+        continue;
+      }
+      if (this.depth === 1) {
+        if (this.phase === 'colon') {
+          if (b === 0x3a) {
+            this.phase = 'value';
+            this.valBuf = '';
+            this.valOverflow = false;
+            this.valString = false;
+            this.valStarted = false;
+          }
+        } else if (this.phase === 'value') {
+          if (b === 0x2c) {
+            this.finishScalarValue();
+            this.phase = 'key';
+            this.keyBuf = '';
+            this.keyOverflow = false;
+          } else if (b !== 0x20 && b !== 0x09 && b !== 0x0d && b !== 0x0a) {
+            if (this.activeKey && !this.valOverflow) {
+              this.valStarted = true;
+              if (this.valBuf.length < 64) this.valBuf += String.fromCharCode(b);
+              else this.valOverflow = true;
+            }
+          }
+        } else if (this.phase === 'after') {
+          if (b === 0x2c) {
+            this.phase = 'key';
+            this.keyBuf = '';
+            this.keyOverflow = false;
+          }
+        }
+      }
+    }
+  }
+
+  finish(scan: AntigravityScan): void {
+    if (this.invalid || !this.closed) return;
+    recordAntigravityUsage(scan, {
+      inputTokens: this.inputTokens,
+      outputTokens: this.outputTokens,
+      cacheReadTokens: this.cacheReadTokens,
+      createdAt: this.createdAt,
+    });
+  }
+}
+
+interface OversizedLineReader<S extends ScanBase> {
+  feed(chunk: Buffer): void;
+  finish(scan: S): void;
 }
 
 function workSince(scan: ScanBase, since: number): WorkWithin | undefined {
@@ -188,7 +395,7 @@ function workSince(scan: ScanBase, since: number): WorkWithin | undefined {
     : { part: 0, tokens: 0 };
 }
 
-/** A usage report is a short line: a longer one (a tool's output) is passed over unread. */
+/** A usage report is a short line: a longer one (a tool's output) is passed over unread unless `onOversized` handles it. */
 const MAX_LINE = 1024 * 1024;
 
 /** Read what a JSONL transcript gained since `scan`. Returns the scan up to its last whole line, and one with the unfinished line too. */
@@ -196,10 +403,20 @@ async function readOn<S extends ScanBase>(
   file: string,
   scan: S,
   take: (scan: S, text: string) => void,
+  onOversized?: () => OversizedLineReader<S>,
 ): Promise<{ kept: S; all: S }> {
   // The line so far, in the pieces it came in: joined once, when its end arrives.
   let pieces: Buffer[] = [];
   let length = 0;
+  let oversized: OversizedLineReader<S> | undefined;
+  const promoteOversized = (extra?: Buffer): OversizedLineReader<S> | undefined => {
+    if (!onOversized) return undefined;
+    const reader = (oversized ??= onOversized());
+    for (const piece of pieces) reader.feed(piece);
+    pieces = [];
+    if (extra?.length) reader.feed(extra);
+    return reader;
+  };
   const line = (last?: Buffer): string | undefined => {
     const whole = length + (last?.length ?? 0);
     if (whole > MAX_LINE) return undefined;
@@ -210,20 +427,41 @@ async function readOn<S extends ScanBase>(
     let end: number;
     while ((end = chunk.indexOf(10, start)) !== -1) {
       const last = chunk.subarray(start, end);
-      const text = line(last);
-      if (text !== undefined) take(scan, text);
+      if (oversized) {
+        if (last.length) oversized.feed(last);
+        oversized.finish(scan);
+      } else if (length + last.length > MAX_LINE) {
+        promoteOversized(last)?.finish(scan);
+      } else {
+        const text = line(last);
+        if (text !== undefined) take(scan, text);
+      }
       scan.offset += length + last.length + 1;
       pieces = [];
       length = 0;
+      oversized = undefined;
       start = end + 1;
     }
     if (start < chunk.length) {
-      // Past the longest line worth reading only its length is kept.
-      if (length <= MAX_LINE) pieces.push(chunk.subarray(start));
-      length += chunk.length - start;
+      const tail = chunk.subarray(start);
+      if (oversized) {
+        oversized.feed(tail);
+      } else if (length + tail.length > MAX_LINE) {
+        if (onOversized) promoteOversized(tail);
+        else pieces = [];
+      } else {
+        pieces.push(tail);
+      }
+      length += tail.length;
     }
   }
-  const rest = length ? line() : undefined;
+  if (!length) return { kept: scan, all: scan };
+  if (oversized) {
+    const all: S = { ...scan, points: [...scan.points] };
+    oversized.finish(all);
+    return { kept: scan, all };
+  }
+  const rest = line();
   if (rest === undefined) return { kept: scan, all: scan };
   // A last line without its end may still be written: counted now, read again next time.
   const all: S = { ...scan, points: [...scan.points] };
@@ -348,7 +586,7 @@ async function scanAntigravity(
     result = { kept: from, all: from };
   } else {
     try {
-      result = await readOn(file, from, takeAntigravityLine);
+      result = await readOn(file, from, takeAntigravityLine, () => new OversizedAntigravityExtractor());
     } catch {
       return undefined;
     }

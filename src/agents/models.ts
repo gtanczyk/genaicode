@@ -120,8 +120,8 @@ export async function listAgentModels(
   env: NodeJS.ProcessEnv = process.env,
   options: ListModelsOptions = {},
 ): Promise<DiscoveredModel[]> {
-  const probe = MODEL_PROBES[agent.name];
-  if (!probe) return [];
+  if (!canDiscoverModels(agent.name)) return [];
+  const probe = MODEL_PROBES[agent.name]!;
   const executable = findAllExecutables(agent.command, env)[0];
   if (!executable) return [];
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -169,8 +169,10 @@ export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
   const emptyTtlMs = options.emptyTtlMs ?? 30_000;
   const byName = new Map(options.agents.map((agent) => [agent.name, agent]));
   const cache = new Map<string, { at: number; models: DiscoveredModel[] }>();
-  const inFlight = new Map<string, { epoch: number; promise: Promise<DiscoveredModel[]> }>();
+  const inFlight = new Map<string, { epoch: number; seq: number; promise: Promise<DiscoveredModel[]> }>();
+  const latestSeq = new Map<string, number>();
   let epoch = 0;
+  let seq = 0;
 
   return {
     async list(agentName, req = {}) {
@@ -185,22 +187,23 @@ export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
       // Only reuse an in-flight probe from the current generation (never one predating `invalidate()`).
       if (!req.refresh && existing && existing.epoch === epoch) return existing.promise;
       const startEpoch = epoch;
-      const entry = {
-        epoch: startEpoch,
-        promise: listAgentModels(agent, options.getEnv(), {
-          ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-          ...(cwd ? { cwd } : {}),
+      const reqSeq = ++seq;
+      latestSeq.set(key, reqSeq);
+      const promise = listAgentModels(agent, options.getEnv(), {
+        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+        ...(cwd ? { cwd } : {}),
+      })
+        .then((models) => {
+          // Only the newest probe in the current generation may populate the cache; an older
+          // probe finishing after a `refresh: true` request must not overwrite newer results.
+          if (startEpoch === epoch && latestSeq.get(key) === reqSeq) cache.set(key, { at: Date.now(), models });
+          return models;
         })
-          .then((models) => {
-            if (startEpoch === epoch) cache.set(key, { at: Date.now(), models });
-            return models;
-          })
-          .finally(() => {
-            if (inFlight.get(key) === entry) inFlight.delete(key);
-          }),
-      };
-      inFlight.set(key, entry);
-      return entry.promise;
+        .finally(() => {
+          if (inFlight.get(key)?.seq === reqSeq) inFlight.delete(key);
+        });
+      inFlight.set(key, { epoch: startEpoch, seq: reqSeq, promise });
+      return promise;
     },
     invalidate(agentName) {
       epoch += 1;

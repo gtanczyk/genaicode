@@ -624,15 +624,9 @@ describe('antigravity driver', () => {
       tools,
       () => {},
     );
-    expect(first).toContainEqual({
-      type: 'progress',
-      message: 'Step two',
-      plan: [
-        { step: 'Step one', status: 'completed' },
-        { step: 'Step two', status: 'in_progress' },
-      ],
-    });
-    // Subsequent completion of the same update_steps call does not emit a duplicate progress entry.
+    // In-progress update_steps does not commit progress until it succeeds.
+    expect(first.some((event) => event.type === 'progress')).toBe(false);
+    // Completing update_steps commits the plan as a progress event.
     const second = antigravityUpdateEvents(
       {
         sessionUpdate: 'tool_call_update',
@@ -643,7 +637,29 @@ describe('antigravity driver', () => {
       tools,
       () => {},
     );
-    expect(second.some((event) => event.type === 'progress')).toBe(false);
+    expect(second).toContainEqual({
+      type: 'progress',
+      message: 'Step two',
+      plan: [
+        { step: 'Step one', status: 'completed' },
+        { step: 'Step two', status: 'in_progress' },
+      ],
+    });
+    // A failed update_steps proposal must never announce "Completed all steps".
+    const failed = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 's-fail',
+        name: 'update_steps',
+        status: 'failed',
+        rawInput: {
+          steps: [{ title: 'Step one', status: 'done' }],
+        },
+      },
+      tools,
+      () => {},
+    );
+    expect(failed.some((event) => event.type === 'progress')).toBe(false);
 
     // 12 completed steps + active 13th step still reports step 13 as active (not completed), and caps display at 12.
     const longPlan = antigravityUpdateEvents(

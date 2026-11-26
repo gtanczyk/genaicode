@@ -1182,6 +1182,42 @@ describe('<WorkPanel> task list', () => {
     expect($('.gc-work').style.width).toBe('');
     expect($('.gc-work-resize')).toBeNull();
   });
+
+  it('calls customViewer.onSelectTab without invoking onBack when leaving a custom viewer via a tab', () => {
+    const onBack = vi.fn();
+    const onSelectTab = vi.fn();
+    const onView = vi.fn();
+    const tasks: PackTask[] = [{ ...base, id: 't1', prompt: 'x', status: 'running' }];
+    const state = session(tasks);
+    state.turns[0]!.entries.push({ kind: 'files', paths: ['/work/app/src/a.ts'] });
+    act(() =>
+      root.render(
+        <WorkPanel
+          state={state}
+          view={{ tab: 'tasks' }}
+          onView={onView}
+          mode="full"
+          customViewer={{
+            backLabel: 'Close',
+            onBack,
+            onSelectTab,
+            render: (controls) => (
+              <div className="custom-steps">
+                <button type="button" onClick={controls.onBack}>
+                  {controls.backLabel}
+                </button>
+              </div>
+            ),
+          }}
+        />,
+      ),
+    );
+    expect($('.custom-steps')).not.toBeNull();
+    click($('.gc-work-tab[data-tab="changes"]'));
+    expect(onSelectTab).toHaveBeenCalledWith('changes');
+    expect(onBack).not.toHaveBeenCalled();
+    expect(onView).not.toHaveBeenCalled();
+  });
 });
 
 describe('<AgentChat onOpenTasks>', () => {

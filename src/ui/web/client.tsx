@@ -1410,6 +1410,7 @@ function App({ selected }: { selected?: string }) {
   const chatKey = chatKeyOf({ conversation, session });
   // The full-width view is opened by hand each time: it covers the chat, so it is not remembered.
   const [workFullOpen, setWorkFullOpen] = useState(false);
+  const [stepsTarget, setStepsTarget] = useState<{ turnId: number; stretch: number }>();
   const [work, setWork] = useState<{ chat: string; generation?: number; view: WorkPanelView }>(() => ({
     generation: view?.generation,
     chat: chatKey,
@@ -1427,6 +1428,7 @@ function App({ selected }: { selected?: string }) {
     if (!carried) {
       setWorkFullOpen(false);
       setExpanded(false);
+      setStepsTarget(undefined);
       viewerOpenedPanel.current = false;
     }
   }
@@ -1448,7 +1450,6 @@ function App({ selected }: { selected?: string }) {
     }
   }, [view?.generation, sessionArtifacts.length]);
   const viewing = workView.viewing;
-  const [stepsTarget, setStepsTarget] = useState<{ turnId: number; stretch: number }>();
   const activeStepsTarget =
     stepsTarget && session?.turns.some((turn) => turn.id === stepsTarget.turnId) ? stepsTarget : undefined;
   const anyViewer = !!viewing || !!activeStepsTarget;
@@ -1477,9 +1478,6 @@ function App({ selected }: { selected?: string }) {
   useEffect(() => {
     if (workOpen && workView.seen !== tasks.length) setWorkView({ ...workView, seen: tasks.length });
   }, [workOpen, tasks.length, workView.seen]);
-  useEffect(() => {
-    setStepsTarget(undefined);
-  }, [chatKey, view?.generation]);
   const pullRequests = usePullRequests(chatKey, tasks, workOpen);
   const closeWork = () => {
     setExpanded(false);
@@ -1720,6 +1718,7 @@ function App({ selected }: { selected?: string }) {
     setUnsent(undefined);
     setWorkFullOpen(false);
     setExpanded(false);
+    setStepsTarget(undefined);
     setPanel('chat');
   }, [selected]);
 
@@ -1728,17 +1727,22 @@ function App({ selected }: { selected?: string }) {
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
   const [loadingModelsKey, setLoadingModelsKey] = useState<string>();
   const modelsInFlight = useRef(new Set<string>());
-  const modelKey = (agentName: string) => `${agentName}\0${activeCwd ?? ''}`;
+  const modelKey = (agentName: string, dir = activeCwd) => `${agentName}\0${dir ?? ''}`;
   const loadModels = (agentName: string) => {
     const key = modelKey(agentName);
     if (!config?.models || !token || !agentName || modelsInFlight.current.has(key)) return;
     modelsInFlight.current.add(key);
     if (!discoveredModels[key]?.length) setLoadingModelsKey(key);
-    void fetch(`/api/models?agent=${encodeURIComponent(agentName)}`, { headers: { 'x-genaicode-token': token } })
-      .then((res) => (res.ok ? (res.json() as Promise<{ models?: DiscoveredModel[] }>) : undefined))
+    void chatFetch(`/api/models?agent=${encodeURIComponent(agentName)}`, {
+      headers: { 'x-genaicode-token': token },
+    })
+      .then((res) => (res.ok ? (res.json() as Promise<{ cwd?: string; models?: DiscoveredModel[] }>) : undefined))
       .then((body) => {
         if (body && Array.isArray(body.models)) {
-          setDiscoveredModels((prev) => ({ ...prev, [key]: body.models! }));
+          // Key by the server-resolved directory when provided so a project switch in flight
+          // never stores another project's models under the displayed directory's cache key.
+          const resolvedKey = typeof body.cwd === 'string' ? modelKey(agentName, body.cwd) : key;
+          setDiscoveredModels((prev) => ({ ...prev, [resolvedKey]: body.models! }));
         }
       })
       .catch(() => {})
@@ -2137,6 +2141,12 @@ function App({ selected }: { selected?: string }) {
                   ? {
                       backLabel: 'Close',
                       onBack: () => closeViewer(),
+                      onSelectTab: (nextTab) => {
+                        setExpanded(false);
+                        setStepsTarget(undefined);
+                        viewerOpenedPanel.current = false;
+                        setWorkView({ ...workView, tab: nextTab, task: undefined, viewing: undefined });
+                      },
                       render: (controls) => {
                         const turn = session.turns.find((candidate) => candidate.id === activeStepsTarget.turnId);
                         if (!turn) return null;

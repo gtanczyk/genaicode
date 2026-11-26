@@ -2450,6 +2450,7 @@ describe('web UI server', () => {
       expect((await fetch(new URL('/api/models', url), { headers })).status).toBe(400);
       expect(await (await fetch(new URL('/api/models?agent=claude', url), { headers })).json()).toEqual({
         agent: 'claude',
+        cwd: expect.any(String),
         models: [],
       });
       const initial = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as {
