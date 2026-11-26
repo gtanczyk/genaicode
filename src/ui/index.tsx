@@ -71,6 +71,8 @@ export { NoAgentError };
  */
 export interface UiRunOptions extends ChatOptions {
   projectTeams?: import('../agents/pack-profile.js').ProjectTeams;
+  /** The session index in the agents' own MCP configuration, offered in Settings › Agents. */
+  agentTools?: import('./agent-tools.js').AgentTools;
   agents: readonly CodingAgent[];
   sessionAgents?: readonly CodingAgent[];
   version: string;
@@ -1098,6 +1100,7 @@ function webLink(
       limits: readLimits,
       pullRequest: options.pullRequest ?? pullRequestLookup({ env: options.env }),
       projectTeams: options.projectTeams,
+      ...(options.agentTools ? { agentTools: options.agentTools } : {}),
       // Automatic runs too: they use the plan like everything else.
       shares: async (query) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);

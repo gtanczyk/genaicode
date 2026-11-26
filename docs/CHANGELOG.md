@@ -18,16 +18,21 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
   - The agent popover's Model field is now a filterable dropdown with an Agent's default choice and live model discovery for `agy`, `cursor-agent` and `opencode` (`GET /api/models`).
   - Clicking a turn's `N steps` pill opens its steps in the right-hand work panel (with an Errors filter and Expand/Dock) instead of expanding them inline in the chat.
   - lib: `listAgentModels()`, `createModelCatalog()`, `<AgentChat onOpenSteps>`, `<WorkPanel customViewer>`, and `AgentEvent` `'progress'`.
+- **Give Claude Code, Codex and Cursor the session tools from Settings › Agents.** (#379)
+  - One click per agent adds, updates or removes the `genaicode` MCP server that `genaicode mcp install` adds. From the desktop app the agents start the app's own Node and genaicode, which update with the app.
+  - Run from npx's cache or a Linux AppImage with no installed command, it says how to install the command instead.
 
 ### Fixed
 
-- **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
-  - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
-  - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.
 - **Render `file://` links, keep the working bar on one line, and surface progress updates.** (#376)
   - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
   - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
   - New sessions remind agents to call `report_progress`, and Antigravity's native `plan` / `update_steps` updates appear as live chat progress.
+- **MCP servers and hooks installed with npx keep working after npm clears its cache.** (#378)
+  - `npx genaicode mcp install` and `hooks install` register the installed command (`~/.genaicode/current`) when there is one, and otherwise say to install it first.
+- **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
+  - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
+  - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.
 
 ## 3.5.0 — 2026-11-26
 

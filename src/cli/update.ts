@@ -136,6 +136,35 @@ export function stableCliPath(packageRoot: string): string {
     : join(packageRoot, 'dist', 'cli.js');
 }
 
+/**
+ * The `cli.js` that agents' own settings (MCP servers, hooks) should start, and whether it is
+ * the installed command's. Run from npx, this package sits in npx's cache, which npm clears: the
+ * installed command is used instead when there is one, and `transient` says there is none. In a
+ * Linux AppImage it sits in a mount that moves on every start, and its Node with it: `transient`.
+ */
+export function durableCliPath(
+  packageRoot: string,
+  env: NodeJS.ProcessEnv,
+): { path: string; installed: boolean; transient: boolean } {
+  if (findInstall(packageRoot)) return { path: stableCliPath(packageRoot), installed: true, transient: false };
+  const own = join(packageRoot, 'dist', 'cli.js');
+  let real = packageRoot;
+  try {
+    real = realpathSync(packageRoot);
+  } catch {
+    // A path that is not there is not npx's either.
+  }
+  const appImage = (env.APPDIR && real.startsWith(env.APPDIR)) || real.startsWith('/tmp/.mount_');
+  if (appImage) return { path: own, installed: false, transient: true };
+  if (!real.split(/[\\/]/).includes('_npx')) return { path: own, installed: false, transient: false };
+  const home = resolve(env.GENAICODE_HOME || join(env.HOME ?? homedir(), '.genaicode'));
+  const current = join(home, 'current', 'node_modules', PACKAGE_NAME, 'dist', 'cli.js');
+  if (existsSync(join(home, 'install.json')) && existsSync(current)) {
+    return { path: current, installed: true, transient: false };
+  }
+  return { path: own, installed: false, transient: true };
+}
+
 /** -1, 0 or 1. Pre-release suffixes sort before the release. */
 export function compareVersions(a: string, b: string): number {
   const parse = (v: string) => {

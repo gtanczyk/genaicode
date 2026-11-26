@@ -2,6 +2,7 @@ import { chatFetch } from './chat-route.js';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { ProjectTeam } from '../../agents/pack-profile.js';
+import type { AgentToolsListing } from '../agent-tools.js';
 import type { AgentShares } from '../../agents/sessions/shares.js';
 import type { AgentInspection } from '../../agents/status.js';
 import type { RateLimit } from '../../agents/types.js';
@@ -153,6 +154,8 @@ export interface AgentsSectionProps {
   onUse?(name: string): void;
   /** The window is moving to another chat: Use waits, as it would reach the chat being left. */
   holding?: boolean;
+  /** The page's token, where the server offers the session tools to the agents (`/api/agent-tools`). */
+  agentTools?: { token: string };
 }
 
 const STATE_GLYPH: Record<AgentCardState, 'ok' | 'ask' | 'err' | 'idle'> = {
@@ -178,6 +181,7 @@ export function AgentsSection({
   onCheckAgain,
   onUse,
   holding,
+  agentTools,
 }: AgentsSectionProps) {
   const [note, setNote] = useState<string>();
   const focused = useRef<HTMLDivElement>(null);
@@ -270,6 +274,108 @@ export function AgentsSection({
         </button>
         {note ? <span role="status">{note}</span> : null}
       </div>
+      {agentTools ? <AgentToolsCard token={agentTools.token} agents={agents} /> : null}
+    </>
+  );
+}
+
+/**
+ * The session index as an MCP server of each agent found here (`genaicode mcp install`): their own
+ * chats then answer "what waits for me?" too. Nothing is added until the person clicks Add.
+ */
+export function AgentToolsCard({ token, agents }: { token: string; agents: readonly AgentInspection[] }) {
+  const [listing, setListing] = useState<AgentToolsListing>();
+  const [busy, setBusy] = useState<string>();
+  const [problem, setProblem] = useState('');
+  const call = async (init?: RequestInit) => {
+    const response = await chatFetch('/api/agent-tools', {
+      ...init,
+      headers: { 'x-genaicode-token': token, ...(init?.body ? { 'content-type': 'application/json' } : {}) },
+    });
+    const data = (await response.json()) as AgentToolsListing & { error?: string };
+    if (!response.ok) throw new Error(data.error ?? 'Could not reach genaicode.');
+    return data;
+  };
+  useEffect(() => {
+    let live = true;
+    void call()
+      .then((data) => live && setListing(data))
+      .catch((error: Error) => live && setProblem(error.message));
+    return () => {
+      live = false;
+    };
+    // The token does not change while the page is open.
+  }, [token]);
+  const change = async (agent: string, add: boolean) => {
+    setBusy(agent);
+    setProblem('');
+    try {
+      setListing(await call({ method: 'POST', body: JSON.stringify({ agent, add }) }));
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(undefined);
+    }
+  };
+  if (!listing && !problem) return null;
+  const title = (name: string) => agents.find((agent) => agent.name === name)?.guide.title ?? name;
+  return (
+    <>
+      <h3>Session tools in your agents</h3>
+      <p>
+        Lets Claude Code, Codex and the others answer from their own chats which sessions wait for you and what your
+        other agents said. They get the read-only tools of this app's chat, as <code>genaicode mcp install</code> gives
+        them.
+      </p>
+      <div className="card agent-tools">
+        {listing && !listing.durable ? (
+          <div className="set col">
+            <small>
+              This genaicode runs from a temporary place (npx's cache or an AppImage), so the agents could not start it
+              later. Install the command, then add the tools from it:
+            </small>
+            <CopyCommand command="npx genaicode install && genaicode mcp install" label="install the command" />
+          </div>
+        ) : (
+          listing?.agents.map((entry) => {
+            const state = !entry.installed ? 'Not added' : entry.current ? 'Added' : 'Added by another genaicode';
+            const label = !entry.installed ? 'Add' : entry.current ? 'Remove' : 'Update';
+            return (
+              <div key={entry.agent} className="set agent-line" data-tools-agent={entry.agent}>
+                <StateGlyph state={entry.installed && entry.current ? 'ok' : 'idle'} decorative />
+                <span className="grow">
+                  <b>{title(entry.agent)}</b>
+                  <small>
+                    {[state, entry.send ? 'with sessions_send' : undefined, entry.installed ? entry.file : undefined]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  className="btn sm"
+                  aria-label={`${label} session tools in ${title(entry.agent)}`}
+                  disabled={busy !== undefined}
+                  onClick={() => void change(entry.agent, label !== 'Remove')}
+                >
+                  {busy === entry.agent ? '…' : label}
+                </button>
+              </div>
+            );
+          })
+        )}
+        {listing?.durable && !listing.agents.length ? (
+          <div className="set">
+            <small>None of Claude Code, Codex, Gemini CLI, Copilot or Cursor is found here.</small>
+          </div>
+        ) : null}
+      </div>
+      {problem ? (
+        <div className="set-actions">
+          <span role="status">{problem}</span>
+        </div>
+      ) : null}
+      <small>New sessions of an agent get the tools. Already open ones keep what they started with.</small>
     </>
   );
 }

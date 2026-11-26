@@ -26,6 +26,7 @@ import { sendSession } from '../agents/sessions/send.js';
 import { SessionSendGate, sessionSendTool } from '../agents/sessions/send-tool.js';
 import { detachSend } from './detach-send.js';
 import { ago, resumeCommand } from '../ui/sessions.js';
+import type { AgentTools, AgentToolsListing } from '../ui/agent-tools.js';
 import { cursorCloud } from '../agents/drivers/cursor-cloud.js';
 import {
   agentSessionSources,
@@ -42,6 +43,7 @@ import {
   installHooks,
   installMcp,
   MCP_INSTALL_AGENTS,
+  type McpInstallAgent,
   mcpInstallStatus,
   uninstallMcp,
   liveDir,
@@ -113,6 +115,7 @@ import {
   autoUpdate,
   backgroundUpdate,
   defaultUpdateDeps,
+  durableCliPath,
   findInstall,
   installCommand,
   installedReleaseNotes,
@@ -121,7 +124,6 @@ import {
   registerRun,
   selfInstall,
   setAutoUpdate,
-  stableCliPath,
   updateInstall,
   type UpdateDeps,
 } from './update.js';
@@ -168,6 +170,7 @@ export interface UiLaunch {
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
   projectTeams?: ProjectTeams;
+  agentTools?: AgentTools;
   projectLead?(cwd: string): Promise<string | undefined>;
   sessionSources?: readonly SessionSource[];
   sessionTools?: readonly McpTool[];
@@ -1017,6 +1020,9 @@ async function runUi(
     ...(options.kind === 'tower' ? { waitingOnStart: true } : {}),
     ...(startupNotice ? { startupNotice } : {}),
     ...(profiles ? { projectTeams: profiles } : {}),
+    ...(options.kind === 'ui'
+      ? { agentTools: agentTools(cli, cli.updater?.packageRoot ?? defaultUpdateDeps(cli.env).packageRoot) }
+      : {}),
     ...(options.home && !options.agent && projectLead ? { projectLead } : {}),
     agent: initial,
     cwd: launchCwd,
@@ -1142,6 +1148,63 @@ function sessionSkills(): McpSkill[] {
   }
 }
 
+/** After `mcp install` or `hooks install` from npx's cache, which npm clears, with no installed command. */
+const NPX_CACHE_WARNING =
+  "This genaicode runs from npx's cache, and npm clears it: the agents would then fail to start it.\n" +
+  'Install the command once ("npx genaicode install") and run this again as "genaicode ...".\n';
+
+/** What `mcp install` registers: the command, the agents whose CLI is found, each one's options. */
+function mcpSetup(cli: CliEnvironment, packageRoot: string) {
+  // The installed command's server runs `current`, which survives updates; otherwise this package.
+  const cliPath = durableCliPath(packageRoot, cli.env);
+  const installedHere = new Map(
+    detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
+  );
+  const optionsFor = (agent: McpInstallAgent, send: boolean) => {
+    const found = installedHere.get(agent);
+    return {
+      env: cli.env,
+      ...(send ? { send: true } : {}),
+      ...(cliPath.installed ? { server: { command: process.execPath, args: [cliPath.path, 'sessions', 'mcp'] } } : {}),
+      ...(found ? { cli: found } : {}),
+    };
+  };
+  return { cliPath, installedHere, optionsFor };
+}
+
+/**
+ * Settings › Agents: the same as `genaicode mcp install|uninstall -a <agent>`, for the agents whose
+ * CLI is found. A server added with `--send` keeps it when updated.
+ */
+function agentTools(cli: CliEnvironment, packageRoot: string): AgentTools {
+  const list = async (): Promise<AgentToolsListing> => {
+    const { cliPath, installedHere, optionsFor } = mcpSetup(cli, packageRoot);
+    const found = MCP_INSTALL_AGENTS.filter((agent) => installedHere.has(agent));
+    const agents = await Promise.all(found.map((agent) => mcpInstallStatus(agent, optionsFor(agent, false))));
+    return {
+      durable: !cliPath.transient,
+      agents: agents.map(({ agent, installed, current, send, file }) => ({ agent, installed, current, send, file })),
+    };
+  };
+  return {
+    list,
+    async change(name, add) {
+      const { cliPath, installedHere, optionsFor } = mcpSetup(cli, packageRoot);
+      const agent = MCP_INSTALL_AGENTS.find((known) => known === name);
+      if (!agent || !installedHere.has(agent)) throw new Error(`${name} is not an agent found here.`);
+      if (add && cliPath.transient)
+        throw new Error('This genaicode runs from a place the agents could not start later.');
+      if (add) {
+        const before = await mcpInstallStatus(agent, optionsFor(agent, false));
+        await installMcp(agent, optionsFor(agent, before.send));
+      } else {
+        await uninstallMcp(agent, optionsFor(agent, false));
+      }
+      return list();
+    },
+  };
+}
+
 /** `mcp`: the session index in the agents' own MCP configuration. */
 async function manageMcp(
   cli: CliEnvironment,
@@ -1153,23 +1216,12 @@ async function manageMcp(
     cli.stderr.write(`No MCP install for agent "${command.agent}". Agents: ${known.join(', ')}.\n`);
     return EXIT_USAGE;
   }
-  // The installed command's server runs `current`, which survives updates; otherwise this package.
-  const install = findInstall(updater.packageRoot);
-  const installedHere = new Map(
-    detectAgents(cli.agents ?? defaultAgents(), cli.env).map((found) => [found.agent.name, found.path]),
-  );
+  const { cliPath, installedHere, optionsFor } = mcpSetup(cli, updater.packageRoot);
   const chosen = MCP_INSTALL_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
   let failed = false;
   for (const agent of chosen) {
     const found = installedHere.get(agent);
-    const options = {
-      env: cli.env,
-      ...(command.send ? { send: true } : {}),
-      ...(install
-        ? { server: { command: process.execPath, args: [stableCliPath(updater.packageRoot), 'sessions', 'mcp'] } }
-        : {}),
-      ...(found ? { cli: found } : {}),
-    };
+    const options = optionsFor(agent, !!command.send);
     try {
       if (command.action === 'install') {
         if (!found && command.agent === undefined) {
@@ -1207,6 +1259,7 @@ async function manageMcp(
         'They read what your other agents\' sessions said. "genaicode mcp uninstall" takes them out again.\n',
     );
   }
+  if (command.action === 'install' && cliPath.transient) cli.stderr.write(NPX_CACHE_WARNING);
   return failed ? EXIT_FAILED : EXIT_OK;
 }
 
@@ -1597,10 +1650,10 @@ async function manageHooks(
     return EXIT_USAGE;
   }
   // The installed command's hooks run `current`, which survives updates; otherwise this package.
-  const install = findInstall(updater.packageRoot);
+  const cliPath = durableCliPath(updater.packageRoot, cli.env);
   const hookOptions = {
     env: cli.env,
-    ...(install ? { command: `"${process.execPath}" "${stableCliPath(updater.packageRoot)}" hook` } : {}),
+    ...(cliPath.installed ? { command: `"${process.execPath}" "${cliPath.path}" hook` } : {}),
   };
   const chosen = HOOK_AGENTS.filter((agent) => command.agent === undefined || agent === command.agent);
   const installedHere = new Map(
@@ -1665,6 +1718,7 @@ async function manageHooks(
       `${live.size} open session${live.size === 1 ? '' : 's'}${ended ? ` (and ${ended} ended)` : ''} reported in ${liveDir(cli.env)}\n`,
     );
   }
+  if (command.action === 'install' && cliPath.transient) cli.stderr.write(NPX_CACHE_WARNING);
   return failed ? EXIT_FAILED : EXIT_OK;
 }
 
