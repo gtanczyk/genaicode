@@ -10,7 +10,7 @@ import { detectAgents } from '../agents/discovery.js';
 import { createModelCatalog, type ModelCatalog } from '../agents/models.js';
 import { createAgentInspector, type AgentInspector } from '../agents/status.js';
 import { sendSession } from '../agents/sessions/send.js';
-import { knownLimits } from '../agents/sessions/limits.js';
+import { knownLimits, probeAntigravityLimits } from '../agents/sessions/limits.js';
 import { readTopics } from '../agents/sessions/topics.js';
 import { topicShares } from '../agents/sessions/shares.js';
 import { partsSince } from '../agents/sessions/window.js';
@@ -698,6 +698,48 @@ function webLink(
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
+  const antigravityCommand = agents.find((agent) => agent.name === 'antigravity')?.command;
+  let antigravityLimitsAt = 0;
+  let antigravityLimitsOk = false;
+  let antigravityLimitsTurn = '';
+  let antigravityLimitsInFlight: Promise<unknown> | undefined;
+  const readLimits = async () => {
+    const env = options.env ?? process.env;
+    const current = await knownLimits(env);
+    if (!antigravityCommand || process.env.GENAICODE_LIMITS === 'off' || env.GENAICODE_LIMITS === 'off') {
+      return current;
+    }
+    const now = Date.now();
+    const storedAt = current
+      .filter((limit) => limit.agent === 'antigravity')
+      .reduce((latest, limit) => Math.max(latest, limit.at), 0);
+    const session = controller().get().session;
+    const completedTurn =
+      session.agent === 'antigravity' ? (session.turns.filter((turn) => turn.result).at(-1)?.id ?? 0) : 0;
+    const turnKey = completedTurn > 0 ? `${session.sessionId ?? ''}:${completedTurn}` : antigravityLimitsTurn;
+    const turnFinished = completedTurn > 0 && turnKey !== antigravityLimitsTurn;
+    const cooldown = antigravityLimitsOk ? 5 * 60_000 : 60_000;
+    const stale = !storedAt || now - storedAt >= 5 * 60_000;
+    if ((turnFinished || (stale && now - antigravityLimitsAt >= cooldown)) && !antigravityLimitsInFlight) {
+      antigravityLimitsAt = now;
+      antigravityLimitsTurn = turnKey;
+      antigravityLimitsInFlight = probeAntigravityLimits({ command: antigravityCommand, env })
+        .then((found) => {
+          antigravityLimitsOk = found.length > 0;
+        })
+        .catch(() => {
+          antigravityLimitsOk = false;
+        })
+        .finally(() => {
+          antigravityLimitsInFlight = undefined;
+        });
+    }
+    if (!storedAt && antigravityLimitsInFlight) {
+      await antigravityLimitsInFlight;
+      return knownLimits(env);
+    }
+    return current;
+  };
   const currentSenders = () =>
     detectAgents(agents, options.env).flatMap(({ agent, path }) =>
       path && agent.capabilities.resume && agent.sessions?.where === 'local'
@@ -723,7 +765,10 @@ function webLink(
       ...(inspector
         ? {
             agents: (query) => {
-              if (query?.refresh || query?.refreshEnv) modelCatalog?.invalidate();
+              if (query?.refresh || query?.refreshEnv) {
+                modelCatalog?.invalidate();
+                antigravityLimitsAt = 0;
+              }
               return inspector.check(query);
             },
           }
@@ -804,7 +849,7 @@ function webLink(
           permissions: sandbox ? { sandbox } : undefined,
         });
       },
-      limits: () => knownLimits(options.env),
+      limits: readLimits,
       pullRequest: options.pullRequest ?? pullRequestLookup({ env: options.env }),
       projectTeams: options.projectTeams,
       // Automatic runs too: they use the plan like everything else.

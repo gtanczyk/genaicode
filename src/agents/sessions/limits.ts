@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { findAllExecutables } from '../discovery.js';
 import { epochMs, limitStatus, windowLabel } from '../runtime.js';
 import type { RateLimit } from '../types.js';
 import { findFiles, homeOf, isRecord } from './files.js';
@@ -137,6 +139,112 @@ export function statusLineLimits(input: unknown): RateLimit[] {
     });
   }
   return found;
+}
+
+/**
+ * The `groups` of `agy --print /usage --output-format json` (`command.data.groups`, or `{ groups }`
+ * directly) as plan limits: each bucket's `remaining_fraction`, window (`weekly` -> `7d`, `5h`),
+ * `reset_time`, and model group name (e.g. `Gemini`, `Claude and GPT`).
+ */
+export function antigravityUsageLimits(input: unknown): RateLimit[] {
+  if (!isRecord(input)) return [];
+  const command = isRecord(input.command) ? input.command : undefined;
+  const data = command && isRecord(command.data) ? command.data : input;
+  const groups = Array.isArray(data.groups) ? data.groups : undefined;
+  if (!groups) return [];
+  const found: RateLimit[] = [];
+  for (const group of groups) {
+    if (!isRecord(group) || !Array.isArray(group.buckets)) continue;
+    const rawName =
+      typeof group.name === 'string'
+        ? group.name
+            .trim()
+            .replace(/\s+models$/i, '')
+            .trim()
+        : '';
+    const name = rawName || undefined;
+    for (const bucket of group.buckets) {
+      if (
+        !isRecord(bucket) ||
+        typeof bucket.remaining_fraction !== 'number' ||
+        !Number.isFinite(bucket.remaining_fraction)
+      )
+        continue;
+      const usedPercent = Math.round(Math.min(100, Math.max(0, (1 - bucket.remaining_fraction) * 100)) * 10) / 10;
+      const rawWindow = typeof bucket.window === 'string' ? bucket.window.trim().toLowerCase() : '';
+      const window =
+        rawWindow === 'weekly'
+          ? '7d'
+          : rawWindow === 'daily'
+            ? '24h'
+            : rawWindow || (typeof bucket.id === 'string' && bucket.id.trim() ? bucket.id.trim() : 'quota');
+      const parsedReset = typeof bucket.reset_time === 'string' ? Date.parse(bucket.reset_time) : NaN;
+      const resetsAt = Number.isNaN(parsedReset) ? undefined : parsedReset;
+      found.push({
+        window,
+        status: limitStatus(usedPercent),
+        usedPercent,
+        ...(resetsAt !== undefined ? { resetsAt } : {}),
+        ...(name ? { name } : {}),
+      });
+    }
+  }
+  return found;
+}
+
+/** Parse stdout of `agy --print /usage --output-format json` into plan limits. */
+export function parseAntigravityUsageLimits(output: string): RateLimit[] {
+  const trimmed = output.trim();
+  if (!trimmed) return [];
+  try {
+    return antigravityUsageLimits(JSON.parse(trimmed));
+  } catch {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start < 0 || end <= start) return [];
+    try {
+      return antigravityUsageLimits(JSON.parse(trimmed.slice(start, end + 1)));
+    } catch {
+      return [];
+    }
+  }
+}
+
+export interface ProbeAntigravityLimitsOptions {
+  /** Executable name or path. Default `agy`. */
+  command?: string;
+  env?: NodeJS.ProcessEnv;
+  /** Subprocess timeout in ms. Default 10,000. */
+  timeoutMs?: number;
+  /** Keep the reading under `~/.genaicode/limits/antigravity.json`. Default true. */
+  record?: boolean;
+}
+
+/**
+ * Ask the installed Antigravity CLI for its current plan limits (`agy --print /usage --output-format json`,
+ * which runs no model turn and creates no conversation) and persist them under `~/.genaicode/limits`.
+ */
+export async function probeAntigravityLimits(options: ProbeAntigravityLimitsOptions = {}): Promise<RateLimit[]> {
+  const env = options.env ?? process.env;
+  const executable = findAllExecutables(options.command ?? 'agy', env)[0];
+  if (!executable) return [];
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const limits = await new Promise<RateLimit[]>((resolve) => {
+    execFile(
+      executable,
+      ['--print', '/usage', '--output-format', 'json'],
+      { env, timeout: timeoutMs, maxBuffer: 512 * 1024, windowsHide: true },
+      (error, stdout) => {
+        if (error) return resolve([]);
+        const text = typeof stdout === 'string' ? stdout : String(stdout ?? '');
+        resolve(parseAntigravityUsageLimits(text));
+      },
+    );
+  });
+  if (limits.length && options.record !== false && process.env.GENAICODE_LIMITS !== 'off') {
+    recordLimits('antigravity', limits, env);
+  }
+  return limits;
 }
 
 /** The `rate_limits` of a `token_count` line in a Codex rollout (`primary`, `secondary`). */

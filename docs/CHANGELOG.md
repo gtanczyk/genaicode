@@ -10,6 +10,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- **Show all installed agents and Antigravity usage and plan limits in Settings › Usage.** (#376)
+  - Settings › Usage lists every installed agent (with “reports no plan limits” when none are reported) and merges `*Live` accounts into one row.
+  - Antigravity sessions read per-step token usage from `transcript.jsonl` (including mirrored CLI transcripts) for 7-day topic shares, and plan limits are refreshed via `agy --print /usage --output-format json`.
+  - lib: `antigravityUsageLimits()`, `parseAntigravityUsageLimits()`, `probeAntigravityLimits()`, and `antigravityUsage()`.
 - **Pick models from a dropdown and inspect turn steps in the side panel.** (#376)
   - The agent popover's Model field is now a filterable dropdown with an Agent's default choice and live model discovery for `agy`, `cursor-agent` and `opencode` (`GET /api/models`).
   - Clicking a turn's `N steps` pill opens its steps in the right-hand work panel (with an Errors filter and Expand/Dock) instead of expanding them inline in the chat.
