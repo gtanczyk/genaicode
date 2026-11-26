@@ -1,3 +1,4 @@
+import { chatFetch, chatUrl } from './chat-route.js';
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { formatBytes } from '../../react/format.js';
 import {
@@ -206,7 +207,7 @@ export function ViewerPanel({
     setProblem(undefined);
     fileFetchedAtRef.current = 0;
     retriedRawUrlRef.current = undefined;
-    fetch(`/api/file?path=${encodeURIComponent(filePath)}`, {
+    chatFetch(`/api/file?path=${encodeURIComponent(filePath)}`, {
       headers: { 'x-genaicode-token': token },
       signal: abort.signal,
     })
@@ -238,7 +239,7 @@ export function ViewerPanel({
     const queryPath = current?.fullPath ?? filePath;
     if (!queryPath || !token) return current?.rawUrl;
     try {
-      const res = await fetch(`/api/file?path=${encodeURIComponent(queryPath)}`, {
+      const res = await chatFetch(`/api/file?path=${encodeURIComponent(queryPath)}`, {
         headers: { 'x-genaicode-token': token },
         signal,
       });
@@ -312,7 +313,7 @@ export function ViewerPanel({
         if (abort.signal.aborted) return;
         const batch = uniqueResolved.slice(i, i + 100);
         try {
-          const res = await fetch('/api/file/images', {
+          const res = await chatFetch('/api/file/images', {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
             body: JSON.stringify({ paths: batch }),
@@ -379,7 +380,7 @@ export function ViewerPanel({
 
   if (target.kind === 'artifact') {
     const artifact = activeArtifact;
-    const url = artifact ? `/artifacts/${artifact.id}?v=${artifact.version}` : undefined;
+    const url = artifact ? chatUrl(`/artifacts/${artifact.id}?v=${artifact.version}`) : undefined;
     const dlUrl = url ? withDownloadParam(url) : undefined;
     const versions = artifactGroup ? [...artifactGroup.versions].sort((a, b) => b.version - a.version) : [];
     const isPdf = artifact?.mimeType === 'application/pdf';

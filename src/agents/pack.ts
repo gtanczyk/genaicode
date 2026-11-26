@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import type { PackPool } from './pack-pool.js';
 import { checkedForMerge, isPassingVerdict, replyVerdict } from './pack-verdict.js';
 import { trackReply } from './reply.js';
 import { mkdirSync, realpathSync, statSync } from 'node:fs';
@@ -53,6 +55,8 @@ import type {
 } from './types.js';
 
 export interface PackOptions {
+  pool?: PackPool;
+  poolChat?: string;
   /** The agent that takes the prompt and hands work out. Needs `capabilities.mcp`. */
   lead: CodingAgent;
   /** Agents the lead may delegate to. The lead may be one of them. */
@@ -234,7 +238,21 @@ export interface PackStep {
   interrupted?: boolean;
 }
 
+export interface SavedPackTask {
+  task: PackTask;
+  base: string;
+  repo: string;
+  start: string;
+  sessionId?: string;
+  reviewer?: string;
+  agentMode?: AgentMode;
+}
+
 export interface Pack extends CodingAgent {
+  records(): SavedPackTask[];
+  recover(task: AgentTask, records: readonly SavedPackTask[]): PackControls;
+  forChat(id: string, pool: PackPool): Pack;
+  shutdown(): Promise<void>;
   /** Every task delegated so far, over all runs. */
   tasks(): PackTask[];
   /** Stop running tasks and remove active worktrees. Worktrees retained by merge or discard remain on disk. */
@@ -356,6 +374,8 @@ interface Sub {
   stoppedBy?: PackStopCause;
   run?: AgentRun;
   result?: AgentResult;
+  // Saved replies are clipped, so preserve metadata originally read from the complete reply.
+  recoveredReply?: Pick<PackTask, 'verdict' | 'pullRequest' | 'mcpServers'>;
   last?: string;
   steers?: PackSteer[];
   steps?: Step[];
@@ -888,7 +908,11 @@ export function pack(options: PackOptions): Pack {
     prompt: sub.prompt,
     ...(sub.model ? { model: sub.model } : {}),
     ...(sub.effort ? { effort: sub.effort } : {}),
-    ...(sub.mcpServers?.length ? { mcpServers: sub.mcpServers.map((server) => server.name) } : {}),
+    ...(sub.mcpServers?.length
+      ? { mcpServers: sub.mcpServers.map((server) => server.name) }
+      : sub.recoveredReply?.mcpServers
+        ? { mcpServers: sub.recoveredReply.mcpServers }
+        : {}),
     ...(sub.quotaHint ? { quotaHint: sub.quotaHint } : {}),
     mode: sub.mode,
     status: sub.status,
@@ -898,7 +922,7 @@ export function pack(options: PackOptions): Pack {
     cwd: sub.cwd,
     ...(sub.mode === 'worktree' && sub.dir ? { worktree: sub.dir } : {}),
     ...(sub.result?.text !== undefined
-      ? { text: clip(sub.result.text), ...verdictOf(sub.result.text) }
+      ? { text: clip(sub.result.text), ...(sub.recoveredReply ?? verdictOf(sub.result.text)) }
       : sub.status === 'running' && sub.last
         ? { text: sub.last }
         : {}),
@@ -933,10 +957,11 @@ export function pack(options: PackOptions): Pack {
     return copy;
   };
 
+  const inRepo = <T>(repo: string, op: () => Promise<T>) => (options.pool ? options.pool.inRepo(repo, op) : op());
   const drop = async (sub: Sub) => {
     sub.unwatch?.();
     sub.unwatch = undefined;
-    if (sub.repo && sub.dir) await removeWorktree(sub.repo, sub.dir);
+    if (sub.repo && sub.dir) await inRepo(sub.repo, () => removeWorktree(sub.repo!, sub.dir!));
     sub.dir = undefined;
   };
 
@@ -950,7 +975,29 @@ export function pack(options: PackOptions): Pack {
     notify(sub);
   };
 
-  return {
+  const team: Pack & { run(task: AgentTask, recovered?: readonly SavedPackTask[]): AgentRun } = {
+    forChat: (id, pool) =>
+      pack({
+        ...options,
+        pool,
+        poolChat: id,
+        worktreeDir: path.join(
+          options.worktreeDir ?? '.genaicode/worktrees',
+          createHash('sha256')
+            .update(JSON.stringify([id, options.name ?? 'pack']))
+            .digest('hex'),
+        ),
+      }),
+    async shutdown() {
+      const all = [...subs.values()];
+      for (const sub of all) {
+        sub.closing = true;
+        halt(sub, 'turn');
+        sub.checking?.abort.abort();
+      }
+      await Promise.allSettled(all.flatMap((sub) => [sub.ended, sub.checking?.done]));
+      for (const sub of all) sub.unwatch?.();
+    },
     name: options.name ?? 'pack',
     command: lead.command,
     capabilities: lead.capabilities,
@@ -976,7 +1023,24 @@ export function pack(options: PackOptions): Pack {
         }
       });
     },
-    run(task) {
+    recover: (task, records) => team.run(task, records).pack!,
+    records: () =>
+      [...subs.values()].flatMap((sub) =>
+        sub.dir && sub.repo && sub.start && sub.state === 'unmerged'
+          ? [
+              {
+                task: report(sub),
+                repo: sub.repo,
+                start: sub.start,
+                base: sub.base,
+                sessionId: sub.sessionId,
+                reviewer: sub.reviewer?.name,
+                agentMode: sub.agentMode,
+              },
+            ]
+          : [],
+      ),
+    run(task: AgentTask, recovered?: readonly SavedPackTask[]): AgentRun {
       // Keep the lead's physical location for later actions even if its symlink moves.
       const leadCwd = projectDirectory(task.cwd);
       const events = new EventQueue<AgentEvent>(approximateSize);
@@ -984,6 +1048,64 @@ export function pack(options: PackOptions): Pack {
       const prompts = (task.resume && reportedPrompts.get(task.resume)) || new Set<Sub>();
       let delegated = 0;
       const mine = new Set<Sub>();
+      for (const record of recovered ?? []) {
+        const saved = record.task;
+        if (
+          !saved.worktree ||
+          !/^t[0-9]+$/.test(saved.id) ||
+          !statSync(saved.worktree, { throwIfNoEntry: false })?.isDirectory()
+        )
+          continue;
+        const agent = members.find((candidate) => candidate.name === saved.agent);
+        if (!agent) continue;
+        let sub = subs.get(saved.id);
+        if (!sub) {
+          const status = saved.status === 'running' ? 'aborted' : saved.status;
+          sub = {
+            id: saved.id,
+            result: {
+              status,
+              ok: status === 'completed',
+              exitCode: null,
+              signal: null,
+              text: saved.text,
+              error: saved.error,
+              failure: saved.failure,
+            },
+            recoveredReply: { verdict: saved.verdict, pullRequest: saved.pullRequest, mcpServers: saved.mcpServers },
+            fileStats: saved.fileStats,
+            stagedOnly: saved.stagedOnly,
+            steps: saved.steps,
+            steers: saved.steers,
+            stoppedBy: saved.stoppedBy,
+            quotaHint: saved.quotaHint,
+            agent,
+            title: saved.title,
+            prompt: saved.prompt,
+            model: saved.model,
+            effort: saved.effort,
+            sessionId: record.sessionId,
+            agentMode: record.agentMode,
+            mode: 'worktree',
+            state: 'unmerged',
+            base: record.base,
+            cwd: saved.cwd,
+            repo: record.repo,
+            dir: saved.worktree,
+            start: record.start,
+            changes: saved.changes,
+            reviewer: [lead, ...members].find((candidate) => candidate.name === record.reviewer),
+            checks: saved.checks,
+            status,
+            startedAt: saved.startedAt ?? Date.now(),
+            endedAt: saved.endedAt,
+            ended: Promise.resolve(),
+          };
+          subs.set(saved.id, sub);
+          nextId = Math.max(nextId, Number(saved.id.slice(1)) + 1);
+        }
+        mine.add(sub);
+      }
       // Tasks started or continued during this lead turn: stopped and drained when this turn ends.
       const turnSubs = new Set<Sub>();
       // Usage of each worker run started or continued during this turn.
@@ -1085,7 +1207,16 @@ export function pack(options: PackOptions): Pack {
         return sub;
       };
 
-      const delegate = async (args: Record<string, unknown>): Promise<string> => {
+      const callSignal = (context?: McpCallContext) =>
+        context?.signal ? AbortSignal.any([ended.signal, context.signal]) : ended.signal;
+      const acquireWorker = (signal: AbortSignal, context?: McpCallContext) =>
+        options.pool?.acquire(
+          signal,
+          () => context?.progress?.(0, undefined, 'Waiting for a pack worker'),
+          options.poolChat,
+        );
+
+      const delegate = async (args: Record<string, unknown>, context?: McpCallContext): Promise<string> => {
         const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
         if (!prompt) throw new Error('`prompt` is required.');
         const base = directory(args.cwd);
@@ -1121,7 +1252,18 @@ export function pack(options: PackOptions): Pack {
           registered = true;
           turnStarting -= 1;
         };
-        const setup = start(agent, prompt, args, base, roster, releaseTurnSlot).finally(() => {
+        const reserve = async () => {
+          const signal = callSignal(context);
+          const release = await acquireWorker(signal, context);
+          try {
+            signal.throwIfAborted();
+            return await start(agent, prompt, args, base, roster, releaseTurnSlot, signal, release);
+          } catch (error) {
+            release?.();
+            throw error;
+          }
+        };
+        const setup = reserve().finally(() => {
           starting -= 1;
           releaseTurnSlot();
           settingUp.delete(setup);
@@ -1306,6 +1448,8 @@ export function pack(options: PackOptions): Pack {
         base: string,
         roster: readonly CodingAgent[],
         releaseTurnSlot: () => void,
+        signal: AbortSignal,
+        release?: () => void,
       ): Promise<string> => {
         const wanted = args.mode;
         const extra = await taskOptions(agent, args);
@@ -1327,6 +1471,7 @@ export function pack(options: PackOptions): Pack {
             'The working directory is not a git repository, so there are no worktrees. Use mode `shared`.',
           );
 
+        signal.throwIfAborted();
         const id = `t${nextId++}`;
         // Only inside a repository the lead named, never `/` or the home folder as a whole.
         const readOnly =
@@ -1361,7 +1506,7 @@ export function pack(options: PackOptions): Pack {
             options.worktreeDir ?? path.join('.genaicode', 'worktrees'),
             `${id}-${Date.now().toString(36)}`,
           );
-          sub.start = await addWorktree(repo, dir);
+          sub.start = await inRepo(repo, () => addWorktree(repo, dir));
           sub.repo = repo;
           sub.dir = dir;
           sub.state = 'unmerged';
@@ -1377,7 +1522,7 @@ export function pack(options: PackOptions): Pack {
             mkdirSync(sub.cwd, { recursive: true });
             await options.prepareWorktree?.(dir, repo);
             // The lead finished while the worktree was being set up: nobody would follow the task.
-            if (ended.signal.aborted) throw new Error('The run has ended.');
+            signal.throwIfAborted();
           } catch (error) {
             await drop(sub);
             throw error;
@@ -1389,6 +1534,7 @@ export function pack(options: PackOptions): Pack {
         releaseTurnSlot();
         events.push({ type: 'subtask-start', id, agent: agent.name, prompt, cwd: sub.cwd, mode });
         launchWorker(sub, prompt, roster);
+        if (release) void sub.ended.then(release, release);
         return JSON.stringify({ id, agent: agent.name, mode, cwd: sub.cwd, ...(quotaHint ? { quotaHint } : {}) });
       };
 
@@ -1525,6 +1671,9 @@ export function pack(options: PackOptions): Pack {
           // Read every time: staged-only work changes the list without moving the snapshot.
           sub.changes = await listChanges(sub, revision);
           const checks = sub.checks;
+          if (occupied() >= maxParallel) throw new PackActionError('capacity');
+          const release = options.pool?.take(options.poolChat);
+          if (options.pool && !release) throw new PackActionError('capacity');
           const abort = new AbortController();
           const cancel = () => abort.abort();
           context.signal?.addEventListener('abort', cancel, { once: true });
@@ -1566,7 +1715,7 @@ export function pack(options: PackOptions): Pack {
             }
             return checks[kind]!.status === 'failed' ? 'Check failed.' : 'Check complete.';
           };
-          const done = run();
+          const done = run().finally(release);
           sub.checking = { abort, done };
           observe(sub);
           notify(sub);
@@ -1609,7 +1758,7 @@ export function pack(options: PackOptions): Pack {
           const repo = sub.repo;
           const leadPaths = paths.map((file) => path.relative(leadCwd, path.join(repo, file)));
           if (patch.length) {
-            const applied = await applyPatch(sub.repo, patch, threeWay);
+            const applied = await inRepo(sub.repo, () => applyPatch(sub.repo!, patch, threeWay));
             if (!applied.ok) {
               if (!applied.conflicts)
                 throw new PackActionError(
@@ -1632,7 +1781,12 @@ export function pack(options: PackOptions): Pack {
         });
       };
 
-      const continueTask = async (sub: Sub, text: string, from: PackSteer['from']): Promise<string> => {
+      const continueTask = async (
+        sub: Sub,
+        text: string,
+        from: PackSteer['from'],
+        context?: McpCallContext,
+      ): Promise<string> => {
         if (ended.signal.aborted || sub.closing)
           throw new PackActionError('not-running', 'The turn has ended; start a new prompt to continue.');
         if (!sub.agent.capabilities.resume)
@@ -1648,59 +1802,70 @@ export function pack(options: PackOptions): Pack {
         if (findExecutable(sub.agent.command, task.env) === null)
           throw new Error(`${sub.agent.name} is not installed.`);
         if (sub.continuing) throw new PackActionError('checking', `${sub.id} is already resuming.`);
+        if (occupied() >= maxParallel) throw new PackActionError('capacity');
         sub.continuing = true;
         starting += 1;
         const setup = (async () => {
           const roster = await rosterAt(sub.base);
-          return withWorktree(async () => {
-            if (ended.signal.aborted || sub.closing)
-              throw new PackActionError('not-running', 'The turn has ended; start a new prompt to continue.');
-            if (sub.status === 'running') throw new PackActionError('running', `${sub.id} is already running.`);
-            if (sub.checking) throw new PackActionError('checking');
-            if (sub.dismissed) throw new PackActionError('discarded', `${sub.id} was already dismissed.`);
-            if (sub.mode === 'worktree' && (sub.state !== 'unmerged' || !sub.dir))
-              throw new PackActionError(
-                worktreeReason(sub),
-                `${sub.id} is already ${sub.state ?? 'unavailable'}; its worktree is gone.`,
-              );
-            const running = occupied() - 1;
-            if (running >= maxParallel)
-              throw new PackActionError(
-                'capacity',
-                `${running} tasks are running already (the most allowed). Wait for one to finish.`,
-              );
-            const record: PackSteer = { text, from, at: Date.now(), delivery: 'delivered' };
-            sub.steers = [...(sub.steers ?? []), record];
-            sub.status = 'running';
-            sub.endedAt = undefined;
-            sub.stoppedBy = undefined;
-            sub.result = undefined;
-            sub.last = undefined;
-            sub.tool = undefined;
-            sub.reported = false;
-            sub.inspected = undefined;
-            sub.unwatch?.();
-            sub.unwatch = undefined;
-            if (sub.checks) sub.checks = { reviewer: sub.checks.reviewer, command: sub.checks.command };
-            sub.changes = undefined;
-            sub.fileStats = undefined;
-            sub.stagedOnly = undefined;
-            if (sub.reply) sub.reply.open = false;
-            const newToTurn = !mine.has(sub);
-            mine.add(sub);
-            if (newToTurn)
-              events.push({
-                type: 'subtask-start',
-                id: sub.id,
-                agent: sub.agent.name,
-                prompt: sub.prompt,
-                cwd: sub.cwd,
-                mode: sub.mode,
-              });
-            launchWorker(sub, text, roster, sub.sessionId);
-            notify(sub);
-            return `Continued ${sub.id} in its existing session. Call wait to follow it.`;
-          });
+          const signal = callSignal(context);
+          const release = await acquireWorker(signal, context);
+          try {
+            return await withWorktree(async () => {
+              signal.throwIfAborted();
+              if (ended.signal.aborted || sub.closing)
+                throw new PackActionError('not-running', 'The turn has ended; start a new prompt to continue.');
+              if (sub.status === 'running') throw new PackActionError('running', `${sub.id} is already running.`);
+              if (sub.checking) throw new PackActionError('checking');
+              if (sub.dismissed) throw new PackActionError('discarded', `${sub.id} was already dismissed.`);
+              if (sub.mode === 'worktree' && (sub.state !== 'unmerged' || !sub.dir))
+                throw new PackActionError(
+                  worktreeReason(sub),
+                  `${sub.id} is already ${sub.state ?? 'unavailable'}; its worktree is gone.`,
+                );
+              const running = occupied() - 1;
+              if (running >= maxParallel)
+                throw new PackActionError(
+                  'capacity',
+                  `${running} tasks are running already (the most allowed). Wait for one to finish.`,
+                );
+              const record: PackSteer = { text, from, at: Date.now(), delivery: 'delivered' };
+              sub.steers = [...(sub.steers ?? []), record];
+              sub.status = 'running';
+              sub.endedAt = undefined;
+              sub.stoppedBy = undefined;
+              sub.result = undefined;
+              sub.recoveredReply = undefined;
+              sub.last = undefined;
+              sub.tool = undefined;
+              sub.reported = false;
+              sub.inspected = undefined;
+              sub.unwatch?.();
+              sub.unwatch = undefined;
+              if (sub.checks) sub.checks = { reviewer: sub.checks.reviewer, command: sub.checks.command };
+              sub.changes = undefined;
+              sub.fileStats = undefined;
+              sub.stagedOnly = undefined;
+              if (sub.reply) sub.reply.open = false;
+              const newToTurn = !mine.has(sub);
+              mine.add(sub);
+              if (newToTurn)
+                events.push({
+                  type: 'subtask-start',
+                  id: sub.id,
+                  agent: sub.agent.name,
+                  prompt: sub.prompt,
+                  cwd: sub.cwd,
+                  mode: sub.mode,
+                });
+              launchWorker(sub, text, roster, sub.sessionId);
+              if (release) void sub.ended.then(release, release);
+              notify(sub);
+              return `Continued ${sub.id} in its existing session. Call wait to follow it.`;
+            });
+          } catch (error) {
+            release?.();
+            throw error;
+          }
         })().finally(() => {
           sub.continuing = false;
           starting -= 1;
@@ -1710,9 +1875,9 @@ export function pack(options: PackOptions): Pack {
         return setup;
       };
 
-      const steer = async (sub: Sub, text: unknown, from: PackSteer['from']) => {
+      const steer = async (sub: Sub, text: unknown, from: PackSteer['from'], context?: McpCallContext) => {
         if (typeof text !== 'string' || !text.trim()) throw new PackActionError('input', '`text` is required.');
-        if (sub.status !== 'running' || !sub.run) return continueTask(sub, text, from);
+        if (sub.status !== 'running' || !sub.run) return continueTask(sub, text, from, context);
         if (!sub.run.steer)
           throw new PackActionError(
             'cannot-steer',
@@ -1931,11 +2096,11 @@ export function pack(options: PackOptions): Pack {
             properties: { id: { type: 'string' }, text: { type: 'string' } },
             required: ['id', 'text'],
           },
-          call: (args) => {
+          call: (args, context) => {
             const sub = find(args.id);
             if (effectiveMode === 'plan' && sub.agentMode !== 'plan')
               throw new Error(`Cannot steer ${sub.id} while in Plan mode: it started outside Plan mode.`);
-            return steer(sub, args.text, 'lead');
+            return steer(sub, args.text, 'lead', context);
           },
         },
         {
@@ -2025,6 +2190,10 @@ export function pack(options: PackOptions): Pack {
       });
 
       const result = (async (): Promise<AgentResult> => {
+        if (recovered) {
+          ended.abort();
+          return { status: 'completed', ok: true, exitCode: 0, signal: null };
+        }
         if (!lead.capabilities.mcp) return failed(`${lead.name} cannot attach MCP servers, so it cannot lead a pack.`);
         const refusedMode = unsupportedMode(lead.name, lead.capabilities, task);
         if (refusedMode) return failed(refusedMode);
@@ -2176,4 +2345,5 @@ export function pack(options: PackOptions): Pack {
       };
     },
   };
+  return team;
 }

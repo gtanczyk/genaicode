@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {
   ACTIVE_MS,
+  cachedSessionReader,
   ending,
   findFiles,
   findLastLineMatch,
@@ -275,6 +276,9 @@ export function claudeTranscript(lines: readonly unknown[], options: SessionRead
   return builder.turns();
 }
 
+/** `readClaudeSession` for listings, which read the same unchanged transcripts again and again. */
+const listedClaudeSession = cachedSessionReader(readClaudeSession);
+
 const claudeModeCache = new Map<string, AgentMode | undefined>();
 
 function claudePermissionModeLine(line: string): { found: true; value: AgentMode } | { found: false } {
@@ -326,7 +330,7 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
       for (let at = 0; at < files.length && sessions.length < wanted; at += 32) {
         query.signal?.throwIfAborted();
         const batch = await mapLimited(files.slice(at, at + 32), 8, (file) =>
-          readClaudeSession(file).catch(() => null),
+          listedClaudeSession(file).catch(() => null),
         );
         for (const session of batch) {
           if (!session) continue;
@@ -347,7 +351,7 @@ export function claudeSessions(options: ClaudeSessionsOptions = {}): SessionSour
       );
       const recent = files.filter((file) => query.since === undefined || file.mtimeMs >= query.since);
       const sessions = await mapLimited(recent, 8, async (file) => {
-        const info = await readClaudeSession(file).catch(() => null);
+        const info = await listedClaudeSession(file).catch(() => null);
         if (info) await resolveClaudeMode(info, file, query.signal);
         return info;
       });

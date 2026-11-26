@@ -171,7 +171,7 @@ describe('project files shown in the page', () => {
     writeFileSync(join(outside, 'other.txt'), 'outside text');
 
     const revealed: string[] = [];
-    const saved: Array<{ artifactCdn: readonly string[] }> = [];
+    const saved: Array<{ artifactCdn?: readonly string[] }> = [];
     let cdnHosts: readonly string[] = [];
     const agent = { name: 'echo', command: process.execPath, capabilities: {}, run: () => undefined as never };
     const controller = createChatController({ agents: [agent], cwd, env: {} });

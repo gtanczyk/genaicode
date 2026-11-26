@@ -50,7 +50,7 @@ import {
   listSessions,
   readSession,
 } from '../agents/sessions/index.js';
-import { serveMcpStdio, SESSION_TOOLS_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
+import { serveMcpStdio, SESSION_SEND_INSTRUCTIONS, sessionTools } from '../agents/sessions/tools.js';
 import { memoryTools } from '../agents/sessions/memory.js';
 import { sessionSendMcpTool } from '../agents/sessions/send-mcp.js';
 import { codexCloudSessions, githubCloudSessions, joinedCloudSessions } from '../agents/sessions/cloud.js';
@@ -127,6 +127,7 @@ import {
 } from './update.js';
 
 export interface CliEnvironment {
+  setInterruptGuard?(guard?: () => boolean): void;
   argv: readonly string[];
   env: NodeJS.ProcessEnv;
   cwd: string;
@@ -160,6 +161,9 @@ export interface CliEnvironment {
 
 /** Options the bundled front ends take (see src/ui/index.tsx). */
 export interface UiLaunch {
+  setInterruptGuard?(guard?: () => boolean): void;
+  maxChats?: number;
+  restoreChats?: boolean;
   agents: readonly CodingAgent[];
   /** Every driver available to the Sessions view, including those outside the chat's MCP filter. */
   sessionAgents?: readonly CodingAgent[];
@@ -375,8 +379,8 @@ Chat and UI options:
       --port <n>          Port for the browser UI, on 127.0.0.1 (default: a free port)
       --no-open           (ui) Print the link instead of opening a browser
       --exit-with-stdin   (ui) Stop when stdin closes, for apps that start the server
-      --restore           (ui) Open on the conversation the chat in this directory had last,
-                          with its agent, unless --from or --resume names another
+      --max-chats <n>     (ui) Chats that can run at once, 1–8 (default: 4)
+      --restore           (ui) Reopen saved chats unless --from or --resume selects a session
       --no-project        (ui) The page names no project: for a chat about the sessions of
                           every project
       --home              (ui) No fixed project folder: each conversation resolves its own
@@ -996,11 +1000,14 @@ async function runUi(
     ? await startLocalMcpServer({
         name: 'sessions',
         tools,
-        instructions: `${SESSION_TOOLS_INSTRUCTIONS} When the user asks you to tell, ask or pass something to another session, send it with sessions_send.`,
+        instructions: SESSION_SEND_INSTRUCTIONS,
       })
     : undefined;
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
   const launch: UiLaunch = {
+    ...(cli.setInterruptGuard ? { setInterruptGuard: cli.setInterruptGuard } : {}),
+    ...(options.maxChats ? { maxChats: options.maxChats } : {}),
+    ...(options.restore && !options.from && !options.resume ? { restoreChats: true } : {}),
     agents,
     sessionAgents,
     sessionSources: indexed,

@@ -69,11 +69,13 @@ export function ChatApp({
   cwd,
   version,
   onQuit,
+  canQuit,
 }: {
   controller: ChatController;
   cwd: string;
   version: string;
   onQuit?: () => void;
+  canQuit?: () => boolean;
 }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -101,6 +103,15 @@ export function ChatApp({
   const width = Math.max(40, (stdout.columns || 80) - 1);
   const rows = stdout.rows || 24;
 
+  const restored = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const saved = view.recoveredDraft;
+    if (!saved || restored.current === saved.id) return;
+    restored.current = saved.id;
+    const text = [...saved.prompts, draftRef.current.text].filter(Boolean).join('\n\n');
+    draftRef.current = { text, cursor: [...text].length, shell: false };
+    redraw((n) => n + 1);
+  }, [view.recoveredDraft?.id]);
   // Counts `/clear`: a new `<Static>` forgets what the old one printed.
   const [cleared, setCleared] = useState(0);
   useEffect(() => {
@@ -129,7 +140,8 @@ export function ChatApp({
   }, [running, relayWorking]);
 
   const quit = () => {
-    controller.close();
+    if (canQuit && !canQuit()) return;
+    if (!canQuit) controller.close();
     onQuit?.();
     exit();
   };

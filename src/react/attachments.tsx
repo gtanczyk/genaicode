@@ -37,8 +37,8 @@ export function matchesAccept(file: { name: string; type: string }, accept: stri
 type Recorder = { stop(): void; state: string };
 
 /** The files waiting in the composer, and the voice recorder that adds to them. */
-export function useAttachments(options: ChatAttachments | undefined) {
-  const [files, setFiles] = useState<File[]>([]);
+export function useAttachments(options: ChatAttachments | undefined, initialFiles?: File[]) {
+  const [files, setFiles] = useState<File[]>(initialFiles ?? []);
   const [recording, setRecording] = useState(false);
   const [problem, setProblem] = useState<string>();
   const recorder = useRef<Recorder | undefined>(undefined);

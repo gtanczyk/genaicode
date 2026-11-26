@@ -40,6 +40,7 @@ export async function startScopedLocalMcpServer(
   const maxBody = options.maxBody ?? 1024 * 1024;
   let port = 0;
 
+  const calls = new Map<string, Set<AbortController>>();
   const server = createServer((request: IncomingMessage, response: ServerResponse) => {
     const reply = (status: number, body?: unknown) => {
       if (response.headersSent || response.destroyed) return;
@@ -74,6 +75,26 @@ export async function startScopedLocalMcpServer(
       }
       const available = toolsForRequest(target);
       if (!available) return reply(404);
+      const rpc = message as { id?: unknown; method?: string; params?: { requestId?: unknown } } | null;
+      const keyFor = (id: unknown) =>
+        typeof id === 'string' || typeof id === 'number' ? JSON.stringify([target, id]) : undefined;
+      if (rpc?.method === 'notifications/cancelled' && rpc.id === undefined) {
+        const key = keyFor(rpc.params?.requestId);
+        const active = key ? calls.get(key) : undefined;
+        // Request IDs are client-local. Only an unambiguous notification can cancel a call.
+        if (active?.size === 1) for (const call of active) call.abort();
+        return reply(202);
+      }
+      const call = new AbortController();
+      const key = rpc?.method === 'tools/call' ? keyFor(rpc.id) : undefined;
+      if (key) {
+        const active = calls.get(key) ?? new Set();
+        active.add(call);
+        calls.set(key, active);
+      }
+      response.once('close', () => {
+        if (!response.writableEnded) call.abort();
+      });
       const acceptsSse = /\btext\/event-stream\b/i.test(request.headers.accept ?? '');
       let sse = false;
       const writeEvent = (payload: object) => {
@@ -101,6 +122,7 @@ export async function startScopedLocalMcpServer(
         },
         undefined,
         acceptsSse ? writeEvent : undefined,
+        call.signal,
       )
         .then((answer) => {
           if (sse) {
@@ -121,6 +143,12 @@ export async function startScopedLocalMcpServer(
           } else {
             reply(500);
           }
+        })
+        .finally(() => {
+          if (!key) return;
+          const active = calls.get(key);
+          active?.delete(call);
+          if (!active?.size) calls.delete(key);
         });
     });
   });
@@ -143,5 +171,37 @@ export async function startScopedLocalMcpServer(
         server.close(() => resolve());
         server.closeAllConnections();
       }),
+  };
+}
+
+/** One listener per tool family, with revocable capabilities for each chat. */
+export function scopedMcpServers() {
+  const scopes = new Map<string, readonly McpTool[]>();
+  const servers = new Map<string, ReturnType<typeof startScopedLocalMcpServer>>();
+  const open = async ({ tools, ...options }: LocalMcpServerOptions): Promise<LocalMcpServer> => {
+    let pending = servers.get(options.name);
+    if (!pending) {
+      pending = startScopedLocalMcpServer(options, (target) => scopes.get(options.name + ':' + target));
+      servers.set(options.name, pending);
+      pending.catch(() => servers.delete(options.name));
+    }
+    const server = await pending;
+    const url = new URL(server.mcpServer.url);
+    url.searchParams.set('scope', randomBytes(24).toString('hex'));
+    const key = options.name + ':' + url.pathname + url.search;
+    scopes.set(key, tools);
+    return {
+      mcpServer: { ...server.mcpServer, url: url.href },
+      async close() {
+        scopes.delete(key);
+      },
+    };
+  };
+  return {
+    open,
+    async close() {
+      scopes.clear();
+      await Promise.all([...servers.values()].map(async (server) => (await server).close()));
+    },
   };
 }

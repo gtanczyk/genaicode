@@ -1,3 +1,4 @@
+import { chatFetch } from './chat-route.js';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { DEFAULT_ARTIFACT_CDN_HOSTS } from '../../agents/cdn.js';
 import type { ProjectTeam } from '../../agents/pack-profile.js';
@@ -71,6 +72,8 @@ function Row({ title, note, children }: { title: string; note?: ReactNode; child
 }
 
 export interface GeneralSectionProps {
+  maxChats?: number;
+  onMaxChats?(limit: number): void;
   theme: ThemeChoice;
   onTheme(theme: ThemeChoice): void;
   /** Whether the wolf barks (`/bark`). Absent until the page is connected. */
@@ -90,7 +93,7 @@ const THEMES: ReadonlyArray<[ThemeChoice, string]> = [
  * default the server keeps between launches: today auto-approve is set per conversation (`/auto`)
  * or for a whole launch (`--yes`), and the composer's switch covers the first.
  */
-export function GeneralSection({ theme, onTheme, bark, onBark }: GeneralSectionProps) {
+export function GeneralSection({ theme, onTheme, bark, onBark, maxChats, onMaxChats }: GeneralSectionProps) {
   return (
     <>
       <h3>General</h3>
@@ -105,6 +108,19 @@ export function GeneralSection({ theme, onTheme, bark, onBark }: GeneralSectionP
             ))}
           </span>
         </Row>
+        {maxChats && (
+          <Row title="Chats running at once" note="Extra chats wait for a free slot.">
+            <select
+              aria-label="Chats running at once"
+              value={maxChats}
+              onChange={(event) => onMaxChats?.(Number(event.target.value))}
+            >
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n}>{n}</option>
+              ))}
+            </select>
+          </Row>
+        )}
         {bark !== undefined && onBark ? (
           <Row
             title="Bark when an agent needs you"
@@ -291,7 +307,7 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
   useEffect(() => {
     if (!sessions || fixed) return;
     const controller = new AbortController();
-    void fetch('/api/sessions', { headers: { 'x-genaicode-token': token }, signal: controller.signal })
+    void chatFetch('/api/sessions', { headers: { 'x-genaicode-token': token }, signal: controller.signal })
       .then((res) => res.json())
       .then((result: { sessions?: { cwd?: string }[] }) => {
         setFolders([...new Set(result.sessions?.flatMap((s) => (s.cwd ? [s.cwd] : [])) ?? [])].sort());
@@ -309,7 +325,7 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
     setProblem('');
     void (async () => {
       try {
-        const response = await fetch(url(directory), {
+        const response = await chatFetch(url(directory), {
           headers: { 'x-genaicode-token': token },
           signal: controller.signal,
         });
@@ -348,7 +364,7 @@ export function TeamSection({ token, cwd, sessions, choose }: TeamSectionProps) 
     setSaved(false);
     setProblem('');
     try {
-      const response = await fetch(url(directory), {
+      const response = await chatFetch(url(directory), {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
         body: JSON.stringify({ lead, members }),
@@ -539,7 +555,7 @@ export function ArtifactsSection({ token, hosts }: ArtifactsSectionProps) {
     // A paste may separate hosts with spaces or tabs too.
     const extra = custom.split(/[\s,]+/).filter(Boolean);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await chatFetch('/api/settings', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
         body: JSON.stringify({ artifactCdn: [...(preset ? DEFAULT_ARTIFACT_CDN_HOSTS : []), ...extra] }),
@@ -668,7 +684,7 @@ export function UsageSection({
   useEffect(() => {
     if (!readShares) return;
     const controller = new AbortController();
-    void fetch('/api/shares?days=7', { headers: { 'x-genaicode-token': token }, signal: controller.signal })
+    void chatFetch('/api/shares?days=7', { headers: { 'x-genaicode-token': token }, signal: controller.signal })
       .then((res) => (res.ok ? (res.json() as Promise<{ shares?: AgentShares[] }>) : {}))
       .then((found: { shares?: AgentShares[] }) => setShares(found.shares ?? []))
       .catch(() => {});

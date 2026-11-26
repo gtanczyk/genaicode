@@ -66,7 +66,11 @@ export class SessionSendGate {
   private readonly allowed = new Set<string>();
   private readonly running = new Set<Promise<unknown>>();
   /** The last message to each session, sent or still waiting: the next one goes after it. */
-  private readonly lines = new Map<string, Promise<unknown>>();
+  constructor(private readonly lines = new Map<string, Promise<unknown>>()) {}
+
+  fork() {
+    return new SessionSendGate(this.lines);
+  }
   private nextSend = 1;
 
   /** Allocate a monotonic id for one send. */

@@ -1,7 +1,16 @@
+import { randomUUID } from 'node:crypto';
+import { chatStore } from './chat-store.js';
+import { ChatHub, type HubChat } from './hub.js';
+import { PackPool } from '../agents/pack-pool.js';
+import type { Pack } from '../agents/pack.js';
+import { scopedMcpServers, type startLocalMcpServer } from '../agents/mcp-server.js';
+import { sessionTools, SESSION_SEND_INSTRUCTIONS } from '../agents/sessions/tools.js';
+import { memoryTools } from '../agents/sessions/memory.js';
+import { sessionSendTool } from '../agents/sessions/send-tool.js';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
-import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
+import { ArtifactPool, startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
 import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
 import { startProgressChannel } from '../agents/progress.js';
@@ -31,6 +40,7 @@ import {
   isSameDir,
   listSessions,
   pendingAsks,
+  readArchive,
   readConversations,
   startProjectChannel,
 } from '../agents/sessions/index.js';
@@ -79,6 +89,9 @@ export interface UiRunOptions extends ChatOptions {
 }
 
 export interface WebRunOptions extends UiRunOptions {
+  setInterruptGuard?(guard?: () => boolean): void;
+  maxChats?: number;
+  restoreChats?: boolean;
   /** `genaicode chat --web`: open the browser on the terminal's session right away. */
   openWeb?: boolean;
   host?: string;
@@ -146,7 +159,7 @@ function makeRoots(
     };
     const session = getController()?.get().session;
     push(session?.cwd);
-    push(options.cwd);
+    if (!options.chatId || !options.home || !session) push(options.cwd);
     for (const turn of session?.turns ?? []) {
       for (const task of turn.pack?.tasks ?? []) push(task.cwd);
     }
@@ -161,10 +174,16 @@ async function openArtifacts(
   options: ChatOptions,
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
+  serve?: typeof startLocalMcpServer,
+  pool?: ArtifactPool,
+  idle?: () => boolean,
 ): Promise<ArtifactChannel | undefined> {
   if (options.artifacts === false) return undefined;
   return startArtifactChannel({
+    serve,
     cwd,
+    pool,
+    idle,
     ...(allowScriptHosts ? { allowScriptHosts } : {}),
   }).catch(() => undefined);
 }
@@ -178,13 +197,24 @@ async function openChannels(
   getController: (() => ChatController | undefined) | undefined,
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
+  serve?: typeof startLocalMcpServer,
+  sharedProgress?: Awaited<ReturnType<typeof startProgressChannel>>,
+  artifacts?: ArtifactPool,
 ) {
   const [artifactChannel, questionChannel, progressChannel, openProjectChannel] = await Promise.all([
-    openArtifacts(options, cwd, allowScriptHosts),
-    startQuestionChannel().catch(() => undefined),
-    startProgressChannel().catch(() => undefined),
+    openArtifacts(
+      options,
+      cwd,
+      allowScriptHosts,
+      serve,
+      artifacts,
+      () => getController?.()?.get().session.status !== 'running',
+    ),
+    startQuestionChannel({ serve }).catch(() => undefined),
+    sharedProgress ?? startProgressChannel().catch(() => undefined),
     options.home
       ? startProjectChannel({
+          serve,
           env: options.env,
           loadSessions: async () => {
             const sources = options.sessionSources ?? agentSessionSources(options.agents);
@@ -209,7 +239,7 @@ async function openChannels(
       await Promise.all([
         artifactChannel?.close(),
         questionChannel?.close(),
-        progressChannel?.close(),
+        sharedProgress ? undefined : progressChannel?.close(),
         openProjectChannel?.close(),
       ]);
     },
@@ -458,7 +488,7 @@ function hostApp(
           `${SAVE_SESSION_TRANSCRIPT_PREFIX}${request.format} ${encodeURIComponent(request.source)} ${encodeURIComponent(request.id)}\n`,
         );
       } else {
-        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}\n`);
+        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}${request.chat ? ' ' + request.chat : ''}\n`);
       }
     },
     onToast(listener) {
@@ -508,7 +538,13 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   let controller: ChatController | undefined;
   let pendingOpen: string | undefined;
   const openSession = (id: string) => {
-    if (controller) void controller.continueSession(id);
+    if (controller && hub.onOpen)
+      void hub
+        .open(hub.initial, { type: 'continue', id })
+        .then((chat) => {
+          if (chat) hub.onOpen?.(chat);
+        })
+        .catch(() => controller?.note('Could not open the selected session.', 'error'));
     else pendingOpen = id;
   };
   let cdnHosts: readonly string[] = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
@@ -534,18 +570,14 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     agents: webOptions.agents,
     getEnv: () => liveEnv,
     refreshEnv: host?.refreshEnv,
-    onUpdate: (inspections) => controller?.updateAgents(inspections),
+    onUpdate: (inspections) => {
+      for (const chat of hub.chats.values()) chat.controller.updateAgents(inspections);
+    },
   });
   const modelCatalog = createModelCatalog({
     agents: webOptions.agents,
     getEnv: () => liveEnv,
   });
-  const localRoots = new Set<string>();
-  const addRoot = (dir: string) => {
-    localRoots.add(dir);
-    webOptions.onRoot?.(dir);
-  };
-  const roots = makeRoots(webOptions, () => controller, localRoots);
   const settings: WebSettings | undefined =
     webOptions.hostApp && webOptions.artifacts !== false
       ? {
@@ -557,29 +589,221 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector, modelCatalog);
-  const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
-    webOptions,
-    () => controller,
-    roots,
-    () => cdnHosts,
-  );
-  try {
-    controller = createChatController({
-      ...webOptions,
-      onRoot: addRoot,
-      web,
-      artifactChannel,
-      questionChannel,
-      progressChannel,
-      openProjectChannel,
-      allowNoAgent: true,
-      onAuthFailure: () => {
-        inspector.invalidate();
-        modelCatalog.invalidate();
-        void inspector.check({ refresh: true });
+  const disk = chatStore(liveEnv, options.cwd, !!options.home);
+  const restored = options.restoreChats ? await disk.index() : undefined;
+  let bark = options.bark ?? true;
+  const channels = scopedMcpServers();
+  const progress = await startProgressChannel().catch(() => undefined);
+  const pool = new PackPool(8, (id) => hub.chats.get(id)?.controller.get().conversation?.title ?? id);
+  const artifactPool = new ArtifactPool();
+  const create = async (id: string): Promise<HubChat> => {
+    const saved = await disk.read(id);
+    const localRoots = new Set<string>();
+    let current: ChatController | undefined;
+    const roots = makeRoots({ ...webOptions, chatId: id, extraRoots: undefined }, () => current, localRoots);
+    const addRoot = (dir: string) => {
+      localRoots.add(dir);
+    };
+    const chatChannels = await openChannels(
+      webOptions,
+      () => current,
+      roots,
+      () => cdnHosts,
+      channels.open,
+      progress,
+      artifactPool,
+    );
+    const agents = webOptions.agents.map((agent) => (agent as Partial<Pack>).forChat?.(id, pool) ?? agent);
+    const sameAgent = saved && agents.some((a) => a.name === saved.session.agent);
+    const previous = sameAgent ? saved.session : undefined;
+    const sessionSend = webOptions.sessionSend?.fork();
+    const sends = new AbortController();
+    const localTools = sessionSend
+      ? [
+          ...sessionTools(webOptions.sessionSources ?? agentSessionSources(agents), {
+            env: liveEnv,
+            onSession: (session) => session.cwd && addRoot(session.cwd),
+          }),
+          ...memoryTools({ env: liveEnv, cwd: webOptions.cwd }),
+          sessionSendTool(webOptions.sessionAgents ?? agents, sessionSend, { env: liveEnv, signal: sends.signal }),
+        ]
+      : undefined;
+    const index = localTools
+      ? await channels.open({ name: 'sessions', tools: localTools, instructions: SESSION_SEND_INSTRUCTIONS })
+      : undefined;
+    try {
+      current = createChatController({
+        ...webOptions,
+        ...chatChannels,
+        agents,
+        chatId: id,
+        bark,
+        onBark(on) {
+          bark = on;
+          for (const entry of hub.chats.values()) entry.controller.setBark(on);
+        },
+        web,
+        onRoot: addRoot,
+        restoredConversation: saved ? { ...saved.conversation, cwd: saved.session.cwd } : undefined,
+        initialUsage: saved?.session,
+        agent: previous?.agent ?? (!saved || agents.some((a) => a.name === options.agent) ? options.agent : undefined),
+        model: previous?.model ?? options.model,
+        effort: previous?.effort ?? options.effort,
+        mode: previous?.mode ?? options.mode,
+        resume: saved ? previous?.sessionId : id === hub.initial ? options.resume : undefined,
+        sessionSend,
+        sessionTools: localTools ?? webOptions.sessionTools,
+        task: index
+          ? {
+              ...webOptions.task,
+              mcpServers: [
+                ...(webOptions.task?.mcpServers ?? []).filter((s) => s.name !== 'sessions'),
+                index.mcpServer,
+              ],
+            }
+          : webOptions.task,
+        sharedInbox: id !== hub.initial,
+        guardedInterrupt: terminal && !!options.setInterruptGuard,
+        schedule: (text, send) => hub.schedule(id, { text, send }),
+        cancelWaiting: () => hub.cancel(id),
+        allowNoAgent: true,
+        onAuthFailure: () => {
+          inspector.invalidate();
+          modelCatalog.invalidate();
+          void inspector.check({ refresh: true });
+        },
+      });
+    } catch (error) {
+      await Promise.all([index?.close(), chatChannels.closeChannels()]);
+      throw error;
+    }
+    const chat = current;
+    try {
+      if (saved) {
+        const state = saved.session;
+        const turns = state.turns.map((turn) =>
+          !turn.result && saved.interrupted
+            ? { ...turn, result: { status: 'aborted' as const, ok: false, exitCode: null, signal: null } }
+            : turn,
+        );
+        chat.session.adopt(turns, {
+          replace: true,
+          sessionId: previous?.sessionId,
+          cwd: state.cwd,
+          mode: previous?.mode,
+          truncatedReason: state.truncatedReason,
+          recoverPack(turn) {
+            const agent = agents.find((a) => a.name === turn.agent);
+            const pack = agent as Partial<Pack> | undefined;
+            const records = saved.packs[turn.agent]?.filter((r) =>
+              turn.pack?.tasks.some((t) => t.id === r.task.id && t.worktree === r.task.worktree),
+            );
+            if (!agent || !pack?.recover || !records?.length) return;
+            return {
+              agent,
+              controls: pack.recover({ cwd: state.cwd, prompt: turn.prompt, mode: state.mode, env: liveEnv }, records),
+            };
+          },
+        });
+        if (saved.drafts?.length) chat.recoverPrompts(saved.drafts);
+        if (!sameAgent)
+          chat.note(`Saved agent ${state.agent} is unavailable. Continuing with ${chat.get().session.agent}.`);
+        if (saved.interrupted) chat.note('Stopped when the app quit. Send a prompt to continue.');
+      }
+    } catch (error) {
+      chat.close();
+      await Promise.allSettled([index?.close(), chatChannels.closeChannels()]);
+      throw error;
+    }
+    return {
+      controller: chat,
+      interrupted: saved?.interrupted,
+      addRoot,
+      files: createProjectFiles(roots),
+      uploads: createUploads(() => chat.get().session.cwd),
+      async save(interrupted, waiting = []) {
+        const { conversation, session, recoveredDraft } = chat.get();
+        if (!conversation) return;
+        const { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason } = session;
+        const packs = Object.fromEntries(agents.map((a) => [a.name, (a as Partial<Pack>).records?.() ?? []]));
+        await disk.save({
+          conversation,
+          session: { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason },
+          packs,
+          drafts: [...(recoveredDraft?.prompts ?? []), ...waiting, ...session.queued],
+          interrupted,
+        });
       },
-    });
+      async close() {
+        sends.abort();
+        chat.stop();
+        await Promise.all([
+          chat.session.idle(),
+          sessionSend?.settled(),
+          ...agents.map((a) => (a as Partial<Pack>).shutdown?.()),
+          chatChannels.closeChannels(),
+          index?.close(),
+        ]);
+        chat.close();
+        await chat.resourcesIdle();
+      },
+    };
+  };
+  const hub: ChatHub = new ChatHub(
+    create,
+    options.maxChats,
+    restored?.shown,
+    async (id) => !!(await disk.read(id)),
+    disk.saveIndex,
+    async (id, source) => {
+      const sources = webOptions.sessionSources ?? agentSessionSources(webOptions.agents);
+      return (await findSession(source ? sources.filter((s) => s.name === source) : sources, id, { env: liveEnv }))
+        ?.session;
+    },
+    options.home,
+    restored?.chats,
+    (error) => options.stderr.write(`Could not checkpoint chats: ${String(error)}\n`),
+  );
+  hub.setArchive(await readArchive(liveEnv));
+  hub.busyPacks = () => pool.busyChats;
+  const web: ReturnType<typeof webLink> = webLink(
+    webOptions,
+    () => controller!,
+    options.cwd,
+    () => {},
+    settings,
+    release,
+    inspector,
+    modelCatalog,
+    hub,
+  );
+  const closeChannels = async () => {
+    try {
+      await hub.close();
+    } finally {
+      await Promise.all([channels.close(), progress?.close()]);
+    }
+  };
+  try {
+    try {
+      controller = (await hub.load(hub.initial)).controller;
+    } catch (error) {
+      if (!restored) throw error;
+      options.stderr.write(`Skipping saved chat ${hub.initial}: ${String(error)}\n`);
+      hub.lastShown = hub.initial = randomUUID();
+      controller = (await hub.load(hub.initial)).controller;
+    }
+    await Promise.all(
+      (restored?.ids ?? [])
+        .filter((id) => id !== hub.initial && id !== restored?.shown)
+        .map(async (id) => {
+          try {
+            await hub.reopen(id);
+          } catch (error) {
+            options.stderr.write(`Skipping saved chat ${id}: ${String(error)}\n`);
+          }
+        }),
+    );
   } catch (error) {
     host?.close();
     await closeChannels();
@@ -592,7 +816,6 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     url = await web.start();
   } catch (error) {
     host?.close();
-    controller.close();
     await closeChannels();
     throw error;
   }
@@ -606,7 +829,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
-  const initialSession = pendingOpen ?? options.continueFrom;
+  if (pendingOpen) openSession(pendingOpen);
+  const initialSession = restored ? undefined : options.continueFrom;
   pendingOpen = undefined;
   const taken = !initialSession || (await controller.continueSession(initialSession));
   let pendingFirstPrompt = options.firstPrompt && taken ? options.firstPrompt : undefined;
@@ -631,6 +855,14 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     }
   }
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
+  let confirmUntil = 0;
+  const canQuit = () => {
+    if (!hub.active || Date.now() < confirmUntil) return true;
+    confirmUntil = Date.now() + 5000;
+    options.stderr.write(`${hub.active} active chats. To stop them and quit, repeat within five seconds.\n`);
+    return false;
+  };
+  if (terminal) options.setInterruptGuard?.(canQuit);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
     const onAbort = () => {
@@ -659,23 +891,26 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       options.stdin.resume();
     }
   });
-  if (next === 'terminal') await runTerminal(controller, webOptions);
+  if (next === 'terminal') await runTerminal(controller, webOptions, canQuit);
+  options.setInterruptGuard?.();
   offFirstPrompt?.();
   pendingFirstPrompt = undefined;
   host?.close();
   await web.close();
-  controller.close();
   await closeChannels();
   return 0;
 }
 
 /** The terminal chat, until the person quits or `signal` aborts. */
-async function runTerminal(controller: ChatController, options: UiRunOptions) {
-  const app = render(<ChatApp controller={controller} cwd={options.cwd} version={options.version} />, {
-    stdout: options.stdout,
-    stdin: options.stdin,
-    exitOnCtrlC: false,
-  });
+async function runTerminal(controller: ChatController, options: UiRunOptions, canQuit?: () => boolean) {
+  const app = render(
+    <ChatApp controller={controller} cwd={options.cwd} version={options.version} canQuit={canQuit} />,
+    {
+      stdout: options.stdout,
+      stdin: options.stdin,
+      exitOnCtrlC: false,
+    },
+  );
   const onAbort = () => app.unmount();
   options.signal?.addEventListener('abort', onAbort, { once: true });
   await app.waitUntilExit();
@@ -695,6 +930,7 @@ function webLink(
   release = uiRelease(options.version, options.env ?? process.env, false),
   inspector?: AgentInspector,
   modelCatalog?: ModelCatalog,
+  hub?: ChatHub,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
@@ -713,11 +949,18 @@ function webLink(
     const storedAt = current
       .filter((limit) => limit.agent === 'antigravity')
       .reduce((latest, limit) => Math.max(latest, limit.at), 0);
-    const session = controller().get().session;
-    const completedTurn =
-      session.agent === 'antigravity' ? (session.turns.filter((turn) => turn.result).at(-1)?.id ?? 0) : 0;
-    const turnKey = completedTurn > 0 ? `${session.sessionId ?? ''}:${completedTurn}` : antigravityLimitsTurn;
-    const turnFinished = completedTurn > 0 && turnKey !== antigravityLimitsTurn;
+    const sessions = hub ? [...hub.chats.values()].map((entry) => entry.controller.get().session) : [controller().get().session];
+    const completed = sessions
+      .filter((session) => session.agent === 'antigravity')
+      .map((session) => {
+        const last = session.turns.filter((turn) => turn.result).at(-1)?.id ?? 0;
+        return last > 0 ? `${session.sessionId ?? ''}:${last}` : '';
+      })
+      .filter(Boolean)
+      .sort()
+      .join('|');
+    const turnKey = completed || antigravityLimitsTurn;
+    const turnFinished = !!completed && turnKey !== antigravityLimitsTurn;
     const cooldown = antigravityLimitsOk ? 5 * 60_000 : 60_000;
     const stale = !storedAt || now - storedAt >= 5 * 60_000;
     if ((turnFinished || (stale && now - antigravityLimitsAt >= cooldown)) && !antigravityLimitsInFlight) {
@@ -749,6 +992,7 @@ function webLink(
   const start = () =>
     (running ??= startWebUi({
       controller: controller(),
+      hub,
       clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
       title: {
         version: options.version,
@@ -825,14 +1069,14 @@ function webLink(
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
       },
-      sendPrompt: async (source, id, prompt, sandbox, signal, onResponse) => {
+      sendPrompt: async (source, id, prompt, sandbox, signal, onResponse, scopedRoot = addRoot) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const found = await findSession(
           sources.filter((s) => s.name === source),
           id,
           { env: options.env, signal },
         ).catch(() => undefined);
-        if (found?.session.cwd) addRoot(found.session.cwd);
+        if (found?.session.cwd) scopedRoot(found.session.cwd);
         let respondingSession: string | undefined;
         return sendSession(agents, id, prompt, {
           onEvent(event) {
@@ -862,7 +1106,11 @@ function webLink(
         return topicShares(listing.sessions, await readTopics(options.env), parts);
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
-      archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
+      archive: async (sessions, archived) => {
+        const changes = await archiveSessions(sessions, archived, options.env ? { env: options.env } : {});
+        if (hub) hub.setArchive(await readArchive(options.env));
+        return changes;
+      },
       sessionFile: async ({ agent, sessionId }) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const ownName = agents.find((candidate) => candidate.name === agent)?.sessions?.name;

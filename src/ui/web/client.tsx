@@ -1,3 +1,14 @@
+import type { ChatSummary } from '../hub.js';
+import {
+  chatFetch,
+  chatUrl,
+  pageChat,
+  showChat,
+  savedDraft,
+  rememberDraft,
+  uploadedFiles,
+  restoreQueued,
+} from './chat-route.js';
 import { useEffect, useMemo, useRef, useState, type Ref } from 'react';
 import { ReleaseNotes } from './release-notes.js';
 import { takeEvents } from './sse.js';
@@ -99,15 +110,23 @@ const token = (() => {
  * This page among the pages the server talks to, new with every load: the requests for another
  * chat are numbered within it (`SwitchOrder`), so the server can tell an overtaken one by its number.
  */
+let navigationSequence = 0;
 const WINDOW_ID = `${Date.now().toString(36)}-${Array.from(crypto.getRandomValues(new Uint32Array(3)), (part) => part.toString(36)).join('')}`;
 
-async function postCommand(body: WebCommand) {
-  const res = await fetch('/api/command', {
+async function postCommand(body: WebCommand, owner = pageChat(), turn?: number) {
+  const res = await fetch(chatUrl(turn === undefined ? '/api/command' : '/api/command?turn=' + turn, owner), {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
     body: JSON.stringify(body),
   });
-  return (await res.json()) as { ok?: boolean; text?: string; error?: string; reason?: string };
+  return (await res.json()) as {
+    ok?: boolean;
+    draft?: string;
+    chat?: string;
+    text?: string;
+    error?: string;
+    reason?: string;
+  };
 }
 
 async function command(body: WebCommand): Promise<boolean> {
@@ -127,8 +146,13 @@ async function sendPrompt(
   const ids: string[] = [];
   for (const file of files) {
     if (dropped.aborted) return STOPPED;
+    const existing = uploadedFiles.get(file);
+    if (existing) {
+      ids.push(existing);
+      continue;
+    }
     const name = file.name || 'file';
-    const res = await fetch(`/api/upload?name=${encodeURIComponent(name)}`, {
+    const res = await chatFetch(`/api/upload?name=${encodeURIComponent(name)}`, {
       method: 'POST',
       headers: { 'x-genaicode-token': token, 'content-type': 'application/octet-stream' },
       body: file,
@@ -177,7 +201,7 @@ function promptBubble(text: string) {
       <span className="sent-files">
         {files.map((file) =>
           file.id && /\.(png|jpe?g|gif|webp)$/i.test(file.name) ? (
-            <img key={file.path} src={`/uploads/${file.id}`} alt={file.name} title={file.name} />
+            <img key={file.path} src={chatUrl(`/uploads/${file.id}`)} alt={file.name} title={file.name} />
           ) : (
             <span key={file.path} className="chip" title={file.path}>
               {file.name}
@@ -199,7 +223,7 @@ function useAllLimits(running: boolean): Array<RateLimit & { agent: string }> {
     if (!token) return;
     let current = true;
     const ask = () =>
-      fetch('/api/limits', { headers: { 'x-genaicode-token': token } })
+      chatFetch('/api/limits', { headers: { 'x-genaicode-token': token } })
         .then((res) => (res.ok ? (res.json() as Promise<{ limits?: Array<RateLimit & { agent: string }> }>) : {}))
         .then(
           (found: { limits?: Array<RateLimit & { agent: string }> }) => {
@@ -218,6 +242,9 @@ function useAllLimits(running: boolean): Array<RateLimit & { agent: string }> {
 }
 
 interface PageConfig {
+  multiChat?: boolean;
+  maxChats?: number;
+  initialChat?: string;
   cwd: string;
   /** False when the page names no project (`ui --no-project` or `ui --home`). */
   project?: boolean;
@@ -293,7 +320,7 @@ function useAgents(
     if (!token) return undefined;
     inFlightRef.current = true;
     try {
-      const res = await fetch(`/api/agents${query}`, { headers: { 'x-genaicode-token': token } });
+      const res = await chatFetch(`/api/agents${query}`, { headers: { 'x-genaicode-token': token } });
       if (!res.ok) return undefined;
       const body = (await res.json()) as { agents?: AgentInspection[] };
       if (!Array.isArray(body.agents)) return undefined;
@@ -363,7 +390,11 @@ function useAgents(
   };
 }
 
-function useView(onToast?: (text: string) => void): {
+function useView(
+  route: string | undefined,
+  onToast?: (text: string) => void,
+): {
+  loaded: ChatSummary[];
   view?: ChatView;
   config?: PageConfig;
   release?: UiRelease;
@@ -371,7 +402,10 @@ function useView(onToast?: (text: string) => void): {
   rejected: boolean;
 } {
   const [release, setRelease] = useState<UiRelease>();
-  const [view, setView] = useState<ChatView>();
+  const [loaded, setLoaded] = useState<ChatSummary[]>([]);
+  const snapshots = useRef(new Map<string | undefined, ChatView>());
+  const [live, setLive] = useState<{ route?: string; view: ChatView }>();
+  const view = live && live.route === route ? live.view : snapshots.current.get(route);
   const [config, setConfig] = useState<PageConfig>();
   const [connected, setConnected] = useState(false);
   const [rejected, setRejected] = useState(!token);
@@ -383,10 +417,17 @@ function useView(onToast?: (text: string) => void): {
     let timer: number | undefined;
     const connect = async () => {
       try {
-        const res = await fetch('/api/events', {
+        const path = '__TAURI_INTERNALS__' in window ? '/api/events?desktop=1' : '/api/events';
+        const res = await fetch(chatUrl(path, route), {
           headers: { 'x-genaicode-token': token },
           signal: abort.signal,
         });
+        if (abort.signal.aborted) return;
+        if (res.status === 404 && pageChat()) {
+          history.replaceState(history.state, '', location.pathname + location.search);
+          location.reload();
+          return;
+        }
         if (res.status === 403) {
           setConnected(false);
           setRejected(true);
@@ -403,18 +444,30 @@ function useView(onToast?: (text: string) => void): {
         let buffer = '';
         for (;;) {
           const { value, done } = await reader.read();
-          if (done) break;
+          if (done || abort.signal.aborted) break;
           buffer += decoder.decode(value, { stream: true });
           const taken = takeEvents(buffer);
           buffer = taken.rest;
           for (const { event, data: payload } of taken.events) {
             if (event === 'view') {
-              setView(JSON.parse(payload) as ChatView);
+              const view = JSON.parse(payload) as ChatView;
+              const id = route ?? view.conversation?.id;
+              snapshots.current.delete(id);
+              snapshots.current.set(id, view);
+              if (snapshots.current.size > 8) snapshots.current.delete(snapshots.current.keys().next().value);
+              setLive({ route, view });
               setConnected(true);
+            } else if (event === 'chats') {
+              setLoaded(JSON.parse(payload) as ChatSummary[]);
+            } else if (event === 'open') {
+              showChat((JSON.parse(payload) as { chat: string }).chat);
             } else if (event === 'release') {
               setRelease(JSON.parse(payload) as UiRelease);
             } else if (event === 'config') {
-              setConfig(JSON.parse(payload) as PageConfig);
+              const config = JSON.parse(payload) as PageConfig;
+              if (config.initialChat && !pageChat())
+                history.replaceState(history.state, '', '#chat=' + encodeURIComponent(config.initialChat));
+              setConfig(config);
             } else if (event === 'toast') {
               const parsed = JSON.parse(payload) as { text?: string };
               if (parsed.text) toastRef.current?.(parsed.text);
@@ -432,8 +485,8 @@ function useView(onToast?: (text: string) => void): {
       abort.abort();
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, []);
-  return { view, config, release, connected, rejected };
+  }, [route]);
+  return { view, config, release, connected: connected && live?.route === route, rejected, loaded };
 }
 
 /**
@@ -468,24 +521,29 @@ function useBark(view: ChatView | undefined) {
       document.removeEventListener('visibilitychange', hush);
     };
   }, []);
-  useEffect(() => {
-    if (!view) return;
-    const before = seen.current;
-    seen.current = view;
-    if (
-      !needsAttention(before?.session, view.session, before?.notices, view.notices) ||
-      (document.hasFocus() && document.visibilityState === 'visible')
-    )
-      return;
+  const ring = () => {
+    if (document.hasFocus() && document.visibilityState === 'visible') return;
     unread.current += 1;
     document.title = `(${unread.current}) ${baseTitleRef.current}`;
-    if (!view.bark) return;
+    if (!view?.bark) return;
     audio.current ??= new Audio('/assets/bark.mp3');
     audio.current.currentTime = 0;
     audio.current.volume = 0.5;
     // Browsers may refuse sound before the first click on the page; the title still counts.
     audio.current.play().catch(() => {});
+  };
+  useEffect(() => {
+    if (!view) return;
+    const before = seen.current;
+    seen.current = view;
+    if (
+      before?.conversation?.id !== view.conversation?.id ||
+      !needsAttention(before?.session, view.session, before?.notices, view.notices)
+    )
+      return;
+    ring();
   }, [view]);
+  return ring;
 }
 
 /** Refresh cached local-image capability URLs before the server's 15-minute inactivity TTL. */
@@ -506,8 +564,9 @@ function useLocalImages(
   turns: ChatView['session']['turns'] | undefined,
   notices: ChatView['notices'] | undefined,
   enabled: boolean,
-  scopeKey: string,
+  cwd: string,
 ): Record<string, string> {
+  const scopeKey = JSON.stringify([pageChat(), cwd]);
   const [cache, setCache] = useState<{ scope: string; map: Record<string, CachedImage> }>(() => ({
     scope: scopeKey,
     map: {},
@@ -564,7 +623,7 @@ function useLocalImages(
       if (relay?.status !== 'answered' || !relay.reply) continue;
       for (const rawPath of extractLocalImagePaths(relay.reply)) {
         const path = relay.cwd ? resolveFilePath(rawPath, relay.cwd) : rawPath;
-        const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (scopeKey && isPathWithin(path, scopeKey));
+        const allowed = (relay.cwd && isPathWithin(path, relay.cwd)) || (cwd && isPathWithin(path, cwd));
         if (allowed && !found.includes(path)) found.push(path);
       }
     }
@@ -654,7 +713,7 @@ function useLocalImages(
     const controller = new AbortController();
     controllers.current.add(controller);
     // Keep in-flight batches alive across streaming updates; only scope change or unmount aborts them.
-    fetch('/api/file/images', {
+    chatFetch('/api/file/images', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ paths: batch }),
@@ -773,7 +832,7 @@ function navigates(own: SlashCommand): boolean {
 }
 
 async function inspectFolder(path: string, exact = false): Promise<WebFolder | undefined> {
-  const res = await fetch(`/api/folder?${exact ? 'cwd' : 'path'}=${encodeURIComponent(path)}`, {
+  const res = await chatFetch(`/api/folder?${exact ? 'cwd' : 'path'}=${encodeURIComponent(path)}`, {
     headers: { 'x-genaicode-token': token },
   });
   return res.ok ? ((await res.json()) as WebFolder) : undefined;
@@ -781,7 +840,7 @@ async function inspectFolder(path: string, exact = false): Promise<WebFolder | u
 
 /** The host's folder dialog (`POST /api/choose-folder`); undefined when nothing was chosen. */
 async function chooseFolder(): Promise<WebFolder | undefined> {
-  const res = await fetch('/api/choose-folder', { method: 'POST', headers: { 'x-genaicode-token': token } });
+  const res = await chatFetch('/api/choose-folder', { method: 'POST', headers: { 'x-genaicode-token': token } });
   return res.ok ? ((await res.json()) as { folder?: WebFolder }).folder : undefined;
 }
 
@@ -892,7 +951,7 @@ function usePullRequests(
         asked.current.keys.add(key);
         const [turn = '', ...id] = key.split(':');
         const query = new URLSearchParams({ conversation: chat, turn, task: id.join(':') });
-        fetch(`/api/pull-request?${query}`, { headers: { 'x-genaicode-token': token } })
+        chatFetch(`/api/pull-request?${query}`, { headers: { 'x-genaicode-token': token } })
           .then((reply) => (reply.ok ? (reply.json() as Promise<PullRequestStatus>) : undefined))
           .then((body) => {
             if (stopped || !body) return;
@@ -939,17 +998,54 @@ const workWidth = storedSize(WORK_WIDTH_KEY, [WORK_PANEL_MIN, 4000], () => sessi
 // The panel's width while a file or an artifact is open in it: wider, and kept apart from the lists'.
 const viewerWidth = storedSize(VIEWER_WIDTH_KEY, [WORK_PANEL_MIN, 4000]);
 
-function App() {
+function App({ selected }: { selected?: string }) {
+  const route = selected ?? pageChat();
   const root = document.getElementById('root')!;
-  const [toast, setToast] = useState<{ text: string; error?: boolean }>();
+  const [toast, setToast] = useState<{ text: string; error?: boolean; chat?: string }>();
   const toastTimer = useRef<number>(undefined);
-  const showToast = (text: string, error = false) => {
-    setToast({ text, error });
+  const showToast = (text: string, error = false, chat?: string) => {
+    setToast({ text, error, chat });
     if (toastTimer.current !== undefined) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(undefined), 2600);
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
-  const { view, config, release, connected, rejected } = useView((text) => showToast(text));
+  const { view, config, release, connected, rejected, loaded } = useView(selected, (text) => showToast(text));
+  const [returnedDraft, setReturnedDraft] = useState<{ chat: string; stamp: string }>();
+  const currentRow = loaded.find((row) => row.chat === pageChat());
+  const cancelQueue = () => postCommand({ type: 'stop' });
+  useEffect(() => {
+    const id = pageChat();
+    if (!id || !view?.recoveredDraft) return;
+    const draft = restoreQueued(id, view.recoveredDraft);
+    if (draft) {
+      rememberDraft(id, draft);
+      setReturnedDraft({ chat: id, stamp: view.recoveredDraft.id });
+    }
+  }, [view?.recoveredDraft?.id]);
+  const ring = useBark(view);
+  const prior = useRef<ChatSummary[]>([]);
+  useEffect(() => {
+    for (const chat of loaded) {
+      const old = prior.current.find((row) => row.chat === chat.chat);
+      if (!old || chat.chat === pageChat()) continue;
+      const approval = chat.approvals.some((request) => !old.approvals.some((prior) => prior.id === request.id));
+      const finished =
+        !chat.turnInProgress &&
+        (old.turnInProgress || (old.turn !== chat.turn && (chat.glyph === 'ok' || chat.glyph === 'err')));
+      if (!approval && !finished) continue;
+      const text = (approval ? 'Needs you: ' : 'Finished: ') + chat.title;
+      ring();
+      showToast(text, false, chat.chat);
+      if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const notice = new Notification(text);
+        notice.onclick = () => {
+          window.focus();
+          showChat(chat.chat);
+        };
+      }
+    }
+    prior.current = loaded;
+  }, [loaded]);
   const cwd = config?.cwd ?? (root.dataset.cwd || view?.session.cwd || '');
   // Said at once: installing takes a few seconds before the app goes away.
   const [relaunching, setRelaunching] = useState(false);
@@ -962,7 +1058,6 @@ function App() {
   const isHome = config ? config.home === true : !!root.dataset.home;
   const hasSessions = config?.sessions ?? !!root.dataset.sessions;
   const hasAgentsApi = config?.agents === true;
-  useBark(view);
   const [theme, setTheme] = useTheme();
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
   const [panel, navigate] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
@@ -1039,7 +1134,7 @@ function App() {
     inspectedAt,
     checkAgain: checkAgents,
   } = useAgents(hasAgentsApi, view?.agents, inSetup || showAgents, inSetup);
-  const allLimits = useAllLimits(running);
+  const allLimits = useAllLimits(config?.multiChat ? loaded.some((chat) => chat.turnInProgress) : running);
   // Refresh agent status when a turn newly fails with an auth error so the picker updates too.
   const seenAuthFail = useRef(new Set<number>());
   useEffect(() => {
@@ -1077,7 +1172,7 @@ function App() {
     // The window has one session: another chat opens only when this one's turn is over. Said here,
     // with a way to stop the turn or wait for it, rather than refused by the server after the fact;
     // the focus stays where it is.
-    if (request.type !== 'stay-chat' && runningRef.current) {
+    if (!config?.multiChat && request.type !== 'stay-chat' && runningRef.current) {
       setPanel('chat');
       setHeld({ request, what, label: label ?? heldLabel(request), step: 'ask', from: shownChatRef.current });
       return Promise.resolve(false);
@@ -1093,16 +1188,21 @@ function App() {
     refreshLookups();
     switchingRef.current = true;
     setSwitching(true);
-    return command({ generation: view?.generation, ...request, order: { window: WINDOW_ID, seq: mine } })
+    return postCommand({
+      generation: view?.generation,
+      ...request,
+      order: { window: WINDOW_ID, seq: ++navigationSequence },
+    })
       .catch(() => undefined)
       .then((done) => {
         // Another chat was asked for meanwhile: its answer decides.
-        if (mine !== switchSeq.current) return undefined;
+        if (mine !== switchSeq.current || route !== pageChat()) return undefined;
         switchingRef.current = false;
         setSwitching(false);
         // The chat says why when the server refused; no answer at all is said here.
         if (done === undefined) showToast(`Could not ${what}.`, true);
-        return done === true;
+        if (done?.chat) showChat(done.chat);
+        return done?.ok === true;
       });
   };
   const [held, setHeld] = useState<HeldSwitch>();
@@ -1145,7 +1245,7 @@ function App() {
   latestGeneration.current = view?.generation;
   const chatMark = () => switchSeq.current;
   const startChosenProject = (path: string, mark: number) =>
-    mark === switchSeq.current && latestGeneration.current === view?.generation
+    route === pageChat() && mark === switchSeq.current && latestGeneration.current === view?.generation
       ? startProjectChat(path)
       : Promise.resolve(undefined);
   /**
@@ -1190,7 +1290,9 @@ function App() {
   const chats = useChats(
     token,
     hasSessions,
-    `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
+    config?.multiChat
+      ? JSON.stringify(loaded.map((chat) => [chat.chat, chat.id, chat.turn, chat.turnInProgress]))
+      : `${session?.sessionId ?? ''}:${conversation?.id ?? ''}:${session?.turns.length ?? 0}:${running}`,
   );
   // What the session's own runs reported wins; until then, what was last seen of the agent's plan.
   const rateLimits = session?.rateLimits?.length ? session.rateLimits : plan;
@@ -1438,7 +1540,7 @@ function App() {
   }, [viewing, stepsTarget, sessionArtifacts, session?.turns]);
 
   const revealFile = (path: string) => {
-    void fetch('/api/reveal', {
+    void chatFetch('/api/reveal', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ path }),
@@ -1466,6 +1568,7 @@ function App() {
         return Promise.resolve(false);
       }
       if (own.kind === 'plan') return orderedControl(text);
+      if (own.kind === 'stop' && currentRow?.position) return cancelQueue().then(() => true);
       // As the switch: for the conversation shown now, so a chat opened meanwhile is not approved.
       if (own.kind === 'auto' && own.invalid === undefined && view?.generation !== undefined) {
         setAutoApprove(own.on ?? !view.autoApprove);
@@ -1501,13 +1604,27 @@ function App() {
     sending = mine;
     return mine.then((problem) => {
       // With its words: the composer takes them back only while it is empty.
-      setUnsent(problem ? { problem, text: text.trim() } : undefined);
+      if (route === pageChat() && !dropped.aborted) setUnsent(problem ? { problem, text: text.trim() } : undefined);
       return !problem;
     });
   };
 
   const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
   const efforts = currentAgent?.effort ?? [];
+  // Invalidate outstanding local actions when navigation comes from the URL or another window.
+  useEffect(() => {
+    switchSeq.current++;
+    switchingRef.current = false;
+    setSwitching(false);
+    refreshLookups();
+    seenAuthFail.current.clear();
+    setHeld(undefined);
+    setUnsent(undefined);
+    setWorkFullOpen(false);
+    setExpanded(false);
+    setPanel('chat');
+  }, [selected]);
+
   // The Model field's list: picked here lately, run by this agent (the index, this chat), discovered from CLI, known to it.
   const [recentModels, setRecentModels] = useState<string[]>([]);
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
@@ -1628,7 +1745,7 @@ function App() {
 
   const relaunch = () => {
     setRelaunching(true);
-    fetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
+    chatFetch('/api/relaunch', { method: 'POST', headers: { 'x-genaicode-token': token } })
       .then((reply) => reply.ok || setRelaunching(false))
       .catch(() => setRelaunching(false));
   };
@@ -1671,9 +1788,30 @@ function App() {
         : undefined,
     [session?.sessionId, openStore, session?.agent, activeCwd, convTitle, lastTurn?.endedAt, lastTurn?.startedAt],
   );
-  const ownChats = useMemo(() => withOpenChat(chats.own, openChat), [chats.own, openChat]);
+  const ownChats = useMemo(
+    () =>
+      loaded.length
+        ? [
+            ...loaded,
+            ...chats.own.filter(
+              (row) =>
+                !loaded.some(
+                  (live) =>
+                    live.id === row.id &&
+                    (live.source === row.source ||
+                      (live.source.startsWith('genaicode:open:') && live.agent === row.agent)),
+                ),
+            ),
+          ]
+        : withOpenChat(chats.own, openChat),
+    [loaded, chats.own, openChat],
+  );
   const projects = useMemo(() => chatProjects(ownChats, isHome ? { home: cwd } : {}), [ownChats, isHome, cwd]);
-  const openRow = openChat ? ownChats.find((chat) => isOpenChat(chat, openChat)) : undefined;
+  const openRow = loaded.length
+    ? loaded.find((row) => row.chat === pageChat())
+    : openChat
+      ? ownChats.find((chat) => isOpenChat(chat, openChat))
+      : undefined;
   // The general index may answer first: none of its sessions is another agent's until this app's
   // chats are known, or an app chat would show as one (and open All sessions).
   const othersKnown = hasSessions && chats.ownKnown;
@@ -1689,10 +1827,28 @@ function App() {
   // This app's chats that every agent's list leaves out (an automated one) ask too, and so does a
   // session a hook's question is open for, though its row was read before the question.
   const needsRows = useMemo(() => needsSessions(chats.all, ownChats, chats.asks), [chats.all, ownChats, chats.asks]);
+  const liveOwner = (row: Pick<SessionInfo, 'id' | 'source' | 'agent'>) =>
+    loaded.some(
+      (chat) =>
+        chat.id === row.id &&
+        (chat.source === row.source || (chat.source.startsWith('genaicode:open:') && chat.agent === row.agent)),
+    );
+  const elsewhereRows = loaded.length ? needsRows.filter((row) => !liveOwner(row)) : needsRows;
+  const externalOwn = loaded.length ? ownChats.filter((row) => !liveOwner(row)) : ownChats;
+  const externalAsks = loaded.length
+    ? chats.asks.filter(
+        (ask) => !loaded.some((row) => row.approvals.length && row.agent === ask.agent && row.id === ask.session),
+      )
+    : chats.asks;
+  const externalTower = view?.tower?.items.filter(
+    (item) =>
+      !item.id.startsWith('hook:') ||
+      !loaded.some((row) => row.approvals.length && row.agent === item.agent && row.id === item.sessionId),
+  );
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
-    tower: view?.tower?.items,
-    sessions: needsRows,
+    tower: externalTower,
+    sessions: elsewhereRows,
     open: { id: session?.sessionId, source: openStore },
   });
   // What has no time of its own waits since this window first saw it.
@@ -1705,6 +1861,7 @@ function App() {
     chat: session
       ? {
           approvals: session.approvals,
+          owner: config?.multiChat ? pageChat() : undefined,
           turnId: lastTurn?.id,
           agent: session.agent,
           cwd: activeCwd,
@@ -1715,17 +1872,61 @@ function App() {
             lastTurn?.pack && !lastTurn.result ? { lead: lastTurn.pack.lead, tasks: lastTurn.pack.tasks } : undefined,
         }
       : undefined,
-    tower: view?.tower?.items,
-    sessions: needsRows,
-    own: ownChats,
+    tower: externalTower,
+    sessions: elsewhereRows,
+    own: externalOwn,
     // Until this app's chats are read, a session of the general index may be one: no Open action.
     ownKnown: chats.ownKnown,
-    asks: chats.asks,
+    asks: externalAsks,
     senders: chats.senders,
     seen,
   });
+  for (const row of loaded) {
+    if (row.chat === pageChat() || !row.approvals.length) continue;
+    const items = needsItems({ chat: { ...row, cwd: row.cwd ?? '', turnId: row.turn }, sessions: [] });
+    for (const [i, item] of items.entries()) {
+      const request = row.approvals[i]!;
+      queue.push({
+        ...item,
+        source: 'app',
+        key: `chat:${row.chat}:${row.turn}:${request.id}`,
+        origin: row.title ?? row.agent,
+        open: { to: 'own', session: row },
+        note: undefined,
+        ...(request.kind === 'question' ? { question: { request, owner: row.chat, turn: row.turn } } : {}),
+        choices: item.choices.map((choice) => ({
+          ...choice,
+          decision: { ...choice.decision, owner: row.chat, turn: row.turn },
+        })),
+      });
+    }
+  }
+  if (loaded.length) {
+    needs.total = queue.length;
+    if (!queue.length) needs.title = 'Nothing needs you now';
+    else if (queue.some((item) => item.source === 'app')) needs.title = `Needs you: ${needs.total} across all projects`;
+  }
   const decideNeed = async (decision: NeedsDecision): Promise<boolean> => {
-    if (decision.via === 'chat') return inChat({ type: 'approve', id: decision.id, decision: decision.decision });
+    if (decision.via === 'chat')
+      return (
+        (
+          await postCommand(
+            { type: 'approve', id: decision.id, decision: decision.decision },
+            decision.owner ?? pageChat(),
+            decision.turn ?? lastTurn?.id,
+          )
+        ).ok === true
+      );
+    if (decision.via === 'answer')
+      return (
+        (
+          await postCommand(
+            { type: 'answer', id: decision.id, answers: decision.answers },
+            decision.owner,
+            decision.turn,
+          )
+        ).ok === true
+      );
     if (decision.via === 'tower') {
       const done = await inChat({ type: 'tower', id: decision.id, decision: decision.decision });
       // A hook's question the tower answered: the listing still has it, and the session waiting,
@@ -1740,7 +1941,7 @@ function App() {
       else chats.refresh();
       return done;
     }
-    const res = await fetch(`/api/asks/${decision.id}`, {
+    const res = await chatFetch(`/api/asks/${decision.id}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
       body: JSON.stringify({ behavior: decision.behavior }),
@@ -1992,12 +2193,17 @@ function App() {
                     ? 'chats'
                     : 'sessions',
           onNewChat: startHomeChat,
-          busyWith: running ? runningName : undefined,
+          busyWith: running && !config?.multiChat ? runningName : undefined,
           needs,
           onNeedsYou: openNeedsYou,
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
           onAllChats: hasSessions ? () => openSessions('own') : undefined,
           projects,
+          live: loaded,
+          limit: config?.maxChats,
+          onStop: (row) => {
+            void postCommand({ type: 'stop', turn: row.turn }, row.chat);
+          },
           selectedChat: openRow ? sessionKey(openRow) : undefined,
           selectedGlyph: session
             ? liveGlyph({
@@ -2096,6 +2302,18 @@ function App() {
               setSection(which);
             }}
             general={{
+              maxChats: config?.maxChats,
+              onMaxChats: (limit) => {
+                void chatFetch('/api/settings', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+                  body: JSON.stringify({ maxChats: limit }),
+                })
+                  .then((res) => {
+                    if (!res.ok) showToast('Could not save the chat limit.', true);
+                  })
+                  .catch(() => showToast('Could not save the chat limit.', true));
+              },
               theme,
               onTheme: setTheme,
               bark: view?.bark,
@@ -2164,7 +2382,26 @@ function App() {
         <div className="workspace" style={panel !== 'chat' ? { display: 'none' } : undefined} inert={workFull}>
           {/* Under a page the chat is hidden, and so is what is open in it: its Escape waits with it. */}
           <EscapeActive.Provider value={panel === 'chat' && !workFull}>
+            {currentRow?.position && (
+              <div role="status">
+                Waiting for a free slot · {currentRow.position - 1} ahead{' '}
+                <button type="button" onClick={() => void cancelQueue()}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            {currentRow &&
+              loaded.some(
+                (row) => row.chat !== currentRow.chat && row.cwd === currentRow.cwd && row.turnInProgress,
+              ) && <div role="status">Another chat is working in this folder.</div>}
             <AgentChat
+              key={
+                route
+                  ? route + ':' + (returnedDraft && returnedDraft.chat === route ? returnedDraft.stamp : '')
+                  : 'single'
+              }
+              initialDraft={savedDraft(route)}
+              onDraftChange={route ? (draft) => rememberDraft(route, draft) : undefined}
               state={session}
               chatId={view?.generation !== undefined ? String(view.generation) : chatKey || undefined}
               header={null}
@@ -2183,7 +2420,7 @@ function App() {
               }
               placeholder={inSetup ? 'Connect an agent to start' : undefined}
               notices={view?.notices}
-              artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+              artifactUrl={(artifact) => chatUrl(`/artifacts/${artifact.id}?v=${artifact.version}`)}
               onOpenArtifact={openArtifactInPanel}
               imageUrl={imageUrl}
               completions={SLASH_COMMANDS}
@@ -2459,16 +2696,38 @@ function App() {
       {toast ? (
         <div className={`gc-toast${toast.error ? ' err' : ''}`} role="status" aria-live="polite">
           {toast.text}
+          {toast.chat ? (
+            <button type="button" onClick={() => showChat(toast.chat!)}>
+              Open chat
+            </button>
+          ) : null}
         </div>
       ) : null}
     </>
   );
 }
 
+function ChatWindow() {
+  const [route, setRoute] = useState(pageChat);
+  useEffect(() => {
+    const changed = () => {
+      dropWaiting();
+      setRoute(pageChat());
+    };
+    window.addEventListener('genaicode-chat', changed);
+    window.addEventListener('hashchange', changed);
+    return () => {
+      window.removeEventListener('genaicode-chat', changed);
+      window.removeEventListener('hashchange', changed);
+    };
+  }, []);
+  return <App selected={route} />;
+}
+
 // Before the first paint: the theme chosen in Settings, where there is one.
 applyTheme(readTheme());
 createRoot(document.getElementById('root')!).render(
   <SessionReplies>
-    <App />
+    <ChatWindow />
   </SessionReplies>,
 );

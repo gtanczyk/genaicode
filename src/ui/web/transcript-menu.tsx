@@ -1,3 +1,4 @@
+import { chatFetch } from './chat-route.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useEscape } from '../../react/escape.js';
 import type { TranscriptFormat, TranscriptMeta } from '../transcript.js';
@@ -124,7 +125,7 @@ export function TranscriptMenu({
   useEffect(() => {
     if (!open || sessionPath !== undefined) return;
     const abort = new AbortController();
-    fetch(`${endpoint}?format=meta`, {
+    chatFetch(`${endpoint}?format=meta`, {
       headers: { 'x-genaicode-token': token },
       signal: abort.signal,
     })
@@ -150,7 +151,7 @@ export function TranscriptMenu({
   });
 
   const fetchTranscript = async (format: TranscriptFormat): Promise<{ text: string; filename: string }> => {
-    const res = await fetch(`${endpoint}?format=${format}`, {
+    const res = await chatFetch(`${endpoint}?format=${format}`, {
       headers: { 'x-genaicode-token': token },
     });
     if (!res.ok) {
@@ -186,7 +187,7 @@ export function TranscriptMenu({
     }
     setBusy(true);
     void copyTextAsync(async () => {
-      const res = await fetch(`${endpoint}?format=meta`, { headers: { 'x-genaicode-token': token } });
+      const res = await chatFetch(`${endpoint}?format=meta`, { headers: { 'x-genaicode-token': token } });
       if (!res.ok) throw new Error(`Server answered ${res.status}.`);
       const found = (await res.json()) as TranscriptMeta;
       setMeta(found);
@@ -212,7 +213,7 @@ export function TranscriptMenu({
     setOpen(false);
     if (nativeSave) {
       setBusy(true);
-      void fetch('/api/save-transcript', {
+      void chatFetch('/api/save-transcript', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
         body: JSON.stringify({ format, ...(storedSession ?? {}) }),

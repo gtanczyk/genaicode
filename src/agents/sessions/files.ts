@@ -7,8 +7,11 @@ import { personText } from '../host-text.js';
 
 export interface SessionFile {
   path: string;
+  /** Modification time in whole milliseconds: what `updatedAt` says. */
   mtimeMs: number;
   size: number;
+  /** The modification time as the file system has it, to tell two writes in the same millisecond apart. */
+  exactMtimeMs?: number;
 }
 
 /** Files under `dir` (to `depth` levels) whose name passes `match`, newest first. A missing `dir` is empty. */
@@ -29,7 +32,7 @@ export async function findFiles(dir: string, depth: number, match: (name: string
         } else if (entry.isFile() && match(entry.name)) {
           try {
             const stat = await fs.stat(full);
-            found.push({ path: full, mtimeMs: Math.round(stat.mtimeMs), size: stat.size });
+            found.push({ path: full, mtimeMs: Math.round(stat.mtimeMs), size: stat.size, exactMtimeMs: stat.mtimeMs });
           } catch {
             // Removed while listing.
           }
@@ -256,6 +259,40 @@ export function select(sessions: SessionInfo[], query: SessionQuery): SessionInf
 /** `state` for a store that only says when a session was last written. */
 export function activeIfRecent(updatedAt: number, now = Date.now()): { state?: 'active' } {
   return now - updatedAt < ACTIVE_MS ? { state: 'active' } : {};
+}
+
+/** How many session files a `cachedSessionReader` remembers: more than a busy machine writes in a year. */
+const READ_CACHE_FILES = 8192;
+
+/**
+ * `read` for a session file, remembered while the file keeps its size and modification time. A
+ * listing reads both ends of every file in its window, and a program that lists again and again (the
+ * app's sidebar, `sessions --watch`) would otherwise parse the same unchanged megabytes each time.
+ * The file is read as if long settled (`now` = Infinity); whether it is active is the clock's
+ * business and is put on each copy handed out. Each call gets its own copy to change, nested
+ * objects included.
+ */
+export function cachedSessionReader(
+  read: (file: SessionFile, now: number) => Promise<SessionInfo | null>,
+  max = READ_CACHE_FILES,
+): (file: SessionFile, now?: number) => Promise<SessionInfo | null> {
+  const kept = new Map<string, { mtimeMs: number; size: number; info: SessionInfo | null }>();
+  return async (file, now = Date.now()) => {
+    const mtimeMs = file.exactMtimeMs ?? file.mtimeMs;
+    let entry = kept.get(file.path);
+    if (!entry || entry.mtimeMs !== mtimeMs || entry.size !== file.size) {
+      entry = { mtimeMs, size: file.size, info: await read(file, Infinity) };
+    }
+    // Most recently used last, so the oldest goes first when there are too many.
+    kept.delete(file.path);
+    kept.set(file.path, entry);
+    if (kept.size > max) kept.delete(kept.keys().next().value as string);
+    if (!entry.info) return null;
+    // Deep: a caller that changes what it got (its `project`, its `usage`) changes no later listing.
+    const info = structuredClone(entry.info);
+    if (now - file.mtimeMs < ACTIVE_MS) info.state = 'active';
+    return info;
+  };
 }
 
 /** A JSON file's value, or undefined when it is missing or broken. */

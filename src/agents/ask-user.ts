@@ -164,9 +164,11 @@ export interface QuestionChannel {
 }
 
 /** Serve `ask_user` over MCP on a random loopback port, behind a random bearer token. */
-export async function startQuestionChannel(options: { name?: string } = {}): Promise<QuestionChannel> {
+export async function startQuestionChannel(
+  options: { name?: string; serve?: typeof startLocalMcpServer } = {},
+): Promise<QuestionChannel> {
   let handler: QuestionHandler | undefined;
-  const server = await startLocalMcpServer({
+  const server = await (options.serve ?? startLocalMcpServer)({
     name: options.name ?? QUESTION_SERVER_NAME,
     tools: [askUserTool(() => handler)],
     instructions: `Use ${ASK_USER_TOOL} when a choice is the user's to make; it shows them your options.`,

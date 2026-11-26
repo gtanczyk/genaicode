@@ -18,6 +18,24 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
   - The agent popover's Model field is now a filterable dropdown with an Agent's default choice and live model discovery for `agy`, `cursor-agent` and `opencode` (`GET /api/models`).
   - Clicking a turn's `N steps` pill opens its steps in the right-hand work panel (with an Errors filter and Expand/Dock) instead of expanding them inline in the chat.
   - lib: `listAgentModels()`, `createModelCatalog()`, `<AgentChat onOpenSteps>`, `<WorkPanel customViewer>`, and `AgentEvent` `'progress'`.
+
+### Fixed
+
+- **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
+  - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
+  - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.
+- **Render `file://` links, keep the working bar on one line, and surface progress updates.** (#376)
+  - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
+  - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
+  - New sessions remind agents to call `report_progress`, and Antigravity's native `plan` / `update_steps` updates appear as live chat progress.
+
+## 3.5.0 — 2026-11-26
+
+### Added
+
+- **Run several chats at once in the browser and desktop app.** (#367)
+  - Each window can open another chat while work continues. Extra chats wait for a free slot. Set the limit with `genaicode ui --max-chats` or in Settings → General.
+  - Needs you collects approvals across chats. Quit preserves unmerged pack worktrees and `--restore` reopens the chats from the last launch.
 - **Pick a model the agent ran, and read Claude replies as they are written.** (#374)
   - The agent chip's Model field suggests recent picks, the models the agent ran (how often, when) and names its driver knows, and still takes any name. A model the agent rejects says which model and agent, with a way back to the default.
   - Claude replies stream when the installed `claude` takes `--include-partial-messages`. A reply that arrives whole (codex exec, vibe, opencode) shows within 300–600 ms, at once with reduced motion or on a scroll, click or key.
@@ -27,10 +45,6 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- **Render `file://` links, keep the working bar on one line, and surface progress updates.** (#376)
-  - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
-  - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
-  - New sessions remind agents to call `report_progress`, and Antigravity's native `plan` / `update_steps` updates appear as live chat progress.
 - **A running chat keeps its newest steps and replies at the bottom.** (#375)
   - Steps taken after a message you send mid-turn fold below that message, and the reply to each message stays in view instead of folding into the steps.
   - "claude is working" names the step it is on: "claude is working · 2m 10s · Shell npm test".
