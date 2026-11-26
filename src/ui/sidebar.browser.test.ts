@@ -171,9 +171,12 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await topbar.locator('h1').textContent()).toBe('What is waiting for me?');
     expect(await topbar.locator('.crumb').count()).toBe(0);
 
-    // "New chat" leaves the chat in the list and selects nothing.
+    // The new, still-empty chat is selected and the prior chat stays in the list.
     await side.getByRole('button', { name: 'New chat', exact: true }).click();
-    await vi.waitFor(async () => expect(await chats.locator('[aria-current="page"]').count()).toBe(0));
+    await chats
+      .getByRole('button', { name: /New chat/ })
+      .and(chats.locator('[aria-current="page"]'))
+      .waitFor();
     await first.waitFor();
 
     // Taking a session over makes its folder a project of the list, with a "new chat here" button.

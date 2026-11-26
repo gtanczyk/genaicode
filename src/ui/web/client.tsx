@@ -1702,11 +1702,14 @@ function App() {
   const elsewhereRows = loaded.length ? needsRows.filter((row) => !liveOwner(row)) : needsRows;
   const externalOwn = loaded.length ? ownChats.filter((row) => !liveOwner(row)) : ownChats;
   const externalAsks = loaded.length
-    ? chats.asks.filter((ask) => !loaded.some((row) => row.agent === ask.agent && row.id === ask.session))
+    ? chats.asks.filter(
+        (ask) => !loaded.some((row) => row.approvals.length && row.agent === ask.agent && row.id === ask.session),
+      )
     : chats.asks;
   const externalTower = view?.tower?.items.filter(
     (item) =>
-      !item.id.startsWith('hook:') || !loaded.some((row) => row.agent === item.agent && row.id === item.sessionId),
+      !item.id.startsWith('hook:') ||
+      !loaded.some((row) => row.approvals.length && row.agent === item.agent && row.id === item.sessionId),
   );
   const needs = needsYou({
     approvals: session?.approvals.length ?? 0,
@@ -1724,6 +1727,7 @@ function App() {
     chat: session
       ? {
           approvals: session.approvals,
+          owner: config?.multiChat ? pageChat() : undefined,
           turnId: lastTurn?.id,
           agent: session.agent,
           cwd: activeCwd,

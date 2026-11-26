@@ -5,7 +5,9 @@ import type { ProjectFiles } from './files.js';
 import type { Uploads } from './uploads.js';
 
 export interface HubChat {
+  interrupted?: boolean;
   controller: ChatController;
+  addRoot?(dir: string): void;
   files: ProjectFiles;
   uploads: Uploads;
   save?(interrupted: boolean): Promise<void>;
@@ -125,7 +127,7 @@ export class ChatHub {
     this.chats.delete(id);
     const work = (async () => {
       try {
-        await chat.save?.(false);
+        await chat.save?.(!!chat.interrupted);
       } catch (error) {
         this.dormant.delete(id);
         this.chats.set(id, chat);
@@ -174,6 +176,7 @@ export class ChatHub {
     let working = chat.controller.get().session.status === 'running';
     chat.controller.subscribe((view) => {
       if (working && view.session.status === 'idle' && !this.views.get(id)) this.unseen.add(id);
+      if (view.session.status === 'running') chat.interrupted = false;
       working = view.session.status === 'running';
       this.changed();
     });
@@ -184,7 +187,7 @@ export class ChatHub {
   summaries(): ChatSummary[] {
     const queued = [...this.waiting.keys()];
     return [...this.chats]
-      .map(([chat, { controller }]): ChatSummary => {
+      .map(([chat, { controller, interrupted }]): ChatSummary => {
         const { agents, conversation, session } = controller.get();
         const last = session.turns.at(-1);
         const source = agents.find((a) => a.name === session.agent)?.store;
@@ -211,6 +214,7 @@ export class ChatHub {
                   : last?.result
                     ? 'err'
                     : 'idle',
+          ...(interrupted ? { interrupted: true, glyph: 'err' as const } : {}),
           unread: this.unseen.has(chat),
           approvals: session.approvals,
           turn: last?.id,
@@ -337,7 +341,7 @@ export class ChatHub {
     );
     await Promise.all(
       [...this.chats.values()].map(async (chat) => {
-        const interrupted = chat.controller.get().session.status === 'running';
+        const interrupted = chat.interrupted || chat.controller.get().session.status === 'running';
         await chat.close();
         await chat.save?.(interrupted);
       }),

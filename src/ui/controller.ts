@@ -144,6 +144,8 @@ export interface ChatOptions {
   schedule?(text: string, send: () => void): void;
   cancelWaiting?(): void;
   sharedInbox?: boolean;
+  /** The interactive CLI confirms SIGINT before initiating shutdown. */
+  guardedInterrupt?: boolean;
   /** Saved default for a fresh project conversation. Resumed sessions keep their selected agent. */
   projectLead?(cwd: string): Promise<string | undefined>;
   agents: readonly CodingAgent[];
@@ -448,7 +450,7 @@ export function createChatController(options: ChatOptions): ChatController {
       generation: conversationEpoch,
       shells: shells.size,
       ...(setup ? { setup: true } : {}),
-      ...(inbox ? { tower: inbox.view(state) } : {}),
+      ...(inbox ? { tower: inbox.view(state, options.chatId) } : {}),
       ...(conversation ? { conversation } : {}),
     };
   };
@@ -528,7 +530,9 @@ export function createChatController(options: ChatOptions): ChatController {
     session.stop();
     if (stopShells()) notice('Stopping the shell commands.');
   };
-  const onEnd = () => stopShells(true);
+  const onEnd = (signal?: NodeJS.Signals) => {
+    if (signal !== 'SIGINT' || !options.guardedInterrupt) stopShells(true);
+  };
   const runShell = (command: string) => {
     if (!command) {
       notice('Type a command after !, e.g. !npm test.', 'error');
@@ -1474,10 +1478,10 @@ export function createChatController(options: ChatOptions): ChatController {
     decideTower: (id, decision) => {
       if (!inbox) return Promise.resolve(false);
       if (decision === 'send' || decision === 'approve') {
-        const cwd = inbox.view(session.get()).items.find((item) => item.id === id)?.cwd;
+        const cwd = inbox.view(session.get(), options.chatId).items.find((item) => item.id === id)?.cwd;
         if (cwd) options.onRoot?.(cwd);
       }
-      return inbox.decide(session, id, decision);
+      return inbox.decide(session, id, decision, options.chatId);
     },
     selectAgent,
     updateAgents,
@@ -1555,13 +1559,13 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 // hangup: each controller with some running registers here, and they end with this process,
 // however it ends. One listener for all controllers, so a signal keeps its default (exit)
 // unless the host handles it too.
-const shellOwners = new Set<() => void>();
+const shellOwners = new Set<(signal?: NodeJS.Signals) => void>();
 const endShells = () => {
   for (const end of [...shellOwners]) end();
 };
 // Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
 const onShellSignal = (signal: NodeJS.Signals) => {
-  endShells();
+  for (const end of [...shellOwners]) end(process.listenerCount(signal) === 1 ? undefined : signal);
   if (process.listenerCount(signal) === 1) {
     shellOwners.clear();
     unlistenShells();

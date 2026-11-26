@@ -3,6 +3,10 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
+import { TowerInbox } from '../agents/sessions/tower.js';
+import { scopedMcpServers } from '../agents/mcp-server.js';
+import { SessionSendGate } from '../agents/sessions/send-tool.js';
+import { ArtifactPool, createArtifactStore } from '../agents/artifacts.js';
 import { runWeb } from './index.js';
 import type { ChatSummary } from './hub.js';
 
@@ -71,13 +75,15 @@ it('keeps identical approval ids, project files and spent budgets with their cha
   const launch = async (restoreChats = false) => {
     const stdin = new PassThrough();
     let address = '';
+    const env = { HOME: root, GENAICODE_HOME: join(root, 'state') };
     const done = runWeb({
+      towerInbox: new TowerInbox([agent], env),
       agents: [agent],
       cwd: root,
       home: true,
       budget: { maxCostUsd: 10 },
       restoreChats,
-      env: { HOME: root, GENAICODE_HOME: join(root, 'state') },
+      env,
       openUrl: (url) => {
         address = url;
       },
@@ -140,7 +146,9 @@ it('keeps identical approval ids, project files and spent budgets with their cha
         })
       ).status,
     ).toBe(409);
-    expect(await server.send(ids[1]!, { type: 'approve', id: 'same', decision: 'approve' })).toMatchObject({
+    expect(
+      await server.send(ids[0]!, { type: 'tower', id: 'turn:' + ids[1] + ':1:same', decision: 'approve' }),
+    ).toMatchObject({
       ok: true,
     });
     await vi.waitFor(() => expect([...decisions.keys()]).toEqual([dirs[1]]));
@@ -162,8 +170,101 @@ it('keeps identical approval ids, project files and spent budgets with their cha
     });
     await server.send(ids[1]!, { type: 'submit', text: 'next' });
     await vi.waitFor(() => expect(budgets.at(-1)).toBe(1));
+    const again = await server.send(initial, { type: 'continue', id: 'native-0', source: 'helper' });
+    expect(again.chat).toBe(ids[0]);
+    await server.send(again.chat, { type: 'submit', text: 'ask' });
+    await vi.waitFor(async () =>
+      expect((await server.rows()).find((row) => row.chat === again.chat)?.approvals.length).toBe(1),
+    );
+    await server.close();
+    const runsBeforeRestore = budgets.length;
+    server = await launch(true);
+    expect((await server.rows()).find((row) => row.chat === again.chat)).toMatchObject({
+      interrupted: true,
+      glyph: 'err',
+    });
+    expect(await server.view(again.chat)).toContain('Stopped when the app quit.');
+    expect(budgets.length).toBe(runsBeforeRestore);
   } finally {
     await server.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+it('routes tools through separate capabilities on one listener and revokes only the chat that closes', async () => {
+  const channels = scopedMcpServers();
+  const open = (reply: string) =>
+    channels.open({
+      name: 'ask',
+      tools: [
+        {
+          name: 'ask_user',
+          description: 'Ask this chat',
+          inputSchema: { type: 'object' },
+          call: async () => reply,
+        },
+      ],
+    });
+  try {
+    const [a, b] = await Promise.all([open('first'), open('second')]);
+    const request = (server: typeof a) => {
+      const spec = server.mcpServer;
+      if (!('url' in spec)) throw new Error('Expected an HTTP server');
+      return fetch(spec.url, {
+        method: 'POST',
+        headers: { ...spec.headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'ask_user', arguments: {} },
+        }),
+      });
+    };
+    if (!('url' in a.mcpServer && 'url' in b.mcpServer)) throw new Error('Expected HTTP scopes');
+    expect(new URL(a.mcpServer.url).origin).toBe(new URL(b.mcpServer.url).origin);
+    expect(a.mcpServer.url).not.toBe(b.mcpServer.url);
+    expect((await (await request(a)).json()).result.content[0].text).toBe('first');
+    await a.close();
+    expect((await request(a)).ok).toBe(false);
+    expect((await (await request(b)).json()).result.content[0].text).toBe('second');
+  } finally {
+    await channels.close();
+  }
+});
+
+it('isolates send consent and artifact contents while sharing recipient order and the memory cap', async () => {
+  const original = new SessionSendGate();
+  const first = original.fork(),
+    second = original.fork();
+  const target = { source: 'local', id: 'recipient', agent: 'helper', cwd: process.cwd() };
+  first.attach({ confirm: async () => true });
+  second.attach({ confirm: async () => false });
+  expect(await first.allow(target, 'one')).toBe(true);
+  expect(await second.allow(target, 'two')).toBe(false);
+  let finish!: () => void;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const order: string[] = [];
+  const a = first.line(target, async () => {
+    order.push('first');
+    await held;
+  });
+  const b = second.line(target, async () => {
+    order.push('second');
+  });
+  await Promise.resolve();
+  expect(order).toEqual(['first']);
+  finish();
+  await Promise.all([a, b]);
+  expect(order).toEqual(['first', 'second']);
+  const pool = new ArtifactPool(10);
+  const active = createArtifactStore({ cwd: target.cwd, pool, idle: () => false });
+  const idle = createArtifactStore({ cwd: target.cwd, pool, idle: () => true });
+  const old = await idle.publish({ title: 'old', content: 'abcdef' });
+  expect(active.read(old.id)).toBeUndefined();
+  const current = await active.publish({ title: 'new', content: '123456' });
+  expect(idle.read(old.id)).toBeUndefined();
+  expect(active.read(current.id)?.body.toString()).toBe('123456');
 });

@@ -127,6 +127,7 @@ import {
 } from './update.js';
 
 export interface CliEnvironment {
+  setInterruptGuard?(guard?: () => boolean): void;
   argv: readonly string[];
   env: NodeJS.ProcessEnv;
   cwd: string;
@@ -160,6 +161,7 @@ export interface CliEnvironment {
 
 /** Options the bundled front ends take (see src/ui/index.tsx). */
 export interface UiLaunch {
+  setInterruptGuard?(guard?: () => boolean): void;
   maxChats?: number;
   restoreChats?: boolean;
   agents: readonly CodingAgent[];
@@ -1003,6 +1005,7 @@ async function runUi(
     : undefined;
   const mcpServers = [...options.mcpServers, ...(index ? [index.mcpServer] : [])];
   const launch: UiLaunch = {
+    ...(cli.setInterruptGuard ? { setInterruptGuard: cli.setInterruptGuard } : {}),
     ...(options.maxChats ? { maxChats: options.maxChats } : {}),
     ...(options.restore && !options.from && !options.resume ? { restoreChats: true } : {}),
     agents,

@@ -79,6 +79,7 @@ export interface NeedsItem {
 export interface NeedsInput {
   /** The open chat: its approvals wait in this window. */
   chat?: {
+    owner?: string;
     approvals: readonly ApprovalRequest[];
     /** The running turn, as the tower's keys name it. */
     turnId?: number;
@@ -251,7 +252,9 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
   const here = (chat?.approvals ?? []).map((request): NeedsItem => {
     const key = `chat:${request.id}`;
     // The tower knows which agent of the pack asks, and for which task.
-    const told = input.tower?.find((item) => item.id === `${TOWER_TURN_ITEM}${chat!.turnId}:${request.id}`);
+    const told = input.tower?.find(
+      (item) => item.id === `${TOWER_TURN_ITEM}${chat?.owner ? chat.owner + ':' : ''}${chat!.turnId}:${request.id}`,
+    );
     // Without a tower, the running turn's pack says the same.
     const task = told ? undefined : chat!.pack?.tasks.find((one) => one.id === request.subtaskId);
     const from = told ? told.origin : task ? `Pack task ${task.id}` : chat!.pack ? 'Pack lead' : 'Chat';

@@ -86,6 +86,7 @@ export interface UiRunOptions extends ChatOptions {
 }
 
 export interface WebRunOptions extends UiRunOptions {
+  setInterruptGuard?(guard?: () => boolean): void;
   maxChats?: number;
   restoreChats?: boolean;
   /** `genaicode chat --web`: open the browser on the terminal's session right away. */
@@ -155,7 +156,7 @@ function makeRoots(
     };
     const session = getController()?.get().session;
     push(session?.cwd);
-    push(options.cwd);
+    if (!options.chatId || !options.home || !session) push(options.cwd);
     for (const turn of session?.turns ?? []) {
       for (const task of turn.pack?.tasks ?? []) push(task.cwd);
     }
@@ -529,10 +530,13 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   let controller: ChatController | undefined;
   let pendingOpen: string | undefined;
   const openSession = (id: string) => {
-    if (controller)
-      void hub.open(hub.initial, { type: 'continue', id }).then((chat) => {
-        if (chat) hub.onOpen?.(chat);
-      });
+    if (controller && hub.onOpen)
+      void hub
+        .open(hub.initial, { type: 'continue', id })
+        .then((chat) => {
+          if (chat) hub.onOpen?.(chat);
+        })
+        .catch(() => controller?.note('Could not open the selected session.', 'error'));
     else pendingOpen = id;
   };
   let cdnHosts: readonly string[] = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
@@ -585,7 +589,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     const saved = await disk.read(id);
     const localRoots = new Set<string>();
     let current: ChatController | undefined;
-    const roots = makeRoots({ ...webOptions, extraRoots: undefined }, () => current, localRoots);
+    const roots = makeRoots({ ...webOptions, chatId: id, extraRoots: undefined }, () => current, localRoots);
     const addRoot = (dir: string) => {
       localRoots.add(dir);
     };
@@ -646,6 +650,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
             }
           : webOptions.task,
         sharedInbox: id !== hub.initial,
+        guardedInterrupt: terminal && !!options.setInterruptGuard,
         schedule: (text, send) => hub.schedule(id, { text, send }),
         cancelWaiting: () => hub.cancel(id),
         allowNoAgent: true,
@@ -684,6 +689,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     }
     return {
       controller: chat,
+      interrupted: saved?.interrupted,
+      addRoot,
       files: createProjectFiles(roots),
       uploads: createUploads(() => chat.get().session.cwd),
       async save(interrupted) {
@@ -770,7 +777,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
-  const initialSession = pendingOpen ?? (restored ? undefined : options.continueFrom);
+  if (pendingOpen) openSession(pendingOpen);
+  const initialSession = restored ? undefined : options.continueFrom;
   pendingOpen = undefined;
   const taken = !initialSession || (await controller.continueSession(initialSession));
   let pendingFirstPrompt = options.firstPrompt && taken ? options.firstPrompt : undefined;
@@ -795,6 +803,14 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     }
   }
   if (options.open !== false) (options.openUrl ?? openBrowser)(url);
+  let confirmUntil = 0;
+  const canQuit = () => {
+    if (!hub.running || Date.now() < confirmUntil) return true;
+    confirmUntil = Date.now() + 5000;
+    options.stderr.write(`${hub.running} active chats. To stop them and quit, repeat within five seconds.\n`);
+    return false;
+  };
+  if (terminal) options.setInterruptGuard?.(canQuit);
   const next = await new Promise<'stop' | 'terminal'>((resolve) => {
     if (options.signal?.aborted) return resolve('stop');
     const onAbort = () => {
@@ -823,7 +839,8 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       options.stdin.resume();
     }
   });
-  if (next === 'terminal') await runTerminal(controller, webOptions);
+  if (next === 'terminal') await runTerminal(controller, webOptions, canQuit);
+  options.setInterruptGuard?.();
   offFirstPrompt?.();
   pendingFirstPrompt = undefined;
   host?.close();
@@ -833,12 +850,15 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
 }
 
 /** The terminal chat, until the person quits or `signal` aborts. */
-async function runTerminal(controller: ChatController, options: UiRunOptions) {
-  const app = render(<ChatApp controller={controller} cwd={options.cwd} version={options.version} />, {
-    stdout: options.stdout,
-    stdin: options.stdin,
-    exitOnCtrlC: false,
-  });
+async function runTerminal(controller: ChatController, options: UiRunOptions, canQuit?: () => boolean) {
+  const app = render(
+    <ChatApp controller={controller} cwd={options.cwd} version={options.version} canQuit={canQuit} />,
+    {
+      stdout: options.stdout,
+      stdin: options.stdin,
+      exitOnCtrlC: false,
+    },
+  );
   const onAbort = () => app.unmount();
   options.signal?.addEventListener('abort', onAbort, { once: true });
   await app.waitUntilExit();
@@ -934,14 +954,14 @@ function webLink(
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
       },
-      sendPrompt: async (source, id, prompt, sandbox, signal, onResponse) => {
+      sendPrompt: async (source, id, prompt, sandbox, signal, onResponse, scopedRoot = addRoot) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const found = await findSession(
           sources.filter((s) => s.name === source),
           id,
           { env: options.env, signal },
         ).catch(() => undefined);
-        if (found?.session.cwd) addRoot(found.session.cwd);
+        if (found?.session.cwd) scopedRoot(found.session.cwd);
         let respondingSession: string | undefined;
         return sendSession(agents, id, prompt, {
           onEvent(event) {

@@ -69,11 +69,13 @@ export function ChatApp({
   cwd,
   version,
   onQuit,
+  canQuit,
 }: {
   controller: ChatController;
   cwd: string;
   version: string;
   onQuit?: () => void;
+  canQuit?: () => boolean;
 }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -129,7 +131,8 @@ export function ChatApp({
   }, [running, relayWorking]);
 
   const quit = () => {
-    controller.close();
+    if (canQuit && !canQuit()) return;
+    if (!canQuit) controller.close();
     onQuit?.();
     exit();
   };

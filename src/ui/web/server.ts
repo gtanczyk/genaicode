@@ -81,6 +81,7 @@ export interface WebUiOptions {
     sandbox: SandboxPolicy | undefined,
     signal: AbortSignal,
     onResponse: () => void,
+    addRoot?: (dir: string) => void,
   ) => Promise<AgentResult>;
   /**
    * How much of each agent's plan is used, as last seen (`knownLimits`), at GET /api/limits: the
@@ -675,8 +676,10 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     };
     return `event: config\ndata: ${JSON.stringify(config)}\n\n`;
   };
+  let pendingDesktopChat: string | undefined;
   if (hub)
     hub.onOpen = (chat) => {
+      if (!desktopStreams.size) pendingDesktopChat = chat;
       for (const stream of desktopStreams) stream.write(`event: open\ndata: ${JSON.stringify({ chat })}\n\n`);
     };
   const broadcastConfig = () => {
@@ -762,6 +765,11 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         command = undefined;
       }
       if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+      if (hub && command.type === 'tower' && command.id.startsWith('turn:')) {
+        const owner = /^turn:([a-f0-9-]{36}):[0-9]+:/.exec(command.id)?.[1];
+        if (!owner) return send(res, 409, 'application/json', '{"ok":false,"reason":"conversation"}');
+        chatId = owner;
+      }
     }
     let chat = chatId ? hub?.chats.get(chatId) : undefined;
     if (
@@ -1062,7 +1070,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (options.release) res.write(`event: release\ndata: ${JSON.stringify(options.release())}\n\n`);
       streams.add(res);
       viewers.set(res, controller);
-      if (url.searchParams.get('desktop') === '1') desktopStreams.add(res);
+      if (url.searchParams.get('desktop') === '1') {
+        desktopStreams.add(res);
+        if (pendingDesktopChat) {
+          res.write(`event: open\ndata: ${JSON.stringify({ chat: pendingDesktopChat })}\n\n`);
+          pendingDesktopChat = undefined;
+        }
+      }
       const hide = chatId ? hub?.shown(chatId) : undefined;
       if (hub) res.write(`event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n`);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
@@ -1399,9 +1413,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       let responded = false;
       try {
-        const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal, () => {
-          responded = true;
-        });
+        const result = await options.sendPrompt(
+          source,
+          id,
+          prompt,
+          sandbox,
+          lifetime.signal,
+          () => {
+            responded = true;
+          },
+          chat?.addRoot,
+        );
         if (!result.ok) {
           const kind = result.failure?.kind;
           const reasons = {
