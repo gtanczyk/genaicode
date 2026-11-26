@@ -2446,6 +2446,12 @@ describe('web UI server', () => {
       // Session tools still work while in setup state.
       expect((await fetch(new URL('/api/sessions', url), { headers })).status).toBe(200);
       expect((await fetch(new URL('/api/agents', url))).status).toBe(403);
+      expect((await fetch(new URL('/api/models?agent=claude', url))).status).toBe(403);
+      expect((await fetch(new URL('/api/models', url), { headers })).status).toBe(400);
+      expect(await (await fetch(new URL('/api/models?agent=claude', url), { headers })).json()).toEqual({
+        agent: 'claude',
+        models: [],
+      });
       const initial = (await (await fetch(new URL('/api/agents', url), { headers })).json()) as {
         setup: boolean;
         agents: Array<{ name: string; command: string; installed: boolean; auth: string }>;

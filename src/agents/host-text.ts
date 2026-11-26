@@ -13,6 +13,30 @@ const PREAMBLE = 'Added by genaicode, not written by the person: how to use the 
 const BLOCK_START = `\n\n${OPEN}\n\n${PREAMBLE}\n\n`;
 
 /**
+ * Find the start of a trailing generated `<genaicode-briefing>` block in linear time, matching
+ * both the multi-line form and a one-line / cut-short title or preview (including cuts mid-preamble).
+ */
+function trailingBriefingIndex(text: string): number {
+  for (let pos = text.lastIndexOf(OPEN); pos >= 0; pos = pos > 0 ? text.lastIndexOf(OPEN, pos - 1) : -1) {
+    // Must be at start of string or preceded by whitespace.
+    if (pos > 0 && !/\s/.test(text[pos - 1]!)) continue;
+    let start = pos;
+    while (start > 0 && /\s/.test(text[start - 1]!)) start -= 1;
+    const afterTag = text.slice(pos + OPEN.length);
+    if (!afterTag || !/^\s/.test(afterTag)) continue;
+    const after = afterTag.trimStart();
+    if (!after) continue;
+    const isFull = after.startsWith(PREAMBLE);
+    const trimmedCut = after.replace(/…$/, '');
+    const isTruncatedPreamble = !isFull && trimmedCut.length >= 5 && PREAMBLE.startsWith(trimmedCut);
+    if (!isFull && !isTruncatedPreamble) continue;
+    const close = after.indexOf(CLOSE);
+    if (close < 0 || close === after.trimEnd().length - CLOSE.length) return start;
+  }
+  return -1;
+}
+
+/**
  * Briefings earlier genaicode versions put in front of the prompt: `pack()`'s default and
  * `delegationBrief()`, recognized by their first lines, then lines with no blank one between them,
  * then a blank line and the person's prompt. Each line matches one way only, so a briefing cut off
@@ -46,8 +70,18 @@ function withoutHandoff(text: string): string {
 
 /** The person's prompt first, so an agent that names a session after its first words names it after the request. */
 export function withBriefing(prompt: string, brief: string): string {
-  if (!brief.trim()) return prompt;
-  return `${prompt}${BLOCK_START}${brief.trim()}\n\n${CLOSE}`;
+  const note = brief.trim();
+  if (!note) return prompt;
+  // Merge into an existing trailing briefing block so there is at most one `<genaicode-briefing>` block.
+  const at = prompt.lastIndexOf(BLOCK_START);
+  if (at >= 0) {
+    const tail = prompt.slice(at + BLOCK_START.length);
+    if (tail.endsWith(CLOSE)) {
+      const existing = tail.slice(0, -CLOSE.length).trimEnd();
+      return `${prompt.slice(0, at)}${BLOCK_START}${existing}\n\n${note}\n\n${CLOSE}`;
+    }
+  }
+  return `${prompt}${BLOCK_START}${note}\n\n${CLOSE}`;
 }
 
 /**
@@ -68,11 +102,7 @@ export function hasLeadingBriefing(text: string): boolean {
 export function personText(text: string): string {
   let out = withoutHandoff(text.trimStart());
   for (const lead of LEGACY) out = out.replace(lead, '');
-  const at = out.lastIndexOf(BLOCK_START);
-  if (at >= 0) {
-    const block = out.slice(at + BLOCK_START.length).trimEnd();
-    const close = block.indexOf(CLOSE);
-    if (close < 0 || close === block.length - CLOSE.length) out = out.slice(0, at);
-  }
+  const at = trailingBriefingIndex(out);
+  if (at >= 0) out = out.slice(0, at);
   return out.trim();
 }

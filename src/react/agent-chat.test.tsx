@@ -1681,6 +1681,21 @@ describe('AgentChat', () => {
     expect(parseFileTarget('./src/b.ts#L12-L20')).toEqual({ path: './src/b.ts', position: { line: 12, endLine: 20 } });
     expect(parseFileTarget('C:\\work\\c.ts:5:2')).toEqual({ path: 'C:\\work\\c.ts', position: { line: 5, column: 2 } });
     expect(parseFileTarget('/w/plain.ts')).toEqual({ path: '/w/plain.ts' });
+    expect(parseFileTarget('file:///Users/me/app/agent-picker.tsx#L43-L52')).toEqual({
+      path: '/Users/me/app/agent-picker.tsx',
+      position: { line: 43, endLine: 52 },
+    });
+    expect(parseFileTarget('file://localhost/Users/me/My%20App/a.ts:12:3')).toEqual({
+      path: '/Users/me/My App/a.ts',
+      position: { line: 12, column: 3 },
+    });
+    expect(parseFileTarget('file:///C:/work/c.ts#L5-L9')).toEqual({
+      path: 'C:/work/c.ts',
+      position: { line: 5, endLine: 9 },
+    });
+    // Reject decoded UNC / device paths that could trigger Windows network lookups.
+    expect(parseFileTarget('file:////evil/share/a.png')).toEqual({ path: '' });
+    expect(parseFileTarget('file:///%5C%5Cevil%5Cshare%5Ca.png')).toEqual({ path: '' });
 
     const onOpenFile = vi.fn();
     const state = fixture({
@@ -1693,7 +1708,7 @@ describe('AgentChat', () => {
           entries: [
             {
               kind: 'text',
-              text: 'See [one](/w/a.ts:12:3), [range](<./My Project (draft)/b.ts#L5-L9>) and [podroz-po-calym-swiecie](</work/podroz-po-calym-swiecie>).',
+              text: 'See [one](/w/a.ts:12:3), [range](<./My Project (draft)/b.ts#L5-L9>), [podroz-po-calym-swiecie](</work/podroz-po-calym-swiecie>), [uri](file:///Users/me/app/agent-picker.tsx#L43-L52) and [remote](file://other-host/etc/passwd).',
               streaming: false,
             },
           ],
@@ -1702,16 +1717,47 @@ describe('AgentChat', () => {
     });
     render({ state, onOpenFile });
     const links = $$('.gc-file-link');
-    expect(links).toHaveLength(3);
-    expect(links.map((element) => element.textContent)).toEqual(['one', 'range', 'podroz-po-calym-swiecie']);
+    expect(links).toHaveLength(4);
+    expect(links.map((element) => element.textContent)).toEqual(['one', 'range', 'podroz-po-calym-swiecie', 'uri']);
+    expect($('.gc-md').textContent).toContain('[remote](file://other-host/etc/passwd)');
     click(links[0]!);
     click(links[1]!);
     click(links[2]!);
+    click(links[3]!);
     expect(onOpenFile.mock.calls).toEqual([
       ['/w/a.ts', { line: 12, column: 3 }],
       ['./My Project (draft)/b.ts', { line: 5, endLine: 9 }],
       ['/work/podroz-po-calym-swiecie'],
+      ['/Users/me/app/agent-picker.tsx', { line: 43, endLine: 52 }],
     ]);
+  });
+
+  it('opens folded steps via onOpenSteps button when provided instead of expanding inline', () => {
+    const onOpenSteps = vi.fn();
+    const state = fixture({
+      turns: [
+        {
+          id: 7,
+          agent: 'antigravity',
+          prompt: 'fix it',
+          startedAt: 1,
+          entries: [
+            { kind: 'tool', id: 't1', name: 'read_file', done: true },
+            { kind: 'tool', id: 't2', name: 'run_command', done: true, isError: true },
+            { kind: 'text', text: 'Done.', streaming: false },
+          ],
+          result: { ok: true, status: 'completed', exitCode: 0, signal: null },
+        },
+      ],
+    });
+    render({ state, foldSteps: true, onOpenSteps, activeSteps: { turnId: 7, stretch: 0 } });
+    expect($('.gc-fold')).toBeNull();
+    const btn = $<HTMLButtonElement>('.gc-fold-btn');
+    expect(btn.textContent).toContain('2 steps');
+    expect(btn.textContent).toContain('errors');
+    expect(btn.getAttribute('aria-pressed')).toBe('true');
+    click(btn);
+    expect(onOpenSteps).toHaveBeenCalledWith(state.turns[0], 0);
   });
 
   it('renders Markdown images safely: local thumbnails, click-to-load remote chips, no data: URIs, linear time', () => {

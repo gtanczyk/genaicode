@@ -25,6 +25,7 @@ function Popover({
   panelLabel,
   panelClassName,
   disabled,
+  onOpen,
   button,
   children,
 }: {
@@ -35,6 +36,7 @@ function Popover({
   panelLabel: string;
   panelClassName?: string;
   disabled?: boolean;
+  onOpen?(): void;
   button: ReactNode;
   /** The panel; called with a function that closes it. */
   children(close: () => void): ReactNode;
@@ -69,7 +71,13 @@ function Popover({
         aria-expanded={open}
         title={title}
         disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() =>
+          setOpen((value) => {
+            const next = !value;
+            if (next) onOpen?.();
+            return next;
+          })
+        }
       >
         {button}
       </button>
@@ -120,6 +128,199 @@ function CommitField({
   );
 }
 
+interface ModelOption {
+  value: string;
+  title: string;
+  note: string;
+}
+
+/**
+ * Combobox for the Model field: opens a styled dropdown of suggested models (and "Agent's default")
+ * while still allowing any custom model id to be typed and committed on Enter or blur.
+ */
+function ModelField({
+  value,
+  reportedModel,
+  models,
+  loading,
+  onCommit,
+}: {
+  value: string;
+  reportedModel?: string;
+  models?: readonly ModelSuggestion[];
+  loading?: boolean;
+  onCommit(value: string): void;
+}) {
+  const [draft, setDraft] = useState<string>();
+  const [open, setOpen] = useState(false);
+  const [filtering, setFiltering] = useState(false);
+  const [active, setActive] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEscape(open, () => {
+    setOpen(false);
+    setActive(-1);
+  });
+
+  useEffect(() => {
+    if (!open || active < 0) return;
+    document.getElementById(`agent-model-opt-${active}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, active]);
+
+  const shown = draft ?? value;
+  const query = filtering ? shown.trim().toLowerCase() : '';
+  const options: ModelOption[] = [];
+  const defaultNote = reportedModel ? `last ran ${reportedModel}` : "use the agent's own default";
+  if (
+    !query ||
+    'default'.includes(query) ||
+    "agent's default".includes(query) ||
+    (reportedModel && reportedModel.toLowerCase().includes(query))
+  ) {
+    options.push({ value: '', title: "Agent's default", note: defaultNote });
+  }
+  for (const item of models ?? []) {
+    const note =
+      item.label && item.note && item.note !== item.label ? `${item.label} · ${item.note}` : (item.label ?? item.note);
+    if (
+      !query ||
+      item.model.toLowerCase().includes(query) ||
+      (item.label && item.label.toLowerCase().includes(query)) ||
+      note.toLowerCase().includes(query)
+    ) {
+      options.push({ value: item.model, title: item.model, note });
+    }
+  }
+
+  const pick = (next: string) => {
+    if (next !== value) onCommit(next);
+    setDraft(undefined);
+    setOpen(false);
+    setFiltering(false);
+    setActive(-1);
+  };
+
+  const commitDraft = () => {
+    if (draft !== undefined && draft.trim() !== value) onCommit(draft.trim());
+    setDraft(undefined);
+    setOpen(false);
+    setFiltering(false);
+    setActive(-1);
+  };
+
+  const activeId = open && active >= 0 && active < options.length ? `agent-model-opt-${active}` : undefined;
+
+  return (
+    <div className="pop-field model-combo">
+      <label htmlFor="composer-model">Model</label>
+      <div className="model-combo-input">
+        <input
+          ref={inputRef}
+          id="composer-model"
+          className="field"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls="agent-models"
+          aria-activedescendant={activeId}
+          value={shown}
+          placeholder={reportedModel ? `default (last ran ${reportedModel})` : "empty for the agent's default"}
+          title="The model id, from the next prompt: pick one from the list or type another"
+          onFocus={() => {
+            setOpen(true);
+            setFiltering(false);
+            setActive(-1);
+          }}
+          onClick={() => {
+            if (!open) {
+              setOpen(true);
+              setFiltering(false);
+              setActive(-1);
+            }
+          }}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setOpen(true);
+            setFiltering(true);
+            setActive(-1);
+          }}
+          onBlur={commitDraft}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setOpen(true);
+              setActive((prev) => (options.length ? Math.min(options.length - 1, prev + 1) : -1));
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              if (!open) {
+                setOpen(true);
+                setActive(options.length - 1);
+              } else {
+                setActive((prev) => Math.max(-1, prev - 1));
+              }
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              if (open && active >= 0 && options[active]) pick(options[active]!.value);
+              else commitDraft();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="model-combo-toggle"
+          tabIndex={-1}
+          aria-label={open ? 'Hide options' : 'Show options'}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (open) {
+              setOpen(false);
+              setActive(-1);
+            } else {
+              setOpen(true);
+              setFiltering(false);
+              setActive(-1);
+              inputRef.current?.focus();
+            }
+          }}
+        >
+          <span aria-hidden="true">{open ? '▴' : '▾'}</span>
+        </button>
+      </div>
+      {open ? (
+        <div id="agent-models" className="model-combo-menu" role="listbox" aria-label="Suggestions">
+          {options.map((item, index) => (
+            <button
+              key={item.value || '__default__'}
+              id={`agent-model-opt-${index}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              className="model-opt"
+              data-value={item.value}
+              aria-selected={value === item.value}
+              data-active={active === index ? 'true' : undefined}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActive(index)}
+              onClick={() => pick(item.value)}
+            >
+              <span className="model-opt-id">{item.title}</span>
+              <span className="model-opt-note">{item.note}</span>
+            </button>
+          ))}
+          {loading ? (
+            <div className="model-combo-status" role="status">
+              Loading models…
+            </div>
+          ) : null}
+          {!loading && filtering && query && !options.length ? (
+            <div className="model-combo-status">Press Enter to use “{shown.trim()}”</div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** The agent names of a typed fallback list: `codex, agy` or `codex agy`. */
 export function fallbackNames(text: string): string[] {
   return [...new Set(text.split(/[\s,]+/).filter(Boolean))];
@@ -133,6 +334,8 @@ export interface AgentChipProps {
   reportedModel?: string;
   /** What the Model field suggests (`modelSuggestions`): it still takes any name. */
   models?: readonly ModelSuggestion[];
+  /** True while the server is discovering available models from the agent's CLI. */
+  modelsLoading?: boolean;
   effort?: string;
   /** The effort levels the agent takes, in its own words. Empty: no effort control. */
   efforts: readonly string[];
@@ -143,6 +346,8 @@ export interface AgentChipProps {
   noQuestions?: ReadonlySet<string>;
   /** A turn runs: the agent cannot be changed until it ends. */
   running?: boolean;
+  /** Called when the agent popover opens (e.g. to load available models on demand). */
+  onOpen?(): void;
   onAgent(name: string): void;
   onModel(model: string): void;
   /** `default` is the agent's own choice. */
@@ -167,6 +372,7 @@ export function AgentChip(props: AgentChipProps) {
       className="btn ghost sm agent-chip"
       panelLabel="Agent, model, effort and fallback"
       panelClassName="agent-pop"
+      onOpen={props.onOpen}
       button={
         <>
           <span className="av" aria-hidden="true">
@@ -198,25 +404,14 @@ export function AgentChip(props: AgentChipProps) {
             }
           />
           {props.running ? <span className="note">The agent can be changed when this turn ends.</span> : null}
-          <label>
-            Model
-            <CommitField
-              value={props.model ?? ''}
-              placeholder={
-                props.reportedModel ? `default (last ran ${props.reportedModel})` : "empty for the agent's default"
-              }
-              title="The model id, from the next prompt: pick one the agent ran or type another"
-              list={props.models?.length ? 'agent-models' : undefined}
-              onCommit={props.onModel}
-            />
-          </label>
-          {props.models?.length ? (
-            <datalist id="agent-models">
-              {props.models.map((item) => (
-                <option key={item.model} value={item.model} label={item.note} />
-              ))}
-            </datalist>
-          ) : null}
+          <ModelField
+            key={props.agent}
+            value={props.model ?? ''}
+            reportedModel={props.reportedModel}
+            models={props.models}
+            loading={props.modelsLoading}
+            onCommit={props.onModel}
+          />
           {props.efforts.length ? (
             <div className="pop-field">
               <span id="composer-effort">Effort</span>

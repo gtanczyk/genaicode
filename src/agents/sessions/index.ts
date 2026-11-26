@@ -308,12 +308,16 @@ export async function readSession(
   return source.read(session, options);
 }
 export {
+  antigravityUsageLimits,
   describeKnownLimits,
   knownLimits,
   limitsAgent,
   limitsDir,
+  parseAntigravityUsageLimits,
+  probeAntigravityLimits,
   recordLimits,
   shortLimit,
   statusLineLimits,
   type KnownLimit,
+  type ProbeAntigravityLimitsOptions,
 } from './limits.js';

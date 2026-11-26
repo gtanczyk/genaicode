@@ -581,4 +581,89 @@ describe('antigravity driver', () => {
       },
     ]);
   });
+
+  it('maps ACP plan updates and update_steps calls into progress events', () => {
+    const planEvents = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'plan',
+        entries: [
+          { content: 'Inspect files', status: 'completed' },
+          { content: 'Apply fix', status: 'in_progress' },
+          { content: 'Run tests', status: 'pending' },
+        ],
+      },
+      new Map(),
+      () => {},
+    );
+    expect(planEvents).toEqual([
+      {
+        type: 'progress',
+        message: 'Apply fix',
+        plan: [
+          { step: 'Inspect files', status: 'completed' },
+          { step: 'Apply fix', status: 'in_progress' },
+          { step: 'Run tests', status: 'pending' },
+        ],
+      },
+    ]);
+
+    const tools = new Map();
+    const first = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 's1',
+        name: 'update_steps',
+        status: 'in_progress',
+        rawInput: {
+          steps: [
+            { title: 'Step one', status: 'done' },
+            { title: 'Step two', status: 'in_progress' },
+          ],
+        },
+      },
+      tools,
+      () => {},
+    );
+    expect(first).toContainEqual({
+      type: 'progress',
+      message: 'Step two',
+      plan: [
+        { step: 'Step one', status: 'completed' },
+        { step: 'Step two', status: 'in_progress' },
+      ],
+    });
+    // Subsequent completion of the same update_steps call does not emit a duplicate progress entry.
+    const second = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 's1',
+        name: 'update_steps',
+        status: 'completed',
+      },
+      tools,
+      () => {},
+    );
+    expect(second.some((event) => event.type === 'progress')).toBe(false);
+
+    // 12 completed steps + active 13th step still reports step 13 as active (not completed), and caps display at 12.
+    const longPlan = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'plan',
+        entries: [
+          ...Array.from({ length: 12 }, (_, i) => ({ content: `Done ${i + 1}`, status: 'completed' })),
+          { content: 'Step 13 running', status: 'in_progress' },
+        ],
+      },
+      new Map(),
+      () => {},
+    );
+    expect(longPlan).toHaveLength(1);
+    expect(longPlan[0]).toMatchObject({ type: 'progress', message: 'Step 13 running' });
+    expect((longPlan[0] as Extract<(typeof longPlan)[number], { type: 'progress' }>).plan).toHaveLength(12);
+
+    // Explicit empty plan clears the checklist.
+    expect(antigravityUpdateEvents({ sessionUpdate: 'plan', entries: [] }, new Map(), () => {})).toEqual([
+      { type: 'progress', message: 'Plan cleared', plan: [] },
+    ]);
+  });
 });

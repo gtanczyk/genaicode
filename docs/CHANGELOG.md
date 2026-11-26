@@ -10,21 +10,33 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- **Show all installed agents and Antigravity usage and plan limits in Settings › Usage.** (#376)
+  - Settings › Usage lists every installed agent (with “reports no plan limits” when none are reported) and merges `*Live` accounts into one row.
+  - Antigravity sessions read per-step token usage from `transcript.jsonl` (including mirrored CLI transcripts) for 7-day topic shares, and plan limits are refreshed via `agy --print /usage --output-format json`.
+  - lib: `antigravityUsageLimits()`, `parseAntigravityUsageLimits()`, `probeAntigravityLimits()`, and `antigravityUsage()`.
+- **Pick models from a dropdown and inspect turn steps in the side panel.** (#376)
+  - The agent popover's Model field is now a filterable dropdown with an Agent's default choice and live model discovery for `agy`, `cursor-agent` and `opencode` (`GET /api/models`).
+  - Clicking a turn's `N steps` pill opens its steps in the right-hand work panel (with an Errors filter and Expand/Dock) instead of expanding them inline in the chat.
+  - lib: `listAgentModels()`, `createModelCatalog()`, `<AgentChat onOpenSteps>`, `<WorkPanel customViewer>`, and `AgentEvent` `'progress'`.
 - **Give Claude Code, Codex and Cursor the session tools from Settings › Agents.** (#379)
   - One click per agent adds, updates or removes the `genaicode` MCP server that `genaicode mcp install` adds. From the desktop app the agents start the app's own Node and genaicode, which update with the app.
   - Run from npx's cache or a Linux AppImage with no installed command, it says how to install the command instead.
 
 ### Fixed
 
+- **Render `file://` links, keep the working bar on one line, and surface progress updates.** (#376)
+  - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
+  - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
+  - New sessions remind agents to call `report_progress`, and Antigravity's native `plan` / `update_steps` updates appear as live chat progress.
+- **Recall messages with ↑ and run shell commands with ! in the browser and desktop composer.** (#383)
 - **Starting a project chat is instant and spinners stay smooth while chats stream.** (#381)
   - Clicking `+` on a project checks open chats, recent listings and saved conversations before scanning every session store on disk, and opening an empty chat no longer triggers extra session listings.
   - Running spinners animate on the compositor layer, completed turns and the sidebar skip redundant re-renders during streaming, and mid-turn chat checkpoints coalesce to every 2 seconds.
+- **MCP servers and hooks installed with npx keep working after npm clears its cache.** (#378)
+  - `npx genaicode mcp install` and `hooks install` register the installed command (`~/.genaicode/current`) when there is one, and otherwise say to install it first.
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
   - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
   - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.
-- **MCP servers and hooks installed with npx keep working after npm clears its cache.** (#378)
-  - `npx genaicode mcp install` and `hooks install` register the installed command (`~/.genaicode/current`) when there is one, and otherwise say to install it first.
-- **Recall messages with ↑ and run shell commands with ! in the browser and desktop composer.** (#383)
 
 ## 3.5.0 — 2026-11-26
 

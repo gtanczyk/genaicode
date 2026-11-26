@@ -90,10 +90,10 @@ describe('AgentChip', () => {
   });
   const trigger = () => $<HTMLButtonElement>('.agent-chip');
   const pop = () => $('[role="dialog"]');
-  const field = (label: string) =>
-    $$<HTMLLabelElement>('.pop label')
-      .find((element) => element.textContent === label)!
-      .querySelector('input')!;
+  const field = (label: string) => {
+    const el = $$<HTMLLabelElement>('.pop label').find((element) => element.textContent === label)!;
+    return (el.htmlFor ? $(`#${el.htmlFor}`) : el.querySelector('input')) as HTMLInputElement;
+  };
 
   it('is one chip that names the agent and its model, and opens one popover for agent, model, effort and fallback', () => {
     render(<AgentChip {...chip()} />);
@@ -208,6 +208,53 @@ describe('AgentChip', () => {
     expect(fallbackNames('codex, agy')).toEqual(['codex', 'agy']);
     expect(fallbackNames(' codex   codex,,gemini ')).toEqual(['codex', 'gemini']);
     expect(fallbackNames('')).toEqual([]);
+  });
+
+  it('opens a model dropdown, filters by typing, picks a model or default, and explains agent status in tooltips', () => {
+    const props = chip({
+      model: 'gemini-4-neon-high',
+      reportedModel: 'gemini-4-neon-medium',
+      models: [
+        { model: 'gemini-4-neon-high', label: 'Gemini 4 Neon (High)', note: 'Gemini 4 Neon (High)' },
+        { model: 'claude-opus-5-5-high', label: 'Claude Opus 5.5 (High)', note: 'picked lately' },
+      ],
+    });
+    render(<AgentChip {...props} />);
+    click(trigger());
+    expect(props.onOpen).toBeUndefined();
+    // Agent rows carry clear tooltips explaining signed-in vs installed status.
+    expect(named('radio', 'Claude CodeMax').getAttribute('title')).toContain('signed in (Max)');
+    expect(named('radio', 'Gemini CLIInstalled · no questions').getAttribute('title')).toContain(
+      'sign-in is checked when you run it',
+    );
+
+    // Clicking the chevron opens the dropdown with Agent's default + all models (even though a model is set).
+    click($<HTMLButtonElement>('.model-combo-toggle'));
+    const options = () => $$<HTMLButtonElement>('#agent-models [role="option"]');
+    expect(options().map((el) => el.getAttribute('data-value'))).toEqual([
+      '',
+      'gemini-4-neon-high',
+      'claude-opus-5-5-high',
+    ]);
+    expect(options()[2]!.textContent).toContain('Claude Opus 5.5 (High) · picked lately');
+
+    // Typing filters the list; pressing Escape closes only the dropdown, leaving the popover open.
+    fill(field('Model'), 'opus');
+    expect(options().map((el) => el.getAttribute('data-value'))).toEqual(['claude-opus-5-5-high']);
+    press(field('Model'), 'Escape');
+    expect($('#agent-models')).toBeNull();
+    expect(pop()).not.toBeNull();
+
+    // Clicking an option commits it and closes the menu.
+    click($<HTMLButtonElement>('.model-combo-toggle'));
+    click(options()[2]!);
+    expect(props.onModel).toHaveBeenCalledWith('claude-opus-5-5-high');
+    expect($('#agent-models')).toBeNull();
+
+    // Picking Agent's default commits empty string.
+    click($<HTMLButtonElement>('.model-combo-toggle'));
+    click(options()[0]!);
+    expect(props.onModel).toHaveBeenLastCalledWith('');
   });
 });
 

@@ -161,9 +161,9 @@ describe('rich content in genaicode ui (browser)', () => {
         const prompt = page.locator('.gc-composer textarea');
         await prompt.fill('Check the links');
         await prompt.press('Enter');
-        const steps = page.locator('.gc-fold');
-        await steps.locator(':scope > summary', { hasText: '102 steps' }).waitFor();
-        expect(await steps.getAttribute('open')).toBeNull();
+        const steps = page.locator('.gc-fold-btn');
+        await steps.filter({ hasText: '102 steps' }).waitFor();
+        expect(await steps.getAttribute('aria-pressed')).toBe('false');
         await page.getByText('Inspecting links', { exact: true }).waitFor();
         report();
         const current = page.getByText('Browser tests running', { exact: true });
@@ -171,13 +171,14 @@ describe('rich content in genaicode ui (browser)', () => {
         await page.reload();
         await current.waitFor();
         await page.getByRole('list', { name: 'Plan' }).locator('[aria-current="step"]').waitFor();
-        expect(await steps.getAttribute('open')).toBeNull();
+        expect(await steps.getAttribute('aria-pressed')).toBe('false');
         finish();
         await page.locator('.gc-turn-footer').waitFor();
         await page.getByText('Browser tests passed.', { exact: true }).waitFor();
         expect(await current.isVisible()).toBe(false);
-        await steps.locator(':scope > summary').click();
-        await current.waitFor();
+        await steps.click();
+        await page.locator('.steps-panel').waitFor();
+        await page.locator('.steps-panel').getByText('Browser tests running', { exact: true }).waitFor();
       } finally {
         await browser.close();
       }

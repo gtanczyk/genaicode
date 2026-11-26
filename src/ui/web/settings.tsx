@@ -747,6 +747,8 @@ export interface UsageSectionProps {
   limits: readonly (RateLimit & { agent: string })[];
   /** Whether the page has a session index: where the work went is read from it (`/api/shares`). */
   shares: boolean;
+  /** Installed agents to list even when they have reported neither plan limits nor work shares. */
+  agents?: readonly string[];
   /** Opens the sessions of a topic. */
   onTopic?(id: string): void;
   now?: number;
@@ -776,7 +778,14 @@ const MOST_SHARES = 4;
 
 const PILL_LEVEL = { ok: 'ok', warning: 'warn', exceeded: 'err' } as const;
 
-export function UsageSection({ token, limits, shares: readShares, onTopic, now = Date.now() }: UsageSectionProps) {
+export function UsageSection({
+  token,
+  limits,
+  shares: readShares,
+  agents: installed,
+  onTopic,
+  now = Date.now(),
+}: UsageSectionProps) {
   const [shares, setShares] = useState<AgentShares[]>([]);
   useEffect(() => {
     if (!readShares) return;
@@ -787,7 +796,14 @@ export function UsageSection({ token, limits, shares: readShares, onTopic, now =
       .catch(() => {});
     return () => controller.abort();
   }, [readShares, token]);
-  const agents = [...new Set([...limits.map((limit) => limit.agent), ...shares.map((one) => one.agent)])].sort();
+  const account = (agent: string) => agent.replace(/Live$/, '');
+  const agents = [
+    ...new Set([
+      ...(installed ?? []).map(account),
+      ...limits.map((limit) => account(limit.agent)),
+      ...shares.map((one) => account(one.agent)),
+    ]),
+  ].sort();
   return (
     <>
       <h3>Usage</h3>
@@ -797,9 +813,12 @@ export function UsageSection({ token, limits, shares: readShares, onTopic, now =
       </p>
       <div className="card">
         {agents.map((agent) => {
-          const chips = limitChips({ usage: {}, rateLimits: limits.filter((limit) => limit.agent === agent) }, now);
+          const chips = limitChips(
+            { usage: {}, rateLimits: limits.filter((limit) => account(limit.agent) === agent) },
+            now,
+          );
           const went = shares
-            .find((one) => one.agent === agent)
+            .find((one) => account(one.agent) === agent)
             ?.shares.filter((part) => part.share >= LEAST_SHARE)
             .slice(0, MOST_SHARES);
           return (

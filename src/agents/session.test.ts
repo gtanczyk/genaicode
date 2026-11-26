@@ -293,6 +293,8 @@ describe('createAgentSession', () => {
       session.send('queued');
       expect(tasks[0].mcpServers?.[0]).toEqual(custom);
       expect(tasks[0].mcpServers?.[1].trusted).toBe(true);
+      expect(tasks[0].prompt).toContain('report_progress');
+      expect(tasks[0].prompt).toContain('genaicode_progress_2');
       expect(await (await call(tasks[0], 'initialize')).json()).toMatchObject({
         result: { instructions: expect.stringContaining('report_progress') },
       });
