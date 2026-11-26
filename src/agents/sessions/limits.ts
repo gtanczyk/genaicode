@@ -141,6 +141,13 @@ export function statusLineLimits(input: unknown): RateLimit[] {
   return found;
 }
 
+function antigravityGroupName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.toLowerCase().endsWith(' models') ? trimmed.slice(0, -' models'.length).trim() || undefined : trimmed;
+}
+
 /**
  * The `groups` of `agy --print /usage --output-format json` (`command.data.groups`, or `{ groups }`
  * directly) as plan limits: each bucket's `remaining_fraction`, window (`weekly` -> `7d`, `5h`),
@@ -155,14 +162,7 @@ export function antigravityUsageLimits(input: unknown): RateLimit[] {
   const found: RateLimit[] = [];
   for (const group of groups) {
     if (!isRecord(group) || !Array.isArray(group.buckets)) continue;
-    const rawName =
-      typeof group.name === 'string'
-        ? group.name
-            .trim()
-            .replace(/\s+models$/i, '')
-            .trim()
-        : '';
-    const name = rawName || undefined;
+    const name = antigravityGroupName(group.name);
     for (const bucket of group.buckets) {
       if (
         !isRecord(bucket) ||
