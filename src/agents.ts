@@ -6,6 +6,8 @@ export { detectAgents, findAllExecutables, findExecutable } from './agents/disco
 export type { AgentAvailability } from './agents/discovery.js';
 export { AGENT_GUIDES, agentGuide, agentOrder } from './agents/drivers/catalog.js';
 export type { AgentGuide } from './agents/drivers/catalog.js';
+export { canDiscoverModels, createModelCatalog, listAgentModels } from './agents/models.js';
+export type { DiscoveredModel, ListModelsOptions, ModelCatalog, ModelCatalogOptions } from './agents/models.js';
 export { createAgentInspector, inspectAgent, inspectAgents, isAgentUsable } from './agents/status.js';
 export type {
   AgentAuthState,

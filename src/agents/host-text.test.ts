@@ -32,9 +32,14 @@ describe('personText', () => {
     expect(merged).toContain('first note');
     expect(merged).toContain('second note');
     expect(personText(merged)).toBe('fix it');
-    // Also when flattened onto one line and cut short in a title/preview.
+    // Also when flattened onto one line and cut short in a title/preview (even mid-preamble).
     const oneLine = briefed.replace(/\s+/g, ' ').slice(0, 95) + '…';
     expect(personText(oneLine)).toBe('fix the header');
+    expect(personText('fix the header <genaicode-briefing> Added by gen…')).toBe('fix the header');
+    // Stays linear on a long internal whitespace run.
+    const started = performance.now();
+    expect(personText(`hello${' '.repeat(50_000)}world`)).toBe(`hello${' '.repeat(50_000)}world`);
+    expect(performance.now() - started).toBeLessThan(100);
   });
 
   it('keeps a prompt that only mentions the tag', () => {

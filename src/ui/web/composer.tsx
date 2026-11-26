@@ -162,6 +162,11 @@ function ModelField({
     setActive(-1);
   });
 
+  useEffect(() => {
+    if (!open || active < 0) return;
+    document.getElementById(`agent-model-opt-${active}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, active]);
+
   const shown = draft ?? value;
   const query = filtering ? shown.trim().toLowerCase() : '';
   const options: ModelOption[] = [];
@@ -289,6 +294,7 @@ function ModelField({
               id={`agent-model-opt-${index}`}
               type="button"
               role="option"
+              tabIndex={-1}
               className="model-opt"
               data-value={item.value}
               aria-selected={value === item.value}

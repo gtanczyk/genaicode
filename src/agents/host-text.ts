@@ -11,8 +11,30 @@ const CLOSE = `</${BRIEFING_TAG}>`;
 const PREAMBLE = 'Added by genaicode, not written by the person: how to use the tools this session has.';
 /** How a generated block starts; a person mentioning the tag does not write this. */
 const BLOCK_START = `\n\n${OPEN}\n\n${PREAMBLE}\n\n`;
-/** Matches the generated block's start both multi-line and flattened/truncated in a one-line title. */
-const BLOCK_OPEN = new RegExp(`(?:^|\\s+)${OPEN}\\s+Added by genaicode, not written by the person:`, 'g');
+
+/**
+ * Find the start of a trailing generated `<genaicode-briefing>` block in linear time, matching
+ * both the multi-line form and a one-line / cut-short title or preview (including cuts mid-preamble).
+ */
+function trailingBriefingIndex(text: string): number {
+  for (let pos = text.lastIndexOf(OPEN); pos >= 0; pos = pos > 0 ? text.lastIndexOf(OPEN, pos - 1) : -1) {
+    // Must be at start of string or preceded by whitespace.
+    if (pos > 0 && !/\s/.test(text[pos - 1]!)) continue;
+    let start = pos;
+    while (start > 0 && /\s/.test(text[start - 1]!)) start -= 1;
+    const afterTag = text.slice(pos + OPEN.length);
+    if (!afterTag || !/^\s/.test(afterTag)) continue;
+    const after = afterTag.trimStart();
+    if (!after) continue;
+    const isFull = after.startsWith(PREAMBLE);
+    const trimmedCut = after.replace(/…$/, '');
+    const isTruncatedPreamble = !isFull && trimmedCut.length >= 5 && PREAMBLE.startsWith(trimmedCut);
+    if (!isFull && !isTruncatedPreamble) continue;
+    const close = after.indexOf(CLOSE);
+    if (close < 0 || close === after.trimEnd().length - CLOSE.length) return start;
+  }
+  return -1;
+}
 
 /**
  * Briefings earlier genaicode versions put in front of the prompt: `pack()`'s default and
@@ -80,16 +102,7 @@ export function hasLeadingBriefing(text: string): boolean {
 export function personText(text: string): string {
   let out = withoutHandoff(text.trimStart());
   for (const lead of LEGACY) out = out.replace(lead, '');
-  let at = -1;
-  let after = -1;
-  for (const match of out.matchAll(BLOCK_OPEN)) {
-    at = match.index;
-    after = match.index + match[0].length;
-  }
-  if (at >= 0) {
-    const block = out.slice(after).trimEnd();
-    const close = block.indexOf(CLOSE);
-    if (close < 0 || close === block.length - CLOSE.length) out = out.slice(0, at);
-  }
+  const at = trailingBriefingIndex(out);
+  if (at >= 0) out = out.slice(0, at);
   return out.trim();
 }

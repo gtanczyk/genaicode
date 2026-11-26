@@ -101,6 +101,51 @@ exit 1`,
     expect(await catalog.list('antigravity')).toEqual(direct);
   });
 
+  it('parses Windows CRLF model output cleanly across all parsers', () => {
+    expect(
+      parseAgyModels('gemini-4-neon-high   Gemini 4 Neon (High)\r\nclaude-opus-5-5-high   Claude Opus 5.5\r\n'),
+    ).toEqual([
+      { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon (High)' },
+      { id: 'claude-opus-5-5-high', label: 'Claude Opus 5.5' },
+    ]);
+    expect(parseCursorModels('gpt-5 - GPT-5\r\n')).toEqual([{ id: 'gpt-5', label: 'GPT-5' }]);
+    expect(parseOpencodeModels('openai/gpt-5\r\n')).toEqual([{ id: 'openai/gpt-5' }]);
+  });
+
+  it('keys catalog cache by directory and does not reuse stale in-flight probes after invalidate()', async () => {
+    const bin = mkdtempSync(join(root, 'cwd-'));
+    const dirA = mkdtempSync(join(root, 'dir-a-'));
+    const dirB = mkdtempSync(join(root, 'dir-b-'));
+    const started = join(bin, 'started');
+    makeBin(
+      bin,
+      'opencode',
+      `dir="\${PWD##*/}"
+if [ "$GENAICODE_ACCT" = "acct1" ]; then
+  echo 1 > "${started}"
+  /bin/sleep 0.25
+fi
+echo "$GENAICODE_ACCT/$dir"`,
+    );
+    let acct = 'acct1';
+    const catalog = createModelCatalog({
+      agents: [{ name: 'opencode', command: 'opencode' }],
+      getEnv: () => ({ PATH: bin, GENAICODE_ACCT: acct }),
+    });
+    const first = catalog.list('opencode', { cwd: dirA });
+    // Account changes mid-flight: invalidating forces the next ordinary request to start a fresh probe.
+    acct = 'acct2';
+    catalog.invalidate('opencode');
+    const [stale, fresh, otherDir] = await Promise.all([
+      first,
+      catalog.list('opencode', { cwd: dirA }),
+      catalog.list('opencode', { cwd: dirB }),
+    ]);
+    expect(stale).toEqual([{ id: `acct1/${dirA.split('/').pop()}` }]);
+    expect(fresh).toEqual([{ id: `acct2/${dirA.split('/').pop()}` }]);
+    expect(otherDir).toEqual([{ id: `acct2/${dirB.split('/').pop()}` }]);
+  });
+
   it('returns empty array when CLI fails or is missing', async () => {
     const bin = mkdtempSync(join(root, 'fail-'));
     makeBin(bin, 'cursor-agent', 'echo "Authentication required" >&2; exit 1');

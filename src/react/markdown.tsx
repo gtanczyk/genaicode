@@ -63,18 +63,27 @@ function unwrapDestination(target: string): string {
   return target.startsWith('<') ? target.slice(1, -1) : target;
 }
 
+/** Reject decoded network/UNC (`//host`, `\\host`, `/\host`, `\/host`), device (`\\?\`, `\\.\`), or NUL-bearing paths. */
+function isUnsafeLocalPath(path: string): boolean {
+  return !path || path.includes('\0') || /^[\\/]{2}/.test(path);
+}
+
 /** Split a file link target (path or `file://` URI) into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
 export function parseFileTarget(target: string): { path: string; position?: FilePosition } {
   const isFileUri = FILE_URI_PREFIX.test(target);
   let normalized = isFileUri ? target.replace(FILE_URI_PREFIX, '') : target;
   if (isFileUri && /^\/[A-Za-z]:[\\/]/.test(normalized)) normalized = normalized.slice(1);
   const decodePath = (raw: string): string => {
-    if (!isFileUri) return raw;
-    try {
-      return decodeURIComponent(raw);
-    } catch {
-      return raw;
+    let decoded = raw;
+    if (isFileUri) {
+      try {
+        decoded = decodeURIComponent(raw);
+      } catch {
+        return '';
+      }
+      if (/^\/[A-Za-z]:[\\/]/.test(decoded)) decoded = decoded.slice(1);
     }
+    return isUnsafeLocalPath(decoded) ? '' : decoded;
   };
   const hash = normalized.lastIndexOf('#L');
   if (hash > 0) {
@@ -270,6 +279,13 @@ function fileButton(
   extra?: { className?: string; title?: string },
 ): ReactNode {
   const { path: rawPath, position } = parseFileTarget(target);
+  if (!rawPath) {
+    return (
+      <span key={key} className={extra?.className ?? 'gc-file-link'}>
+        {label}
+      </span>
+    );
+  }
   const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
   const title = extra?.title ?? (position ? `${path}:${formatFilePosition(position)}` : path);
   const openable = isWithinFileRoots(path, options.fileRoot);
@@ -325,25 +341,29 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       const alt = token.slice(2, token.indexOf(']'));
       const target = unwrapDestination(match.groups.localImage);
       const { path: rawPath } = parseFileTarget(target);
-      const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
-      const openable = isWithinFileRoots(path, options.fileRoot);
-      const resolved = openable ? options.imageUrl?.(path) : undefined;
-      if (resolved && links) {
-        out.push(
-          <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
-            <img
-              className="gc-md-image"
-              src={resolved}
-              alt={alt || path.split(/[\\/]/).pop() || path}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          </button>,
-        );
-      } else if (links) {
-        out.push(fileButton(target, alt || path, key++, options));
+      if (!rawPath) {
+        out.push(<span key={key++}>{alt || target}</span>);
       } else {
-        out.push(<span key={key++}>{alt || path}</span>);
+        const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
+        const openable = isWithinFileRoots(path, options.fileRoot);
+        const resolved = openable ? options.imageUrl?.(path) : undefined;
+        if (resolved && links) {
+          out.push(
+            <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
+              <img
+                className="gc-md-image"
+                src={resolved}
+                alt={alt || path.split(/[\\/]/).pop() || path}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            </button>,
+          );
+        } else if (links) {
+          out.push(fileButton(target, alt || path, key++, options));
+        } else {
+          out.push(<span key={key++}>{alt || path}</span>);
+        }
       }
     } else if (match.groups?.url) {
       const label = inline(token.slice(1, token.indexOf(']')), options, false);

@@ -13,7 +13,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 - **Pick models from a dropdown and inspect turn steps in the side panel.** (#376)
   - The agent popover's Model field is now a filterable dropdown with an Agent's default choice and live model discovery for `agy`, `cursor-agent` and `opencode` (`GET /api/models`).
   - Clicking a turn's `N steps` pill opens its steps in the right-hand work panel (with an Errors filter and Expand/Dock) instead of expanding them inline in the chat.
-  - lib: `listAgentModels()`, `createModelCatalog()`, `<AgentChat onOpenSteps>`, `WorkViewing` `'steps'`, and `AgentEvent` `'progress'`.
+  - lib: `listAgentModels()`, `createModelCatalog()`, `<AgentChat onOpenSteps>`, `<WorkPanel customViewer>`, and `AgentEvent` `'progress'`.
 - **Pick a model the agent ran, and read Claude replies as they are written.** (#374)
   - The agent chip's Model field suggests recent picks, the models the agent ran (how often, when) and names its driver knows, and still takes any name. A model the agent rejects says which model and agent, with a way back to the default.
   - Claude replies stream when the installed `claude` takes `--include-partial-messages`. A reply that arrives whole (codex exec, vibe, opencode) shows within 300–600 ms, at once with reduced motion or on a scroll, click or key.

@@ -728,7 +728,9 @@ function webLink(
             },
           }
         : {}),
-      ...(modelCatalog ? { models: (agent, query) => modelCatalog.list(agent, query) } : {}),
+      ...(modelCatalog
+        ? { models: (agent, query) => modelCatalog.list(agent, { ...query, cwd: controller().get().session.cwd }) }
+        : {}),
       release,
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),

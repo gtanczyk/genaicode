@@ -644,5 +644,26 @@ describe('antigravity driver', () => {
       () => {},
     );
     expect(second.some((event) => event.type === 'progress')).toBe(false);
+
+    // 12 completed steps + active 13th step still reports step 13 as active (not completed), and caps display at 12.
+    const longPlan = antigravityUpdateEvents(
+      {
+        sessionUpdate: 'plan',
+        entries: [
+          ...Array.from({ length: 12 }, (_, i) => ({ content: `Done ${i + 1}`, status: 'completed' })),
+          { content: 'Step 13 running', status: 'in_progress' },
+        ],
+      },
+      new Map(),
+      () => {},
+    );
+    expect(longPlan).toHaveLength(1);
+    expect(longPlan[0]).toMatchObject({ type: 'progress', message: 'Step 13 running' });
+    expect((longPlan[0] as Extract<(typeof longPlan)[number], { type: 'progress' }>).plan).toHaveLength(12);
+
+    // Explicit empty plan clears the checklist.
+    expect(antigravityUpdateEvents({ sessionUpdate: 'plan', entries: [] }, new Map(), () => {})).toEqual([
+      { type: 'progress', message: 'Plan cleared', plan: [] },
+    ]);
   });
 });

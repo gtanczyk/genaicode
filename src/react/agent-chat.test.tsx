@@ -1693,6 +1693,9 @@ describe('AgentChat', () => {
       path: 'C:/work/c.ts',
       position: { line: 5, endLine: 9 },
     });
+    // Reject decoded UNC / device paths that could trigger Windows network lookups.
+    expect(parseFileTarget('file:////evil/share/a.png')).toEqual({ path: '' });
+    expect(parseFileTarget('file:///%5C%5Cevil%5Cshare%5Ca.png')).toEqual({ path: '' });
 
     const onOpenFile = vi.fn();
     const state = fixture({

@@ -12,6 +12,8 @@ export interface DiscoveredModel {
 export interface ListModelsOptions {
   /** Timeout for the CLI's `models` subcommand in ms. Default 10,000. */
   timeoutMs?: number;
+  /** Working directory for project-scoped model listings (e.g. `opencode models`). */
+  cwd?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -19,10 +21,18 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@[\]=,-]*$/;
 
 function cleanLines(output: string): string[] {
   const out: string[] = [];
-  for (const raw of stripVTControlCharacters(output).split('\n')) {
-    // Spinner updates use `\r` to overwrite the same line; the final segment holds the real text.
+  // Normalize CRLF first so Windows line endings do not leave a trailing `\r` after each line.
+  for (const raw of stripVTControlCharacters(output).replace(/\r\n/g, '\n').split('\n')) {
+    // Spinner updates use standalone `\r` to overwrite the same line; take the last non-empty segment.
     const parts = raw.split('\r');
-    const last = (parts[parts.length - 1] ?? '').trim();
+    let last = '';
+    for (let i = parts.length - 1; i >= 0; i -= 1) {
+      const candidate = parts[i]!.trim();
+      if (candidate) {
+        last = candidate;
+        break;
+      }
+    }
     if (last) out.push(last);
   }
   return out;
@@ -119,7 +129,13 @@ export async function listAgentModels(
     execFile(
       executable,
       probe.args,
-      { env, timeout: timeoutMs, maxBuffer: 512 * 1024, windowsHide: true },
+      {
+        env,
+        timeout: timeoutMs,
+        maxBuffer: 512 * 1024,
+        windowsHide: true,
+        ...(options.cwd ? { cwd: options.cwd } : {}),
+      },
       (error, stdout) => {
         if (error) return resolve([]);
         const text = typeof stdout === 'string' ? stdout : String(stdout ?? '');
@@ -140,12 +156,12 @@ export interface ModelCatalogOptions {
 }
 
 export interface ModelCatalog {
-  list(agentName: string, options?: { refresh?: boolean }): Promise<DiscoveredModel[]>;
+  list(agentName: string, options?: { refresh?: boolean; cwd?: string }): Promise<DiscoveredModel[]>;
   invalidate(agentName?: string): void;
 }
 
 /**
- * Per-agent cached, deduplicated model discovery for `GET /api/models?agent=<name>`.
+ * Per-agent (and per-directory) cached, deduplicated model discovery for `GET /api/models?agent=<name>`.
  * Runs only on demand when requested (never during startup or `/api/agents` polls).
  */
 export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
@@ -160,32 +176,42 @@ export function createModelCatalog(options: ModelCatalogOptions): ModelCatalog {
     async list(agentName, req = {}) {
       const agent = byName.get(agentName);
       if (!agent || !canDiscoverModels(agent.name)) return [];
-      const cached = cache.get(agentName);
+      const cwd = req.cwd?.trim() || undefined;
+      const key = `${agentName}\0${cwd ?? ''}`;
+      const cached = cache.get(key);
       const ttl = cached?.models.length ? ttlMs : emptyTtlMs;
       if (!req.refresh && cached && Date.now() - cached.at < ttl) return cached.models;
-      const existing = inFlight.get(agentName);
-      if (existing && (!req.refresh || existing.epoch === epoch)) return existing.promise;
+      const existing = inFlight.get(key);
+      // Only reuse an in-flight probe from the current generation (never one predating `invalidate()`).
+      if (!req.refresh && existing && existing.epoch === epoch) return existing.promise;
       const startEpoch = epoch;
       const entry = {
         epoch: startEpoch,
         promise: listAgentModels(agent, options.getEnv(), {
           ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+          ...(cwd ? { cwd } : {}),
         })
           .then((models) => {
-            if (startEpoch === epoch) cache.set(agentName, { at: Date.now(), models });
+            if (startEpoch === epoch) cache.set(key, { at: Date.now(), models });
             return models;
           })
           .finally(() => {
-            if (inFlight.get(agentName) === entry) inFlight.delete(agentName);
+            if (inFlight.get(key) === entry) inFlight.delete(key);
           }),
       };
-      inFlight.set(agentName, entry);
+      inFlight.set(key, entry);
       return entry.promise;
     },
     invalidate(agentName) {
       epoch += 1;
-      if (agentName) cache.delete(agentName);
-      else cache.clear();
+      if (!agentName) {
+        cache.clear();
+        return;
+      }
+      const prefix = `${agentName}\0`;
+      for (const key of [...cache.keys()]) {
+        if (key.startsWith(prefix)) cache.delete(key);
+      }
     },
   };
 }

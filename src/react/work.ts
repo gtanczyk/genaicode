@@ -678,11 +678,10 @@ export function workChanges(
   return { lead, tasks: taskRows, unlisted };
 }
 
-/** The file, artifact or turn steps open in the panel as a drill-in, and where it was opened from. */
+/** The file or artifact open in the panel as a drill-in, and where it was opened from. */
 export type WorkViewing = (
   | { kind: 'file'; path: string; position?: { line: number; endLine?: number; column?: number } }
   | { kind: 'artifact'; id: string; version?: number }
-  | { kind: 'steps'; turnId: number; stretch: number }
 ) & {
   /** The tab's list, a task's detail (`task`), or the chat. Back goes there. */
   from: 'changes' | 'artifacts' | 'task' | 'chat';

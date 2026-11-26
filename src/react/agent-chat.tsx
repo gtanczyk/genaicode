@@ -1140,6 +1140,75 @@ export function turnFoldStretches(
   return { stretchSteps, segment, segments, update, plan, splits, inView };
 }
 
+/**
+ * Renders folded turn step entries using the same `Entry` renderer as the transcript (preserving
+ * tool diffs/output, answered approvals, file patches, completed plans and clickable file links).
+ */
+export function TurnStepEntries({
+  turn,
+  entries,
+  cwd,
+  pending,
+  toolName = toolLabel,
+  renderPrompt,
+  onOpenFile,
+  imageUrl,
+  remoteImages,
+  artifactUrl,
+  onOpenArtifact,
+}: {
+  turn: SessionTurn;
+  entries: readonly (readonly [SessionEntry, number])[];
+  cwd: string;
+  pending: SessionState['approvals'];
+  toolName?: (name: string) => string;
+  renderPrompt?: AgentChatProps['renderPrompt'];
+  onOpenFile?: AgentChatProps['onOpenFile'];
+  imageUrl?: AgentChatProps['imageUrl'];
+  remoteImages?: AgentChatProps['remoteImages'];
+  artifactUrl?: AgentChatProps['artifactUrl'];
+  onOpenArtifact?: AgentChatProps['onOpenArtifact'];
+}) {
+  const speaker = turn.pack?.lead ?? turn.agent;
+  const markdownConfig = useMemo(() => ({ imageUrl, remoteImages }), [imageUrl, remoteImages]);
+  return (
+    <MarkdownConfig.Provider value={markdownConfig}>
+      <OpenFile.Provider value={onOpenFile}>
+        <div
+          className={`gc-steps-entries${onOpenFile ? ' gc-opens-files' : ''}`}
+          onClick={
+            onOpenFile
+              ? (event) => {
+                  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('button[data-gc-file]');
+                  const path = target?.dataset.gcFile;
+                  if (path && target?.classList.contains('gc-file-link')) {
+                    const position = readFileLinkPosition(target);
+                    if (position) onOpenFile(path, position);
+                    else onOpenFile(path);
+                  }
+                }
+              : undefined
+          }
+        >
+          {entries.map(([item, index]) => (
+            <Entry
+              key={index}
+              entry={item}
+              agent={speaker}
+              cwd={cwd}
+              pending={pending}
+              prompt={renderPrompt}
+              toolLabel={item.kind === 'tool' ? toolName(item.name) : ''}
+              artifactUrl={artifactUrl}
+              onOpenArtifact={onOpenArtifact}
+            />
+          ))}
+        </div>
+      </OpenFile.Provider>
+    </MarkdownConfig.Provider>
+  );
+}
+
 /** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
 function Folded({
   turn,

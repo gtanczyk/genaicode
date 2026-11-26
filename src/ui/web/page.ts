@@ -321,8 +321,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .viewer-diff { padding: 0 12px; }
 .steps-panel .viewer-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; color: var(--text); }
 .steps-panel-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
-.steps-list { display: flex; flex-direction: column; gap: 6px; }
-.steps-note { font-size: 12px; color: var(--muted); padding: 6px 8px; border-left: 2px solid var(--line); white-space: pre-wrap; }
+.steps-panel-body .gc-steps-entries { display: flex; flex-direction: column; gap: 6px; }
 .steps-empty { color: var(--muted); font-size: 13px; margin: 12px 0; }
 .viewer-diff .gc-work-diff { max-height: none; margin: 10px 0; }
 .viewer-icon { color: var(--accent); }

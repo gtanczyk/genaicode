@@ -1279,14 +1279,18 @@ function App() {
     }
   }, [view?.generation, sessionArtifacts.length]);
   const viewing = workView.viewing;
+  const [stepsTarget, setStepsTarget] = useState<{ turnId: number; stretch: number }>();
+  const activeStepsTarget =
+    stepsTarget && session?.turns.some((turn) => turn.id === stepsTarget.turnId) ? stepsTarget : undefined;
+  const anyViewer = !!viewing || !!activeStepsTarget;
   const [room, setRoom] = useState(() => ({ room: window.innerWidth, window: window.innerWidth }));
   const [savedWidth, setSavedWidth] = useState(() => workWidth.get());
   const [savedViewerWidth, setSavedViewerWidth] = useState(() => viewerWidth.get());
   // The docked viewer has its own preferred width and resize setting.
   const workLayout = workPanelLayout({
     ...room,
-    viewer: !!viewing,
-    saved: viewing ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
+    viewer: anyViewer,
+    saved: anyViewer ? (savedViewerWidth ?? WORK_PANEL_VIEWER) : savedWidth,
   });
   const latestLayout = useRef(workLayout);
   latestLayout.current = workLayout;
@@ -1294,19 +1298,23 @@ function App() {
   // per chat). Where it would cover the chat it opens only by hand.
   const workOpen =
     panel === 'chat' &&
-    (hasWork || !!viewing) &&
+    (hasWork || anyViewer) &&
     (workLayout.docks ? (workView.open ?? (tasks.length > 0 || sessionArtifacts.length > 0)) : workFullOpen);
   // In the chat's place: no room beside it, or the viewer was expanded over it.
-  const workFull = workOpen && (!workLayout.docks || (expanded && !!viewing));
+  const workFull = workOpen && (!workLayout.docks || (expanded && anyViewer));
   const workNeeds = workNeedsYou(tasks);
   // Work the person has not opened: tasks delegated since the panel was last looked at.
   const workNews = !workOpen && tasks.length > (workView.seen ?? 0);
   useEffect(() => {
     if (workOpen && workView.seen !== tasks.length) setWorkView({ ...workView, seen: tasks.length });
   }, [workOpen, tasks.length, workView.seen]);
+  useEffect(() => {
+    setStepsTarget(undefined);
+  }, [chatKey, view?.generation]);
   const pullRequests = usePullRequests(chatKey, tasks, workOpen);
   const closeWork = () => {
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(false);
     // What was open in the viewer goes with the panel: opened again, it shows its tab.
@@ -1321,6 +1329,7 @@ function App() {
     if (workOpen) return closeWork();
     if (!hasWork) return;
     setPanel('chat');
+    setStepsTarget(undefined);
     setWorkView({
       ...workView,
       ...(workLayout.docks ? { open: true } : {}),
@@ -1333,6 +1342,7 @@ function App() {
   /** A turn's line in the chat opens the panel on that turn's tasks. */
   const openTasks = () => {
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1344,9 +1354,10 @@ function App() {
       seen: tasks.length,
     });
   };
-  /** Opens a file, artifact or turn steps in the panel's viewer, from the chat or from inside the viewer. */
-  const openViewer = (target: ViewerTarget | { kind: 'steps'; turnId: number; stretch: number }) => {
+  /** Opens a file or an artifact in the panel's viewer, from the chat or from inside the viewer. */
+  const openViewer = (target: ViewerTarget) => {
     setPanel('chat');
+    setStepsTarget(undefined);
     if (!workOpen) viewerOpenedPanel.current = true;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1357,24 +1368,34 @@ function App() {
     });
   };
   const openStepsInPanel = (turn: SessionTurn, stretch: number) => {
-    if (viewing?.kind === 'steps' && viewing.turnId === turn.id && viewing.stretch === stretch) {
+    if (workOpen && activeStepsTarget?.turnId === turn.id && activeStepsTarget.stretch === stretch && !viewing) {
       closeViewer();
       return;
     }
-    openViewer({ kind: 'steps', turnId: turn.id, stretch });
+    setPanel('chat');
+    if (!workOpen) viewerOpenedPanel.current = true;
+    if (!workLayout.docks) setWorkFullOpen(true);
+    setStepsTarget({ turnId: turn.id, stretch });
+    setWorkView({
+      ...workView,
+      ...(workLayout.docks ? { open: true } : {}),
+      viewing: undefined,
+    });
   };
   /** Closes the viewer: back to the list it was opened from, or (opened from the chat) to the chat. */
   const closeViewer = (next: WorkPanelView = workView) => {
     setExpanded(false);
+    const closedFromChat = viewing?.from === 'chat' || (!!activeStepsTarget && !viewing);
+    setStepsTarget(undefined);
     if (viewerOpenedPanel.current) return closeWork();
     // Opened from the chat: a key that went to the viewer goes to the message field next.
-    if (viewing?.from === 'chat' && document.activeElement?.closest('.viewer-panel')) focusComposer();
+    if (closedFromChat && document.activeElement?.closest('.viewer-panel')) focusComposer();
     if (next.viewing) setWorkView({ ...next, viewing: undefined });
     else if (next !== workView) setWorkView(next);
   };
   /** What the panel asks to show next. */
   const onWorkView = (next: WorkPanelView) => {
-    if (!viewing || next.viewing) return setWorkView(next);
+    if (!anyViewer || next.viewing) return setWorkView(next);
     // Back in the viewer. Another tab chosen instead keeps the panel, also one the viewer opened.
     if (next.tab !== workView.tab) viewerOpenedPanel.current = false;
     closeViewer(next);
@@ -1383,6 +1404,7 @@ function App() {
   const openWork = (change: Partial<WorkPanelView>) => {
     // What the viewer showed gives way: the strip asks for a list or a task.
     setExpanded(false);
+    setStepsTarget(undefined);
     viewerOpenedPanel.current = false;
     if (!workLayout.docks) setWorkFullOpen(true);
     setWorkView({
@@ -1396,7 +1418,7 @@ function App() {
   // Docked, Escape inside the panel gives the keyboard back to the message field; the panel stays.
   useEscape(workOpen && !workFull, (event) => {
     // The viewer inside it goes first, whichever of the two claimed the key last (Dock claims it anew).
-    if (viewing) return false;
+    if (anyViewer) return false;
     if (!(event.target instanceof Element) || !event.target.closest('.gc-work')) return false;
     // A field with text in it (the task filter, a message to a task) is cleared by its own Escape first.
     if (holdsTypedText(event.target)) return false;
@@ -1412,8 +1434,8 @@ function App() {
   // Close the viewer if the conversation was cleared and the open artifact or turn no longer exists.
   useEffect(() => {
     if (viewing?.kind === 'artifact' && !sessionArtifacts.some((g) => g.id === viewing.id)) closeViewer();
-    if (viewing?.kind === 'steps' && !session?.turns.some((turn) => turn.id === viewing.turnId)) closeViewer();
-  }, [viewing, sessionArtifacts, session?.turns]);
+    if (stepsTarget && !session?.turns.some((turn) => turn.id === stepsTarget.turnId)) closeViewer();
+  }, [viewing, stepsTarget, sessionArtifacts, session?.turns]);
 
   const revealFile = (path: string) => {
     void fetch('/api/reveal', {
@@ -1489,23 +1511,25 @@ function App() {
   // The Model field's list: picked here lately, run by this agent (the index, this chat), discovered from CLI, known to it.
   const [recentModels, setRecentModels] = useState<string[]>([]);
   const [discoveredModels, setDiscoveredModels] = useState<Record<string, DiscoveredModel[]>>({});
-  const [loadingModelsAgent, setLoadingModelsAgent] = useState<string>();
+  const [loadingModelsKey, setLoadingModelsKey] = useState<string>();
   const modelsInFlight = useRef(new Set<string>());
+  const modelKey = (agentName: string) => `${agentName}\0${activeCwd ?? ''}`;
   const loadModels = (agentName: string) => {
-    if (!config?.models || !token || !agentName || modelsInFlight.current.has(agentName)) return;
-    modelsInFlight.current.add(agentName);
-    if (!discoveredModels[agentName]?.length) setLoadingModelsAgent(agentName);
+    const key = modelKey(agentName);
+    if (!config?.models || !token || !agentName || modelsInFlight.current.has(key)) return;
+    modelsInFlight.current.add(key);
+    if (!discoveredModels[key]?.length) setLoadingModelsKey(key);
     void fetch(`/api/models?agent=${encodeURIComponent(agentName)}`, { headers: { 'x-genaicode-token': token } })
       .then((res) => (res.ok ? (res.json() as Promise<{ models?: DiscoveredModel[] }>) : undefined))
       .then((body) => {
         if (body && Array.isArray(body.models)) {
-          setDiscoveredModels((prev) => ({ ...prev, [agentName]: body.models! }));
+          setDiscoveredModels((prev) => ({ ...prev, [key]: body.models! }));
         }
       })
       .catch(() => {})
       .finally(() => {
-        modelsInFlight.current.delete(agentName);
-        setLoadingModelsAgent((current) => (current === agentName ? undefined : current));
+        modelsInFlight.current.delete(key);
+        setLoadingModelsKey((current) => (current === key ? undefined : current));
       });
   };
   useEffect(() => {
@@ -1525,11 +1549,20 @@ function App() {
       ...(currentAgent?.store ? { store: currentAgent.store } : {}),
       sessions,
       reported: session.reportedModel,
-      discovered: discoveredModels[session.agent],
+      discovered: discoveredModels[modelKey(session.agent)],
       known: currentAgent?.models,
       recent: recentModels,
     });
-  }, [session?.agent, session?.reportedModel, currentAgent, chats.own, chats.all, recentModels, discoveredModels]);
+  }, [
+    session?.agent,
+    session?.reportedModel,
+    currentAgent,
+    chats.own,
+    chats.all,
+    recentModels,
+    discoveredModels,
+    activeCwd,
+  ]);
   const pickModel = (model: string) => {
     if (session?.agent) setRecentModels(rememberModel(workStore(), session.agent, model));
     return inChat({ type: 'model', model });
@@ -1545,7 +1578,7 @@ function App() {
           model={session.model}
           reportedModel={session.reportedModel}
           models={models}
-          modelsLoading={loadingModelsAgent === session.agent}
+          modelsLoading={loadingModelsKey === modelKey(session.agent)}
           effort={session.effort}
           efforts={efforts}
           fallback={session.fallback ?? []}
@@ -1779,7 +1812,7 @@ function App() {
               width={workLayout.width}
               bounds={() => [WORK_PANEL_MIN, latestLayout.current.max]}
               onWidth={(width, commit) => {
-                if (viewing) {
+                if (anyViewer) {
                   setSavedViewerWidth(width);
                   if (commit) viewerWidth.set(width);
                   return;
@@ -1788,55 +1821,64 @@ function App() {
                 if (commit) workWidth.set(width);
               }}
               viewsFiles={!!config?.files}
-              renderViewer={(target, controls) => {
-                if (target.kind === 'steps') {
-                  const turn = session?.turns.find((candidate) => candidate.id === target.turnId);
-                  if (!turn) return null;
-                  return (
-                    <StepsPanel
-                      turn={turn}
-                      stretch={target.stretch}
-                      cwd={session.cwd}
-                      pending={turn.result ? [] : session.approvals}
-                      renderPrompt={promptBubble}
-                      onOpenFile={openFile}
-                      back={{ label: controls.backLabel, onBack: controls.onBack }}
-                      expanded={expanded && workLayout.docks}
-                      onExpand={workLayout.docks ? setExpanded : undefined}
-                    />
-                  );
-                }
-                return (
-                  <ViewerPanel
-                    target={target}
-                    token={token}
-                    artifacts={sessionArtifacts}
-                    canReveal={config?.reveal}
-                    onReveal={revealFile}
-                    onOpenFile={openFile}
-                    imageUrl={imageUrl}
-                    onSelectArtifactVersion={(version) =>
-                      target.kind === 'artifact'
-                        ? setWorkView({ ...workView, viewing: { ...target, version } })
-                        : undefined
+              customViewer={
+                activeStepsTarget && session
+                  ? {
+                      backLabel: 'Close',
+                      onBack: () => closeViewer(),
+                      render: (controls) => {
+                        const turn = session.turns.find((candidate) => candidate.id === activeStepsTarget.turnId);
+                        if (!turn) return null;
+                        return (
+                          <StepsPanel
+                            turn={turn}
+                            stretch={activeStepsTarget.stretch}
+                            cwd={session.cwd}
+                            pending={turn.result ? [] : session.approvals}
+                            renderPrompt={promptBubble}
+                            onOpenFile={openFile}
+                            imageUrl={imageUrl}
+                            artifactUrl={(artifact) => `/artifacts/${artifact.id}?v=${artifact.version}`}
+                            onOpenArtifact={openArtifactInPanel}
+                            back={{ label: controls.backLabel, onBack: controls.onBack }}
+                            expanded={expanded && workLayout.docks}
+                            onExpand={workLayout.docks ? setExpanded : undefined}
+                          />
+                        );
+                      },
                     }
-                    onArtifactSubmit={
-                      connected && !inSetup
-                        ? (artifact, data) => void submit(artifactSubmission(artifact, data))
-                        : undefined
-                    }
-                    // The lead's own edit, opened from Changes: its diff first.
-                    diff={
-                      target.kind === 'file' && target.from === 'changes'
-                        ? changes.lead.find((row) => row.path === target.path)?.diff
-                        : undefined
-                    }
-                    back={{ label: controls.backLabel, onBack: controls.onBack }}
-                    expanded={expanded && workLayout.docks}
-                    onExpand={workLayout.docks ? setExpanded : undefined}
-                  />
-                );
-              }}
+                  : undefined
+              }
+              renderViewer={(target, controls) => (
+                <ViewerPanel
+                  target={target}
+                  token={token}
+                  artifacts={sessionArtifacts}
+                  canReveal={config?.reveal}
+                  onReveal={revealFile}
+                  onOpenFile={openFile}
+                  imageUrl={imageUrl}
+                  onSelectArtifactVersion={(version) =>
+                    target.kind === 'artifact'
+                      ? setWorkView({ ...workView, viewing: { ...target, version } })
+                      : undefined
+                  }
+                  onArtifactSubmit={
+                    connected && !inSetup
+                      ? (artifact, data) => void submit(artifactSubmission(artifact, data))
+                      : undefined
+                  }
+                  // The lead's own edit, opened from Changes: its diff first.
+                  diff={
+                    target.kind === 'file' && target.from === 'changes'
+                      ? changes.lead.find((row) => row.path === target.path)?.diff
+                      : undefined
+                  }
+                  back={{ label: controls.backLabel, onBack: controls.onBack }}
+                  expanded={expanded && workLayout.docks}
+                  onExpand={workLayout.docks ? setExpanded : undefined}
+                />
+              )}
               // While the window moves to another chat nothing here may act: it would act on the chat left.
               disabled={!connected || switching}
               onPackAction={async (turnId, id, action, intent) => {
@@ -2100,6 +2142,7 @@ function App() {
                     token,
                     limits: knownLimits,
                     shares: hasSessions,
+                    agents: agentList.filter((agent) => agent.installed).map((agent) => agent.name),
                     onTopic: (id) => {
                       setTopic(id);
                       setListed('all');
@@ -2294,7 +2337,7 @@ function App() {
               // The tasks are in the work panel: a turn shows them as one line that opens it.
               onOpenTasks={openTasks}
               onOpenSteps={openStepsInPanel}
-              activeSteps={viewing?.kind === 'steps' ? { turnId: viewing.turnId, stretch: viewing.stretch } : undefined}
+              activeSteps={workOpen && !viewing && activeStepsTarget ? activeStepsTarget : undefined}
               // The team's counts and the next approval of a task, above the message box at every width.
               missionStrip={{
                 pullRequests,

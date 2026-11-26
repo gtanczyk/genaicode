@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { SessionEntry, SessionState, SessionTurn } from '../../agents/session.js';
-import { turnFoldStretches } from '../../react/agent-chat.js';
+import type { SessionState, SessionTurn } from '../../agents/session.js';
+import type { Artifact } from '../../agents/types.js';
+import { TurnStepEntries, turnFoldStretches, type AgentChatProps } from '../../react/agent-chat.js';
 import { useEscape } from '../../react/escape.js';
-import { relativePath, toolArgument, toolDiff, toolLabel, toolPath, type FileDiff } from '../../react/format.js';
 import type { FilePosition } from '../../react/markdown.js';
 
 export interface StepsPanelProps {
@@ -10,16 +10,19 @@ export interface StepsPanelProps {
   stretch: number;
   cwd: string;
   pending: SessionState['approvals'];
-  renderPrompt?: (text: string) => unknown;
+  renderPrompt?: AgentChatProps['renderPrompt'];
   onOpenFile?(path: string, position?: FilePosition): void;
+  imageUrl?: AgentChatProps['imageUrl'];
+  artifactUrl?(artifact: Artifact): string | undefined;
+  onOpenArtifact?(artifact: Artifact): void;
   back: { label: string; onBack(): void };
   expanded?: boolean;
   onExpand?(expanded: boolean): void;
 }
 
 /**
- * Side-panel viewer for a turn's folded steps: shows all tool calls, edits and progress notes
- * of one stretch in a dedicated scrollable pane instead of expanding inline inside the chat.
+ * Side-panel viewer for a turn's folded steps: renders all tool calls, edits, answered approvals
+ * and progress plans of one stretch through the transcript's own `TurnStepEntries` renderer.
  */
 export function StepsPanel({
   turn,
@@ -28,6 +31,9 @@ export function StepsPanel({
   pending,
   renderPrompt,
   onOpenFile,
+  imageUrl,
+  artifactUrl,
+  onOpenArtifact,
   back,
   expanded = false,
   onExpand,
@@ -39,7 +45,7 @@ export function StepsPanel({
     else back.onBack();
   });
 
-  const { stretchSteps } = turnFoldStretches(turn, pending, renderPrompt as ((text: string) => never) | undefined);
+  const { stretchSteps } = turnFoldStretches(turn, pending, renderPrompt);
   const steps = stretchSteps[stretch] ?? [];
   const toolCount = steps.filter(([item]) => item.kind === 'tool').length;
   const errorCount = steps.filter(([item]) => item.kind === 'tool' && item.isError).length;
@@ -97,105 +103,19 @@ export function StepsPanel({
         {shown.length === 0 ? (
           <p className="steps-empty">No steps to show.</p>
         ) : (
-          <div className="steps-list">
-            {shown.map(([item, index]) => (
-              <StepRow key={index} entry={item} cwd={cwd} onOpenFile={onOpenFile} />
-            ))}
-          </div>
+          <TurnStepEntries
+            turn={turn}
+            entries={shown}
+            cwd={cwd}
+            pending={pending}
+            renderPrompt={renderPrompt}
+            onOpenFile={onOpenFile}
+            imageUrl={imageUrl}
+            artifactUrl={artifactUrl}
+            onOpenArtifact={onOpenArtifact}
+          />
         )}
       </div>
     </section>
-  );
-}
-
-function StepRow({
-  entry,
-  cwd,
-  onOpenFile,
-}: {
-  entry: SessionEntry;
-  cwd: string;
-  onOpenFile?(path: string, position?: FilePosition): void;
-}) {
-  if (entry.kind === 'tool') {
-    const argument = toolArgument(entry.input, cwd);
-    const diff = toolDiff(entry.input);
-    const file = onOpenFile ? toolPath(entry.input) : undefined;
-    const output = entry.output?.trim();
-    return (
-      <details className="gc-tool">
-        <summary title={argument || undefined}>
-          <span className={`gc-state${entry.done ? (entry.isError ? ' gc-err' : ' gc-ok') : ''}`}>
-            {entry.done ? entry.isError ? '✗' : '✓' : <span className="gc-spin" />}
-          </span>
-          <span className="gc-tool-name">{toolLabel(entry.name)}</span>
-          <span className="gc-tool-arg">{argument}</span>
-          {diff ? <StepDiffStat diff={diff} /> : null}
-        </summary>
-        {file && onOpenFile ? (
-          <button
-            type="button"
-            className="gc-open-file"
-            data-gc-file={file}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenFile(file);
-            }}
-          >
-            Open {relativePath(file, cwd)}
-          </button>
-        ) : null}
-        {diff ? <StepDiffLines diff={diff} /> : null}
-        {output ? <pre className={entry.isError ? 'gc-tool-err' : undefined}>{output}</pre> : null}
-        {!output && !diff && !file ? (
-          <span className="gc-tool-empty">{entry.done ? 'No output.' : 'Running…'}</span>
-        ) : null}
-      </details>
-    );
-  }
-  if (entry.kind === 'files') {
-    return (
-      <div className="gc-files">
-        <span>✎ Edited</span>
-        {entry.paths.map((path) =>
-          onOpenFile ? (
-            <button key={path} type="button" className="gc-open-file" onClick={() => onOpenFile(path)}>
-              {relativePath(path, cwd)}
-            </button>
-          ) : (
-            <code key={path}>{relativePath(path, cwd)}</code>
-          ),
-        )}
-      </div>
-    );
-  }
-  if (entry.kind === 'progress') {
-    return <div className="steps-note">{entry.message}</div>;
-  }
-  if (entry.kind === 'text') {
-    return <div className="steps-note">{entry.text}</div>;
-  }
-  return null;
-}
-
-function StepDiffStat({ diff }: { diff: FileDiff }) {
-  return (
-    <span className="gc-diff-stat">
-      {diff.added ? <span className="gc-add">+{diff.added}</span> : null}
-      {diff.removed ? <span className="gc-del">−{diff.removed}</span> : null}
-    </span>
-  );
-}
-
-function StepDiffLines({ diff }: { diff: FileDiff }) {
-  return (
-    <div className="gc-diff" role="region" aria-label={diff.path ? `Diff for ${diff.path}` : 'Diff'}>
-      {diff.lines.map((line, i) => (
-        <div key={i} className={`gc-diff-${line.kind}`}>
-          <span>{line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}</span>
-          {line.text || '\u00a0'}
-        </div>
-      ))}
-    </div>
   );
 }
