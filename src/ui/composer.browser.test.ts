@@ -430,6 +430,45 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
     await message.press('Enter');
     await vi.waitFor(() => expect(helper.steered).toEqual(['and the tower']));
     await log.getByRole('status', { name: /Your message: (Delivered|Sent to helper)/ }).waitFor({ timeout: 4000 });
+    // A local command can run while the agent is busy. Its output comes from this chat's project.
+    await message.press('!');
+    expect(await submit.textContent()).toBe('Run↵');
+    expect(await submit.isDisabled()).toBe(true);
+    await message.pressSequentially('pwd');
+    await message.press('Enter');
+    await log.getByText(knights, { exact: true }).waitFor();
+    expect(helper.steered).toEqual(['and the tower']);
+    await message.fill('unfinished');
+    await message.press('ArrowUp');
+    expect(await message.inputValue()).toBe('!pwd');
+    await message.press('ArrowUp');
+    expect(await message.inputValue()).toBe('and the tower');
+    await message.press('ArrowDown');
+    await message.press('ArrowDown');
+    expect(await message.inputValue()).toBe('unfinished');
+    await message.fill('!!literal');
+    expect(await submit.textContent()).toBe('Steer↵');
+    await message.fill('first line\nsecond line');
+    await message.press('ArrowUp');
+    expect(await message.inputValue()).toBe('first line\nsecond line');
+    await message.fill('');
+
+    const other = await context.newPage();
+    const otherUrl = new URL(opened!);
+    otherUrl.hash = new URL(page.url()).hash;
+    await other.goto(otherUrl.href);
+    await other.locator('.gc-submit[data-action="steer"]').waitFor();
+    const otherMessage = other.getByRole('combobox', { name: 'Message' });
+    await otherMessage.fill('check the other gate');
+    await otherMessage.press('Enter');
+    await log.locator('.gc-steer').filter({ hasText: 'check the other gate' }).waitFor();
+    await message.press('ArrowUp');
+    expect(await message.inputValue()).toBe('check the other gate');
+    await message.press('ArrowUp');
+    expect(await message.inputValue()).toBe('!pwd');
+    await message.fill('');
+    await other.close();
+
     // The agent stays as it is while its turn runs.
     await chip.click();
     expect(await agents.getByRole('radio', { name: /backup/ }).isDisabled()).toBe(true);
