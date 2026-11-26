@@ -608,6 +608,11 @@ CLI is not found is skipped unless you name it with `-a`. In code: `installMcp()
 `uninstallMcp()` and `mcpInstallStatus()`. To register it by hand, the command is
 `npx genaicode sessions mcp`.
 
+The agents start the `cli.js` that ran `mcp install`. Run from npx, that file sits in npx's
+cache, which npm clears, so `npx genaicode mcp install` registers the
+[installed command](cli.md#install-the-command) (`~/.genaicode/current`) instead when there is
+one, and otherwise says to install it first. `hooks install` does the same.
+
 `sessions mcp` and `chat --sessions` also serve two tools over what the agents remember.
 `memory_list` names the instruction and note files every agent keeps for a project: `AGENTS.md`,
 `CLAUDE.md` (also `.claude/CLAUDE.md`, `.claude/rules/*.md`, `~/.claude/CLAUDE.md`), Claude Code's
