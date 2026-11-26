@@ -157,7 +157,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     const other = chats.getByRole('region', { name: "Other agents' sessions" });
     await other.getByRole('button', { name: /Sourdough schedule/ }).waitFor();
     expect(await other.locator('.tag').first().textContent()).toBe('helper');
-    expect(await chats.locator('details.proj').count()).toBe(0);
+    await chats.getByRole('button', { name: /New chat/ }).waitFor();
 
     // A chat is listed from its first prompt, under the folder it runs in, and is the one selected.
     await composer.fill('What is waiting for me?');
@@ -277,7 +277,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
     await vi.waitFor(async () => expect(await topbar.locator('.crumb').count()).toBe(0));
     let answer: ((ok: boolean) => void) | undefined;
-    await page.route('**/api/command', async (route) => {
+    await page.route('**/api/command*', async (route) => {
       if ((route.request().postDataJSON() as { type?: string }).type !== 'project-chat') return route.fallback();
       const go = await new Promise<boolean>((resolve) => (answer = resolve));
       return go ? route.fallback() : route.fulfill({ json: { ok: false } });
@@ -307,7 +307,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await composer.press('Enter');
     await project.getByRole('button', { name: /Feed the starter/ }).waitFor();
     expect(made.at(-1)).toMatchObject({ title: 'Feed the starter', cwd: bakery });
-    await page.unroute('**/api/command');
+    await page.unroute('**/api/command*');
 
     // A second project, to move between two.
     theirs.push(roster);
@@ -332,7 +332,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       order?: { window: string; seq: number };
     };
     const held: Array<Asked & { answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
-    await page.route('**/api/command', async (route) => {
+    await page.route('**/api/command*', async (route) => {
       const asked = route.request().postDataJSON() as Asked;
       if (asked.type !== 'project-chat' && asked.type !== 'continue') return route.fallback();
       let done!: () => void;
@@ -467,7 +467,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await (await overtaken).json()).toEqual({ ok: false, superseded: true });
     await held[0]!.answered;
     await inA();
-    await page.unroute('**/api/command');
+    await page.unroute('**/api/command*');
 
     // A window under 980 px starts with the rail until the person chooses.
     const narrow = await browser.newContext({ viewport: { width: 900, height: 700 } });

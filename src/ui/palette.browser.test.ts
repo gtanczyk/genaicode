@@ -150,7 +150,7 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     // What the page asks the server to do with the chat.
     const commands: Array<{ type: string; id?: string; source?: string; order?: { seq: number } }> = [];
     page.on('request', (request) => {
-      if (request.url().endsWith('/api/command')) commands.push(request.postDataJSON());
+      if (new URL(request.url()).pathname === '/api/command') commands.push(request.postDataJSON());
     });
     await page.goto(opened!);
 

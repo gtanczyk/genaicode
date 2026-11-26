@@ -340,7 +340,7 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
       let letGo!: () => void;
       const held = new Promise<void>((resolve) => (letGo = resolve));
       let asked = false;
-      await page.route('**/api/command', async (route) => {
+      await page.route('**/api/command*', async (route) => {
         if ((route.request().postDataJSON() as { type?: string }).type !== 'project-chat') return route.fallback();
         asked = true;
         await held;
@@ -375,7 +375,7 @@ it('composes in one card: two buttons, the agent chip, the project line of a new
       letGo();
       expect(await (await answered).json()).toMatchObject({ ok: false });
       await page.waitForTimeout(300);
-      await page.unroute('**/api/command');
+      await page.unroute('**/api/command*');
       expect(await project.textContent()).toContain('Home folder');
       await vi.waitFor(async () => expect(await message.getAttribute('aria-disabled')).toBeNull());
     }

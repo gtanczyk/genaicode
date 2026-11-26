@@ -51,6 +51,7 @@ impl Format {
 /// A request from the web UI (via stderr) or the Session menu to save a transcript via native dialog.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SaveRequest {
+    pub chat: Option<String>,
     pub format: Format,
     /// Percent-encoded `(source, id)` for a stored session; `None` for the active chat.
     pub session: Option<(String, String)>,
@@ -132,8 +133,18 @@ fn valid_encoded_segment(segment: &str) -> bool {
 pub fn parse_save_line(line: &str) -> Option<SaveRequest> {
     let trimmed = line.trim();
     if let Some(rest) = trimmed.strip_prefix(SAVE_PREFIX) {
+        let (format, chat) = match rest.split_once(' ') {
+            Some((format, id))
+                if id.len() == 36 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') =>
+            {
+                (format, Some(id.to_owned()))
+            }
+            None => (rest, None),
+            _ => return None,
+        };
         return Some(SaveRequest {
-            format: parse_format(rest)?,
+            chat,
+            format: parse_format(format)?,
             session: None,
         });
     }
@@ -146,6 +157,7 @@ pub fn parse_save_line(line: &str) -> Option<SaveRequest> {
             return None;
         }
         return Some(SaveRequest {
+            chat: None,
             format,
             session: Some((source.to_string(), id.to_string())),
         });
@@ -371,6 +383,7 @@ mod tests {
         assert_eq!(
             parse_save_line("Save transcript md"),
             Some(SaveRequest {
+                chat: None,
                 format: Format::Md,
                 session: None,
             })
@@ -378,6 +391,7 @@ mod tests {
         assert_eq!(
             parse_save_line("Save transcript json"),
             Some(SaveRequest {
+                chat: None,
                 format: Format::Json,
                 session: None,
             })
@@ -385,6 +399,7 @@ mod tests {
         assert_eq!(
             parse_save_line("Save session-transcript md claude ses_0195%2Fabc"),
             Some(SaveRequest {
+                chat: None,
                 format: Format::Md,
                 session: Some(("claude".into(), "ses_0195%2Fabc".into())),
             })
@@ -403,12 +418,14 @@ mod tests {
     #[test]
     fn builds_expected_api_paths_and_sanitizes_toast_lines() {
         let active = SaveRequest {
+            chat: None,
             format: Format::Md,
             session: None,
         };
         assert_eq!(active.api_path(), "/api/transcript?format=md");
 
         let stored = SaveRequest {
+            chat: None,
             format: Format::Json,
             session: Some(("claude".into(), "abc-123".into())),
         };

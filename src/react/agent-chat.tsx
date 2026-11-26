@@ -91,6 +91,8 @@ export interface AgentChatProps {
    * `chatId` it starts afresh. Without it a conversation is told apart by when its first turn started.
    */
   chatId?: string;
+  initialDraft?: { text: string; files: File[] };
+  onDraftChange?(draft: { text: string; files: File[] }): void;
   /**
    * The user sent `text` (Enter or the Send button). Whitespace-only input is not sent, unless
    * files go with it: `files` is there when `attachments` is on and the user attached some.
@@ -271,7 +273,7 @@ const MarkdownConfig = createContext<{
 
 export function AgentChat(props: AgentChatProps) {
   const state = props.state ?? NO_SESSION;
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(props.initialDraft?.text ?? '');
   const input = useRef<HTMLTextAreaElement>(null);
   const running = state?.status === 'running';
   const relayWorking = !!props.notices?.some((notice) => notice.relay?.status === 'working');
@@ -315,7 +317,10 @@ export function AgentChat(props: AgentChatProps) {
   }, [fileMenu]);
   useEscape(!!fileMenu, () => setFileMenu(undefined));
 
-  const attached = useAttachments(props.attachments);
+  const attached = useAttachments(props.attachments, props.initialDraft?.files);
+  useEffect(() => {
+    props.onDraftChange?.({ text: draft, files: attached.files });
+  }, [draft, attached.files, props.onDraftChange]);
   const picker = useRef<HTMLInputElement>(null);
   const sendable =
     (!!draft.trim() || attached.files.length > 0) &&

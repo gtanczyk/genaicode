@@ -22,7 +22,7 @@ async function bundleClient() {
   return bundle.outputFiles[0]!.text;
 }
 
-it('says while a turn runs that other chats open when it finishes, and offers to stop it', async () => {
+it('runs two chats independently, restores drafts, and queues a third at the configured limit', async () => {
   const browser = await chromium.launch();
   mkdirSync(join(process.cwd(), 'node_modules', '.genaicode-test'), { recursive: true });
   const root = mkdtempSync(join(process.cwd(), 'node_modules', '.genaicode-test', 'switch-held-'));
@@ -117,7 +117,7 @@ it('says while a turn runs that other chats open when it finishes, and offers to
         clientScript,
       });
     running = main({
-      argv: ['ui', '--sessions', '--home', '--no-artifacts'],
+      argv: ['ui', '--sessions', '--home', '--no-artifacts', '--max-chats', '2'],
       cwd: root,
       env,
       agents: [helper],
@@ -139,7 +139,6 @@ it('says while a turn runs that other chats open when it finishes, and offers to
     const composer = page.locator('.gc-composer textarea');
     const title = page.locator('header.topbar h1');
     const newChat = side.getByRole('button', { name: 'New chat', exact: true });
-    const held = page.getByRole('status', { name: 'Another chat waits' });
 
     await composer.fill('Count the sheep');
     await composer.press('Enter');
@@ -153,43 +152,36 @@ it('says while a turn runs that other chats open when it finishes, and offers to
     await composer.fill('Paint the fence, slow');
     await composer.press('Enter');
     await vi.waitFor(() => expect(slow.length).toBe(1));
-    const fence = chats.getByRole('button', { name: /Paint the fence/ });
+    const fence = chats.getByRole('button', { name: /^(?!Stop ).*Paint the fence/ });
     await fence.waitFor();
 
-    // Other chats and New chat look unavailable and say when they open; the running one does not.
-    await vi.waitFor(async () => expect(await sheep.getAttribute('aria-disabled')).toBe('true'));
-    expect(await sheep.getAttribute('title')).toBe('Opens when “Paint the fence, slow” finishes');
-    expect(await newChat.getAttribute('aria-disabled')).toBe('true');
-    expect(await fence.getAttribute('aria-disabled')).toBeNull();
-
-    // A click says why, and the focus does not jump to the message field.
-    await sheep.click({ force: true });
-    await held.waitFor();
-    expect(await held.textContent()).toContain('A turn is running in “Paint the fence, slow”');
-    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(false);
-    expect(await title.textContent()).toBe('Paint the fence, slow');
-
-    // Wait: the chat opens once the turn finishes.
-    await held.getByRole('button', { name: 'Wait' }).click();
-    expect(await held.textContent()).toContain('opens when “Paint the fence, slow” finishes');
-    slow.shift()!();
+    await composer.fill('Draft for the fence');
+    const fileInput = page.locator('.gc-composer input[type=file]').first();
+    await fileInput.setInputFiles({ name: 'fence.txt', mimeType: 'text/plain', buffer: Buffer.from('fence') });
+    await sheep.click();
     await vi.waitFor(async () => expect(await title.textContent()).toBe('Count the sheep'));
-    await held.waitFor({ state: 'detached' });
-    expect(await newChat.getAttribute('aria-disabled')).toBeNull();
-
-    // ⌘N while a turn runs: Stop and open stops it, then starts the new chat.
+    expect(await composer.inputValue()).toBe('');
     await composer.fill('Shear them, slow');
     await composer.press('Enter');
-    await vi.waitFor(() => expect(slow.length).toBe(1));
-    await vi.waitFor(async () => expect(await newChat.getAttribute('aria-disabled')).toBe('true'));
-    await page.keyboard.press('ControlOrMeta+n');
-    await held.waitFor();
-    expect(await held.textContent()).toContain('open a new chat now');
-    expect(await title.textContent()).toBe('Count the sheep');
-    await held.getByRole('button', { name: 'Stop and open' }).click();
-    await vi.waitFor(() => expect(aborted).toBe(1));
+    await vi.waitFor(() => expect(slow).toHaveLength(2));
+    await fence.first().click();
+    await vi.waitFor(async () => expect(await composer.inputValue()).toBe('Draft for the fence'));
+    await page.getByText('fence.txt', { exact: true }).waitFor();
+    expect(aborted).toBe(0);
+
+    await newChat.click();
     await vi.waitFor(async () => expect(await title.textContent()).toBe('New chat'));
-    await held.waitFor({ state: 'detached' });
+    await composer.fill('Third prompt');
+    await composer.press('Enter');
+    await page.getByText(/Waiting for a free slot/).waitFor();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await vi.waitFor(async () => expect(await composer.inputValue()).toBe('Third prompt'));
+    await composer.press('Enter');
+    await page.getByText(/Waiting for a free slot/).waitFor();
+    slow.shift()!();
+    await page.getByRole('log').getByText('Finished.').waitFor();
+    expect(aborted).toBe(0);
+    slow.shift()!();
 
     // The Model field suggests what the agent ran and the names it knows, and still takes any name.
     const chip = page.getByRole('button', { name: /^Agent: helper/ });

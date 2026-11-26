@@ -1,7 +1,15 @@
+import { chatStore } from './chat-store.js';
+import { ChatHub, type HubChat } from './hub.js';
+import { PackPool } from '../agents/pack-pool.js';
+import type { Pack } from '../agents/pack.js';
+import { scopedMcpServers, type startLocalMcpServer } from '../agents/mcp-server.js';
+import { sessionTools, SESSION_TOOLS_INSTRUCTIONS } from '../agents/sessions/tools.js';
+import { memoryTools } from '../agents/sessions/memory.js';
+import { sessionSendTool } from '../agents/sessions/send-tool.js';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { render } from 'ink';
-import { startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
+import { ArtifactPool, startArtifactChannel, type ArtifactChannel } from '../agents/artifacts.js';
 import { normalizeScriptHosts, type RootsInput } from '../agents/media.js';
 import { startQuestionChannel } from '../agents/ask-user.js';
 import { startProgressChannel } from '../agents/progress.js';
@@ -78,6 +86,8 @@ export interface UiRunOptions extends ChatOptions {
 }
 
 export interface WebRunOptions extends UiRunOptions {
+  maxChats?: number;
+  restoreChats?: boolean;
   /** `genaicode chat --web`: open the browser on the terminal's session right away. */
   openWeb?: boolean;
   host?: string;
@@ -160,10 +170,16 @@ async function openArtifacts(
   options: ChatOptions,
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
+  serve?: typeof startLocalMcpServer,
+  pool?: ArtifactPool,
+  idle?: () => boolean,
 ): Promise<ArtifactChannel | undefined> {
   if (options.artifacts === false) return undefined;
   return startArtifactChannel({
+    serve,
     cwd,
+    pool,
+    idle,
     ...(allowScriptHosts ? { allowScriptHosts } : {}),
   }).catch(() => undefined);
 }
@@ -177,13 +193,24 @@ async function openChannels(
   getController: (() => ChatController | undefined) | undefined,
   cwd: RootsInput,
   allowScriptHosts?: () => readonly string[],
+  serve?: typeof startLocalMcpServer,
+  sharedProgress?: Awaited<ReturnType<typeof startProgressChannel>>,
+  artifacts?: ArtifactPool,
 ) {
   const [artifactChannel, questionChannel, progressChannel, openProjectChannel] = await Promise.all([
-    openArtifacts(options, cwd, allowScriptHosts),
-    startQuestionChannel().catch(() => undefined),
-    startProgressChannel().catch(() => undefined),
+    openArtifacts(
+      options,
+      cwd,
+      allowScriptHosts,
+      serve,
+      artifacts,
+      () => getController?.()?.get().session.status !== 'running',
+    ),
+    startQuestionChannel({ serve }).catch(() => undefined),
+    sharedProgress ?? startProgressChannel().catch(() => undefined),
     options.home
       ? startProjectChannel({
+          serve,
           env: options.env,
           loadSessions: async () => {
             const sources = options.sessionSources ?? agentSessionSources(options.agents);
@@ -208,7 +235,7 @@ async function openChannels(
       await Promise.all([
         artifactChannel?.close(),
         questionChannel?.close(),
-        progressChannel?.close(),
+        sharedProgress ? undefined : progressChannel?.close(),
         openProjectChannel?.close(),
       ]);
     },
@@ -452,7 +479,7 @@ function hostApp(
           `${SAVE_SESSION_TRANSCRIPT_PREFIX}${request.format} ${encodeURIComponent(request.source)} ${encodeURIComponent(request.id)}\n`,
         );
       } else {
-        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}\n`);
+        options.stderr.write(`${SAVE_TRANSCRIPT_PREFIX}${request.format}${request.chat ? ' ' + request.chat : ''}\n`);
       }
     },
     onToast(listener) {
@@ -502,7 +529,10 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   let controller: ChatController | undefined;
   let pendingOpen: string | undefined;
   const openSession = (id: string) => {
-    if (controller) void controller.continueSession(id);
+    if (controller)
+      void hub.open(hub.initial, { type: 'continue', id }).then((chat) => {
+        if (chat) hub.onOpen?.(chat);
+      });
     else pendingOpen = id;
   };
   let cdnHosts: readonly string[] = options.artifactCdn ? normalizeScriptHosts(options.artifactCdn) : [];
@@ -528,14 +558,10 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     agents: webOptions.agents,
     getEnv: () => liveEnv,
     refreshEnv: host?.refreshEnv,
-    onUpdate: (inspections) => controller?.updateAgents(inspections),
+    onUpdate: (inspections) => {
+      for (const chat of hub.chats.values()) chat.controller.updateAgents(inspections);
+    },
   });
-  const localRoots = new Set<string>();
-  const addRoot = (dir: string) => {
-    localRoots.add(dir);
-    webOptions.onRoot?.(dir);
-  };
-  const roots = makeRoots(webOptions, () => controller, localRoots);
   const settings: WebSettings | undefined =
     webOptions.hostApp && webOptions.artifacts !== false
       ? {
@@ -547,28 +573,161 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
           },
         }
       : undefined;
-  const web = webLink(webOptions, () => controller!, roots, addRoot, settings, release, inspector);
-  const { artifactChannel, questionChannel, progressChannel, openProjectChannel, closeChannels } = await openChannels(
-    webOptions,
-    () => controller,
-    roots,
-    () => cdnHosts,
-  );
-  try {
-    controller = createChatController({
-      ...webOptions,
-      onRoot: addRoot,
-      web,
-      artifactChannel,
-      questionChannel,
-      progressChannel,
-      openProjectChannel,
-      allowNoAgent: true,
-      onAuthFailure: () => {
-        inspector.invalidate();
-        void inspector.check({ refresh: true });
+  const disk = chatStore(liveEnv, options.cwd, !!options.home);
+  const restored = options.restoreChats ? await disk.index() : undefined;
+  const channels = scopedMcpServers();
+  const progress = await startProgressChannel().catch(() => undefined);
+  const pool = new PackPool();
+  const artifactPool = new ArtifactPool();
+  const create = async (id: string): Promise<HubChat> => {
+    const saved = await disk.read(id);
+    const localRoots = new Set<string>();
+    let current: ChatController | undefined;
+    const roots = makeRoots({ ...webOptions, extraRoots: undefined }, () => current, localRoots);
+    const addRoot = (dir: string) => {
+      localRoots.add(dir);
+    };
+    const chatChannels = await openChannels(
+      webOptions,
+      () => current,
+      roots,
+      () => cdnHosts,
+      channels.open,
+      progress,
+      artifactPool,
+    );
+    const agents = webOptions.agents.map((agent) => (agent as Partial<Pack>).forChat?.(id, pool) ?? agent);
+    const sessionSend = webOptions.sessionSend?.fork();
+    const sends = new AbortController();
+    const localTools = sessionSend
+      ? [
+          ...sessionTools(webOptions.sessionSources ?? agentSessionSources(agents), {
+            env: liveEnv,
+            onSession: (session) => session.cwd && addRoot(session.cwd),
+          }),
+          ...memoryTools({ env: liveEnv, cwd: webOptions.cwd }),
+          sessionSendTool(webOptions.sessionAgents ?? agents, sessionSend, { env: liveEnv, signal: sends.signal }),
+        ]
+      : undefined;
+    const index = localTools
+      ? await channels.open({ name: 'sessions', tools: localTools, instructions: SESSION_TOOLS_INSTRUCTIONS })
+      : undefined;
+    try {
+      current = createChatController({
+        ...webOptions,
+        ...chatChannels,
+        agents,
+        chatId: id,
+        web,
+        onRoot: addRoot,
+        restoredConversation: saved?.conversation,
+        initialUsage: saved?.session,
+        agent: saved?.session.agent ?? options.agent,
+        model: saved?.session.model ?? options.model,
+        effort: saved?.session.effort ?? options.effort,
+        mode: saved?.session.mode ?? options.mode,
+        resume: saved?.session.sessionId ?? (id === hub.initial ? options.resume : undefined),
+        sessionSend,
+        sessionTools: localTools ?? webOptions.sessionTools,
+        task: index
+          ? {
+              ...webOptions.task,
+              mcpServers: [
+                ...(webOptions.task?.mcpServers ?? []).filter((s) => s.name !== 'sessions'),
+                index.mcpServer,
+              ],
+            }
+          : webOptions.task,
+        sharedInbox: id !== hub.initial,
+        schedule: (text, send) => hub.schedule(id, { text, send }),
+        cancelWaiting: () => hub.cancel(id),
+        allowNoAgent: true,
+        onAuthFailure: () => {
+          inspector.invalidate();
+          void inspector.check({ refresh: true });
+        },
+      });
+    } catch (error) {
+      await Promise.all([index?.close(), chatChannels.closeChannels()]);
+      throw error;
+    }
+    const chat = current;
+    if (saved) {
+      const state = saved.session;
+      chat.session.adopt(state.turns, {
+        replace: true,
+        sessionId: state.sessionId,
+        cwd: state.cwd,
+        mode: state.mode,
+        truncatedReason: state.truncatedReason,
+        recoverPack(turn) {
+          const agent = agents.find((a) => a.name === turn.agent);
+          const pack = agent as Partial<Pack> | undefined;
+          const records = saved.packs[turn.agent]?.filter((r) =>
+            turn.pack?.tasks.some((t) => t.id === r.task.id && t.worktree === r.task.worktree),
+          );
+          if (!agent || !pack?.recover || !records?.length) return;
+          return {
+            agent,
+            controls: pack.recover({ cwd: state.cwd, prompt: turn.prompt, mode: state.mode, env: liveEnv }, records),
+          };
+        },
+      });
+      if (saved.interrupted) chat.note('Stopped when the app quit. Send a prompt to continue.');
+    }
+    return {
+      controller: chat,
+      files: createProjectFiles(roots),
+      uploads: createUploads(() => chat.get().session.cwd),
+      async save(interrupted) {
+        const { conversation, session } = chat.get();
+        if (!conversation) return;
+        const { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason } = session;
+        const packs = Object.fromEntries(agents.map((a) => [a.name, (a as Partial<Pack>).records?.() ?? []]));
+        await disk.save({
+          conversation,
+          session: { agent, cwd, model, effort, mode, usage, costUsd, turns, sessionId, truncatedReason },
+          packs,
+          interrupted,
+        });
       },
-    });
+      async close() {
+        sends.abort();
+        chat.stop();
+        await Promise.all([
+          chat.session.idle(),
+          ...agents.map((a) => (a as Partial<Pack>).shutdown?.()),
+          chatChannels.closeChannels(),
+          index?.close(),
+        ]);
+        chat.close();
+      },
+    };
+  };
+  const hub: ChatHub = new ChatHub(
+    create,
+    options.maxChats,
+    restored?.shown,
+    async (id) => !!(await disk.read(id)),
+    disk.saveIndex,
+  );
+  const web: ReturnType<typeof webLink> = webLink(
+    webOptions,
+    () => controller!,
+    options.cwd,
+    () => {},
+    settings,
+    release,
+    inspector,
+    hub,
+  );
+  const closeChannels = async () => {
+    await hub.close();
+    await Promise.all([channels.close(), progress?.close()]);
+  };
+  try {
+    controller = (await hub.load(hub.initial)).controller;
+    await Promise.all((restored?.ids ?? []).filter((id) => id !== hub.initial).map((id) => hub.reopen(id)));
   } catch (error) {
     host?.close();
     await closeChannels();
@@ -581,7 +740,6 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     url = await web.start();
   } catch (error) {
     host?.close();
-    controller.close();
     await closeChannels();
     throw error;
   }
@@ -595,7 +753,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       `Open ${url}\n(the link carries an access token; Ctrl-C stops the server)\n` +
       (terminal ? 'Press Enter to chat in this terminal too; it shares the session with the browser.\n' : ''),
   );
-  const initialSession = pendingOpen ?? options.continueFrom;
+  const initialSession = pendingOpen ?? (restored ? undefined : options.continueFrom);
   pendingOpen = undefined;
   const taken = !initialSession || (await controller.continueSession(initialSession));
   let pendingFirstPrompt = options.firstPrompt && taken ? options.firstPrompt : undefined;
@@ -653,7 +811,6 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
   pendingFirstPrompt = undefined;
   host?.close();
   await web.close();
-  controller.close();
   await closeChannels();
   return 0;
 }
@@ -683,6 +840,7 @@ function webLink(
   settings?: WebSettings,
   release = uiRelease(options.version, options.env ?? process.env, false),
   inspector?: AgentInspector,
+  hub?: ChatHub,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
@@ -695,6 +853,7 @@ function webLink(
   const start = () =>
     (running ??= startWebUi({
       controller: controller(),
+      hub,
       clientScript: options.clientScript ?? readFileSync(new URL('./web-client.js', import.meta.url), 'utf8'),
       title: {
         version: options.version,

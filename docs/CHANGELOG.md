@@ -10,6 +10,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- **Run several chats at once in the browser and desktop app.** (#367)
+  - Each window can open another chat while work continues. Extra chats wait for a free slot. Set the limit with `genaicode ui --max-chats` or in Settings → General.
+  - Needs you collects approvals across chats. Quit preserves unmerged pack worktrees and `--restore` reopens the chats from the last launch.
 - **Pick a model the agent ran, and read Claude replies as they are written.** (#374)
   - The agent chip's Model field suggests recent picks, the models the agent ran (how often, when) and names its driver knows, and still takes any name. A model the agent rejects says which model and agent, with a way back to the default.
   - Claude replies stream when the installed `claude` takes `--include-partial-messages`. A reply that arrives whole (codex exec, vibe, opencode) shows within 300–600 ms, at once with reduced motion or on a scroll, click or key.

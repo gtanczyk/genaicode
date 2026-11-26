@@ -2440,3 +2440,39 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false
     }
   });
 });
+
+it('reopens an unmerged worker after shutdown and uses the same worktree and shared capacity', async () => {
+  const cwd = repo();
+  const { PackPool } = await import('./pack-pool.js');
+  const pool = new PackPool(1);
+  const worker = writer('writer', 'saved.txt', 'from the original worktree');
+  const lead = fake(
+    'lead',
+    async (task) => {
+      await tool(task, 'delegate', { agent: 'writer', prompt: 'write saved.txt' });
+      await tool(task, 'wait', { ids: ['t1'] });
+    },
+    { mcp: true },
+  );
+  const template = pack({
+    lead,
+    members: [worker],
+    verification: { label: 'verify', run: async () => ({ ok: true }) },
+  });
+  const first = template.forChat('first', pool);
+  const original = first.run({ cwd, prompt: 'delegate' });
+  expect((await original.result).ok).toBe(true);
+  await first.shutdown();
+  const records = JSON.parse(JSON.stringify(first.records()));
+  const second = template.forChat('first', pool);
+  const controls = second.recover({ cwd, prompt: 'delegate' }, records);
+  expect(controls.task('t1')?.worktree).toBe(records[0].task.worktree);
+  const busy = pool.take()!;
+  await expect(controls.act('t1', { type: 'verify' })).rejects.toMatchObject({ reason: 'capacity' });
+  busy();
+  await controls.act('t1', { type: 'verify' });
+  await controls.act('t1', { type: 'merge' });
+  expect(readFileSync(join(cwd, 'saved.txt'), 'utf8')).toBe('from the original worktree');
+  expect(second.records()).toEqual([]);
+  await second.close();
+});

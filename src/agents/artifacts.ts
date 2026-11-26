@@ -18,6 +18,8 @@ import type { Artifact, McpServer } from './types.js';
 export const PUBLISH_ARTIFACT_TOOL = 'publish_artifact';
 
 export interface ArtifactStoreOptions {
+  pool?: ArtifactPool;
+  idle?(): boolean;
   /**
    * Files are published from inside these directories only. Accepts one directory, a list of
    * allowed roots, or a function read on every publish (relative paths resolve against the first
@@ -152,6 +154,19 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
     return sum;
   };
 
+  let unregister: (() => void) | undefined;
+  const register = () =>
+    (unregister ??= options.pool?.register({
+      size: totalBytes,
+      idle: options.idle ?? (() => true),
+      evict() {
+        const oldest = byName.entries().next().value;
+        if (!oldest) return false;
+        oldest[1].shift();
+        if (!oldest[1].length) byName.delete(oldest[0]);
+        return true;
+      },
+    }));
   const trim = () => {
     // First drop superseded older versions before dropping whole artifacts.
     while (totalBytes() > maxTotalBytes) {
@@ -232,6 +247,8 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       byName.delete(name);
       byName.set(name, versions);
       trim();
+      register();
+      options.pool?.trim();
       for (const listener of [...listeners]) {
         try {
           listener(artifact);
@@ -257,7 +274,11 @@ export function createArtifactStore(options: ArtifactStoreOptions): ArtifactStor
       return [];
     },
     allowScriptHosts: allowedHosts,
-    clear: () => byName.clear(),
+    clear() {
+      byName.clear();
+      unregister?.();
+      unregister = undefined;
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -374,6 +395,7 @@ export function artifactResponse(
 }
 
 export interface ArtifactChannelOptions extends ArtifactStoreOptions {
+  serve?: typeof startLocalMcpServer;
   /** MCP server name the agent sees. Default `artifacts`. */
   name?: string;
 }
@@ -395,6 +417,35 @@ export async function startArtifactChannel(options: ArtifactChannelOptions): Pro
   const store = createArtifactStore(options);
   // JSON escaping can double the content; the store enforces the real limit.
   const maxBody = (options.maxBytes ?? 5 * 1024 * 1024) * 2 + 64 * 1024;
-  const server = await startLocalMcpServer({ name, tools: [store.tool()], maxBody });
-  return { store, mcpServer: server.mcpServer, close: server.close };
+  const server = await (options.serve ?? startLocalMcpServer)({ name, tools: [store.tool()], maxBody });
+  return {
+    store,
+    mcpServer: server.mcpServer,
+    close: async () => {
+      store.clear();
+      await server.close();
+    },
+  };
+}
+
+/** Evict old content across chat stores when their combined buffers reach the app's cap. */
+export class ArtifactPool {
+  private readonly stores = new Set<{ size(): number; evict(): boolean; idle(): boolean }>();
+  constructor(private readonly limit = 200 * 1024 * 1024) {}
+  register(store: { size(): number; evict(): boolean; idle(): boolean }) {
+    this.stores.add(store);
+    return () => this.stores.delete(store);
+  }
+  trim() {
+    const stores = [...this.stores].sort((a, b) => Number(b.idle()) - Number(a.idle()));
+    let total = stores.reduce((sum, store) => sum + store.size(), 0);
+    for (const store of stores) {
+      while (total > this.limit) {
+        const before = store.size();
+        if (!store.evict()) break;
+        total -= before - store.size();
+      }
+      if (total <= this.limit) break;
+    }
+  }
 }

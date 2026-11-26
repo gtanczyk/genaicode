@@ -483,33 +483,15 @@ stderr for the app to act on. `update-installing <version>` shows **Relaunching�
 empty screen; the old one stays in the agent's own store. The sidebar lists this app's chats by
 project (the directory they ran in), each with its state, apart from every agent's sessions; the
 **+** on a project starts a chat in that folder. ⌘B (Ctrl+B) folds the sidebar to a rail of icons.
-With `--restore` the page opens on the conversation the chat in this directory had last, with
-its agent and its history, so stopping and starting the server loses nothing; `--from` or
-`--resume` name another one.
-While no agent CLI is installed or signed in, `genaicode ui` starts in a `setup` state instead of
-exiting: the page shows an onboarding screen with one card per supported agent (`Not installed`,
-`Installed, not signed in`, or `Ready`), copyable install and sign-in commands, vendor install links,
-plan limits, and **Check again** (also polling every few seconds), while the prompt box stays
-disabled ("Connect an agent to start") and the Sessions view keeps working. `GET /api/agents`
-reports each agent's local status (presence, version, sign-in for Claude Code and Codex, broken
-binaries, and duplicate installs on PATH) without calling a model. Once at least one agent is ready
-(or installed), the onboarding collapses into the normal home; **Settings › Agents** lists every agent with its state, and **Connect another agent** stays in the
-agent chip's popover alongside greyed **Sign in** and **More agents** (**Install**) entries. Auth errors on
-a prompt render as an in-conversation sign-in card with **Check again**. In the desktop app, clicking
-**Check again** asks the shell (`Refresh env` on stderr) to re-read the login shell environment and
-send it back (`env <json>` on stdin) so newly installed CLIs are picked up without a restart.
-With `--home` (as the desktop app runs it), there is no fixed project folder: each conversation
-resolves its own working directory (continuing a session uses its directory or repo root, **New
-chat** on a topic card uses that topic's most recent non-automated directory, and **New chat** from
-the home screen runs in the neutral home `~/.genaicode/home`). In the neutral home or when a
-directory cannot be resolved, the agent gets an `open_project` tool that asks for confirmation via a
-question card before moving the conversation into a project directory (or creating a missing one).
-The top bar shows the conversation's title, its topic and the folder's name; hover the folder or type
-`/where` to see the directory, and the viewer follows the active conversation's directory. When
-Codex works in a directory for the first time, it asks to trust it through a question card instead
-of failing. `genaicode ui --cwd <dir>` keeps single-folder behaviour unchanged. With `--sessions
---no-project` the page names no project and suggests questions about the work of every agent while
-keeping `--cwd` fixed.
+Open another chat in the sidebar to keep the first working in the background. Each browser
+window selects its own chat. Up to four lead turns can run at once. Set `--max-chats 1` through
+`--max-chats 8` to change the limit. Prompts above the limit wait in order. Cancel returns the
+waiting text to the composer. The packs share eight worker slots across chats.
+
+With `--restore`, the UI reopens the chats saved at shutdown and selects the last one shown.
+Interrupted work waits for your next prompt. A completed worker's unmerged edits remain in its
+worktree and can be inspected and merged from the reopened chat. On the first launch after an
+upgrade, the UI falls back to the last native session for the directory.
 
 `genaicode ui` listens on the loopback address and prints a link with a random access
 token. Opening it in a browser moves the token into origin-isolated `sessionStorage`, strips

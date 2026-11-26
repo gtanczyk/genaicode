@@ -123,6 +123,7 @@ export type CliCommand =
       artifacts?: false;
       /** `--artifact-cdn host[,host]`: opt-in CDN hosts HTML artifacts may load scripts/styles/fonts from. */
       artifactCdn?: string[];
+      maxChats?: number;
       /** `--sessions`: give the agent the session index (`sessions_list`, `sessions_read`...). */
       sessions?: true;
       /** `--max-tokens`, `--max-cost`: caps on the whole session. */
@@ -554,6 +555,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
       pack: { type: 'string' as const },
       delegate: { type: 'boolean' as const },
       'max-parallel': { type: 'string' as const },
+      'max-chats': { type: 'string' as const },
       'max-tasks': { type: 'string' as const },
       verify: { type: 'string' as const },
       cwd: { type: 'string' as const, short: 'C' },
@@ -601,6 +603,9 @@ export function parseCli(argv: readonly string[]): CliCommand {
       restore?: boolean;
     };
     const maxParallel = optionalNumber(values['max-parallel'], '--max-parallel');
+    const maxChats = optionalNumber(values['max-chats'], '--max-chats');
+    if (maxChats !== undefined && (command !== 'ui' || maxChats < 1 || maxChats > 8))
+      throw new UsageError('--max-chats accepts 1–8 for genaicode ui.');
     const maxTasksPerTurn = optionalNumber(values['max-tasks'], '--max-tasks');
     if (maxTasksPerTurn === 0) throw new UsageError('--max-tasks must be at least 1.');
     let pack: PackSpec | undefined;
@@ -644,6 +649,7 @@ export function parseCli(argv: readonly string[]): CliCommand {
     if (port !== undefined && port > 65535) throw new UsageError(`--port expects 0-65535, got ${port}.`);
     return {
       kind: command,
+      ...(maxChats !== undefined ? { maxChats } : {}),
       ...(pack ? { pack } : {}),
       ...(values.delegate === true ? { delegate: true as const } : {}),
       ...(maxTasksPerTurn !== undefined ? { maxTasksPerTurn } : {}),

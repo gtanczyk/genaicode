@@ -144,3 +144,7 @@ The app needs macOS 13.5 or newer, the oldest the bundled Node.js 24 supports. T
 Node.js, change `version` in `node-runtime.json`, copy the four checksums from
 `https://nodejs.org/dist/v<version>/SHASUMS256.txt` and check `minimumSystemVersion` in
 `tauri.conf.json` against that release's macOS target.
+
+## Concurrent chats
+
+The sidebar switches chats while other turns keep running. Settings → General controls how many chats can work at once (1–8, initially 4). Closing the macOS window leaves them running. Quit asks before stopping active chats and saves them for the next launch.

@@ -145,3 +145,35 @@ export async function startScopedLocalMcpServer(
       }),
   };
 }
+
+/** One listener per tool family, with revocable capabilities for each chat. */
+export function scopedMcpServers() {
+  const scopes = new Map<string, readonly McpTool[]>();
+  const servers = new Map<string, ReturnType<typeof startScopedLocalMcpServer>>();
+  const open = async ({ tools, ...options }: LocalMcpServerOptions): Promise<LocalMcpServer> => {
+    let pending = servers.get(options.name);
+    if (!pending) {
+      pending = startScopedLocalMcpServer(options, (target) => scopes.get(target));
+      servers.set(options.name, pending);
+      pending.catch(() => servers.delete(options.name));
+    }
+    const server = await pending;
+    const url = new URL(server.mcpServer.url);
+    url.searchParams.set('scope', randomBytes(24).toString('hex'));
+    const key = url.pathname + url.search;
+    scopes.set(key, tools);
+    return {
+      mcpServer: { ...server.mcpServer, url: url.href },
+      async close() {
+        scopes.delete(key);
+      },
+    };
+  };
+  return {
+    open,
+    async close() {
+      scopes.clear();
+      await Promise.all([...servers.values()].map(async (server) => (await server).close()));
+    },
+  };
+}

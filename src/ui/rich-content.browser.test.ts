@@ -804,7 +804,7 @@ describe('rich content in genaicode ui (browser)', () => {
 
       // stderr emitted the Settings protocol line for the host app.
       await vi.waitFor(() => {
-        expect(stderrChunks.join('')).toContain('Settings {"artifactCdn":["https://cdn.jsdelivr.net"]}');
+        expect(stderrChunks.join('')).toContain('Settings {"artifactCdn":["https://cdn.jsdelivr.net"],"maxChats":4}');
       });
 
       // Back in the chat and in Settings again: a partial preset host stays in the custom list, so Save does not wipe it.
@@ -892,7 +892,7 @@ describe('rich content in genaicode ui (browser)', () => {
       const imageRequests: string[][] = [];
       let expiredTwoOnce = false;
 
-      await page.route('**/api/file/images', async (route) => {
+      await page.route('**/api/file/images*', async (route) => {
         const body = route.request().postDataJSON() as { paths?: string[] };
         const paths = body.paths ?? [];
         imageRequests.push(paths);

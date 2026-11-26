@@ -1,3 +1,4 @@
+import { QuestionCard } from '../../react/question-card.js';
 import { useEffect, useRef, useState } from 'react';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 import {
@@ -171,6 +172,21 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                 </span>
               </div>
               {item.verbatim ? <pre>{item.text}</pre> : <div className="needs-text">“{item.text}”</div>}
+              {item.question && (
+                <QuestionCard
+                  agent={item.agent}
+                  request={item.question.request}
+                  onAnswer={(id, answers) =>
+                    void act(item, {
+                      via: 'answer',
+                      id,
+                      owner: item.question!.owner,
+                      turn: item.question!.turn,
+                      answers,
+                    })
+                  }
+                />
+              )}
               {item.note ? <small className="needs-note">{item.note}</small> : null}
               <div className="needs-acts">
                 {item.choices.map((choice) => (

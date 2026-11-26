@@ -165,6 +165,7 @@ pub fn parse_reveal_line(line: &str) -> Option<PathBuf> {
 pub struct DesktopSettings {
     /// Opt-in CDN hosts HTML artifacts may load scripts, styles and fonts from. Empty by default.
     pub artifact_cdn: Vec<String>,
+    pub max_chats: Option<u8>,
 }
 
 /// Defence-in-depth validation of a CDN host before passing it to `--artifact-cdn`.
@@ -406,6 +407,7 @@ mod tests {
         assert_eq!(load_settings(&file), DesktopSettings::default());
         let saved = DesktopSettings {
             artifact_cdn: vec!["https://cdn.jsdelivr.net".into()],
+            max_chats: Some(4),
         };
         save_settings(&file, &saved).expect("save");
         assert_eq!(load_settings(&file), saved);
