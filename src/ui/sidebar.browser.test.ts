@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { chromium, type Page } from 'playwright';
 import { expect, it, vi } from 'vitest';
 import { SUPPORT_URL } from '../support.js';
+import { personText } from '../agents/host-text.js';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
@@ -89,7 +90,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
             id,
             where: 'local',
             cwd: task.cwd,
-            title: task.prompt,
+            title: personText(task.prompt),
             state: 'waiting',
             updatedAt: Date.now(),
           });
