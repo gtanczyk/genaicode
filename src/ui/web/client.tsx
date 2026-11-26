@@ -1670,7 +1670,12 @@ function App() {
             ...loaded,
             ...chats.own.filter(
               (row) =>
-                !loaded.some((live) => live.id === row.id && (live.source === row.source || live.agent === row.agent)),
+                !loaded.some(
+                  (live) =>
+                    live.id === row.id &&
+                    (live.source === row.source ||
+                      (live.source.startsWith('genaicode:open:') && live.agent === row.agent)),
+                ),
             ),
           ]
         : withOpenChat(chats.own, openChat),
@@ -1697,8 +1702,12 @@ function App() {
   // This app's chats that every agent's list leaves out (an automated one) ask too, and so does a
   // session a hook's question is open for, though its row was read before the question.
   const needsRows = useMemo(() => needsSessions(chats.all, ownChats, chats.asks), [chats.all, ownChats, chats.asks]);
-  const liveOwner = (row: Pick<SessionInfo, 'id' | 'agent'>) =>
-    loaded.some((chat) => chat.id === row.id && chat.agent === row.agent);
+  const liveOwner = (row: Pick<SessionInfo, 'id' | 'source' | 'agent'>) =>
+    loaded.some(
+      (chat) =>
+        chat.id === row.id &&
+        (chat.source === row.source || (chat.source.startsWith('genaicode:open:') && chat.agent === row.agent)),
+    );
   const elsewhereRows = loaded.length ? needsRows.filter((row) => !liveOwner(row)) : needsRows;
   const externalOwn = loaded.length ? ownChats.filter((row) => !liveOwner(row)) : ownChats;
   const externalAsks = loaded.length

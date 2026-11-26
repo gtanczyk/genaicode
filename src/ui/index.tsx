@@ -38,6 +38,7 @@ import {
   isSameDir,
   listSessions,
   pendingAsks,
+  readArchive,
   readConversations,
   startProjectChannel,
 } from '../agents/sessions/index.js';
@@ -734,6 +735,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     options.home,
     catalog?.chats,
   );
+  hub.setArchive(await readArchive(liveEnv));
   hub.busyPacks = () => pool.busyChats;
   const web: ReturnType<typeof webLink> = webLink(
     webOptions,
@@ -991,7 +993,11 @@ function webLink(
         return topicShares(listing.sessions, await readTopics(options.env), parts);
       },
       answer: (id, decision) => answerAsk(id, decision, options.env),
-      archive: (sessions, archived) => archiveSessions(sessions, archived, options.env ? { env: options.env } : {}),
+      archive: async (sessions, archived) => {
+        const changes = await archiveSessions(sessions, archived, options.env ? { env: options.env } : {});
+        if (hub) hub.setArchive(await readArchive(options.env));
+        return changes;
+      },
       sessionFile: async ({ agent, sessionId }) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const ownName = agents.find((candidate) => candidate.name === agent)?.sessions?.name;

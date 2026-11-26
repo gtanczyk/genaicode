@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isArchived } from '../agents/sessions/archive.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import type { ChatController, ChatSwitch, ChatView, SwitchOrder } from './controller.js';
 import type { ProjectFiles } from './files.js';
@@ -31,6 +32,7 @@ export class ChatHub {
   readonly chats = new Map<string, HubChat>();
   private readonly unseen = new Set<string>();
   private readonly dormant = new Map<string, ChatSummary>();
+  private archive: ReadonlyMap<string, number> = new Map();
   private readonly views = new Map<string, number>();
   private readonly lastSeen = new Map<string, number>();
   private readonly unloading = new Map<string, Promise<void>>();
@@ -184,6 +186,11 @@ export class ChatHub {
     return chat;
   }
 
+  setArchive(archive: ReadonlyMap<string, number>) {
+    this.archive = archive;
+    this.changed();
+  }
+
   summaries(): ChatSummary[] {
     const queued = [...this.waiting.keys()];
     return [...this.chats]
@@ -221,7 +228,8 @@ export class ChatHub {
           ...(queued.includes(chat) ? { position: queued.indexOf(chat) + 1 } : {}),
         };
       })
-      .concat([...this.dormant.values()]);
+      .concat([...this.dormant.values()])
+      .map((row) => ({ ...row, archived: isArchived(row, this.archive) || undefined }));
   }
 
   open(from: string, target: ChatSwitch, order?: SwitchOrder): Promise<string | null | undefined> {
@@ -240,15 +248,32 @@ export class ChatHub {
       if (!current) return;
       if (target.type === 'stay') return from;
       if (target.type === 'continue') {
-        const owner = this.summaries().find(
+        const owners = this.summaries().filter(
           (row) => row.id === target.id && (!target.source || row.source === target.source),
         );
-        if (owner) return (await this.reopen(owner.chat)) ? owner.chat : undefined;
-        const stored = await this.resolveSession?.(target.id, target.source);
+        if (owners.length > 1) {
+          current.controller.note(
+            'More than one store has this session ID. Select the session from the sidebar.',
+            'error',
+          );
+          return;
+        }
+        if (owners[0]) return (await this.reopen(owners[0].chat)) ? owners[0].chat : undefined;
+        let stored;
+        try {
+          stored = await this.resolveSession?.(target.id, target.source);
+        } catch (error) {
+          if (!stale())
+            current.controller.note(error instanceof Error ? error.message : 'Could not find the session.', 'error');
+          return stale() ? null : undefined;
+        }
         if (stale()) return null;
         if (stored) {
           const live = this.summaries().find(
-            (row) => row.id === stored.id && (row.source === stored.source || row.agent === stored.agent),
+            (row) =>
+              row.id === stored.id &&
+              (row.source === stored.source ||
+                (row.source.startsWith('genaicode:open:') && row.agent === stored.agent)),
           );
           if (live) return (await this.reopen(live.chat)) ? live.chat : undefined;
         }

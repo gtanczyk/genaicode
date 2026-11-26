@@ -8,7 +8,10 @@ import { scopedMcpServers } from '../agents/mcp-server.js';
 import { SessionSendGate } from '../agents/sessions/send-tool.js';
 import { ArtifactPool, createArtifactStore } from '../agents/artifacts.js';
 import { runWeb } from './index.js';
-import type { ChatSummary } from './hub.js';
+import { ChatHub, type ChatSummary } from './hub.js';
+import { createChatController } from './controller.js';
+import { createProjectFiles } from './files.js';
+import { createUploads } from './uploads.js';
 
 it('keeps identical approval ids, project files and spent budgets with their chat across windows and restart', async () => {
   const base = join(process.cwd(), 'node_modules', '.genaicode-test');
@@ -158,6 +161,11 @@ it('keeps identical approval ids, project files and spent budgets with their cha
       expect(file.fullPath).toBe(join(dirs[i]!, 'README.md'));
     }
     await vi.waitFor(async () => expect((await server.rows()).filter((row) => row.turnInProgress)).toHaveLength(0));
+    const archived = [{ source: 'helper', id: 'native-0' }];
+    await server.call('/api/archive', { sessions: archived, archived: true });
+    expect((await server.rows()).find((row) => row.chat === ids[0])?.archived).toBe(true);
+    await server.call('/api/archive', { sessions: archived, archived: false });
+    expect((await server.rows()).find((row) => row.chat === ids[0])?.archived).toBeFalsy();
     expect(await (await server.call('/api/command', { chat: ids[0], type: 'close' })).json()).toEqual({ ok: true });
     expect(await server.view(ids[0]!)).toContain(ids[0]);
     await server.close();
@@ -268,3 +276,57 @@ it('isolates send consent and artifact contents while sharing recipient order an
   expect(idle.read(old.id)).toBeUndefined();
   expect(active.read(current.id)?.body.toString()).toBe('123456');
 });
+
+it('keeps shown chats and active shell groups, gives reconnects time and unloads the oldest idle controllers', async () => {
+  const cwd = process.cwd();
+  const hub = new ChatHub(async (chatId) => {
+    const placeholder: CodingAgent = {
+      name: 'placeholder',
+      command: 'genaicode-test-uninstalled',
+      capabilities: {},
+      run() {
+        throw new Error('Unexpected agent run');
+      },
+    };
+    const controller = createChatController({ agents: [placeholder], allowNoAgent: true, cwd, chatId });
+    return {
+      controller,
+      files: createProjectFiles(cwd),
+      uploads: createUploads(cwd),
+      async close() {
+        controller.stop();
+        controller.close();
+        await controller.resourcesIdle();
+      },
+    };
+  });
+  const active: ReturnType<typeof createChatController>[] = [];
+  try {
+    await hub.load(hub.initial);
+    for (let i = 0; i < 14; i++) await hub.load('idle-' + i);
+    const hide = hub.shown('idle-0');
+    await hub.evict(Date.now() + 25_000);
+    expect(hub.chats.size).toBe(15);
+    await hub.evict(Date.now() + 40_000);
+    expect(hub.chats.has('idle-1')).toBe(false);
+    expect(hub.chats.has('idle-0')).toBe(true);
+    for (let i = 0; i < 4; i++) {
+      const chat = await hub.load('shell-' + i);
+      chat.controller.submit("!trap '' TERM; echo ready; while :; do sleep 30; done");
+      active.push(chat.controller);
+    }
+    await vi.waitFor(() => expect(active.every((c) => c.get().notices.some((n) => n.text === 'ready'))).toBe(true), {
+      timeout: 5000,
+    });
+    await hub.evict(Date.now() + 610_000);
+    expect([...hub.chats.keys()]).toEqual([hub.initial, 'idle-0', 'shell-0', 'shell-1', 'shell-2', 'shell-3']);
+    hide();
+    await hub.evict(Date.now() + 610_000);
+    expect(hub.chats.has('idle-0')).toBe(false);
+  } finally {
+    const start = Date.now();
+    await hub.close();
+    expect(active.every((c) => !c.hasShellProcesses())).toBe(true);
+    expect(Date.now() - start).toBeLessThan(10_000);
+  }
+}, 20_000);
