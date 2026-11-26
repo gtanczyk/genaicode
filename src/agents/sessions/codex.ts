@@ -4,6 +4,7 @@ import type { TokenUsage } from '../../core/types.js';
 import {
   ACTIVE_MS,
   activeIfRecent,
+  cachedSessionReader,
   ending,
   findFiles,
   findLastLineMatch,
@@ -142,6 +143,9 @@ function lastTurnContextModeInBuffer(data: Buffer): AgentMode | undefined {
 export async function readCodexSession(file: SessionFile, now = Date.now()): Promise<SessionInfo | null> {
   return fromLines(file, now, await headAndTail(file));
 }
+
+/** `readCodexSession` for listings, which read the same unchanged rollouts again and again. */
+const listedCodexSession = cachedSessionReader(readCodexSession);
 
 function fromLines(file: SessionFile, now: number, { head, tail }: { head: unknown[]; tail: unknown[] }) {
   const id = ROLLOUT_ID.exec(file.path)?.[1];
@@ -533,7 +537,7 @@ export function codexSessions(options: CodexSessionsOptions = {}): SessionSource
     const wanted = query.limit ?? Infinity;
     for (let at = 0; at < files.length && sessions.length < wanted; at += 32) {
       query.signal?.throwIfAborted();
-      const batch = await mapLimited(files.slice(at, at + 32), 8, (file) => readCodexSession(file).catch(() => null));
+      const batch = await mapLimited(files.slice(at, at + 32), 8, (file) => listedCodexSession(file).catch(() => null));
       for (const session of batch) {
         if (!session || !session.id.startsWith(prefix)) continue;
         if (query.cwd !== undefined && !(session.cwd && isWithin(session.cwd, query.cwd))) continue;

@@ -258,6 +258,37 @@ export function activeIfRecent(updatedAt: number, now = Date.now()): { state?: '
   return now - updatedAt < ACTIVE_MS ? { state: 'active' } : {};
 }
 
+/** How many session files a `cachedSessionReader` remembers: more than a busy machine writes in a year. */
+const READ_CACHE_FILES = 8192;
+
+/**
+ * `read` for a session file, remembered while the file keeps its size and modification time. A
+ * listing reads both ends of every file in its window, and a program that lists again and again (the
+ * app's sidebar, `sessions --watch`) would otherwise parse the same unchanged megabytes each time.
+ * The file is read as if long settled (`now` = Infinity); whether it is active is the clock's
+ * business and is put on each copy handed out. Each call gets its own copy to change.
+ */
+export function cachedSessionReader(
+  read: (file: SessionFile, now: number) => Promise<SessionInfo | null>,
+  max = READ_CACHE_FILES,
+): (file: SessionFile, now?: number) => Promise<SessionInfo | null> {
+  const kept = new Map<string, { mtimeMs: number; size: number; info: SessionInfo | null }>();
+  return async (file, now = Date.now()) => {
+    let entry = kept.get(file.path);
+    if (!entry || entry.mtimeMs !== file.mtimeMs || entry.size !== file.size) {
+      entry = { mtimeMs: file.mtimeMs, size: file.size, info: await read(file, Infinity) };
+    }
+    // Most recently used last, so the oldest goes first when there are too many.
+    kept.delete(file.path);
+    kept.set(file.path, entry);
+    if (kept.size > max) kept.delete(kept.keys().next().value as string);
+    if (!entry.info) return null;
+    const info = { ...entry.info };
+    if (now - file.mtimeMs < ACTIVE_MS) info.state = 'active';
+    return info;
+  };
+}
+
 /** A JSON file's value, or undefined when it is missing or broken. */
 export async function readJson(file: string): Promise<unknown> {
   try {
