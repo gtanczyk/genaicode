@@ -1,3 +1,4 @@
+import type { SessionState } from '../../agents/session.js';
 import { splitAttached } from '../format.js';
 /** Each page keeps the chat it opened, including while its uploads or dialogs are pending. */
 export function pageChat(): string | undefined {
@@ -26,6 +27,25 @@ export function rememberDraft(chat: string, draft: ComposerDraft) {
 }
 export function savedDraft(chat?: string): ComposerDraft | undefined {
   return chat ? drafts.get(chat) : undefined;
+}
+
+/** Recover editable prompt text when opening a chat that already has a transcript. */
+export function transcriptInputs(session?: SessionState): string[] {
+  if (!session) return [];
+  const inputs = session.turns.flatMap((turn) => [
+    turn.prompt,
+    ...turn.entries.flatMap((entry) => (entry.kind === 'input' ? [entry.text] : [])),
+  ]);
+  return [...inputs, ...session.queued]
+    .map((input) => {
+      const { text } = splitAttached(input);
+      // A literal prefix in a delivered prompt has already lost its escape.
+      const trimmed = text.trimStart();
+      if (trimmed.startsWith('!') || trimmed.startsWith('/')) return trimmed[0] + trimmed;
+      return text;
+    })
+    .filter(Boolean)
+    .slice(-100);
 }
 
 export function showChat(id: string) {

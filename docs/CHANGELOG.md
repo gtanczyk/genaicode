@@ -16,6 +16,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- **Recall messages with ↑ and run shell commands with ! in the browser and desktop composer.**
+
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
   - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
   - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.

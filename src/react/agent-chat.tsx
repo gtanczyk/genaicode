@@ -222,6 +222,10 @@ export interface AgentChatProps {
    * through `onSend`.
    */
   completions?: readonly ChatCompletion[];
+  /** Submitted text in this conversation, oldest first. Up recalls it and Down restores the draft. */
+  inputHistory?(): readonly string[];
+  /** When the host runs shell commands, recognize its prefix. An empty command waits for more text. */
+  shellCommand?(draft: string): string | undefined;
   /**
    * Host controls in a row under the message field: what the next prompt runs with (agent, model,
    * mode). The attach buttons move to that row too, so the field holds the text and Send only.
@@ -322,7 +326,10 @@ export function AgentChat(props: AgentChatProps) {
     props.onDraftChange?.({ text: draft, files: attached.files });
   }, [draft, attached.files, props.onDraftChange]);
   const picker = useRef<HTMLInputElement>(null);
+  const shell = props.shellCommand?.(draft);
+  const browsing = useRef<{ entries: readonly string[]; index: number; draft: string; chatId?: string }>(undefined);
   const sendable =
+    shell !== '' &&
     (!!draft.trim() || attached.files.length > 0) &&
     (!props.disabled || (!attached.files.length && !!props.sendsWhileDisabled?.(draft))) &&
     !attached.recording;
@@ -332,6 +339,7 @@ export function AgentChat(props: AgentChatProps) {
   const send = () => {
     if (!sendable) return;
     follow();
+    browsing.current = undefined;
     const sent = { draft, files: attached.files };
     const outcome = sent.files.length ? props.onSend(draft, sent.files) : props.onSend(draft);
     setDraft('');
@@ -404,6 +412,7 @@ export function AgentChat(props: AgentChatProps) {
     chosen.current?.scrollIntoView?.({ block: 'nearest' });
   }, [chosenName]);
   const complete = (one: ChatCompletion) => {
+    browsing.current = undefined;
     setDraft(one.args ? `${one.name} ` : one.name);
     setPicked(0);
     input.current?.focus();
@@ -426,6 +435,38 @@ export function AgentChat(props: AgentChatProps) {
         setClosedAt(draft);
         return;
       }
+    }
+    if (
+      props.inputHistory &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
+      !event.nativeEvent.isComposing &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey
+    ) {
+      const { selectionStart, selectionEnd } = event.currentTarget;
+      const up = event.key === 'ArrowUp';
+      if (browsing.current?.chatId !== props.chatId) browsing.current = undefined;
+      // Let the textarea move its caret through a multiline draft and extend selections as usual.
+      if (
+        selectionStart !== selectionEnd ||
+        (up ? draft.slice(0, selectionStart) : draft.slice(selectionEnd)).includes('\n')
+      )
+        return;
+      if (!browsing.current && up) {
+        const entries = props.inputHistory();
+        if (entries.length)
+          browsing.current = { entries: [...entries], index: entries.length, draft, chatId: props.chatId };
+      }
+      const cursor = browsing.current;
+      if (!cursor) return;
+      event.preventDefault();
+      cursor.index = Math.max(0, Math.min(cursor.entries.length, cursor.index + (up ? -1 : 1)));
+      setDraft(cursor.entries[cursor.index] ?? cursor.draft);
+      setClosedAt(cursor.entries[cursor.index]);
+      if (cursor.index === cursor.entries.length) browsing.current = undefined;
+      return;
     }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
@@ -602,6 +643,7 @@ export function AgentChat(props: AgentChatProps) {
       aria-label="Message"
       aria-disabled={props.disabled || undefined}
       onChange={(event) => {
+        browsing.current = undefined;
         setDraft(event.target.value);
         setPicked(0);
         setClosedAt(undefined);
@@ -636,12 +678,12 @@ export function AgentChat(props: AgentChatProps) {
     <button
       type="button"
       className="gc-btn gc-primary gc-submit"
-      data-action={action}
-      title={submitHover}
+      data-action={shell !== undefined ? 'run' : action}
+      title={shell !== undefined ? 'Run a shell command in the project directory' : submitHover}
       disabled={!sendable}
       onClick={send}
     >
-      {SUBMIT[action].label}
+      {shell !== undefined ? 'Run' : SUBMIT[action].label}
       {card ? <kbd aria-hidden="true">↵</kbd> : null}
     </button>
   );
@@ -805,7 +847,10 @@ export function AgentChat(props: AgentChatProps) {
                 ) : null}
                 {props.hint === null ? null : (
                   <div className="gc-hint">
-                    {props.hint ?? `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`}
+                    {shell !== undefined
+                      ? 'Enter runs a shell command in the project directory · !! sends a literal !'
+                      : (props.hint ??
+                        `Enter to send · Shift+Enter for a new line${props.onStop ? ' · Esc stops' : ''}`)}
                   </div>
                 )}
               </div>

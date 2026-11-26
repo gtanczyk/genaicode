@@ -6,6 +6,7 @@ import {
   showChat,
   savedDraft,
   rememberDraft,
+  transcriptInputs,
   uploadedFiles,
   restoreQueued,
 } from './chat-route.js';
@@ -49,6 +50,7 @@ import {
   formatUsage,
   needsAttention,
   parseSlash,
+  parseShell,
   SLASH_COMMANDS,
   splitAttached,
   type SlashCommand,
@@ -1522,6 +1524,13 @@ function App({ selected }: { selected?: string }) {
   const openFile = config?.files
     ? (path: string, position?: FilePosition) => openViewer({ kind: 'file', path, position })
     : undefined;
+  const histories = useRef(new Map<string, { text: string }[]>());
+  const historyKey = JSON.stringify([route, view?.generation ?? chatKey]);
+  const inputHistory = () => {
+    const history = histories.current.get(historyKey);
+    const texts = history ? history.map((entry) => entry.text) : transcriptInputs(session);
+    return texts.filter((text, index) => text !== texts[index - 1]);
+  };
   const submit = (text: string, files?: File[]): Promise<boolean> => {
     const own = parseSlash(text);
     // Not sent, and the message field keeps it: the window is moving to another chat, or a folder
@@ -1529,10 +1538,20 @@ function App({ selected }: { selected?: string }) {
     if ((switchingRef.current || lookingUpRef.current > 0) && !(own && navigates(own) && !files?.length))
       return Promise.resolve(false);
     // A command of genaicode's own takes effect now, also while an earlier prompt's files upload.
-    if (own) {
+    const shell = parseShell(text);
+    if (own || shell !== undefined) {
       if (files?.length) {
         setUnsent({ problem: 'Not sent: files go with a prompt, not with a command.', text: text.trim() });
         return Promise.resolve(false);
+      }
+      if (!own) {
+        return inChat({ type: 'submit', text })
+          .catch(() => false)
+          .then((sent) => {
+            if (route === pageChat())
+              setUnsent(sent ? undefined : { problem: 'The shell command could not be submitted.', text });
+            return sent;
+          });
       }
       if (own.kind === 'plan') return orderedControl(text);
       if (own.kind === 'stop' && currentRow?.position) return cancelQueue().then(() => true);
@@ -1574,6 +1593,24 @@ function App({ selected }: { selected?: string }) {
       if (route === pageChat() && !dropped.aborted) setUnsent(problem ? { problem, text: text.trim() } : undefined);
       return !problem;
     });
+  };
+
+  const submitFromComposer = async (text: string, files?: File[]) => {
+    if (!text.trim()) return submit(text, files);
+    const entries = histories.current.get(historyKey) ?? transcriptInputs(session).map((text) => ({ text }));
+    histories.current.set(historyKey, entries);
+    // Up works immediately after Enter. Uploads and commands can finish in a different order.
+    const entry = { text };
+    entries.push(entry);
+    if (entries.length > 100) entries.shift();
+    let sent = false;
+    try {
+      sent = await submit(text, files);
+      return sent;
+    } finally {
+      const index = entries.indexOf(entry);
+      if (!sent && index >= 0) entries.splice(index, 1);
+    }
   };
 
   const currentAgent = view?.agents.find((agent) => agent.name === session?.agent);
@@ -2314,10 +2351,10 @@ function App({ selected }: { selected?: string }) {
               theme={theme === 'system' ? undefined : theme}
               disabled={!connected || inSetup || holding}
               sendsWhileDisabled={
-                connected && !inSetup && holding
+                connected && (holding || inSetup)
                   ? (draft) => {
                       const own = parseSlash(draft);
-                      return !!own && navigates(own);
+                      return holding ? !inSetup && !!own && navigates(own) : parseShell(draft) !== undefined;
                     }
                   : undefined
               }
@@ -2468,7 +2505,9 @@ function App({ selected }: { selected?: string }) {
                   </>
                 );
               }}
-              onSend={submit}
+              inputHistory={inputHistory}
+              shellCommand={parseShell}
+              onSend={submitFromComposer}
               onStop={stopTurn}
               canStop={!!view?.shells}
               onApprove={(id, decision) => inChat({ type: 'approve', id, decision }).catch(() => false)}
@@ -2510,7 +2549,7 @@ function App({ selected }: { selected?: string }) {
               composerTitle={
                 inSetup
                   ? 'Connect an agent to start'
-                  : `Enter sends, Shift+Enter starts a new line, Esc here stops the agent. / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
+                  : `Enter sends, Shift+Enter starts a new line, Esc here stops the agent. ↑ recalls input, ! runs a shell command, and / lists the commands${config?.uploads ? '; paste or drop files to attach them' : ''}.`
               }
               emptyState={
                 session ? (
