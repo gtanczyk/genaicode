@@ -665,9 +665,13 @@
   border-top-color: var(--_accent);
   border-radius: 50%;
   animation: gc-spin 0.8s linear infinite;
+  will-change: transform;
   vertical-align: -2px;
 }
 @keyframes gc-spin {
+  from {
+    transform: rotate(0deg);
+  }
   to {
     transform: rotate(360deg);
   }
@@ -2614,7 +2618,9 @@ body[data-resizing='true'] iframe {
 }
 .gc-work-glyph[data-tone='run'] {
   color: var(--gc-color-run);
-  animation: gc-work-spin 1.4s linear infinite;
+  animation: gc-work-spin 0.9s linear infinite;
+  will-change: transform;
+  transform-origin: center;
 }
 .gc-work-glyph[data-tone='ask'] {
   color: var(--gc-color-warn);
@@ -2630,6 +2636,9 @@ body[data-resizing='true'] iframe {
   color: var(--gc-color-ok);
 }
 @keyframes gc-work-spin {
+  from {
+    transform: rotate(0deg);
+  }
   to {
     transform: rotate(360deg);
   }
@@ -2637,6 +2646,7 @@ body[data-resizing='true'] iframe {
 @media (prefers-reduced-motion: reduce) {
   .gc-work-glyph[data-tone='run'] {
     animation: none;
+    will-change: auto;
   }
 }
 .gc-work-pill {

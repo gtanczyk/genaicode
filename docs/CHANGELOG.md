@@ -28,6 +28,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
   - Local `file:///` and `file://localhost/` Markdown links (including `#L` ranges and `:line:col`) open in the file viewer instead of rendering as raw Markdown.
   - Usable agents share a green status dot with descriptive hover tooltips; the running `<agent> is working` bar no longer wraps beside long commands.
   - New sessions remind agents to call `report_progress`, and Antigravity's native `plan` / `update_steps` updates appear as live chat progress.
+- **Starting a project chat is instant and spinners stay smooth while chats stream.** (#381)
+  - Clicking `+` on a project checks open chats, recent listings and saved conversations before scanning every session store on disk, and opening an empty chat no longer triggers extra session listings.
+  - Running spinners animate on the compositor layer, completed turns and the sidebar skip redundant re-renders during streaming, and mid-turn chat checkpoints coalesce to every 2 seconds.
 - **MCP servers and hooks installed with npx keep working after npm clears its cache.** (#378)
   - `npx genaicode mcp install` and `hooks install` register the installed command (`~/.genaicode/current`) when there is one, and otherwise say to install it first.
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
