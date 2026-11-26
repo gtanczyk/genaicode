@@ -53,6 +53,25 @@ describe('modelSuggestions', () => {
     const list = modelSuggestions({ agent: 'codex', sessions: [session('e', 'gpt-x', now, 'codex')], now });
     expect(list.map((item) => item.model)).toEqual(['gpt-x']);
   });
+
+  it('includes discovered CLI models and attaches their human-readable labels to recent/ran models', () => {
+    const list = modelSuggestions({
+      agent: 'antigravity',
+      sessions: [],
+      recent: ['gemini-4-neon-high'],
+      discovered: [
+        { id: 'gemini-4-neon-high', label: 'Gemini 4 Neon (High)' },
+        { id: 'claude-opus-5-5-high', label: 'Claude Opus 5.5 (High)' },
+        { id: 'custom-raw' },
+      ],
+      now,
+    });
+    expect(list).toEqual([
+      { model: 'gemini-4-neon-high', label: 'Gemini 4 Neon (High)', note: 'picked lately' },
+      { model: 'claude-opus-5-5-high', label: 'Claude Opus 5.5 (High)', note: 'Claude Opus 5.5 (High)' },
+      { model: 'custom-raw', note: 'available in antigravity' },
+    ]);
+  });
 });
 
 describe('recent models', () => {

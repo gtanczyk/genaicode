@@ -40,7 +40,10 @@ export interface MarkdownProps {
 function destination(prefix: RegExp): string {
   return String.raw`(?:<${prefix.source}[^<>\r\n]{1,2000}>|${prefix.source}[^)\s]{1,2000})`;
 }
-const localTarget = destination(/(?:\/|\.{1,2}\/|[A-Za-z]:[\\/])/);
+const localTarget = destination(
+  /(?:[Ff][Ii][Ll][Ee]:\/\/(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt])?\/|\/|\.{1,2}\/|[A-Za-z]:[\\/])/,
+);
+const FILE_URI_PREFIX = /^[Ff][Ii][Ll][Ee]:\/\/(?:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt])?(?=\/)/;
 const imageLabel = /!\[[^[\]\n]{0,500}\]\(/;
 const linkLabel = /\[[^[\]\n]{1,500}\]\(/;
 const LOCAL_IMAGE = new RegExp(String.raw`${imageLabel.source}(?<localImage>${localTarget})\)`, 'g');
@@ -60,17 +63,37 @@ function unwrapDestination(target: string): string {
   return target.startsWith('<') ? target.slice(1, -1) : target;
 }
 
-/** Split a file link target into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
+/** Reject decoded network/UNC (`//host`, `\\host`, `/\host`, `\/host`), device (`\\?\`, `\\.\`), or NUL-bearing paths. */
+function isUnsafeLocalPath(path: string): boolean {
+  return !path || path.includes('\0') || /^[\\/]{2}/.test(path);
+}
+
+/** Split a file link target (path or `file://` URI) into its path and optional `:12`, `:12:3`, `#L12` or `#L12-L20` position. */
 export function parseFileTarget(target: string): { path: string; position?: FilePosition } {
-  const hash = target.lastIndexOf('#L');
+  const isFileUri = FILE_URI_PREFIX.test(target);
+  let normalized = isFileUri ? target.replace(FILE_URI_PREFIX, '') : target;
+  if (isFileUri && /^\/[A-Za-z]:[\\/]/.test(normalized)) normalized = normalized.slice(1);
+  const decodePath = (raw: string): string => {
+    let decoded = raw;
+    if (isFileUri) {
+      try {
+        decoded = decodeURIComponent(raw);
+      } catch {
+        return '';
+      }
+      if (/^\/[A-Za-z]:[\\/]/.test(decoded)) decoded = decoded.slice(1);
+    }
+    return isUnsafeLocalPath(decoded) ? '' : decoded;
+  };
+  const hash = normalized.lastIndexOf('#L');
   if (hash > 0) {
-    const tail = target.slice(hash + 2);
+    const tail = normalized.slice(hash + 2);
     const range = /^(\d{1,7})(?:C(\d{1,5}))?(?:-L(\d{1,7})(?:C\d{1,5})?)?$/.exec(tail);
     if (range) {
       const line = Number(range[1]);
       const col = range[2] ? Number(range[2]) : undefined;
       const end = range[3] ? Number(range[3]) : undefined;
-      const path = target.slice(0, hash);
+      const path = decodePath(normalized.slice(0, hash));
       if (line >= 1) {
         const position: FilePosition = {
           line,
@@ -83,15 +106,15 @@ export function parseFileTarget(target: string): { path: string; position?: File
     }
   }
   const nums: number[] = [];
-  let end = target.length;
+  let end = normalized.length;
   for (let part = 0; part < 2; part++) {
     let at = end;
-    while (at > 0 && target[at - 1] >= '0' && target[at - 1] <= '9') at--;
-    if (at === end || at < 2 || target[at - 1] !== ':') break;
-    nums.unshift(Number(target.slice(at, end)));
+    while (at > 0 && normalized[at - 1] >= '0' && normalized[at - 1] <= '9') at--;
+    if (at === end || at < 2 || normalized[at - 1] !== ':') break;
+    nums.unshift(Number(normalized.slice(at, end)));
     end = at - 1;
   }
-  const path = target.slice(0, end);
+  const path = decodePath(normalized.slice(0, end));
   if (nums.length >= 1 && nums[0]! >= 1 && nums[0]! <= 9_999_999) {
     const position: FilePosition = {
       line: nums[0]!,
@@ -256,6 +279,13 @@ function fileButton(
   extra?: { className?: string; title?: string },
 ): ReactNode {
   const { path: rawPath, position } = parseFileTarget(target);
+  if (!rawPath) {
+    return (
+      <span key={key} className={extra?.className ?? 'gc-file-link'}>
+        {label}
+      </span>
+    );
+  }
   const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
   const title = extra?.title ?? (position ? `${path}:${formatFilePosition(position)}` : path);
   const openable = isWithinFileRoots(path, options.fileRoot);
@@ -311,25 +341,29 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
       const alt = token.slice(2, token.indexOf(']'));
       const target = unwrapDestination(match.groups.localImage);
       const { path: rawPath } = parseFileTarget(target);
-      const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
-      const openable = isWithinFileRoots(path, options.fileRoot);
-      const resolved = openable ? options.imageUrl?.(path) : undefined;
-      if (resolved && links) {
-        out.push(
-          <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
-            <img
-              className="gc-md-image"
-              src={resolved}
-              alt={alt || path.split(/[\\/]/).pop() || path}
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          </button>,
-        );
-      } else if (links) {
-        out.push(fileButton(target, alt || path, key++, options));
+      if (!rawPath) {
+        out.push(<span key={key++}>{alt || target}</span>);
       } else {
-        out.push(<span key={key++}>{alt || path}</span>);
+        const path = options.fileBase ? resolveFilePath(rawPath, options.fileBase) : rawPath;
+        const openable = isWithinFileRoots(path, options.fileRoot);
+        const resolved = openable ? options.imageUrl?.(path) : undefined;
+        if (resolved && links) {
+          out.push(
+            <button key={key++} type="button" className="gc-md-image-btn" data-gc-file={path} title={alt || path}>
+              <img
+                className="gc-md-image"
+                src={resolved}
+                alt={alt || path.split(/[\\/]/).pop() || path}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            </button>,
+          );
+        } else if (links) {
+          out.push(fileButton(target, alt || path, key++, options));
+        } else {
+          out.push(<span key={key++}>{alt || path}</span>);
+        }
       }
     } else if (match.groups?.url) {
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
