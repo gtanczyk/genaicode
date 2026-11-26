@@ -8,6 +8,13 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- **Keep empty work tabs open from Steps, rescan old Antigravity caches, and order model lists.** (#385)
+  - Switching from Steps to a tab with zero items keeps the work panel open instead of closing it, and out-of-order `/api/models` responses no longer overwrite newer lists.
+  - Antigravity usage caches are versioned so upgrades rescan oversized (`> 1 MiB`) records from byte zero, with exact JSON escape and duplicate-key handling.
+  - Full transcript prompts keep literal `<genaicode-briefing>…` mentions intact while truncated titles still strip short trailing briefing fragments.
+
 ## 3.6.0 — 2026-11-26
 
 ### Added
