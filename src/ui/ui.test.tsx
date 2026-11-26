@@ -2359,6 +2359,64 @@ describe('web UI server', () => {
     expect((await fetch(url).catch(() => undefined))?.status).toBeUndefined();
   });
 
+  it('serves /api/agent-tools with the token only, and passes a change on', async () => {
+    const empty = mkdtempSync(join(tmpdir(), 'genaicode-tools-'));
+    let errors = '';
+    const abort = new AbortController();
+    const changes: Array<[string, boolean]> = [];
+    const listing = {
+      durable: true,
+      agents: [{ agent: 'claude', installed: false, current: false, send: false, file: '/c' }],
+    };
+    const done = runWeb({
+      agents: [echoAgent('claude', 'claude')],
+      cwd: '/w',
+      env: { PATH: empty, HOME: empty, GENAICODE_HOME: empty },
+      version: '1',
+      clientScript: '',
+      assets: new Map(),
+      agentTools: {
+        list: async () => listing,
+        change: async (agent, add) => {
+          changes.push([agent, add]);
+          if (agent !== 'claude') throw new Error(`${agent} is not an agent found here.`);
+          return listing;
+        },
+      },
+      stdin: new PassThrough() as unknown as NodeJS.ReadStream,
+      stdout: new PassThrough() as unknown as NodeJS.WriteStream,
+      stderr: { write: (text: string) => ((errors += text), true) } as NodeJS.WritableStream,
+      openUrl: () => {},
+      signal: abort.signal,
+    });
+    try {
+      await until(() => /Open (\S+)/.test(errors));
+      const url = /Open (\S+)/.exec(errors)![1];
+      const headers = { 'x-genaicode-token': new URL(url).searchParams.get('token')! };
+      const tools = new URL('/api/agent-tools', url);
+      expect((await fetch(tools)).status).toBe(403);
+      expect(await (await fetch(tools, { headers })).json()).toEqual(listing);
+      const post = (body: unknown) =>
+        fetch(tools, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      expect((await post({ agent: 'claude', add: true })).status).toBe(200);
+      expect((await post({ agent: 'claude' })).status).toBe(400);
+      const refused = await post({ agent: 'muse', add: true });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toEqual({ error: 'muse is not an agent found here.' });
+      expect(changes).toEqual([
+        ['claude', true],
+        ['muse', true],
+      ]);
+    } finally {
+      abort.abort();
+      await done;
+    }
+  });
+
   it('starts in setup state with zero agents, serves /api/agents and /api/sessions, and leaves setup once an agent arrives', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'genaicode-none-'));
     let errors = '';
@@ -3531,6 +3589,57 @@ describe('web UI server', () => {
       stdin.end();
       expect(await done).toBe(0);
       vi.unstubAllEnvs();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('startProjectChat resolves known project directories without scanning session stores', async () => {
+    const base = join(process.cwd(), 'node_modules', '.genaicode-test');
+    mkdirSync(base, { recursive: true });
+    const root = realpathSync(mkdtempSync(join(base, 'project-fast-')));
+    try {
+      const homeDir = join(root, 'home');
+      const knownProject = join(root, 'known-proj');
+      const storeOnlyProject = join(root, 'store-only-proj');
+      const unknownDir = join(root, 'unknown-dir');
+      for (const dir of [homeDir, knownProject, storeOnlyProject, unknownDir]) mkdirSync(dir, { recursive: true });
+      const list = vi.fn(async () => [
+        {
+          id: 's1',
+          source: 'echo',
+          agent: 'echo',
+          where: 'local' as const,
+          cwd: storeOnlyProject,
+          updatedAt: Date.now(),
+        },
+      ]);
+      const chat = createChatController({
+        agents: [echoAgent()],
+        cwd: homeDir,
+        home: true,
+        env: { ...env, HOME: root, GENAICODE_HOME: join(root, 'state') },
+        knownProjectDirs: () => [knownProject],
+        sessionSources: [{ name: 'echo', where: 'local', list }],
+      });
+      try {
+        expect(await chat.startProjectChat(knownProject)).toBe(true);
+        expect(chat.get().session.cwd).toBe(realpathSync(knownProject));
+        expect(list).not.toHaveBeenCalled();
+
+        expect(await chat.startProjectChat(unknownDir)).toBe(false);
+        expect(list).toHaveBeenCalledTimes(1);
+
+        expect(await chat.startProjectChat(storeOnlyProject)).toBe(true);
+        expect(chat.get().session.cwd).toBe(realpathSync(storeOnlyProject));
+        expect(list).toHaveBeenCalledTimes(2);
+
+        // Once the chat is already in that folder, starting another there needs no store scan.
+        expect(await chat.startProjectChat(storeOnlyProject)).toBe(true);
+        expect(list).toHaveBeenCalledTimes(2);
+      } finally {
+        chat.close();
+      }
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, it, vi } from 'vitest';
@@ -481,5 +481,119 @@ it('saves all chats and the catalog before waiting for a slow or failing shutdow
   } finally {
     unblock();
     await result;
+  }
+});
+
+it('coalesces mid-turn streaming checkpoints and avoids announcing project chats before switchChat resolves', async () => {
+  const base = join(process.cwd(), 'node_modules', '.genaicode-test');
+  await mkdir(base, { recursive: true });
+  const root = await realpath(await mkdtemp(join(base, 'hub-perf-')));
+  const homeDir = join(root, 'home');
+  const projectDir = join(root, 'project');
+  await mkdir(homeDir, { recursive: true });
+  await mkdir(projectDir, { recursive: true });
+  let emit!: (text: string) => void;
+  let finish!: () => void;
+  const streamingAgent: CodingAgent = {
+    name: 'streamer',
+    command: process.execPath,
+    capabilities: {},
+    run() {
+      const queue: AgentEvent[] = [];
+      let wake: (() => void) | undefined;
+      let done = false;
+      emit = (text) => {
+        queue.push({ type: 'text-delta', text });
+        wake?.();
+      };
+      const result = new Promise<AgentResult>((resolve) => {
+        finish = () => {
+          done = true;
+          const res: AgentResult = { ok: true, status: 'completed', exitCode: 0, signal: null };
+          queue.push({ type: 'done', result: res });
+          wake?.();
+          resolve(res);
+        };
+      });
+      return {
+        result,
+        abort: () => finish?.(),
+        async *[Symbol.asyncIterator]() {
+          while (!done || queue.length) {
+            if (!queue.length) {
+              await new Promise<void>((r) => {
+                wake = r;
+              });
+              wake = undefined;
+            }
+            while (queue.length) yield queue.shift()!;
+          }
+        },
+      };
+    },
+  };
+  const saves = vi.fn(async () => {});
+  const hub = new ChatHub(
+    async (id) => {
+      const controller = createChatController({
+        agents: [streamingAgent],
+        cwd: homeDir,
+        home: true,
+        chatId: id,
+        env: { HOME: root, GENAICODE_HOME: join(root, 'state') },
+        knownProjectDirs: () => [projectDir],
+      });
+      return {
+        controller,
+        files: createProjectFiles(homeDir),
+        uploads: createUploads(homeDir),
+        save: saves,
+        async close() {
+          controller.stop();
+          controller.close();
+          await controller.resourcesIdle();
+        },
+      };
+    },
+    4,
+    'initial-chat',
+    undefined,
+    async () => {},
+    undefined,
+    true,
+  );
+  try {
+    await hub.load(hub.initial);
+    const seenCwds: string[] = [];
+    const unsub = hub.subscribe(() => {
+      for (const row of hub.summaries()) {
+        if (row.chat !== hub.initial && row.cwd) seenCwds.push(row.cwd);
+      }
+    });
+    const opened = await hub.open(hub.initial, { type: 'project', cwd: projectDir });
+    unsub();
+    expect(opened).toEqual(expect.any(String));
+    // Never broadcast the temporary homeDir before openProject switched to projectDir.
+    expect(seenCwds.length).toBeGreaterThan(0);
+    expect(seenCwds.every((cwd) => cwd !== homeDir)).toBe(true);
+
+    // Wait for initial open/turn-start checkpoint to settle, then verify streaming deltas coalesce.
+    hub.chats.get(opened!)!.controller.submit('stream something');
+    await vi.waitFor(() => expect(hub.running).toBe(1));
+    await vi.waitFor(() => expect(saves).toHaveBeenCalled(), { timeout: 2000 });
+    const countAfterStart = saves.mock.calls.length;
+
+    emit('chunk 1 ');
+    emit('chunk 2 ');
+    emit('chunk 3 ');
+    await new Promise((r) => setTimeout(r, 400));
+    expect(saves.mock.calls.length).toBe(countAfterStart);
+
+    // Finishing the turn preempts the 2 s streaming throttle and checkpoints promptly.
+    finish();
+    await vi.waitFor(() => expect(saves.mock.calls.length).toBeGreaterThan(countAfterStart), { timeout: 1500 });
+  } finally {
+    await hub.close();
+    await rm(root, { recursive: true, force: true });
   }
 });

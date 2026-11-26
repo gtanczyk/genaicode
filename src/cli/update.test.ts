@@ -170,16 +170,21 @@ describe('selfInstall', () => {
     const npx = writePackage(join(base, '.npm', '_npx', '164c8f5e'), '3.5.0');
     const current = join(home, 'current', 'node_modules', 'genaicode', 'dist', 'cli.js');
     expect(durableCliPath(npx, { HOME: base })).toEqual({ path: current, installed: true, transient: false });
+    const checkout = () => writePackage(join(base, 'src'), '3.5.0');
     const elsewhere = join(base, 'nowhere');
     expect(durableCliPath(npx, { HOME: base, GENAICODE_HOME: elsewhere })).toEqual({
       path: join(npx, 'dist', 'cli.js'),
       installed: false,
       transient: true,
     });
+    // An AppImage's mount moves on every start, installed command or not.
+    expect(durableCliPath(checkout(), { HOME: base, APPDIR: base })).toMatchObject({
+      installed: false,
+      transient: true,
+    });
     // A checkout or `npm -g` keeps its own cli.js, installed command or not.
-    const checkout = writePackage(join(base, 'src'), '3.5.0');
-    expect(durableCliPath(checkout, { HOME: base })).toEqual({
-      path: join(checkout, 'dist', 'cli.js'),
+    expect(durableCliPath(checkout(), { HOME: base })).toEqual({
+      path: join(checkout(), 'dist', 'cli.js'),
       installed: false,
       transient: false,
     });

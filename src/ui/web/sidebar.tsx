@@ -1,5 +1,5 @@
 import type { ChatSummary } from '../hub.js';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { useEscape } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
@@ -251,7 +251,7 @@ export interface SidebarProps {
  * sessions, this app's chats by project, the other agents' sessions, and at the bottom the update,
  * the plan limits, Settings, Help and the connection. Collapsed it is a 56 px icon rail.
  */
-export function Sidebar(props: SidebarProps) {
+export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const now = props.now ?? Date.now();
   const { needs, update } = props;
   const worst = props.quota.find((row) => row.percent !== undefined);
@@ -626,4 +626,4 @@ export function Sidebar(props: SidebarProps) {
       </div>
     </aside>
   );
-}
+});

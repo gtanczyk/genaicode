@@ -8,13 +8,20 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **Give Claude Code, Codex and Cursor the session tools from Settings › Agents.** (#379)
+  - One click per agent adds, updates or removes the `genaicode` MCP server that `genaicode mcp install` adds. From the desktop app the agents start the app's own Node and genaicode, which update with the app.
+  - Run from npx's cache or a Linux AppImage with no installed command, it says how to install the command instead.
+
 ### Fixed
 
 - **Resize the sidebar and archive or delete chat history from its row menu.** (#382)
-
   - Archive puts a chat in All chats → Archived. Delete chat history asks for confirmation and deletes the Genaicode copy. The agent keeps its own transcript.
   - Drag the right edge or focus it and use the arrow keys. The sidebar remembers its width. On macOS the app icon lines up with the window controls.
-
+- **Starting a project chat is instant and spinners stay smooth while chats stream.** (#381)
+  - Clicking `+` on a project checks open chats, recent listings and saved conversations before scanning every session store on disk, and opening an empty chat no longer triggers extra session listings.
+  - Running spinners animate on the compositor layer, completed turns and the sidebar skip redundant re-renders during streaming, and mid-turn chat checkpoints coalesce to every 2 seconds.
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
   - Claude and Codex transcripts are parsed again only when they change. A repeated listing of a week of sessions drops from about 0.8 s to 0.05 s of CPU, and the menu bar watcher's look every 15 seconds goes with it.
   - lib: listings through `claudeSessions()` and `codexSessions()` remember what each unchanged file held.

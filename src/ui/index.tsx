@@ -70,6 +70,8 @@ export { NoAgentError };
  */
 export interface UiRunOptions extends ChatOptions {
   projectTeams?: import('../agents/pack-profile.js').ProjectTeams;
+  /** The session index in the agents' own MCP configuration, offered in Settings › Agents. */
+  agentTools?: import('./agent-tools.js').AgentTools;
   agents: readonly CodingAgent[];
   sessionAgents?: readonly CodingAgent[];
   version: string;
@@ -581,6 +583,16 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
       : undefined;
   const disk = chatStore(liveEnv, options.cwd, !!options.home);
   const restored = options.restoreChats ? await disk.index() : undefined;
+  const knownProjectDirs = new Set<string>();
+  for (const row of restored?.chats ?? []) {
+    if (row.cwd) knownProjectDirs.add(row.cwd);
+  }
+  const projectDirs = function* () {
+    yield* knownProjectDirs;
+    for (const row of hub.summaries()) {
+      if (row.cwd) yield row.cwd;
+    }
+  };
   let bark = options.bark ?? true;
   const channels = scopedMcpServers();
   const progress = await startProgressChannel().catch(() => undefined);
@@ -634,6 +646,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
         },
         web,
         onRoot: addRoot,
+        knownProjectDirs: projectDirs,
         restoredConversation: saved ? { ...saved.conversation, cwd: saved.session.cwd } : undefined,
         initialUsage: saved?.session,
         agent: previous?.agent ?? (!saved || agents.some((a) => a.name === options.agent) ? options.agent : undefined),
@@ -777,6 +790,7 @@ export async function runWeb(options: WebRunOptions): Promise<number> {
     release,
     inspector,
     hub,
+    knownProjectDirs,
   );
   const closeChannels = async () => {
     try {
@@ -931,6 +945,7 @@ function webLink(
   release = uiRelease(options.version, options.env ?? process.env, false),
   inspector?: AgentInspector,
   hub?: ChatHub,
+  knownProjectDirs?: Set<string>,
 ): WebHandoff & { start(): Promise<string> } {
   let running: Promise<WebUi> | undefined;
   const agents = options.sessionAgents ?? options.agents;
@@ -977,6 +992,13 @@ function webLink(
           ...(options.env ? { env: options.env } : {}),
         });
         const visible = hub?.history ? await hub.history.visibleSessions(listing.sessions) : listing.sessions;
+        if (knownProjectDirs) {
+          for (const session of listing.sessions) {
+            if (session.where === 'local' && session.cwd && knownProjectDirs.size < 500) {
+              knownProjectDirs.add(session.cwd);
+            }
+          }
+        }
         const sessions =
           own && options.home
             ? visible.filter(
@@ -1049,6 +1071,7 @@ function webLink(
       limits: () => knownLimits(options.env),
       pullRequest: options.pullRequest ?? pullRequestLookup({ env: options.env }),
       projectTeams: options.projectTeams,
+      ...(options.agentTools ? { agentTools: options.agentTools } : {}),
       // Automatic runs too: they use the plan like everything else.
       shares: async (query) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { installResizeHandle, storedSize } from '../../react/resize-handle.js';
 import { ownEscape } from '../../react/escape.js';
@@ -110,22 +110,25 @@ export function Shell(props: ShellProps) {
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(readStore(props.store), window.innerWidth));
   const latest = useRef(props);
   latest.current = props;
-  const toggle = () =>
-    setCollapsed((value) => {
-      try {
-        (latest.current.store ?? localStorage).setItem(SIDEBAR_KEY, value ? '0' : '1');
-      } catch {
-        // Storage blocked: the choice lasts until the page is closed.
-      }
-      return !value;
-    });
+  const toggle = useCallback(
+    () =>
+      setCollapsed((value) => {
+        try {
+          (latest.current.store ?? localStorage).setItem(SIDEBAR_KEY, value ? '0' : '1');
+        } catch {
+          // Storage blocked: the choice lasts until the page is closed.
+        }
+        return !value;
+      }),
+    [],
+  );
 
   const [searching, setSearching] = useState(false);
   const searchingRef = useRef(searching);
   searchingRef.current = searching;
   /** Where the focus was when Search opened: closing it puts the focus back there. */
   const searchFrom = useRef<Element | null>(null);
-  const openSearch = () => {
+  const openSearch = useCallback(() => {
     // Nothing to search, or a dialog is over the page and would cover the palette.
     if (!latest.current.search || searchingRef.current || document.querySelector('dialog[open]')) return;
     const from = document.activeElement;
@@ -136,7 +139,7 @@ export function Shell(props: ShellProps) {
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     searchFrom.current = trigger ?? from;
     setSearching(true);
-  };
+  }, []);
   const closeSearch = (restore = true) => {
     if (!searchingRef.current) return;
     setSearching(false);
@@ -288,6 +291,42 @@ export function Shell(props: ShellProps) {
     return () => observer.disconnect();
   }, [collapsed]);
 
+  // Stable event wrappers so memoized Sidebar skips re-rendering on streaming chat ticks.
+  const onNewChat = useCallback(() => latest.current.side.onNewChat(), []);
+  const onNeedsYou = useCallback(() => latest.current.side.onNeedsYou(), []);
+  const onOpenChat = useCallback<SidebarProps['onOpenChat']>((chat) => latest.current.side.onOpenChat(chat), []);
+  const hasAllSessions = !!side.onAllSessions;
+  const hasAllChats = !!side.onAllChats;
+  const hasStop = !!side.onStop;
+  const hasNewChatIn = !!side.onNewChatIn;
+  const hasRelaunch = !!side.onRelaunch;
+  const hasQuota = !!side.onQuota;
+  const hasSettings = !!side.onSettings;
+  const hasWhatsNew = !!side.onWhatsNew;
+  const hasCommands = !!side.onCommands;
+  const onAllSessions = useMemo(
+    () => (hasAllSessions ? () => latest.current.side.onAllSessions?.() : undefined),
+    [hasAllSessions],
+  );
+  const onAllChats = useMemo(() => (hasAllChats ? () => latest.current.side.onAllChats?.() : undefined), [hasAllChats]);
+  const onStop = useMemo(
+    () =>
+      hasStop ? (chat: NonNullable<SidebarProps['live']>[number]) => latest.current.side.onStop?.(chat) : undefined,
+    [hasStop],
+  );
+  const onNewChatIn = useMemo(
+    () =>
+      hasNewChatIn
+        ? (project: SidebarProps['projects'][number]) => latest.current.side.onNewChatIn?.(project)
+        : undefined,
+    [hasNewChatIn],
+  );
+  const onRelaunch = useMemo(() => (hasRelaunch ? () => latest.current.side.onRelaunch?.() : undefined), [hasRelaunch]);
+  const onQuota = useMemo(() => (hasQuota ? () => latest.current.side.onQuota?.() : undefined), [hasQuota]);
+  const onSettings = useMemo(() => (hasSettings ? () => latest.current.side.onSettings?.() : undefined), [hasSettings]);
+  const onWhatsNew = useMemo(() => (hasWhatsNew ? () => latest.current.side.onWhatsNew?.() : undefined), [hasWhatsNew]);
+  const onCommands = useMemo(() => (hasCommands ? () => latest.current.side.onCommands?.() : undefined), [hasCommands]);
+
   return (
     <div
       ref={shell}
@@ -295,6 +334,18 @@ export function Shell(props: ShellProps) {
     >
       <Sidebar
         {...props.side}
+        onNewChat={onNewChat}
+        onNeedsYou={onNeedsYou}
+        onOpenChat={onOpenChat}
+        onAllSessions={onAllSessions}
+        onAllChats={onAllChats}
+        onStop={onStop}
+        onNewChatIn={onNewChatIn}
+        onRelaunch={onRelaunch}
+        onQuota={onQuota}
+        onSettings={onSettings}
+        onWhatsNew={onWhatsNew}
+        onCommands={onCommands}
         collapsed={collapsed}
         onToggle={toggle}
         onSearch={props.search ? openSearch : undefined}

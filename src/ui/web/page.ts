@@ -81,12 +81,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .grow { flex: 1; min-width: 0; }
 svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .sg { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
-.sg.run { color: var(--gc-color-run); animation: sg-spin 1.4s linear infinite; }
+.sg.run { color: var(--gc-color-run); animation: sg-spin .9s linear infinite; will-change: transform; transform-origin: center; }
 .sg.ask { color: var(--gc-color-warn); }
 .sg.err { color: var(--gc-color-err); }
 .sg.ok { color: var(--gc-color-ok); }
-@keyframes sg-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .sg.run { animation: none; } }
+@keyframes sg-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sg.run { animation: none; will-change: auto; } }
 .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--gc-color-line-strong); background: var(--panel); font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .btn:hover { background: var(--gc-color-sunken); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }

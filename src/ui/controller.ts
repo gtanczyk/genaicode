@@ -215,6 +215,11 @@ export interface ChatOptions {
    * tower inbox), so the host can allow files and artifacts from that session's directory.
    */
   onRoot?(dir: string): void;
+  /**
+   * Directories already known to host a chat or session (open chats, recent `/api/sessions`
+   * listings), checked before scanning every session store on disk.
+   */
+  knownProjectDirs?(): Iterable<string | undefined>;
 }
 
 /** The conversation a window asks for (`ChatController.switchChat`). */
@@ -833,21 +838,27 @@ export function createChatController(options: ChatOptions): ChatController {
    */
   const isProjectDir = async (dir: string): Promise<boolean> => {
     if (isDisallowedWorkspace(dir, { env })) return false;
-    const sources = options.sessionSources ?? agentSessionSources(options.agents);
-    const [listing, saved, codex] = await Promise.all([
-      // Also the chats nobody typed much into: the sidebar lists their folders too.
-      listSessions(sources, { env, readOnly: true, live: false, automated: true }).catch(() => ({ sessions: [] })),
+    const matches = (candidates: Iterable<string | undefined>): boolean => {
+      for (const one of candidates) {
+        if (one && !isNeutralHome(one, { env }) && !isDisallowedWorkspace(one, { env }) && isSameDir(one, dir)) {
+          return true;
+        }
+      }
+      return false;
+    };
+    if (matches([session.get().cwd, conversation?.cwd])) return true;
+    if (options.knownProjectDirs && matches(options.knownProjectDirs())) return true;
+    const [saved, codex] = await Promise.all([
       readConversations(env).catch(() => []),
       codexProjects({ env }).catch(() => []),
     ]);
-    const known = [
-      ...listing.sessions.map((one) => one.cwd),
-      ...saved.map((one) => one.cwd),
-      ...codex.flatMap((project) => project.roots),
-    ];
-    return known.some(
-      (one) => !!one && !isNeutralHome(one, { env }) && !isDisallowedWorkspace(one, { env }) && isSameDir(one, dir),
-    );
+    if (matches(saved.map((one) => one.cwd)) || matches(codex.flatMap((project) => project.roots))) return true;
+    const sources = options.sessionSources ?? agentSessionSources(options.agents);
+    // Also the chats nobody typed much into: the sidebar lists their folders too.
+    const listing = await listSessions(sources, { env, readOnly: true, live: false, automated: true }).catch(() => ({
+      sessions: [],
+    }));
+    return matches(listing.sessions.map((one) => one.cwd));
   };
 
   const openProject = async (

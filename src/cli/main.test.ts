@@ -612,6 +612,37 @@ describe('parseCli', () => {
     expect(refused.err()).toContain('does not support MCP servers');
   });
 
+  it('offers ui the session index for the agents found here, added on request', async () => {
+    const launches: UiLaunch[] = [];
+    const loadUi = async () => ({
+      runChat: async () => 0,
+      runWeb: async (launch: UiLaunch) => (launches.push(launch), 0),
+    });
+    const cursor: CodingAgent = {
+      name: 'cursor',
+      command: 'cursor',
+      capabilities: { mcp: true },
+      run: () => {
+        throw new Error('not run');
+      },
+    };
+    const home = mkdtempSync(join(tmpdir(), 'genaicode-home-'));
+    dirs.push(home);
+    const env = { PATH: pathWith('cursor'), HOME: home };
+    const { cli } = environment({ argv: ['ui'], agents: [cursor], loadUi, env });
+    expect(await main(cli)).toBe(EXIT_OK);
+    const tools = launches[0]!.agentTools!;
+    const file = join(home, '.cursor', 'mcp.json');
+    expect(await tools.list()).toEqual({
+      durable: true,
+      agents: [{ agent: 'cursor', installed: false, current: false, send: false, file }],
+    });
+    expect((await tools.change('cursor', true)).agents[0]).toMatchObject({ installed: true, current: true });
+    expect(JSON.parse(readFileSync(file, 'utf8')).mcpServers.genaicode.args).toContain('sessions');
+    await expect(tools.change('codex', true)).rejects.toThrow('codex is not an agent found here.');
+    expect((await tools.change('cursor', false)).agents[0]).toMatchObject({ installed: false });
+  });
+
   it('gives chat --sessions the session index of every agent as an MCP server', async () => {
     expect(parseCli(['chat', '--sessions'])).toMatchObject({ sessions: true });
     expect(parseCli(['ui'])).not.toHaveProperty('sessions');
