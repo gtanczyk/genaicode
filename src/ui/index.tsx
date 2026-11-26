@@ -971,6 +971,20 @@ function webLink(
                   (session.where === 'local' && !!session.cwd && isSameDir(session.cwd, options.cwd)),
               )
             : listing.sessions;
+        // A chat can exist only in the app (e.g. an agent with no native store).
+        // Keep its archived row reachable from All chats so it can be restored.
+        if (own && hub) {
+          const listed = new Set(sessions.map((row) => JSON.stringify([row.source, row.id])));
+          for (const row of hub.summaries()) {
+            if (
+              row.archived &&
+              row.updatedAt >= (query.since ?? 0) &&
+              !listed.has(JSON.stringify([row.source, row.id]))
+            ) {
+              sessions.push(row);
+            }
+          }
+        }
         const readable = sources.filter((source) => source.read).map((source) => source.name);
         // Questions held open by `genaicode hooks install --answer`, to answer from the page.
         const asks = await pendingAsks(options.env).catch(() => []);

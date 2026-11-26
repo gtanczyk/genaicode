@@ -237,6 +237,16 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true),
     );
 
+    const edge = page.getByRole('separator', { name: 'Resize sidebar' });
+    const bounds = (await edge.boundingBox())!;
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 120);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + 64, bounds.y + 120);
+    await page.mouse.up();
+    expect(await sideWidth(page)).toBe(332);
+    await edge.press('ArrowRight');
+    expect(await sideWidth(page)).toBe(356);
+
     // ⌘B folds the sidebar to the 56 px rail; the chat keeps the rest, and a reload remembers it.
     await page.keyboard.press('ControlOrMeta+b');
     await page.locator('.shell.side-collapsed').waitFor();
@@ -246,7 +256,9 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await page.reload();
     await page.locator('.shell.side-collapsed').waitFor();
     await topbar.getByRole('button', { name: 'Show sidebar' }).click();
-    await vi.waitFor(async () => expect(await sideWidth(page)).toBe(268));
+    await vi.waitFor(async () => expect(await sideWidth(page)).toBe(356));
+    await edge.press('Enter');
+    expect(await sideWidth(page)).toBe(268);
     await side.getByRole('button', { name: 'Collapse sidebar' }).click();
     await page.locator('.shell.side-collapsed').waitFor();
     await page.keyboard.press('ControlOrMeta+b');
@@ -264,7 +276,13 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     const list = page.locator('main.sessions');
     expect(await list.getByRole('combobox', { name: 'Period' }).inputValue()).toBe('0');
     const flour = list.locator('.session-row', { hasText: 'Order flour' });
-    await flour.getByRole('button', { name: 'Archive', exact: true }).click();
+    const sidebarFlour = chats.locator('.chat-actions', { hasText: 'Order flour' });
+    await sidebarFlour.hover();
+    const actions = sidebarFlour.getByRole('button', { name: 'Chat actions' });
+    expect(await actions.locator('..').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    await actions.click();
+    await sidebarFlour.getByRole('menuitem', { name: 'Archive' }).click();
+    await sidebarFlour.waitFor({ state: 'detached' });
     await flour.waitFor({ state: 'detached' });
     await list.getByRole('combobox', { name: 'State' }).selectOption('archived');
     await flour.getByRole('button', { name: 'Unarchive' }).click();

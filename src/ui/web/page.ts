@@ -67,7 +67,7 @@ body { background: var(--bg); color: var(--text); font: 15px/1.55 ui-sans-serif,
 .workspace > .gc-chat { flex: 1; min-width: 0; height: auto; background: transparent; position: relative; z-index: 1; }
 button, input, select, textarea { font: inherit; color: inherit; }
 /* The window's shell (docs/design/desktop-layout.md). State hues, the sidebar and sunken surfaces and the strong line are the design tokens agent-chat.css sets on :root (--gc-color-*). */
-.shell { --side-cur: 268px; flex: 1; min-height: 0; display: grid; grid-template-columns: var(--side-cur) minmax(0, 1fr); }
+.shell { position: relative; --side-cur: min(var(--side-width, 268px), 60vw); flex: 1; min-height: 0; display: grid; grid-template-columns: var(--side-cur) minmax(0, 1fr); }
 .shell.side-collapsed { --side-cur: 56px; }
 .center { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
 /* The work panel: a third column beside the chat, or (no room beside a chat of 600px) a view in the chat's place under the top bar. */
@@ -116,7 +116,11 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .side { background: var(--gc-color-side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; z-index: 31; }
 .side-top { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 10px 0 14px; flex: none; }
 .mac-app .side-top, .mac-app .topbar { user-select: none; -webkit-user-select: none; cursor: default; }
-.mac-app .side-top { padding-left: 78px; }
+/* The native buttons start at x=18 with centers 23px apart. Continue that spacing to the brand. */
+.mac-app .side-top { padding-left: 84px; }
+.mac-app .brand { transform: translateY(1px); }
+.side-resize { position: absolute; z-index: 32; top: 0; bottom: 0; left: calc(var(--side-cur) - 4px); width: 8px; cursor: col-resize; }
+.side-resize:hover::after, .side-resize:focus-visible::after, body[data-resize-axis='x'] .side-resize:active::after { content: ''; position: absolute; inset: 0 3px; background: var(--accent); }
 .brand { font-weight: 650; letter-spacing: -.01em; display: flex; align-items: center; gap: 7px; font-size: 14px; white-space: nowrap; }
 .brand img { width: 20px; height: 20px; image-rendering: pixelated; }
 .side-actions { padding: 4px 10px 8px; display: grid; gap: 2px; flex: none; }
@@ -140,9 +144,17 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .proj > summary .add { opacity: 0; }
 .proj > summary:hover .add, .proj > summary .add:focus-visible { opacity: 1; }
 .nav.chat { padding-left: 14px; height: 30px; }
-.chat-actions { display:flex; align-items:center; }
+.chat-actions { display: flex; align-items: center; }
+.chat-main { position: relative; display: flex; flex: 1; min-width: 0; align-items: center; }
 .chat-actions .nav { flex:1; min-width:0; }
-.chat-actions > button:last-child { font-size:12px; }
+.chat-actions > .stop-chat { font-size:12px; }
+.chat-main > .menu-anchor { position: absolute; right: 2px; opacity: 0; pointer-events: none; }
+.chat-actions:is(:hover, :focus-within, :has([aria-expanded='true'])) .menu-anchor { opacity: 1; pointer-events: auto; }
+.chat-actions:has(.menu-anchor):is(:hover, :focus-within, :has([aria-expanded='true'])) .nav small { visibility: hidden; }
+.chat-actions .menu { right: 100%; top: 50%; transform: translateY(-50%); min-width: 108px; }
+@media (hover: none) {
+  .chat-main > .menu-anchor { position: relative; opacity: 1; pointer-events: auto; }
+}
 .nav.chat small { color: var(--muted); font-size: 12px; }
 .nav.chat.all { color: var(--muted); padding-left: 35px; }
 .nav.unavailable { opacity: .6; }

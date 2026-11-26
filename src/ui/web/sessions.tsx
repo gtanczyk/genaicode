@@ -72,6 +72,19 @@ const FOLD = 5;
 /** How many sessions one archive request carries: the server takes up to 1000. */
 const ARCHIVE_BATCH = 500;
 
+export async function setSessionArchive(token: string, sessions: readonly SessionInfo[], archived: boolean) {
+  const keys = sessions.map(({ source, id }) => ({ source, id }));
+  for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
+    const res = await fetch('/api/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+      body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
+    });
+    if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+  }
+  window.dispatchEvent(new Event('genaicode-archive'));
+}
+
 /** What a topic asks of the user and what goes on in it, for its heading. */
 const asksOf = (group: Partial<SessionTopic>): string =>
   [
@@ -147,6 +160,11 @@ export function Sessions({
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [copied, setCopied] = useState<string>();
   const [round, setRound] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRound((value) => value + 1);
+    window.addEventListener('genaicode-archive', refresh);
+    return () => window.removeEventListener('genaicode-archive', refresh);
+  }, []);
   // By topic once there are topics, unless the user chose otherwise.
   const [chosen, setChosen] = useState<'topic' | 'project'>();
 
@@ -230,26 +248,12 @@ export function Sessions({
   const [archiveFailed, setArchiveFailed] = useState<string>();
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
   const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
-    const keys = sessions.flatMap(storesOf).map(({ source, id }) => ({ source, id }));
-    // In batches the server takes, one after another.
-    const send = async () => {
-      for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
-        const res = await fetch('/api/archive', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
-          body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
-        });
-        if (!res.ok) return `The server answered ${res.status}.`;
-      }
-      return undefined;
-    };
-    send()
-      .then((error) => {
-        setArchiveFailed(error);
-        if (!error) onArchived?.();
+    setSessionArchive(token, sessions.flatMap(storesOf), archived)
+      .then(() => {
+        setArchiveFailed(undefined);
+        onArchived?.();
       })
-      .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
-      .finally(() => setRound((value) => value + 1));
+      .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)));
   };
   const shown = useMemo(() => {
     const inTopic = topic ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic) : all;

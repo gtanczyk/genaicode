@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
+import { installResizeHandle, storedSize } from '../../react/resize-handle.js';
 import { ownEscape } from '../../react/escape.js';
 import { paletteCommands } from '../palette.js';
 import { escapeAction, RAIL_BELOW_PX, startsCollapsed } from '../sidebar.js';
@@ -8,6 +9,11 @@ import { Icon, Sidebar, type SidebarProps } from './sidebar.js';
 
 /** Where the sidebar's state is kept: `1` for the rail, `0` for the full sidebar. */
 export const SIDEBAR_KEY = 'genaicode-sidebar';
+
+const SIDEBAR_DEFAULT = 268;
+const SIDEBAR_MIN = 216;
+const SIDEBAR_MAX = 520;
+const sideSize = storedSize('genaicode-sidebar-width', [SIDEBAR_MIN, SIDEBAR_MAX]);
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -241,6 +247,32 @@ export function Shell(props: ShellProps) {
 
   // The room beside the sidebar: it changes with the window and with the sidebar's own width.
   const shell = useRef<HTMLDivElement>(null);
+  const handle = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = shell.current;
+    if (!el || !handle.current) return;
+    const apply = (size: number) => el.style.setProperty('--side-width', size + 'px');
+    apply(sideSize.get() ?? SIDEBAR_DEFAULT);
+    const installed = installResizeHandle(handle.current, {
+      axis: 'x',
+      bounds: () => [SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth * 0.6)],
+      read: () => el.querySelector<HTMLElement>('.side')!.offsetWidth,
+      write(size, commit) {
+        apply(size);
+        if (commit) sideSize.set(size);
+      },
+      reset() {
+        sideSize.clear();
+        apply(SIDEBAR_DEFAULT);
+      },
+    });
+    const sync = () => installed.sync();
+    window.addEventListener('resize', sync);
+    return () => {
+      installed.dispose();
+      window.removeEventListener('resize', sync);
+    };
+  }, [collapsed]);
   useLayoutEffect(() => {
     const el = shell.current;
     if (!el) return;
@@ -252,6 +284,7 @@ export function Shell(props: ShellProps) {
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(report);
     observer.observe(el);
+    observer.observe(el.querySelector('.side')!);
     return () => observer.disconnect();
   }, [collapsed]);
 
@@ -266,6 +299,9 @@ export function Shell(props: ShellProps) {
         onToggle={toggle}
         onSearch={props.search ? openSearch : undefined}
       />
+      {!collapsed && (
+        <div className="side-resize" ref={handle} role="separator" tabIndex={0} aria-label="Resize sidebar" />
+      )}
       <div className="center">
         {/* In the desktop app the top bar is the window's title bar: it moves the window. */}
         <header className="topbar" data-tauri-drag-region="deep">

@@ -6,6 +6,7 @@ import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
 import { ago } from '../sessions.js';
 import {
   chatTitle,
+  OPEN_CHAT_SOURCE,
   GLYPH_TITLE,
   sessionGlyph,
   sessionKey,
@@ -211,6 +212,7 @@ export interface SidebarProps {
   live?: readonly ChatSummary[];
   limit?: number;
   onStop?(chat: ChatSummary): void;
+  onArchive?(chat: SessionInfo): void;
   onOpenChat(chat: SessionInfo): void;
   /**
    * The title of the open chat while its turn runs: the window has one session, so other chats and
@@ -380,15 +382,50 @@ export function Sidebar(props: SidebarProps) {
                   <small>{glyph === 'run' || now - chat.updatedAt < 60_000 ? 'now' : ago(now - chat.updatedAt)}</small>
                 </button>
               );
-              return live?.turnInProgress && !selected ? (
+              const busy =
+                chat.turnInProgress ||
+                live?.position ||
+                chat.state === 'active' ||
+                (key === props.selectedChat && props.busyWith !== undefined);
+              return (
                 <div key={key} className="chat-actions">
-                  {row}
-                  <button type="button" aria-label={'Stop ' + chatTitle(chat)} onClick={() => props.onStop?.(live)}>
-                    Stop
-                  </button>
+                  <div className="chat-main">
+                    {row}
+                    {props.onArchive && chat.where === 'local' && chat.source !== OPEN_CHAT_SOURCE && (
+                      <MenuButton
+                        label="Chat actions"
+                        title={`Actions for ${chatTitle(chat)}`}
+                        className="btn icon sm"
+                        button={<Icon name="dots" />}
+                      >
+                        {(close) => (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={!!busy}
+                            title={busy ? 'Available when the chat finishes' : undefined}
+                            onClick={() => {
+                              close();
+                              props.onArchive?.(chat);
+                            }}
+                          >
+                            Archive
+                          </button>
+                        )}
+                      </MenuButton>
+                    )}
+                  </div>
+                  {live?.turnInProgress && !selected && (
+                    <button
+                      type="button"
+                      className="stop-chat"
+                      aria-label={'Stop ' + chatTitle(chat)}
+                      onClick={() => props.onStop?.(live)}
+                    >
+                      Stop
+                    </button>
+                  )}
                 </div>
-              ) : (
-                row
               );
             })}
           </details>

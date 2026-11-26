@@ -75,7 +75,7 @@ import { Icon } from './sidebar.js';
 import { AgentChip, ComposerHint, ModelRejected, PermissionSwitch, PlanToggle, StartsIn } from './composer.js';
 import { forgetModel, modelSuggestions, readRecentModels, rememberModel, rejectsModel } from '../models.js';
 import { SessionReplies } from './session-reply.js';
-import { Sessions } from './sessions.js';
+import { setSessionArchive, Sessions } from './sessions.js';
 import { VIEWER_WIDTH_KEY, ViewerPanel, type ViewerTarget } from './file-view.js';
 import { Home } from './home.js';
 import { Onboarding, SignInCard } from './onboarding.js';
@@ -2103,6 +2103,13 @@ function App({ selected }: { selected?: string }) {
           projects,
           live: loaded,
           limit: config?.maxChats,
+          onArchive: hasSessions
+            ? (chat) => {
+                void setSessionArchive(token, [chat], true)
+                  .then(() => chats.refresh())
+                  .catch((error: Error) => showToast(`Could not archive chat: ${error.message}`, true));
+              }
+            : undefined,
           onStop: (row) => {
             void postCommand({ type: 'stop', turn: row.turn }, row.chat);
           },

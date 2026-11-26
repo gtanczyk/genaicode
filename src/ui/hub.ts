@@ -256,7 +256,7 @@ export class ChatHub {
 
   async load(id: string) {
     const chat = await this.create(id);
-    this.created.set(id, Date.now());
+    this.created.set(id, this.dormant.get(id)?.updatedAt ?? Date.now());
     this.lastSeen.set(id, Date.now());
     this.chats.set(id, chat);
     this.dormant.delete(id);
