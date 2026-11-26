@@ -16,7 +16,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- **Starting a project chat is instant and spinners stay smooth while chats stream.** (#PR)
+- **Starting a project chat is instant and spinners stay smooth while chats stream.** (#381)
   - Clicking `+` on a project checks open chats, recent listings and saved conversations before scanning every session store on disk, and opening an empty chat no longer triggers extra session listings.
   - Running spinners animate on the compositor layer, completed turns and the sidebar skip redundant re-renders during streaming, and mid-turn chat checkpoints coalesce to every 2 seconds.
 - **The app and the menu bar watcher use far less CPU while listing sessions.** (#377)
