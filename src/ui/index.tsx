@@ -949,7 +949,9 @@ function webLink(
     const storedAt = current
       .filter((limit) => limit.agent === 'antigravity')
       .reduce((latest, limit) => Math.max(latest, limit.at), 0);
-    const sessions = hub ? [...hub.chats.values()].map((entry) => entry.controller.get().session) : [controller().get().session];
+    const sessions = hub
+      ? [...hub.chats.values()].map((entry) => entry.controller.get().session)
+      : [controller().get().session];
     const completed = sessions
       .filter((session) => session.agent === 'antigravity')
       .map((session) => {
