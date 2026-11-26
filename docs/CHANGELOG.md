@@ -8,6 +8,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 3.6.0 — 2026-11-26
+
 ### Added
 
 - **Show all installed agents and Antigravity usage and plan limits in Settings › Usage.** (#376)
