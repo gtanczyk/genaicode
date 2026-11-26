@@ -20,7 +20,7 @@ import {
   timeOf,
   type SessionFile,
 } from './files.js';
-import { personText } from '../host-text.js';
+import { personTitle } from '../host-text.js';
 import type { SessionTurn } from '../session.js';
 import type { AgentMode } from '../types.js';
 import { linesOf, transcriptBuilder, transcriptLines, zstdFile } from './transcript.js';
@@ -345,7 +345,7 @@ async function indexedSessions(dir: string, prefix = ''): Promise<SessionInfo[] 
       number(row.created_at_ms) ?? (number(row.created_at) === undefined ? undefined : number(row.created_at)! * 1000);
     const first = text(row.first_user_message);
     // Codex stores the first user message as `title`: a briefing an older pack() put there is not a name.
-    const named = text(row.name) ?? (text(row.title) ? personText(text(row.title)!) || undefined : undefined);
+    const named = text(row.name) ?? (text(row.title) ? personTitle(text(row.title)!) || undefined : undefined);
     const tokens = number(row.tokens_used);
     const rollout = text(row.rollout_path);
     return [
