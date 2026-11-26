@@ -38,7 +38,6 @@ const CHANNEL_TOLERANCE = 2;
 const MAX_DIFFERENT = 0.0001;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const baselineDir = join(here, '__screenshots__', process.platform);
 /** What this run drew, for the CI artifact and for looking at a mismatch. Under node_modules, so git ignores it. */
 const outputDir = join(process.cwd(), 'node_modules', '.genaicode-test', 'visual-screenshots', process.platform);
 /** Only `1` rewrites baselines: `0`, `false` or any other value compares as usual. */
@@ -75,17 +74,23 @@ function compare(actual: Buffer, expected: Buffer): { different: number; total: 
 }
 
 /** Takes the screenshot `name` and holds it against its baseline. */
-async function expectScreenshot(target: Page | Locator, name: string, options: { mask?: Locator[] } = {}) {
+async function expectScreenshot(
+  target: Page | Locator,
+  name: string,
+  options: { mask?: Locator[]; clip?: { x: number; y: number; width: number; height: number }; shared?: boolean } = {},
+) {
   const actual = await target.screenshot({
     animations: 'disabled',
     caret: 'hide',
     scale: 'css',
+    clip: options.clip,
     mask: options.mask,
     maskColor: '#808080',
   });
   mkdirSync(outputDir, { recursive: true });
   writeFileSync(join(outputDir, `${name}.png`), actual);
   rmSync(join(outputDir, `${name}.diff.png`), { force: true });
+  const baselineDir = join(here, '__screenshots__', options.shared ? 'shared' : process.platform);
   const file = join(baselineDir, `${name}.png`);
   if (update) {
     mkdirSync(baselineDir, { recursive: true });
@@ -712,6 +717,39 @@ describe('the genaicode ui page looks as its baseline', { timeout: 30_000 }, () 
     stop.abort();
     await running;
     if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  it.each(THEMES)('aligns the macOS sidebar icon with the window controls in %s mode', async (theme) => {
+    const page = await newPage(browser, theme, { width: 1100, height: 800 });
+    try {
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'platform', { value: 'MacIntel' });
+        Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {} });
+      });
+      await page.goto(url!);
+      const icon = page.locator('#root.mac-app .side-top .brand img');
+      await icon.waitFor();
+      await icon.evaluate((img) => (img as HTMLImageElement).decode());
+      // AppKit paints outside the webview. Reproduce the three button centers from the
+      // desktop reference in CSS pixels, then check the fourth center against that row.
+      await page.addStyleTag({
+        content: `
+        .mac-app .side-top::before {
+          content: ''; position: absolute; top: 17px; left: 18px; width: 14px; height: 14px;
+          border-radius: 50%; background: #ff5f57; box-shadow: 23px 0 #febc2e, 46px 0 #28c840;
+        }
+      `,
+      });
+      const box = (await icon.boundingBox())!;
+      expect([box.x + box.width / 2, box.y + box.height / 2]).toEqual([94, 24]);
+      // This crop ends before the wordmark. With no system text, both platforms share the image.
+      await expectScreenshot(page, `mac-sidebar-controls-${theme}`, {
+        clip: { x: 0, y: 0, width: 108, height: 46 },
+        shared: true,
+      });
+    } finally {
+      await page.context().close();
+    }
   });
 
   // One server and one conversation: the start page in both themes first, then a turn, then both

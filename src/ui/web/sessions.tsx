@@ -74,15 +74,19 @@ const ARCHIVE_BATCH = 500;
 
 export async function setSessionArchive(token: string, sessions: readonly SessionInfo[], archived: boolean) {
   const keys = sessions.map(({ source, id }) => ({ source, id }));
-  for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
-    const res = await fetch('/api/archive', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
-      body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
-    });
-    if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+  try {
+    for (let start = 0; start < keys.length; start += ARCHIVE_BATCH) {
+      const res = await fetch('/api/archive', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+        body: JSON.stringify({ sessions: keys.slice(start, start + ARCHIVE_BATCH), archived }),
+      });
+      if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+    }
+  } finally {
+    // Earlier batches may have been committed even when a later batch failed.
+    window.dispatchEvent(new Event('genaicode-archive'));
   }
-  window.dispatchEvent(new Event('genaicode-archive'));
 }
 
 /** What a topic asks of the user and what goes on in it, for its heading. */
@@ -249,11 +253,9 @@ export function Sessions({
   /** Put sessions away (`genaicode sessions archive`), or bring them back. */
   const archive = (sessions: readonly SessionInfo[], archived: boolean) => {
     setSessionArchive(token, sessions.flatMap(storesOf), archived)
-      .then(() => {
-        setArchiveFailed(undefined);
-        onArchived?.();
-      })
-      .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)));
+      .then(() => setArchiveFailed(undefined))
+      .catch((error: unknown) => setArchiveFailed(error instanceof Error ? error.message : String(error)))
+      .finally(() => onArchived?.());
   };
   const shown = useMemo(() => {
     const inTopic = topic ? all.filter((session) => index.topicsBySession[sessionKey(session)] === topic) : all;

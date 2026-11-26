@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 import type { WebSessionListing } from './server.js';
-import { Sessions as SessionsView } from './sessions.js';
+import { setSessionArchive, Sessions as SessionsView } from './sessions.js';
 import { SessionReplies } from './session-reply.js';
 
 function Sessions(props: ComponentProps<typeof SessionsView>) {
@@ -176,4 +176,22 @@ it('archives all store entries for the selected session and leaves a different p
   await act(async () => bakery.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]')!.click());
   await act(async () => button('Archive').click());
   expect(archives).toEqual([{ sessions: [asking, alias].map(({ source, id }) => ({ source, id })), archived: true }]);
+});
+
+it('refreshes the archive after a later batch fails', async () => {
+  const send = vi
+    .fn()
+    .mockResolvedValueOnce(new Response())
+    .mockResolvedValueOnce(new Response(null, { status: 500 }));
+  vi.stubGlobal('fetch', send);
+  const refresh = vi.fn();
+  window.addEventListener('genaicode-archive', refresh);
+  try {
+    const rows = Array.from({ length: 501 }, (_, i) => ({ ...asking, id: String(i) }));
+    await expect(setSessionArchive('token', rows, true)).rejects.toThrow('500');
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally {
+    window.removeEventListener('genaicode-archive', refresh);
+  }
 });
