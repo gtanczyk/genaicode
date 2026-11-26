@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { chatStore } from './chat-store.js';
 import { ChatHub, type HubChat } from './hub.js';
-import { sessionsOncePerMinute } from './shared-while-running.js';
 import { PackPool } from '../agents/pack-pool.js';
 import type { Pack } from '../agents/pack.js';
 import { scopedMcpServers, type startLocalMcpServer } from '../agents/mcp-server.js';
@@ -950,7 +949,7 @@ function webLink(
       settings,
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
-      sessions: sessionsOncePerMinute(async ({ own, ...query }) => {
+      sessions: async ({ own, ...query }) => {
         const sources = options.sessionSources ?? agentSessionSources(options.agents);
         const recorded = options.home ? await readConversations(options.env).catch(() => []) : [];
         const listing = await listSessions(sources, {
@@ -994,7 +993,7 @@ function webLink(
         }
         const sorted = topics.length ? { topics, topicOf } : {};
         return { ...listing, sessions, readable, asks, senders: currentSenders(), ...sorted };
-      }),
+      },
       sendPrompt: async (source, id, prompt, sandbox, signal, onResponse, scopedRoot = addRoot) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const found = await findSession(

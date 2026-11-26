@@ -378,12 +378,19 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     let read: SessionInfo | null;
     const stat = await fs.stat(info.path).catch(() => undefined);
     // Whether it is active is the index's to say (its own `updatedAt`), not the file's.
-    if (stat) read = await listedCodexSession({ path: info.path, mtimeMs: stat.mtimeMs, size: stat.size }, Infinity);
+    if (stat)
+      read = await listedCodexSession(
+        { path: info.path, mtimeMs: Math.round(stat.mtimeMs), size: stat.size, exactMtimeMs: stat.mtimeMs },
+        Infinity,
+      );
     else {
       const zst = `${info.path}.zst`;
       const packed = await fs.stat(zst).catch(() => undefined);
       if (!packed) return;
-      read = await listedPackedRollout({ path: zst, mtimeMs: packed.mtimeMs, size: packed.size }, Infinity);
+      read = await listedPackedRollout(
+        { path: zst, mtimeMs: Math.round(packed.mtimeMs), size: packed.size, exactMtimeMs: packed.mtimeMs },
+        Infinity,
+      );
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
