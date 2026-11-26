@@ -7,6 +7,8 @@ import {
   savedDraft,
   rememberDraft,
   transcriptInputs,
+  composerHistory,
+  type ComposerInput,
   uploadedFiles,
   restoreQueued,
 } from './chat-route.js';
@@ -1524,13 +1526,9 @@ function App({ selected }: { selected?: string }) {
   const openFile = config?.files
     ? (path: string, position?: FilePosition) => openViewer({ kind: 'file', path, position })
     : undefined;
-  const histories = useRef(new Map<string, { text: string }[]>());
+  const histories = useRef(new Map<string, ComposerInput[]>());
   const historyKey = JSON.stringify([route, view?.generation ?? chatKey]);
-  const inputHistory = () => {
-    const history = histories.current.get(historyKey);
-    const texts = history ? history.map((entry) => entry.text) : transcriptInputs(session);
-    return texts.filter((text, index) => text !== texts[index - 1]);
-  };
+  const inputHistory = () => composerHistory(transcriptInputs(session), histories.current.get(historyKey) ?? []);
   const submit = (text: string, files?: File[]): Promise<boolean> => {
     const own = parseSlash(text);
     // Not sent, and the message field keeps it: the window is moving to another chat, or a folder
@@ -1597,10 +1595,10 @@ function App({ selected }: { selected?: string }) {
 
   const submitFromComposer = async (text: string, files?: File[]) => {
     if (!text.trim()) return submit(text, files);
-    const entries = histories.current.get(historyKey) ?? transcriptInputs(session).map((text) => ({ text }));
+    const entries = histories.current.get(historyKey) ?? [];
     histories.current.set(historyKey, entries);
     // Up works immediately after Enter. Uploads and commands can finish in a different order.
-    const entry = { text };
+    const entry = { text, after: transcriptInputs(session).length };
     entries.push(entry);
     if (entries.length > 100) entries.shift();
     let sent = false;

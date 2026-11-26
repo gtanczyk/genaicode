@@ -1,5 +1,5 @@
 import type { SessionState } from '../../agents/session.js';
-import { splitAttached } from '../format.js';
+import { parseShell, parseSlash, splitAttached } from '../format.js';
 /** Each page keeps the chat it opened, including while its uploads or dialogs are pending. */
 export function pageChat(): string | undefined {
   return new URLSearchParams(location.hash.slice(1)).get('chat') ?? undefined;
@@ -44,8 +44,37 @@ export function transcriptInputs(session?: SessionState): string[] {
       if (trimmed.startsWith('!') || trimmed.startsWith('/')) return trimmed[0] + trimmed;
       return text;
     })
-    .filter(Boolean)
-    .slice(-100);
+    .filter(Boolean);
+}
+
+/** Keep the text as typed, including commands and prompts still uploading, alongside other clients' inputs. */
+export interface ComposerInput {
+  text: string;
+  /** Number of transcript inputs visible at submission. */
+  after: number;
+}
+
+export function composerHistory(transcript: readonly string[], local: readonly ComposerInput[]): string[] {
+  const history: string[] = [];
+  let index = 0;
+  for (const { text, after } of local) {
+    const boundary = Math.min(after, transcript.length);
+    while (index < boundary) history.push(transcript[index++]);
+    // Prompts appear in the transcript when delivered, possibly after messages from another client.
+    // Host commands have no prompt bubble. Their position stays where the user submitted them.
+    if (parseShell(text) === undefined && !parseSlash(text)) {
+      const submitted = text.trim();
+      let echo = index;
+      while (echo < transcript.length && transcript[echo].trim() !== submitted) echo++;
+      if (echo < transcript.length) {
+        while (index < echo) history.push(transcript[index++]);
+        index++;
+      }
+    }
+    history.push(text);
+  }
+  while (index < transcript.length) history.push(transcript[index++]);
+  return history.filter((text, i) => text !== history[i - 1]).slice(-100);
 }
 
 export function showChat(id: string) {
