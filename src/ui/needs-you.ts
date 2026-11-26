@@ -1,7 +1,7 @@
 import type { PendingAsk } from '../agents/sessions/answer.js';
 import type { TowerDecision, TowerItem } from '../agents/sessions/tower.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
-import type { ApprovalDecision, ApprovalRequest, SandboxPolicy } from '../agents/types.js';
+import type { ApprovalDecision, ApprovalRequest, SandboxPolicy, QuestionAnswers } from '../agents/types.js';
 import { ago, sessionReplyTarget } from './sessions.js';
 import {
   chatTitle,
@@ -26,7 +26,8 @@ export type NeedsFilter = 'all' | NeedsSource | 'approvals' | 'questions';
 /** Where a decision goes: each is an endpoint the page already had. */
 export type NeedsDecision =
   /** An approval of the open chat (`approve` command). */
-  | { via: 'chat'; id: string; decision: ApprovalDecision }
+  | { via: 'chat'; id: string; decision: ApprovalDecision; owner?: string; turn?: number }
+  | { via: 'answer'; id: string; owner: string; turn?: number; answers: QuestionAnswers }
   /** An item the tower holds (`tower` command). */
   | { via: 'tower'; id: string; decision: TowerDecision }
   /** A question a hook holds open, where no tower answers it (`POST /api/asks/<id>`). */
@@ -41,6 +42,7 @@ export interface NeedsChoice {
 
 /** One thing that waits for the person. */
 export interface NeedsItem {
+  question?: { request: ApprovalRequest; owner: string; turn?: number };
   key: string;
   source: NeedsSource;
   /** Something to allow or refuse, or something to answer in words. */
@@ -77,6 +79,7 @@ export interface NeedsItem {
 export interface NeedsInput {
   /** The open chat: its approvals wait in this window. */
   chat?: {
+    owner?: string;
     approvals: readonly ApprovalRequest[];
     /** The running turn, as the tower's keys name it. */
     turnId?: number;
@@ -249,7 +252,9 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
   const here = (chat?.approvals ?? []).map((request): NeedsItem => {
     const key = `chat:${request.id}`;
     // The tower knows which agent of the pack asks, and for which task.
-    const told = input.tower?.find((item) => item.id === `${TOWER_TURN_ITEM}${chat!.turnId}:${request.id}`);
+    const told = input.tower?.find(
+      (item) => item.id === `${TOWER_TURN_ITEM}${chat?.owner ? chat.owner + ':' : ''}${chat!.turnId}:${request.id}`,
+    );
     // Without a tower, the running turn's pack says the same.
     const task = told ? undefined : chat!.pack?.tasks.find((one) => one.id === request.subtaskId);
     const from = told ? told.origin : task ? `Pack task ${task.id}` : chat!.pack ? 'Pack lead' : 'Chat';

@@ -52,7 +52,7 @@ import { PullRequestBusy } from './pull-requests.js';
 const bin = mkdtempSync(join(tmpdir(), 'genaicode-ui-'));
 writeFileSync(join(bin, 'echo-agent'), '#!/bin/sh\n', { mode: 0o755 });
 afterAll(() => rmSync(bin, { recursive: true, force: true }));
-const env = { PATH: bin };
+const env = { PATH: bin, GENAICODE_HOME: join(bin, 'app-state') };
 /** Running, not a zombie: a container's init may never reap what it inherits. */
 const alive = (pid: number) => {
   try {
@@ -189,6 +189,30 @@ describe('format helpers', () => {
 });
 
 describe('chat controller', () => {
+  it.each([false, true])(
+    'terminal /clear preserves the old record and starts an untitled conversation (home=%s)',
+    async (home) => {
+      const isolated = { ...env, GENAICODE_HOME: join(bin, 'clear-' + home) };
+      const chat = createChatController({ agents: [echoAgent()], cwd: bin, home, env: isolated, chatId: 'stable' });
+      try {
+        await chat.resourcesIdle();
+        expect(await readConversations(isolated)).toEqual([]);
+        chat.submit('Fix login');
+        await chat.session.idle();
+        chat.submit('/clear');
+        expect(chat.get().conversation?.title).toBeUndefined();
+        chat.submit('Write docs');
+        await chat.session.idle();
+        await chat.resourcesIdle();
+        const rows = await readConversations(isolated);
+        expect(new Set(rows.map((r) => r.id)).size).toBe(2);
+        expect(rows.map((r) => r.title).sort()).toEqual(['Fix login', 'Write docs']);
+      } finally {
+        chat.close();
+      }
+    },
+  );
+
   it('opens a short queue, refreshes it by project and previews a foreign session without an agent turn', async () => {
     const agent = echoAgent();
     const indexEnv = { ...env, GENAICODE_HOME: join(bin, 'tower-state') };
@@ -387,7 +411,7 @@ describe('chat controller', () => {
           },
         ],
         cwd: '/w',
-        env: { PATH: empty },
+        env: { PATH: empty, GENAICODE_HOME: join(empty, 'app-state') },
         allowNoAgent: true,
       });
       expect(chat.get().setup).toBe(true);
@@ -2502,7 +2526,7 @@ describe('web UI server', () => {
     const done = runWeb({
       agents: [echoAgent()],
       cwd: '/w',
-      env: { PATH: empty },
+      env: { PATH: empty, GENAICODE_HOME: join(empty, 'app-state') },
       version: '1',
       clientScript: '',
       assets: new Map(),
@@ -2525,7 +2549,7 @@ describe('web UI server', () => {
     const again = runWeb({
       agents: [echoAgent()],
       cwd: '/w',
-      env: { PATH: empty },
+      env: { PATH: empty, GENAICODE_HOME: join(empty, 'app-state') },
       version: '1',
       clientScript: '',
       assets: new Map(),
@@ -2777,17 +2801,25 @@ describe('web UI server', () => {
       body: JSON.stringify({ type: 'continue', id: longStored.id }),
     });
     expect(contRes.status).toBe(200);
-    const adoptedMeta = await (await fetch(new URL('/api/transcript?format=meta', url), { headers })).json();
+    const adoptedChat = (await contRes.json()).chat;
+    expect(typeof adoptedChat).toBe('string');
+    const adoptedMeta = await (
+      await fetch(new URL(`/api/transcript?format=meta&chat=${adoptedChat}`, url), { headers })
+    ).json();
     expect(adoptedMeta).toMatchObject({
       truncated: true,
       truncatedReason: expect.stringContaining('latest 100 turns were loaded'),
     });
-    const adoptedJson = await (await fetch(new URL('/api/transcript?format=json', url), { headers })).json();
+    const adoptedJson = await (
+      await fetch(new URL(`/api/transcript?format=json&chat=${adoptedChat}`, url), { headers })
+    ).json();
     expect(adoptedJson).toMatchObject({
       truncated: true,
       truncatedReason: expect.stringContaining('8 MB'),
     });
-    const adoptedMd = await (await fetch(new URL('/api/transcript?format=md', url), { headers })).text();
+    const adoptedMd = await (
+      await fetch(new URL(`/api/transcript?format=md&chat=${adoptedChat}`, url), { headers })
+    ).text();
     expect(adoptedMd).toContain('- **Incomplete:** Only the last 8 MB');
 
     await fetch(new URL('/api/command', url), {
@@ -3425,7 +3457,7 @@ describe('web UI server', () => {
           body: JSON.stringify({ type: 'project-chat', cwd }),
         }).then((reply) => reply.json());
       expect(await start(plain)).toEqual({ ok: false });
-      expect(await start(repo)).toEqual({ ok: true });
+      expect(await start(repo)).toMatchObject({ ok: true, chat: expect.any(String) });
 
       // The dialog's path is taken as it is: a name that ends in a space opens that folder and not
       // the one beside it, and a link is followed to the real folder, which the chat then runs in.
@@ -3438,8 +3470,9 @@ describe('web UI server', () => {
       };
       expect(await pick(linked)).toEqual({ folder: { path: spaced, exists: true, git: false } });
       expect(await start(plain)).toEqual({ ok: false });
-      expect(await start(spaced)).toEqual({ ok: true });
-      expect(await start(linked)).toEqual({ ok: true });
+      const opened = await start(spaced);
+      expect(opened).toMatchObject({ ok: true, chat: expect.any(String) });
+      expect(await start(linked)).toMatchObject({ ok: true, chat: expect.any(String) });
 
       const found = await fetch(new URL(`/api/folder?path=${encodeURIComponent(plain)}`, url), { headers });
       expect(await found.json()).toEqual({ path: plain, exists: true, git: false });

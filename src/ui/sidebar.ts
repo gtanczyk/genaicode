@@ -7,7 +7,7 @@ import type { RateLimit } from '../agents/types.js';
  * The state of a chat or session as its glyph says it (docs/design/desktop-layout.md, "Visual
  * language"): one hue and one shape per state, the same everywhere in the window.
  */
-export type ChatGlyph = 'run' | 'ask' | 'err' | 'ok' | 'idle';
+export type ChatGlyph = 'wait' | 'run' | 'ask' | 'err' | 'ok' | 'idle';
 
 export const GLYPH_TITLE: Record<ChatGlyph, string> = {
   run: 'Running',
@@ -15,6 +15,7 @@ export const GLYPH_TITLE: Record<ChatGlyph, string> = {
   err: 'Failed',
   ok: 'Done',
   idle: 'Idle',
+  wait: 'Waiting',
 };
 
 /**

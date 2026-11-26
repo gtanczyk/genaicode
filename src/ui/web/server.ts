@@ -1,3 +1,4 @@
+import type { ChatHub } from '../hub.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -34,13 +35,14 @@ import {
 } from '../transcript.js';
 import type { UiRelease } from './release.js';
 import { pageHtml } from './page.js';
-import { parseShell, parseSlash, withAttached } from '../format.js';
+import { splitAttached, parseShell, parseSlash, withAttached } from '../format.js';
 import { MAX_UPLOAD_BYTES, type Upload, type Uploads } from '../uploads.js';
 import type { FileRaw, ProjectFiles } from '../files.js';
 import { PullRequestBusy, type PullRequestLookup } from '../pull-requests.js';
 import { chatKey } from '../sidebar.js';
 
 export interface WebUiOptions {
+  hub?: ChatHub;
   projectTeams?: import('../../agents/pack-profile.js').ProjectTeams;
   controller: ChatController;
   /** The bundled browser script served at /app.js. */
@@ -79,6 +81,7 @@ export interface WebUiOptions {
     sandbox: SandboxPolicy | undefined,
     signal: AbortSignal,
     onResponse: () => void,
+    addRoot?: (dir: string) => void,
   ) => Promise<AgentResult>;
   /**
    * How much of each agent's plan is used, as last seen (`knownLimits`), at GET /api/limits: the
@@ -163,6 +166,7 @@ export interface HostUpdate {
 }
 
 export interface HostSaveRequest {
+  chat?: string;
   format: TranscriptFormat;
   /** Present when saving a stored session from the Sessions view rather than the active chat. */
   source?: string;
@@ -185,7 +189,7 @@ export interface HostApp {
   /** Reveal an existing file on disk in Finder / the OS file manager. */
   reveal?(path: string): void;
   /** Persist updated desktop settings (e.g. `artifactCdn`) in the host shell. */
-  saveSettings?(settings: { artifactCdn: readonly string[] }): void;
+  saveSettings?(settings: { artifactCdn?: readonly string[]; maxChats?: number }): void;
   /**
    * Ask the person for a folder with the host's own dialog (the project a new chat starts in).
    * Resolves to its absolute path, or undefined when they chose none.
@@ -383,6 +387,18 @@ function parseCommandBody(command: Record<string, unknown>): WebCommandBody | un
   const text = (key: string, max: number) =>
     typeof command[key] === 'string' && (command[key] as string).length <= max ? (command[key] as string) : undefined;
   switch (command.type) {
+    case 'open': {
+      if (!command.target || typeof command.target !== 'object') return;
+      const target = command.target as Record<string, unknown>;
+      const types = new Map([
+        ['home', 'home-chat'],
+        ['project', 'project-chat'],
+        ['topic', 'topic-chat'],
+        ['continue', 'continue'],
+      ]);
+      const type = typeof target.type === 'string' && types.get(target.type);
+      return type ? parseCommandBody({ ...target, type, order: command.order }) : undefined;
+    }
     case 'submit': {
       const body = text('text', 32_000);
       if (body === undefined) return undefined;
@@ -553,13 +569,16 @@ function parseCommandBody(command: Record<string, unknown>): WebCommandBody | un
 
 /** Serve the chat in a browser: one page, a server-sent event stream of views, and a command endpoint. */
 export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
-  const { controller } = options;
+  const { controller, hub } = options;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
   // Separate secret for the reload-shell cookie only; cookies are shared across ports on the host,
   // so this cookie never authorizes /api/* endpoints and never returns cwd/session metadata.
   const pageCookieSecret = randomBytes(32).toString('hex');
   const streams = new Set<ServerResponse>();
+  const sentViews = new WeakMap<ServerResponse, ReturnType<ChatController['get']>>();
+  const desktopStreams = new Set<ServerResponse>();
+  const viewers = new Map<ServerResponse, ChatController>();
   const lifetime = new AbortController();
   let port = 0;
 
@@ -573,7 +592,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
    * The task's worktree is still exactly its pull request (branch, head commit, nothing uncommitted),
    * checked now: a discard offered because the pull request holds the work loses nothing.
    */
-  const holdsPullRequest = async (turnId: number, id: string): Promise<boolean> => {
+  const holdsPullRequest = async (controller: ChatController, turnId: number, id: string): Promise<boolean> => {
     const task = controller
       .get()
       .session.turns.find((turn) => turn.id === turnId)
@@ -615,17 +634,31 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     res.end(body);
   };
 
+  const sentSummaries = new WeakMap<ServerResponse, string>();
+  const sendSummaries = (stream: ServerResponse, data: string) => {
+    if (!data || sentSummaries.get(stream) === data) return;
+    stream.write(data);
+    sentSummaries.set(stream, data);
+  };
   let pending: NodeJS.Timeout | undefined;
   // Coalesce bursts of changes (streamed text) into one message carrying the latest view.
   const broadcast = () => {
     if (pending) return;
     pending = setTimeout(() => {
       pending = undefined;
-      const data = `event: view\ndata: ${JSON.stringify(controller.get())}\n\n`;
-      for (const stream of streams) stream.write(data);
+      const summaries = hub ? `event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n` : '';
+      for (const stream of streams) {
+        const active = viewers.get(stream) ?? controller;
+        const view = active.get();
+        if (sentViews.get(stream) !== view) {
+          stream.write(`event: view\ndata: ${JSON.stringify(view)}\n\n`);
+          sentViews.set(stream, view);
+        }
+        sendSummaries(stream, summaries);
+      }
     }, 40);
   };
-  const unsubscribe = controller.subscribe(broadcast);
+  const unsubscribe = hub ? hub.subscribe(broadcast) : controller.subscribe(broadcast);
   const configEvent = () => {
     const update = options.hostApp?.update();
     const artifactCdn = options.settings?.artifactCdn() ?? controller.artifacts?.allowScriptHosts?.() ?? [];
@@ -633,6 +666,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       cwd: options.title.cwd,
       project: options.title.project !== false,
       ...(options.title.home ? { home: true } : {}),
+      ...(hub ? { multiChat: true, initialChat: hub.initial, maxChats: hub.limit } : {}),
       sessions: !!options.sessions,
       ...(options.limits ? { limits: true } : {}),
       agents: !!options.agents,
@@ -648,6 +682,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     };
     return `event: config\ndata: ${JSON.stringify(config)}\n\n`;
   };
+  let pendingDesktopChat: string | undefined;
+  if (hub)
+    hub.onOpen = (chat) => {
+      if (!desktopStreams.size) pendingDesktopChat = chat;
+      for (const stream of desktopStreams) stream.write(`event: open\ndata: ${JSON.stringify({ chat })}\n\n`);
+    };
   const broadcastConfig = () => {
     const data = configEvent();
     for (const stream of streams) stream.write(data);
@@ -704,6 +744,65 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       });
       return res.end(asset.body);
     }
+    const queryChat = url.searchParams.get('chat');
+    let chatId = queryChat ?? hub?.initial;
+    let command: WebCommand | undefined;
+    if (req.method === 'POST' && url.pathname === '/api/command') {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
+        return send(res, 403, 'application/json', '{"error":"bad token"}');
+      }
+      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
+      }
+
+      try {
+        const raw = JSON.parse(await readBody(req));
+        if (raw?.chat !== undefined) {
+          if (typeof raw.chat !== 'string' || !raw.chat || (queryChat && queryChat !== raw.chat))
+            return send(res, 409, 'application/json', '{"ok":false,"reason":"conversation"}');
+          chatId = raw.chat;
+        }
+        if (raw?.type === 'close' && hub && chatId) {
+          const ok = await hub.unload(chatId);
+          return send(res, ok ? 200 : 409, 'application/json', JSON.stringify({ ok }));
+        }
+        command = parseCommand(raw);
+      } catch {
+        command = undefined;
+      }
+      if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+      if (hub && command.type === 'tower' && command.id.startsWith('turn:')) {
+        const owner = /^turn:([a-f0-9-]{36}):[0-9]+:/.exec(command.id)?.[1];
+        if (!owner) return send(res, 409, 'application/json', '{"ok":false,"reason":"conversation"}');
+        chatId = owner;
+      }
+    }
+    let chat = chatId ? hub?.chats.get(chatId) : undefined;
+    if (hub && !chat && chatId && req.method === 'GET' && url.pathname === '/api/events') {
+      const header = req.headers['x-genaicode-token'];
+      const token =
+        header === undefined ? url.searchParams.get('token') : typeof header === 'string' ? header : undefined;
+      if (tokenOk(token)) chat = await hub.reopen(chatId).catch(() => undefined);
+    }
+    const gone = () => send(res, 404, 'application/json', '{"reason":"gone"}');
+    if (hub && !chat && (url.pathname.startsWith('/artifacts/') || url.pathname.startsWith('/uploads/')))
+      return send(res, 404, 'text/plain', 'Not found');
+    const controller = chat?.controller ?? options.controller;
+    const files = chat?.files ?? options.files;
+    const uploads = chat?.uploads ?? options.uploads;
+    if (req.method === 'GET' && url.pathname === '/api/chats' && hub) {
+      if (!tokenOk(req.headers['x-genaicode-token'] as string)) return send(res, 403, 'text/plain', 'Bad token');
+      return send(
+        res,
+        200,
+        'application/json',
+        JSON.stringify(
+          url.searchParams.has('running')
+            ? { running: hub.active }
+            : { running: hub.running, limit: hub.limit, chats: hub.summaries() },
+        ),
+      );
+    }
     if (req.method === 'GET' && url.pathname.startsWith('/artifacts/')) {
       // No token: the frame that shows an artifact would see it in its own URL. The id is
       // unguessable and opens that one artifact only.
@@ -721,7 +820,14 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
       // No token: capability URL minted by /api/file or /api/file/images, single-path and short-lived.
-      const found = options.files?.fromCapability(url.pathname.slice('/files/'.length));
+      const id = url.pathname.slice('/files/'.length);
+      let found = files?.fromCapability(id);
+      if (!found && hub) {
+        for (const entry of hub.chats.values()) {
+          found = entry.files.fromCapability(id);
+          if (found) break;
+        }
+      }
       if (!found) return send(res, 404, 'text/plain', 'Not found');
       return streamRawFile(
         req,
@@ -733,7 +839,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     }
     if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
       // No token, as for artifacts: the id is unguessable and shows that one image only.
-      const found = options.uploads?.image(url.pathname.slice('/uploads/'.length));
+      const found = uploads?.image(url.pathname.slice('/uploads/'.length));
       if (!found) return send(res, 404, 'text/plain', 'Not found');
       res.writeHead(200, {
         'content-type': found.type,
@@ -748,7 +854,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.uploads) return send(res, 404, 'application/json', '{"error":"no uploads"}');
+      if (hub && !chat) return gone();
+      if (!uploads) return send(res, 404, 'application/json', '{"error":"no uploads"}');
       const name = (url.searchParams.get('name') ?? '').slice(0, 200) || 'file';
       let body: Buffer;
       try {
@@ -759,7 +866,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 413, 'application/json', '{"error":"too large"}');
       }
       try {
-        const kept = options.uploads.save(name, body);
+        const kept = uploads.save(name, body);
         return send(res, 200, 'application/json', JSON.stringify({ id: kept.id, name: kept.name, size: kept.size }));
       } catch {
         // A full disk, a project that cannot be written to: the page says the message did not leave.
@@ -770,14 +877,15 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      if (hub && !chat) return gone();
+      if (!files) return send(res, 404, 'application/json', '{"error":"no files"}');
       const targetPath = url.searchParams.get('path') ?? '';
-      const found = options.files.read(targetPath);
+      const found = files.read(targetPath);
       if (typeof found === 'string') {
         const status = found === 'outside' || found === 'secret' ? 403 : 404;
         return send(res, status, 'application/json', JSON.stringify({ error: found }));
       }
-      const cap = options.files.capability(targetPath);
+      const cap = files.capability(targetPath);
       const payload = cap ? { ...found, rawUrl: `/files/${cap.id}`, fullPath: cap.raw.realPath } : found;
       return send(res, 200, 'application/json', JSON.stringify(payload), { 'cache-control': 'no-store' });
     }
@@ -785,8 +893,9 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
-      const found = options.files.raw(url.searchParams.get('path') ?? '');
+      if (hub && !chat) return gone();
+      if (!files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      const found = files.raw(url.searchParams.get('path') ?? '');
       if (typeof found === 'string') {
         const status = found === 'outside' || found === 'secret' ? 403 : 404;
         return send(res, status, 'application/json', JSON.stringify({ error: found }));
@@ -803,7 +912,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.files) return send(res, 404, 'application/json', '{"error":"no files"}');
+      if (hub && !chat) return gone();
+      if (!files) return send(res, 404, 'application/json', '{"error":"no files"}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         return send(res, 415, 'application/json', '{"error":"expected JSON"}');
       }
@@ -823,7 +933,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!paths) return send(res, 400, 'application/json', '{"error":"bad paths"}');
       const urls: Record<string, string> = {};
       for (const item of paths) {
-        const cap = options.files.capability(item, { onlyKind: 'image' });
+        const cap = files.capability(item, { onlyKind: 'image' });
         if (cap) urls[item] = `/files/${cap.id}`;
       }
       return send(res, 200, 'application/json', JSON.stringify({ urls }), { 'cache-control': 'no-store' });
@@ -832,6 +942,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       // `cwd`: a folder by its exact absolute path (the chat's own), taken as it is. `path`: one typed
       // in, where `~` is expanded and spaces around it are dropped.
       const exact = url.searchParams.get('cwd');
@@ -874,7 +985,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.hostApp?.reveal || !options.files) {
+      if (hub && !chat) return gone();
+      if (!options.hostApp?.reveal || !files) {
         return send(res, 404, 'application/json', '{"error":"reveal unavailable"}');
       }
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
@@ -890,7 +1002,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         targetPath = undefined;
       }
       if (!targetPath) return send(res, 400, 'application/json', '{"error":"bad path"}');
-      const resolved = options.files.revealPath(targetPath);
+      const resolved = files.revealPath(targetPath);
       if (!resolved.ok) {
         const status = resolved.reason === 'missing' ? 404 : 403;
         return send(res, status, 'application/json', JSON.stringify({ error: resolved.reason }));
@@ -902,13 +1014,25 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.settings) return send(res, 404, 'application/json', '{"error":"settings unavailable"}');
+      if (!options.settings && !hub) return send(res, 404, 'application/json', '{"error":"settings unavailable"}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         return send(res, 415, 'application/json', '{"error":"expected JSON"}');
       }
       let hosts: string[] | undefined;
+      let limit: number | undefined;
       try {
-        const body = JSON.parse(await readBody(req)) as { artifactCdn?: unknown };
+        const body = JSON.parse(await readBody(req)) as { artifactCdn?: unknown; maxChats?: unknown };
+        if (body?.maxChats !== undefined) {
+          if (
+            !hub ||
+            typeof body.maxChats !== 'number' ||
+            !Number.isInteger(body.maxChats) ||
+            body.maxChats < 1 ||
+            body.maxChats > 8
+          )
+            throw new Error('Choose 1 to 8 chats.');
+          limit = body.maxChats;
+        }
         if (
           Array.isArray(body?.artifactCdn) &&
           body.artifactCdn.length <= 32 &&
@@ -924,9 +1048,14 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           JSON.stringify({ error: error instanceof Error ? error.message : 'invalid settings' }),
         );
       }
-      if (!hosts) return send(res, 400, 'application/json', '{"error":"bad settings"}');
-      options.settings.setArtifactCdn(hosts);
-      options.hostApp?.saveSettings?.({ artifactCdn: hosts });
+      if ((!hosts || !options.settings) && limit === undefined)
+        return send(res, 400, 'application/json', '{"error":"bad settings"}');
+      if (hosts) options.settings?.setArtifactCdn(hosts);
+      if (limit !== undefined) hub?.setLimit(limit);
+      options.hostApp?.saveSettings?.({
+        ...(hosts || options.settings ? { artifactCdn: hosts ?? options.settings?.artifactCdn() } : {}),
+        ...(hub ? { maxChats: hub.limit } : {}),
+      });
       broadcastConfig();
       return send(res, 200, 'application/json', JSON.stringify({ ok: true, artifactCdn: hosts }));
     }
@@ -935,6 +1064,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       const candidate =
         header !== undefined ? (typeof header === 'string' ? header : null) : url.searchParams.get('token');
       if (!tokenOk(candidate)) return send(res, 403, 'text/plain', 'Bad token');
+      if (hub && !chat) return gone();
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-store',
@@ -946,9 +1076,22 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       res.write(configEvent());
       if (options.release) res.write(`event: release\ndata: ${JSON.stringify(options.release())}\n\n`);
       streams.add(res);
+      viewers.set(res, controller);
+      if (url.searchParams.get('desktop') === '1') {
+        desktopStreams.add(res);
+        if (pendingDesktopChat) {
+          res.write(`event: open\ndata: ${JSON.stringify({ chat: pendingDesktopChat })}\n\n`);
+          pendingDesktopChat = undefined;
+        }
+      }
+      const hide = chatId ? hub?.shown(chatId) : undefined;
+      if (hub) sendSummaries(res, `event: chats\ndata: ${JSON.stringify(hub.summaries())}\n\n`);
       const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
       req.on('close', () => {
         clearInterval(ping);
+        hide?.();
+        viewers.delete(res);
+        desktopStreams.delete(res);
         streams.delete(res);
       });
       return;
@@ -966,6 +1109,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/pack-profile') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))
         return send(res, 403, 'application/json', '{"error":"bad token"}');
+      if (hub && !chat) return gone();
       if (!options.projectTeams) return send(res, 404, 'application/json', '{"error":"no project teams"}');
       const selected = url.searchParams.get('project');
       const active = controller.session.get().cwd;
@@ -996,6 +1140,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       // Only a pull request a task of the conversation shown links to: the page cannot make the
       // server ask GitHub about anything else.
       const shown = controller.get();
@@ -1045,6 +1190,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       const format = url.searchParams.get('format') ?? 'md';
       if (format !== 'md' && format !== 'json' && format !== 'meta') {
         return send(res, 400, 'application/json', '{"error":"bad format"}');
@@ -1220,6 +1366,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       if (!options.hostApp?.saveTranscript) return send(res, 404, 'application/json', '{"ok":false}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         return send(res, 415, 'application/json', '{"error":"expected JSON"}');
@@ -1231,7 +1378,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           const validPart = (value: unknown) =>
             typeof value === 'string' && value.length > 0 && value.length <= 200 && !/[\r\n\0]/.test(value);
           if (body.source === undefined && body.id === undefined) {
-            saveRequest = { format: body.format };
+            saveRequest = { format: body.format, ...(url.searchParams.has('chat') && chatId ? { chat: chatId } : {}) };
           } else if (validPart(body.source) && validPart(body.id)) {
             saveRequest = { format: body.format, source: body.source as string, id: body.id as string };
           }
@@ -1248,6 +1395,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"delivery":"not-sent","error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       if (!options.sendPrompt)
         return send(res, 404, 'application/json', '{"delivery":"not-sent","error":"no session sender here"}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
@@ -1277,9 +1425,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       let responded = false;
       try {
-        const result = await options.sendPrompt(source, id, prompt, sandbox, lifetime.signal, () => {
-          responded = true;
-        });
+        const result = await options.sendPrompt(
+          source,
+          id,
+          prompt,
+          sandbox,
+          lifetime.signal,
+          () => {
+            responded = true;
+          },
+          chat?.addRoot,
+        );
         if (!result.ok) {
           const kind = result.failure?.kind;
           const reasons = {
@@ -1375,23 +1531,12 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       options.hostApp.relaunch();
       return send(res, 200, 'application/json', '{"ok":true}');
     }
-    if (req.method === 'POST' && url.pathname === '/api/command') {
-      if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
-        return send(res, 403, 'application/json', '{"error":"bad token"}');
-      }
-      if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
-        return send(res, 415, 'application/json', '{"error":"expected JSON"}');
-      }
-      let command: WebCommand | undefined;
-      try {
-        command = parseCommand(JSON.parse(await readBody(req)));
-      } catch {
-        command = undefined;
-      }
-      if (!command) return send(res, 400, 'application/json', '{"error":"bad command"}');
+    if (command) {
+      if (hub && !chat) return gone();
       // A command pressed in one conversation never acts on the next one the window moved to.
       if (
         (!isSwitch(command) &&
+          !(hub && command.type === 'tower' && command.id.startsWith('turn:')) &&
           command.generation !== undefined &&
           command.generation !== controller.get().generation) ||
         ((command.type === 'pack-task' || command.type === 'stop') &&
@@ -1404,6 +1549,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           'application/json',
           JSON.stringify({ ok: false, error: 'The conversation changed: nothing was done.', reason: 'conversation' }),
         );
+      if (
+        (command.type === 'approve' || command.type === 'answer') &&
+        url.searchParams.has('turn') &&
+        controller.get().session.turns.at(-1)?.id !== Number(url.searchParams.get('turn'))
+      )
+        return send(res, 409, 'application/json', '{"ok":false,"reason":"turn"}');
+      if (command.type === 'stop' && hub && chatId) {
+        const draft = hub.cancel(chatId);
+        if (draft) {
+          if (controller.hasShellProcesses()) controller.stop();
+          const parts = draft.map(splitAttached);
+          return send(
+            res,
+            200,
+            'application/json',
+            JSON.stringify({
+              ok: true,
+              draft: parts.map((p) => p.text).join('\n\n'),
+              files: parts.flatMap((p) => p.files.map(({ id, name }) => ({ id, name }))),
+            }),
+          );
+        }
+      }
       if (command.type === 'stop' && command.turn !== undefined) {
         const turns = controller.get().session.turns;
         const current = turns.at(-1);
@@ -1418,7 +1586,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (command.type === 'pack-task') {
         if (!controller.session.actOnPackTask)
           return send(res, 404, 'application/json', '{"ok":false,"error":"Pack controls are unavailable."}');
-        if (command.pullRequest && !(await holdsPullRequest(command.turnId, command.id)))
+        if (command.pullRequest && !(await holdsPullRequest(controller, command.turnId, command.id)))
           return send(
             res,
             409,
@@ -1442,17 +1610,32 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           return send(res, 200, 'application/json', JSON.stringify({ ok: true, text }));
         } catch (error) {
           const refusal = publicPackRefusal(error);
-          if (refusal)
+          if (refusal) {
+            const names = refusal.reason === 'capacity' ? hub?.busyPacks?.() : undefined;
             return send(
               res,
               refusal.reason === 'missing' ? 404 : 409,
               'application/json',
-              JSON.stringify({ ok: false, error: refusal.message, reason: refusal.reason }),
+              JSON.stringify({
+                ok: false,
+                error: names?.length ? refusal.message + ' Working chats: ' + names.join(', ') : refusal.message,
+                reason: refusal.reason,
+              }),
             );
+          }
           return send(res, 500, 'application/json', '{"ok":false,"error":"Could not run the pack task action."}');
         }
       }
       if (isSwitch(command)) {
+        if (hub && chatId) {
+          const opened = await hub.open(chatId, switchTarget(command, chosenFolders), command.order);
+          return send(
+            res,
+            200,
+            'application/json',
+            JSON.stringify(opened === null ? { ok: false, superseded: true } : { ok: !!opened, chat: opened }),
+          );
+        }
         const result = await controller.switchChat(
           switchTarget(command, chosenFolders),
           command.order,
@@ -1465,13 +1648,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           JSON.stringify({ ok: result === 'done', ...(result === 'superseded' ? { superseded: true } : {}) }),
         );
       }
-      let files: Upload[] = [];
+      let attachedFiles: Upload[] = [];
       if (command.type === 'submit' && command.files?.length) {
-        const found = command.files.map((id) => options.uploads?.find(id));
+        const found = command.files.map((id) => uploads?.find(id));
         if (found.some((one) => !one)) return send(res, 400, 'application/json', '{"error":"unknown file"}');
-        files = found as Upload[];
+        attachedFiles = found as Upload[];
       }
-      const ok = await run(controller, command, files);
+      const ok = await run(controller, command, attachedFiles);
       return send(res, 200, 'application/json', JSON.stringify({ ok }));
     }
     send(res, 404, 'text/plain', 'Not found');

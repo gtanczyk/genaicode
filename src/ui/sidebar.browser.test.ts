@@ -157,7 +157,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     const other = chats.getByRole('region', { name: "Other agents' sessions" });
     await other.getByRole('button', { name: /Sourdough schedule/ }).waitFor();
     expect(await other.locator('.tag').first().textContent()).toBe('helper');
-    expect(await chats.locator('details.proj').count()).toBe(0);
+    await chats.locator('.nav.chat[aria-current=page]').waitFor();
 
     // A chat is listed from its first prompt, under the folder it runs in, and is the one selected.
     await composer.fill('What is waiting for me?');
@@ -171,9 +171,12 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await topbar.locator('h1').textContent()).toBe('What is waiting for me?');
     expect(await topbar.locator('.crumb').count()).toBe(0);
 
-    // "New chat" leaves the chat in the list and selects nothing.
+    // The new, still-empty chat is selected and the prior chat stays in the list.
     await side.getByRole('button', { name: 'New chat', exact: true }).click();
-    await vi.waitFor(async () => expect(await chats.locator('[aria-current="page"]').count()).toBe(0));
+    await chats
+      .getByRole('button', { name: /New chat/ })
+      .and(chats.locator('[aria-current="page"]'))
+      .waitFor();
     await first.waitFor();
 
     // Taking a session over makes its folder a project of the list, with a "new chat here" button.
@@ -277,7 +280,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
     await vi.waitFor(async () => expect(await topbar.locator('.crumb').count()).toBe(0));
     let answer: ((ok: boolean) => void) | undefined;
-    await page.route('**/api/command', async (route) => {
+    await page.route('**/api/command*', async (route) => {
       if ((route.request().postDataJSON() as { type?: string }).type !== 'project-chat') return route.fallback();
       const go = await new Promise<boolean>((resolve) => (answer = resolve));
       return go ? route.fallback() : route.fulfill({ json: { ok: false } });
@@ -299,15 +302,17 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await composer.inputValue()).toBe('Feed the starter');
     expect(await topbar.locator('.crumb').count()).toBe(0);
     expect(made.length).toBe(sentBefore);
-    // Once the chat is in the folder, the same draft goes there.
+    // A new project chat has an empty composer. The original chat keeps its draft.
     await newHere();
     answer!(true);
     await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('bakery'));
     await vi.waitFor(async () => expect(await composer.getAttribute('aria-disabled')).toBeNull());
+    expect(await composer.inputValue()).toBe('');
+    await composer.fill('Start the bakery');
     await composer.press('Enter');
-    await project.getByRole('button', { name: /Feed the starter/ }).waitFor();
-    expect(made.at(-1)).toMatchObject({ title: 'Feed the starter', cwd: bakery });
-    await page.unroute('**/api/command');
+    await project.getByRole('button', { name: /Start the bakery/ }).waitFor();
+    expect(made.at(-1)).toMatchObject({ title: 'Start the bakery', cwd: bakery });
+    await page.unroute('**/api/command*');
 
     // A second project, to move between two.
     theirs.push(roster);
@@ -332,7 +337,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       order?: { window: string; seq: number };
     };
     const held: Array<Asked & { answer: (ok: boolean) => void; answered: Promise<unknown> }> = [];
-    await page.route('**/api/command', async (route) => {
+    await page.route('**/api/command*', async (route) => {
       const asked = route.request().postDataJSON() as Asked;
       if (asked.type !== 'project-chat' && asked.type !== 'continue') return route.fallback();
       let done!: () => void;
@@ -357,14 +362,15 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(held.map((one) => one.type)).toEqual(['project-chat', 'project-chat']);
     held[0]!.answer(true);
     await held[0]!.answered;
-    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('bakery'));
+    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
     expect(await disabled()).toBe('true');
     await composer.press('Enter');
     held[1]!.answer(true);
     await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
     await vi.waitFor(async () => expect(await disabled()).toBeNull());
     expect(await topbar.locator('h1').textContent()).toBe('New chat');
-    expect(await composer.inputValue()).toBe('Sharpen the swords');
+    expect(await composer.inputValue()).toBe('');
+    await composer.fill('Sharpen the swords');
 
     // A chat picked in the sidebar is looked up first: nothing is sent meanwhile, so the draft
     // cannot start in the chat that is left. When the lookup fails the draft is still there.
@@ -381,7 +387,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await composer.inputValue()).toBe('Sharpen the swords');
     expect(await topbar.locator('.crumb').textContent()).toBe('knights');
     expect(ran.length).toBe(sent);
-    // Once that chat is the open one, the draft goes to it.
+    // Reopening the first chat restores the draft written there.
     await first.click();
     await vi.waitFor(() => expect(held.length).toBe(2));
     await composer.press('Enter');
@@ -389,10 +395,11 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
     await vi.waitFor(async () => expect(await disabled()).toBeNull());
     expect(ran.length).toBe(sent);
+    expect(await composer.inputValue()).toBe('Feed the starter');
     await composer.press('Enter');
     await vi.waitFor(() => expect(ran.length).toBe(sent + 1));
     expect(ran.at(-1)).toMatchObject({ cwd: made[0]!.cwd, resume: made[0]!.id });
-    expect(ran.at(-1)!.prompt).toContain('Sharpen the swords');
+    expect(ran.at(-1)!.prompt).toContain('Feed the starter');
     expect(ran.at(-1)!.cwd).not.toBe(knights);
 
     // With this chat (A) open, another (B) is picked and then A again before B is there: A is
@@ -421,7 +428,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await pickBThenA();
     held[0]!.answer(true);
     await held[0]!.answered;
-    await vi.waitFor(async () => expect(await topbar.locator('.crumb').textContent()).toBe('knights'));
+    await inA();
     expect(await disabled()).toBe('true');
     held[1]!.answer(true);
     await vi.waitFor(inA);
@@ -433,7 +440,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await held[1]!.answered;
     await vi.waitFor(async () => expect(await disabled()).toBeNull());
     await inA();
-    const late = page.waitForResponse((response) => response.url().endsWith('/api/command'));
+    const late = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/command');
     held[0]!.answer(true);
     expect(await (await late).json()).toEqual({ ok: false, superseded: true });
     await held[0]!.answered;
@@ -462,12 +469,12 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     held[1]!.answer(true);
     await held[1]!.answered;
     await vi.waitFor(async () => expect(await disabled()).toBeNull());
-    const overtaken = page.waitForResponse((response) => response.url().endsWith('/api/command'));
+    const overtaken = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/command');
     held[0]!.answer(true);
     expect(await (await overtaken).json()).toEqual({ ok: false, superseded: true });
     await held[0]!.answered;
     await inA();
-    await page.unroute('**/api/command');
+    await page.unroute('**/api/command*');
 
     // A window under 980 px starts with the rail until the person chooses.
     const narrow = await browser.newContext({ viewport: { width: 900, height: 700 } });

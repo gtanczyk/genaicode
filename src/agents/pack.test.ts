@@ -2440,3 +2440,144 @@ console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false
     }
   });
 });
+
+it('reopens an unmerged worker after shutdown and uses the same worktree and shared capacity', async () => {
+  const cwd = repo();
+  const { PackPool } = await import('./pack-pool.js');
+  const pool = new PackPool(1);
+  const worker = writer('writer', 'saved.txt', 'from the original worktree');
+  const lead = fake(
+    'lead',
+    async (task) => {
+      await tool(task, 'delegate', { agent: 'writer', prompt: 'write saved.txt' });
+      await tool(task, 'wait', { ids: ['t1'] });
+    },
+    { mcp: true },
+  );
+  const template = pack({
+    lead,
+    members: [worker],
+    verification: { label: 'verify', run: async () => ({ ok: true }) },
+  });
+  const first = template.forChat('first', pool);
+  const original = first.run({ cwd, prompt: 'delegate' });
+  expect((await original.result).ok).toBe(true);
+  await first.shutdown();
+  const records = JSON.parse(JSON.stringify(first.records()));
+  Object.assign(records[0].task, {
+    text: 'A clipped reply',
+    verdict: 'LGTM',
+    pullRequest: { number: 7, url: 'https://github.com/example/project/pull/7' },
+    steps: [{ kind: 'message', at: 1, text: 'Wrote saved.txt' }],
+    steers: [{ text: 'keep going', at: 1, from: 'user', delivery: 'sent' }],
+  });
+  const second = template.forChat('first', pool);
+  const controls = second.recover({ cwd, prompt: 'delegate' }, records);
+  expect(controls.task('t1')).toMatchObject(records[0].task);
+  await expect(controls.act('t1', { type: 'steer', text: 'no detached run' })).rejects.toMatchObject({
+    reason: 'not-running',
+  });
+  const busy = pool.take()!;
+  await expect(controls.act('t1', { type: 'verify' })).rejects.toMatchObject({ reason: 'capacity' });
+  busy();
+  await controls.act('t1', { type: 'verify' });
+  await controls.act('t1', { type: 'merge' });
+  expect(readFileSync(join(cwd, 'saved.txt'), 'utf8')).toBe('from the original worktree');
+  expect(second.records()).toEqual([]);
+  await second.close();
+});
+
+it('queues workers across packs, releases each slot once and serializes mutations only within a repository', async () => {
+  const { PackPool } = await import('./pack-pool.js');
+  const pool = new PackPool(2);
+  const a = pool.take('First')!;
+  const b = pool.take('Second')!;
+  expect(pool.take('Third')).toBeUndefined();
+  expect(pool.busyChats).toEqual(['First', 'Second']);
+  const stop = new AbortController();
+  const canceled = pool.acquire(stop.signal, undefined, 'Canceled');
+  const pending = pool.acquire(new AbortController().signal, undefined, 'Third');
+  stop.abort();
+  await expect(canceled).rejects.toThrow('Stopped waiting');
+  b();
+  const third = await pending;
+  b();
+  expect(pool.busyChats).toEqual(['First', 'Third']);
+  a();
+  third();
+  let finish!: () => void;
+  const held = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const entries: string[] = [];
+  const one = pool.inRepo('/one', async () => {
+    entries.push('first');
+    await held;
+  });
+  const two = pool.inRepo('/one', async () => {
+    entries.push('second');
+  });
+  await pool.inRepo('/other', async () => {
+    entries.push('other');
+  });
+  expect(entries).toEqual(['first', 'other']);
+  finish();
+  await Promise.all([one, two]);
+  expect(entries).toEqual(['first', 'other', 'second']);
+});
+
+it('cancels a queued delegation when the caller cancels the MCP request or disconnects', async () => {
+  const { PackPool } = await import('./pack-pool.js');
+  const cwd = repo();
+  const pool = new PackPool(1);
+  const release = pool.take('busy')!;
+  const acquire = vi.spyOn(pool, 'acquire');
+  const starts: string[] = [];
+  const worker = fake('worker', async (task) => {
+    starts.push(task.prompt);
+  });
+  const lead = fake(
+    'lead',
+    async (task) => {
+      const server = task.mcpServers!.find((s) => s.name === 'pack')!;
+      if (!('url' in server)) throw new Error('Expected an HTTP server');
+      const post = (body: unknown, signal?: AbortSignal) =>
+        fetch(server.url, {
+          method: 'POST',
+          headers: { ...server.headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal,
+        });
+      for (const id of [1, 2]) {
+        const abort = new AbortController();
+        const answer = post(
+          {
+            jsonrpc: '2.0',
+            id,
+            method: 'tools/call',
+            params: { name: 'delegate', arguments: { agent: 'worker', prompt: 'canceled', mode: 'shared' } },
+          },
+          abort.signal,
+        ).catch(() => undefined);
+        await vi.waitFor(() => expect(acquire).toHaveBeenCalledTimes(id));
+        if (id === 1) await post({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } });
+        else abort.abort();
+        await answer;
+        await vi.waitFor(() => expect(acquire.mock.calls[id - 1]![0].aborted).toBe(true));
+      }
+      release();
+      await tool(task, 'delegate', { agent: 'worker', prompt: 'wanted', mode: 'shared' });
+      await tool(task, 'wait');
+    },
+    { mcp: true },
+  );
+  const team = pack({ lead, members: [worker], pool, maxParallel: 1 });
+  try {
+    const result = await team.run({ prompt: 'go', cwd }).result;
+    expect(result.ok, result.error).toBe(true);
+    expect(starts).toEqual(['wanted']);
+  } finally {
+    release();
+    await team.close();
+  }
+});

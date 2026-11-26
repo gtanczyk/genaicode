@@ -150,6 +150,8 @@ export interface SessionState {
 }
 
 export interface AgentSessionOptions {
+  initialUsage?: { usage: TokenUsage; costUsd?: number };
+
   agent: CodingAgent;
   cwd: string;
   model?: string;
@@ -310,7 +312,14 @@ export interface AgentSession {
    */
   adopt(
     turns: readonly SessionTurn[],
-    options?: { sessionId?: string; mode?: AgentMode; cwd?: string; replace?: boolean; truncatedReason?: string },
+    options?: {
+      sessionId?: string;
+      mode?: AgentMode;
+      cwd?: string;
+      replace?: boolean;
+      truncatedReason?: string;
+      recoverPack?(turn: SessionTurn): { agent: CodingAgent; controls: PackControls } | undefined;
+    },
   ): boolean;
   /** Resolves when no turn is running and nothing is queued. */
   idle(): Promise<void>;
@@ -342,7 +351,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     queued: [],
     notes: [],
     approvals: [],
-    usage: {},
+    usage: options.initialUsage?.usage ?? {},
+    costUsd: options.initialUsage?.costUsd,
     ...(options.budget ? { budget: options.budget } : {}),
     ...(options.fallback?.length ? { fallback: options.fallback.map((candidate) => candidate.name) } : {}),
     canSteer: false,
@@ -455,8 +465,8 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
     return next!;
   };
   // Usage of finished turns; the running turn's latest report is added on top.
-  let pastUsage: TokenUsage = {};
-  let pastCost: number | undefined;
+  let pastUsage: TokenUsage = state.usage;
+  let pastCost = state.costUsd;
 
   const set = (patch: Partial<SessionState>) => {
     // A reported model belongs to the agent session that reported it: a new or replaced one starts without.
@@ -1482,7 +1492,15 @@ export function createAgentSession(options: AgentSessionOptions): AgentSession {
       const adopted = turns.map((turn) => {
         // A handoff of its own belongs to the session it came from.
         const copy: SessionTurn = { ...turn, id: nextTurnId++ };
-        if (copy.pack) copy.pack = { ...copy.pack, interactive: false };
+        if (copy.pack) {
+          const recovered = adoptOptions?.recoverPack?.(turn);
+          copy.pack = { ...copy.pack, interactive: !!recovered };
+          if (recovered)
+            packRuns.set(copy.id, {
+              ...recovered,
+              unsubscribe: recovered.controls.onTaskChange?.((id) => syncPackTask(copy.id, id)),
+            });
+        }
         delete copy.handoff;
         return copy;
       });

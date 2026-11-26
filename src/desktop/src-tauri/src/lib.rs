@@ -99,6 +99,7 @@ struct Shell {
     topics: Vec<tower::Topic>,
     /// The app is on its way out: nothing is started again.
     quitting: bool,
+    quit_pending: bool,
 }
 
 type ShellState = Mutex<Shell>;
@@ -266,7 +267,7 @@ fn native_opener() -> impl tauri::plugin::Plugin<Wry> {
 }
 
 /// How long `genaicode ui` gets to stop its agents and `!command`s before it is killed.
-const STOP_GRACE: Duration = Duration::from_secs(5);
+const STOP_GRACE: Duration = Duration::from_secs(10);
 
 /// Close the server's stdin, so `--exit-with-stdin` shuts it down the way Ctrl-C would: its agents
 /// and shell commands run in their own process groups, and a SIGKILL of Node alone would leave
@@ -322,6 +323,9 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
         "GENAICODE_DESKTOP_VERSION",
         app.package_info().version.to_string(),
     );
+    if let Some(limit) = settings.max_chats.filter(|n| (1..=8).contains(n)) {
+        command.arg("--max-chats").arg(limit.to_string());
+    }
     let cdn_hosts: Vec<&str> = settings
         .artifact_cdn
         .iter()
@@ -390,7 +394,9 @@ fn try_start(app: &AppHandle) -> Result<(), String> {
                     }
                 }
             } else if opened && line.starts_with(nav::SETTINGS_PREFIX) {
-                if let Some(updated) = nav::parse_settings_line(&line) {
+                if let Some(updated) =
+                    nav::parse_settings_line(&line, nav::load_settings(&settings_path))
+                {
                     let _ = nav::save_settings(&settings_path, &updated);
                 }
             } else if opened {
@@ -808,7 +814,22 @@ enum CopyKind {
     Json,
 }
 
+fn shown_chat(app: &AppHandle) -> Option<String> {
+    let url = app.get_webview_window("main")?.url().ok()?;
+    let id = url.fragment()?.strip_prefix("chat=")?;
+    (id.len() == 36 && id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-'))
+        .then(|| id.to_owned())
+}
+
+fn with_chat(path: &str, chat: Option<&str>) -> String {
+    match chat {
+        Some(id) => format!("{path}&chat={id}"),
+        None => path.to_owned(),
+    }
+}
+
 fn copy_transcript_item(app: &AppHandle, kind: CopyKind) {
+    let chat = shown_chat(app);
     let app = app.clone();
     thread::spawn(move || {
         let endpoint = match current_endpoint(&app) {
@@ -820,7 +841,7 @@ fn copy_transcript_item(app: &AppHandle, kind: CopyKind) {
             CopyKind::Markdown => "/api/transcript?format=md",
             CopyKind::Json => "/api/transcript?format=json",
         };
-        let response = match transcript::fetch(&endpoint, path) {
+        let response = match transcript::fetch(&endpoint, &with_chat(path, chat.as_deref())) {
             Ok(response) if response.status == 200 => response,
             Ok(response) => {
                 return fail(
@@ -885,13 +906,19 @@ fn copy_transcript_item(app: &AppHandle, kind: CopyKind) {
 }
 
 fn save_transcript(app: &AppHandle, request: transcript::SaveRequest) {
+    let path = with_chat(&request.api_path(), request.chat.as_deref());
+    let path = if request.chat.is_none() && request.session.is_none() {
+        with_chat(&path, shown_chat(app).as_deref())
+    } else {
+        path
+    };
     let app = app.clone();
     thread::spawn(move || {
         let endpoint = match current_endpoint(&app) {
             Ok(endpoint) => endpoint,
             Err(message) => return info(&app, message),
         };
-        let response = match transcript::fetch(&endpoint, &request.api_path()) {
+        let response = match transcript::fetch(&endpoint, &path) {
             Ok(response) if response.status == 200 => response,
             Ok(response) if response.status == 404 => {
                 return fail(&app, "That session could not be found.".into());
@@ -978,6 +1005,7 @@ fn on_menu(app: &AppHandle, id: &str) {
             transcript::SaveRequest {
                 format: transcript::Format::Md,
                 session: None,
+                chat: None,
             },
         );
     } else if id == DEV_SAVE_JSON {
@@ -986,17 +1014,62 @@ fn on_menu(app: &AppHandle, id: &str) {
             transcript::SaveRequest {
                 format: transcript::Format::Json,
                 session: None,
+                chat: None,
             },
         );
     } else if matches!(id, SUPPORT_URL | BUG_REPORT_URL | LEGAL_URL) {
         open_link(app, id);
     } else if id == QUIT {
-        app.exit(0);
+        request_quit(app);
     } else if let Some(ask) = id.strip_prefix("approve:") {
         answer(app, ask, true);
     } else if let Some(ask) = id.strip_prefix("deny:") {
         answer(app, ask, false);
     }
+}
+
+fn request_quit(app: &AppHandle) {
+    {
+        let state = app.state::<ShellState>();
+        let mut shell = state.lock().unwrap();
+        if shell.quit_pending || shell.quitting {
+            return;
+        }
+        shell.quit_pending = true;
+    }
+    let app = app.clone();
+    thread::spawn(move || {
+        let running = current_endpoint(&app)
+            .ok()
+            .and_then(|ep| transcript::fetch(&ep, "/api/chats?running=1").ok())
+            .filter(|reply| reply.status == 200)
+            .and_then(|reply| serde_json::from_slice::<serde_json::Value>(&reply.body).ok())
+            .and_then(|data| data["running"].as_u64());
+        let handle = app.clone();
+        let decide = move |quit: bool| {
+            {
+                let state = handle.state::<ShellState>();
+                let mut shell = state.lock().unwrap();
+                shell.quit_pending = false;
+                shell.quitting = quit;
+            }
+            if quit {
+                handle.exit(0);
+            }
+        };
+        match running {
+            Some(count) if count > 0 => app
+                .dialog()
+                .message(format!("{count} active chats. Quit stops their work."))
+                .title("Quit Genaicode?")
+                .buttons(MessageDialogButtons::OkCancelCustom(
+                    "Quit".into(),
+                    "Keep working".into(),
+                ))
+                .show(decide),
+            _ => decide(true),
+        }
+    });
 }
 
 pub fn run() {
@@ -1016,6 +1089,9 @@ pub fn run() {
                 if cfg!(target_os = "macos") {
                     api.prevent_close();
                     let _ = window.hide();
+                } else {
+                    api.prevent_close();
+                    request_quit(window.app_handle());
                 }
             }
         })
@@ -1271,6 +1347,12 @@ pub fn run() {
         .expect("the genaicode desktop app failed to start");
 
     app.run(|app, event| match event {
+        RunEvent::ExitRequested { api, code, .. }
+            if code.is_none() && !app.state::<ShellState>().lock().unwrap().quitting =>
+        {
+            api.prevent_exit();
+            request_quit(app);
+        }
         RunEvent::Exit => {
             if let Ok(mut shell) = app.state::<ShellState>().lock() {
                 shell.quitting = true;

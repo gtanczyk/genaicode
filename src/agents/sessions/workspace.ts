@@ -1,3 +1,4 @@
+import type { TokenUsage } from '../../core/types.js';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs, mkdirSync, realpathSync, statSync } from 'node:fs';
@@ -21,6 +22,8 @@ export type ConversationOrigin = 'home' | 'topic' | 'session' | 'project' | 'unr
 
 /** One conversation tracked by the server in `--home` mode. */
 export interface ConversationRecord {
+  usage?: TokenUsage;
+  costUsd?: number;
   id: string;
   cwd: string;
   origin: ConversationOrigin;
@@ -637,6 +640,7 @@ export interface ProjectChannel {
 
 /** Start a local MCP server serving `open_project`, behind a random bearer token. */
 export async function startProjectChannel(options: {
+  serve?: typeof startLocalMcpServer;
   name?: string;
   env?: NodeJS.ProcessEnv;
   loadSessions?(): Promise<readonly SessionInfo[]>;
@@ -658,7 +662,7 @@ export async function startProjectChannel(options: {
       return { store, sessions, codexProjects: codex };
     },
   });
-  const server = await startLocalMcpServer({
+  const server = await (options.serve ?? startLocalMcpServer)({
     name: options.name ?? 'genaicode_project',
     tools: [tool],
     instructions:
@@ -714,6 +718,20 @@ async function readConversationsUnlocked(file: string): Promise<ConversationReco
             ...(typeof rec.agent === 'string' ? { agent: rec.agent } : {}),
             ...(typeof rec.source === 'string' ? { source: rec.source } : {}),
             ...(typeof rec.sessionId === 'string' ? { sessionId: rec.sessionId } : {}),
+            ...(typeof rec.costUsd === 'number' && rec.costUsd >= 0 ? { costUsd: rec.costUsd } : {}),
+            ...(rec.usage && typeof rec.usage === 'object'
+              ? {
+                  usage: Object.fromEntries(
+                    Object.entries(rec.usage).filter(
+                      ([key, value]) =>
+                        ['inputTokens', 'outputTokens', 'totalTokens', 'cachedInputTokens'].includes(key) &&
+                        typeof value === 'number' &&
+                        Number.isFinite(value) &&
+                        value >= 0,
+                    ),
+                  ),
+                }
+              : {}),
             updatedAt: rec.updatedAt,
           },
         ];

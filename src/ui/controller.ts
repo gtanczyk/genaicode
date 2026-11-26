@@ -97,6 +97,7 @@ export interface Notice {
 
 /** Metadata of the active conversation in `--home` mode. */
 export interface ConversationMeta {
+  recordId?: string;
   id: string;
   cwd: string;
   origin: ConversationOrigin;
@@ -104,7 +105,12 @@ export interface ConversationMeta {
   topic?: { id: string; name: string };
 }
 
+export interface RecoveredDraft {
+  id: string;
+  prompts: string[];
+}
 export interface ChatView {
+  recoveredDraft?: RecoveredDraft;
   session: SessionState;
   notices: Notice[];
   agents: AgentChoice[];
@@ -138,6 +144,14 @@ export interface WebHandoff {
 export type ChatSource = 'terminal' | 'web';
 
 export interface ChatOptions {
+  chatId?: string;
+  restoredConversation?: ConversationMeta;
+  initialUsage?: AgentSessionOptions['initialUsage'];
+  schedule?(text: string, send: () => void): void;
+  cancelWaiting?(): void;
+  sharedInbox?: boolean;
+  /** The interactive CLI confirms SIGINT before initiating shutdown. */
+  guardedInterrupt?: boolean;
   /** Saved default for a fresh project conversation. Resumed sessions keep their selected agent. */
   projectLead?(cwd: string): Promise<string | undefined>;
   agents: readonly CodingAgent[];
@@ -171,6 +185,7 @@ export interface ChatOptions {
   approveAll?: boolean;
   /** Start with the bark on. Default true; `/bark` toggles it. */
   bark?: boolean;
+  onBark?(on: boolean): void;
   /** Rewrites each prompt before it reaches the agent; the transcript shows what was typed. */
   transformPrompt?(prompt: string): string;
   /** Backs `/web`. Without it, `/web` only says the browser UI is not available here. */
@@ -228,6 +243,10 @@ export interface SwitchOrder {
 export type SwitchResult = 'done' | 'refused' | 'superseded';
 
 export interface ChatController {
+  recoverPrompts(prompts: string[]): void;
+  setBark(on: boolean): void;
+  hasShellProcesses(): boolean;
+  resourcesIdle(): Promise<void>;
   get(): ChatView;
   subscribe(listener: (view: ChatView) => void): () => void;
   /** A prompt or a slash command. Returns 'quit' when the user asked to leave. Default source: terminal. */
@@ -355,9 +374,10 @@ export function createChatController(options: ChatOptions): ChatController {
   const relayEpochs = new Map<number, { conversation: number; context: number }>();
   let closed = false;
   const session = createAgentSession({
+    initialUsage: options.initialUsage,
     ...(options.fallback?.length ? { fallback: fallbackAgents(options.fallback) } : {}),
     agent: initial,
-    cwd: options.cwd,
+    cwd: options.restoredConversation?.cwd ?? options.cwd,
     model: options.model,
     effort: options.effort,
     mode: options.mode,
@@ -373,23 +393,32 @@ export function createChatController(options: ChatOptions): ChatController {
   });
   const homeMode = options.home === true;
   const homeDir = options.cwd;
-  let conversation: ConversationMeta | undefined = homeMode
-    ? { id: randomUUID(), cwd: homeDir, origin: 'home' }
-    : undefined;
+  let conversation: ConversationMeta | undefined =
+    options.restoredConversation ??
+    (homeMode || options.chatId
+      ? { id: options.chatId ?? randomUUID(), cwd: homeDir, origin: homeMode ? 'home' : 'project' }
+      : undefined);
+  let recoveredDraft: RecoveredDraft | undefined;
+  let spent = options.initialUsage;
+  let pendingSave = Promise.resolve();
   let lastSavedKey = '';
   let nextNotice = 1;
   let bark = options.bark ?? true;
   const inbox = options.towerInbox;
   const shells = new Set<ChildProcess>();
+  const groups = new Map<ChildProcess, { stopping: boolean }>();
+  const onShellsStopped = new Set<() => void>();
   const syncConversation = (state: SessionState) => {
-    if (!homeMode || !conversation) return;
+    if (!conversation) return;
     let next = conversation;
     if (next.cwd !== state.cwd) next = { ...next, cwd: state.cwd };
     if (!next.title && state.turns.length) next = { ...next, title: promptLine(state.turns[0]!.prompt, 120) };
     conversation = next;
-    if (setup || (!state.turns.length && !state.sessionId && next.origin !== 'project')) return;
+    if (setup || (!state.turns.length && !state.sessionId && !(homeMode && next.origin === 'project'))) return;
     const source = byName.get(state.agent)?.sessions?.name;
+    if (state.status === 'idle') spent = { usage: state.usage, costUsd: state.costUsd };
     const key = JSON.stringify([
+      spent,
       next.id,
       next.cwd,
       next.origin,
@@ -400,9 +429,11 @@ export function createChatController(options: ChatOptions): ChatController {
     ]);
     if (key === lastSavedKey) return;
     lastSavedKey = key;
-    void saveConversation(
+    pendingSave = saveConversation(
       {
-        id: next.id,
+        usage: spent?.usage,
+        costUsd: spent?.costUsd,
+        id: next.recordId ?? next.id,
         cwd: next.cwd,
         origin: next.origin,
         ...(next.title ? { title: next.title } : {}),
@@ -421,13 +452,14 @@ export function createChatController(options: ChatOptions): ChatController {
     return {
       session: state,
       notices,
+      ...(recoveredDraft ? { recoveredDraft } : {}),
       agents,
       bark,
       autoApprove,
       generation: conversationEpoch,
       shells: shells.size,
       ...(setup ? { setup: true } : {}),
-      ...(inbox ? { tower: inbox.view(state) } : {}),
+      ...(inbox ? { tower: inbox.view(state, options.chatId) } : {}),
       ...(conversation ? { conversation } : {}),
     };
   };
@@ -466,17 +498,18 @@ export function createChatController(options: ChatOptions): ChatController {
   const refreshInbox = () => {
     void inbox?.refresh().catch(() => notice('Could not refresh the tower inbox.', 'error'));
   };
-  const inboxTimer = inbox ? setInterval(refreshInbox, 15_000).unref() : undefined;
+  const inboxTimer = inbox && !options.sharedInbox ? setInterval(refreshInbox, 15_000).unref() : undefined;
   if (inbox) refreshInbox();
   // Shell commands started by the operator, e.g. a dev server in this project.
   // Process groups to end on /stop and exit, while anything in them runs: a shell can exit
   // before what it started (`server &`, or on SIGTERM), so a group outlives its shell here
   // until it is empty, or until its SIGKILL once stopped.
-  const groups = new Map<ChildProcess, { stopping: boolean }>();
   let sweep: ReturnType<typeof setInterval> | undefined;
   const drop = (child: ChildProcess) => {
     groups.delete(child);
     if (groups.size) return;
+    for (const resolve of onShellsStopped) resolve();
+    onShellsStopped.clear();
     unwatchShells(onEnd);
     clearInterval(sweep);
     sweep = undefined;
@@ -502,10 +535,13 @@ export function createChatController(options: ChatOptions): ChatController {
     return groups.size;
   };
   const stopAll = () => {
+    options.cancelWaiting?.();
     session.stop();
     if (stopShells()) notice('Stopping the shell commands.');
   };
-  const onEnd = () => stopShells(true);
+  const onEnd = (signal?: NodeJS.Signals) => {
+    if (signal !== 'SIGINT' || !options.guardedInterrupt) stopShells(true);
+  };
   const runShell = (command: string) => {
     if (!command) {
       notice('Type a command after !, e.g. !npm test.', 'error');
@@ -681,8 +717,15 @@ export function createChatController(options: ChatOptions): ChatController {
         contextEpoch += 1;
         relayNotices.clear();
         notices = [];
-        if (homeMode) {
-          conversation = { id: randomUUID(), cwd: homeDir, origin: 'home' };
+        if (conversation) {
+          recoveredDraft = undefined;
+          const fresh = randomUUID();
+          conversation = {
+            id: options.chatId ?? fresh,
+            ...(options.chatId ? { recordId: fresh } : {}),
+            cwd: session.get().cwd,
+            origin: homeMode ? 'home' : 'project',
+          };
           lastSavedKey = '';
         }
       }
@@ -704,7 +747,7 @@ export function createChatController(options: ChatOptions): ChatController {
       ok = session.setCwd(target.cwd, { handoff: true });
       if (ok && homeMode) {
         conversation = {
-          ...(conversation ?? { id: randomUUID(), cwd: target.cwd, origin: 'project' }),
+          ...(conversation ?? { id: options.chatId ?? randomUUID(), cwd: target.cwd, origin: 'project' }),
           cwd: target.cwd,
           origin: 'project',
           ...(target.topic ? { topic: target.topic } : {}),
@@ -754,7 +797,7 @@ export function createChatController(options: ChatOptions): ChatController {
           if (lead) session.setAgent(lead, { handoff: false });
           notices = [];
           conversation = {
-            id: randomUUID(),
+            id: options.chatId ?? randomUUID(),
             cwd: resolved.cwd,
             origin: resolved.origin,
             topic: { id: topic.id, name: topic.name },
@@ -858,7 +901,7 @@ export function createChatController(options: ChatOptions): ChatController {
         relayNotices.clear();
         if (lead) session.setAgent(lead, { handoff: false });
         notices = [];
-        conversation = { id: randomUUID(), cwd, origin: 'project' };
+        conversation = { id: options.chatId ?? randomUUID(), cwd, origin: 'project' };
         lastSavedKey = '';
       }
     } finally {
@@ -1017,7 +1060,7 @@ export function createChatController(options: ChatOptions): ChatController {
           relayNotices.clear();
           notices = [];
           conversation = {
-            id: saved?.id ?? randomUUID(),
+            id: options.chatId ?? saved?.id ?? randomUUID(),
             cwd: resolved.cwd,
             origin: resolved.origin,
             title: oneLine(name, 120),
@@ -1250,8 +1293,22 @@ export function createChatController(options: ChatOptions): ChatController {
     }
   };
 
+  const sendPrompt = (text: string) => {
+    if (recoveredDraft) {
+      recoveredDraft = undefined;
+      publish();
+    }
+    if (options.schedule) options.schedule(text, () => session.send(text));
+    else session.send(text);
+  };
+
   return {
     session,
+    recoverPrompts(prompts) {
+      if (!prompts.length) return;
+      recoveredDraft = { id: randomUUID(), prompts: [...(recoveredDraft?.prompts ?? []), ...prompts] };
+      publish();
+    },
     get: () => view,
     subscribe(listener) {
       listeners.add(listener);
@@ -1268,7 +1325,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Connect an agent to start.', 'error');
           return 'ok';
         }
-        session.send(text.trimStart().slice(1));
+        sendPrompt(text.trimStart().slice(1));
         return 'ok';
       }
       const command = parseSlash(text);
@@ -1277,7 +1334,7 @@ export function createChatController(options: ChatOptions): ChatController {
           notice('Connect an agent to start.', 'error');
           return 'ok';
         }
-        session.send(text.startsWith('//') ? text.slice(1) : text);
+        sendPrompt(text.startsWith('//') ? text.slice(1) : text);
         return 'ok';
       }
       switch (command.kind) {
@@ -1402,6 +1459,7 @@ export function createChatController(options: ChatOptions): ChatController {
             return 'ok';
           }
           bark = command.on ?? !bark;
+          options.onBark?.(bark);
           notice(bark ? '🐺 Woof. The wolf barks when the agent needs you or finishes.' : '🐺 The wolf is quiet.');
           return 'ok';
         case 'auto':
@@ -1445,10 +1503,10 @@ export function createChatController(options: ChatOptions): ChatController {
     decideTower: (id, decision) => {
       if (!inbox) return Promise.resolve(false);
       if (decision === 'send' || decision === 'approve') {
-        const cwd = inbox.view(session.get()).items.find((item) => item.id === id)?.cwd;
+        const cwd = inbox.view(session.get(), options.chatId).items.find((item) => item.id === id)?.cwd;
         if (cwd) options.onRoot?.(cwd);
       }
-      return inbox.decide(session, id, decision);
+      return inbox.decide(session, id, decision, options.chatId);
     },
     selectAgent,
     updateAgents,
@@ -1461,6 +1519,16 @@ export function createChatController(options: ChatOptions): ChatController {
     setModel(model) {
       session.setModel(model || undefined);
     },
+    setBark(on) {
+      if (bark === on) return;
+      bark = on;
+      publish();
+    },
+    hasShellProcesses: () => groups.size > 0,
+    async resourcesIdle() {
+      if (groups.size) await new Promise<void>((resolve) => onShellsStopped.add(resolve));
+      await pendingSave;
+    },
     setAutoApprove(on, generation) {
       if (generation !== conversationEpoch) return false;
       applyAutoApprove(on);
@@ -1471,7 +1539,7 @@ export function createChatController(options: ChatOptions): ChatController {
       closed = true;
       clearInterval(inboxTimer);
       offInbox?.();
-      inbox?.close();
+      if (!options.sharedInbox) inbox?.close();
       relayNotices.clear();
       relayEpochs.clear();
       offSend?.();
@@ -1516,13 +1584,13 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07/g;
 // hangup: each controller with some running registers here, and they end with this process,
 // however it ends. One listener for all controllers, so a signal keeps its default (exit)
 // unless the host handles it too.
-const shellOwners = new Set<() => void>();
+const shellOwners = new Set<(signal?: NodeJS.Signals) => void>();
 const endShells = () => {
   for (const end of [...shellOwners]) end();
 };
 // Prepended, so it runs before the host's own listeners, one-shot ones included, and sees them.
 const onShellSignal = (signal: NodeJS.Signals) => {
-  endShells();
+  for (const end of [...shellOwners]) end(process.listenerCount(signal) === 1 ? undefined : signal);
   if (process.listenerCount(signal) === 1) {
     shellOwners.clear();
     unlistenShells();

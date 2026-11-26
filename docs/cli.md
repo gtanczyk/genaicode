@@ -483,9 +483,18 @@ stderr for the app to act on. `update-installing <version>` shows **Relaunchingâ
 empty screen; the old one stays in the agent's own store. The sidebar lists this app's chats by
 project (the directory they ran in), each with its state, apart from every agent's sessions; the
 **+** on a project starts a chat in that folder. âŒ˜B (Ctrl+B) folds the sidebar to a rail of icons.
-With `--restore` the page opens on the conversation the chat in this directory had last, with
-its agent and its history, so stopping and starting the server loses nothing; `--from` or
-`--resume` name another one.
+Open another chat in the sidebar to keep the first working in the background. Each browser
+window selects its own chat. Up to four lead turns can run at once. Set `--max-chats 1` through
+`--max-chats 8` to change the limit. Prompts above the limit wait in order. Cancel returns the
+waiting text to the composer. The packs share eight worker slots across chats.
+
+With `--restore`, the UI reopens the latest saved chats and selects the last one shown.
+The server saves changes during use. Prompts still waiting for capacity come back as drafts.
+Interrupted work waits for your next prompt. A completed worker's unmerged edits remain in its
+worktree and can be inspected and merged from the reopened chat. On the first launch after an
+upgrade, the UI falls back to the last native session for the directory. Use `--from` or `--resume`
+to select a specific session at launch.
+
 While no agent CLI is installed or signed in, `genaicode ui` starts in a `setup` state instead of
 exiting: the page shows an onboarding screen with one card per supported agent (`Not installed`,
 `Installed, not signed in`, or `Ready`), copyable install and sign-in commands, vendor install links,

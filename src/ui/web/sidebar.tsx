@@ -1,3 +1,4 @@
+import type { ChatSummary } from '../hub.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { useEscape } from '../../react/escape.js';
@@ -96,6 +97,7 @@ export function Icon({ name, className }: { name: keyof typeof ICONS; className?
 }
 
 const GLYPHS: Record<ChatGlyph, ReactNode> = {
+  wait: <circle cx="6" cy="6" r="3.5" strokeDasharray="1.8 1.8" />,
   run: <path d="M6 1.5A4.5 4.5 0 1 0 10.5 6" />,
   ask: <path d="M6 1 11 6 6 11 1 6z" fill="currentColor" />,
   err: <path d="m2.5 2.5 7 7M9.5 2.5l-7 7" />,
@@ -206,6 +208,9 @@ export interface SidebarProps {
   selectedChat?: string;
   /** The open chat's state as it is now; other rows show what the stores say. */
   selectedGlyph?: ChatGlyph;
+  live?: readonly ChatSummary[];
+  limit?: number;
+  onStop?(chat: ChatSummary): void;
   onOpenChat(chat: SessionInfo): void;
   /**
    * The title of the open chat while its turn runs: the window has one session, so other chats and
@@ -352,26 +357,47 @@ export function Sidebar(props: SidebarProps) {
             {project.chats.map((chat) => {
               const key = sessionKey(chat);
               const selected = props.page === 'chat' && key === props.selectedChat;
-              const glyph = (key === props.selectedChat && props.selectedGlyph) || sessionGlyph(chat, now);
+              const live = props.live?.find((row) => sessionKey(row) === key);
+              const glyph =
+                live?.glyph || (key === props.selectedChat && props.selectedGlyph) || sessionGlyph(chat, now);
               const unavailable = held && key !== props.selectedChat ? held : undefined;
-              return (
+              const row = (
                 <button
                   type="button"
                   key={key}
                   className={`nav chat${unavailable ? ' unavailable' : ''}`}
                   aria-current={selected ? 'page' : undefined}
                   aria-disabled={unavailable ? true : undefined}
-                  title={unavailable ?? `${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`}
+                  title={
+                    unavailable ??
+                    (live?.interrupted ? 'Interrupted when the app quit' : undefined) ??
+                    `${chat.agent}${chat.cwd ? ` · ${chat.cwd}` : ''}`
+                  }
                   onClick={() => props.onOpenChat(chat)}
                 >
                   <StateGlyph state={glyph} />
-                  <span className="grow">{chatTitle(chat)}</span>
+                  <span className="grow">{live?.unread ? <strong>{chatTitle(chat)}</strong> : chatTitle(chat)}</span>
                   <small>{glyph === 'run' || now - chat.updatedAt < 60_000 ? 'now' : ago(now - chat.updatedAt)}</small>
                 </button>
+              );
+              return live?.turnInProgress && !selected ? (
+                <div key={key} className="chat-actions">
+                  {row}
+                  <button type="button" aria-label={'Stop ' + chatTitle(chat)} onClick={() => props.onStop?.(live)}>
+                    Stop
+                  </button>
+                </div>
+              ) : (
+                row
               );
             })}
           </details>
         ))}
+        {props.limit && props.live?.some((row) => row.turnInProgress) ? (
+          <small>
+            {props.live.filter((row) => row.turnInProgress).length} of {props.limit} running
+          </small>
+        ) : null}
         {props.onAllChats ? (
           <button
             type="button"

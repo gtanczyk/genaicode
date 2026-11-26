@@ -140,6 +140,9 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .proj > summary .add { opacity: 0; }
 .proj > summary:hover .add, .proj > summary .add:focus-visible { opacity: 1; }
 .nav.chat { padding-left: 14px; height: 30px; }
+.chat-actions { display:flex; align-items:center; }
+.chat-actions .nav { flex:1; min-width:0; }
+.chat-actions > button:last-child { font-size:12px; }
 .nav.chat small { color: var(--muted); font-size: 12px; }
 .nav.chat.all { color: var(--muted); padding-left: 35px; }
 .nav.unavailable { opacity: .6; }

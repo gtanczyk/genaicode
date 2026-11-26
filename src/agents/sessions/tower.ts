@@ -38,13 +38,13 @@ export interface TowerView {
   status?: string;
 }
 
-function turnQuestions(state: SessionState): TowerItem[] {
+function turnQuestions(state: SessionState, chat?: string): TowerItem[] {
   const turn = state.turns.at(-1);
   if (!turn || turn.result) return [];
   return state.approvals.map((request) => {
     const task = turn.pack?.tasks.find((t) => t.id === request.subtaskId);
     return {
-      id: turnKey(turn.id, request.id),
+      id: turnKey(turn.id, request.id, chat),
       kind: 'approval',
       agent: task?.agent ?? turn.pack?.lead ?? turn.agent,
       cwd: task?.cwd ?? state.cwd,
@@ -55,7 +55,7 @@ function turnQuestions(state: SessionState): TowerItem[] {
   });
 }
 
-const turnKey = (turn: number, id: string) => `turn:${turn}:${id}`;
+const turnKey = (turn: number, id: string, chat?: string) => `turn:${chat ? chat + ':' : ''}${turn}:${id}`;
 const recipientLabel = (target: Recipient) => `${target.source} / ${target.sessionId}`;
 
 /** One operator's tower. Only proposalTool is given to the lead. */
@@ -110,9 +110,9 @@ export class TowerInbox {
     },
   };
 
-  view(state: SessionState): TowerView {
+  view(state: SessionState, chat?: string): TowerView {
     const items = [
-      ...turnQuestions(state),
+      ...turnQuestions(state, chat),
       ...this.external,
       ...Array.from(this.runningQuestions.values(), (q) => q.item),
     ];
@@ -179,7 +179,7 @@ export class TowerInbox {
     this.publish();
   }
 
-  async decide(session: AgentSession, id: string, decision: TowerDecision): Promise<boolean> {
+  async decide(session: AgentSession, id: string, decision: TowerDecision, chat?: string): Promise<boolean> {
     if (this.lifetime.signal.aborted) return false;
     if (decision === 'send' || decision === 'dismiss') {
       const draft = this.drafts.get(id);
@@ -197,7 +197,7 @@ export class TowerInbox {
     }
     const state = session.get();
     const turn = state.turns.at(-1);
-    const request = turn && !turn.result && state.approvals.find((r) => turnKey(turn.id, r.id) === id);
+    const request = turn && !turn.result && state.approvals.find((r) => turnKey(turn.id, r.id, chat) === id);
     if (request) return session.approve(request.id, decision);
     const question = this.runningQuestions.get(id);
     if (question) {

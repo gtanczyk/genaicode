@@ -165,6 +165,7 @@ pub fn parse_reveal_line(line: &str) -> Option<PathBuf> {
 pub struct DesktopSettings {
     /// Opt-in CDN hosts HTML artifacts may load scripts, styles and fonts from. Empty by default.
     pub artifact_cdn: Vec<String>,
+    pub max_chats: Option<u8>,
 }
 
 /// Defence-in-depth validation of a CDN host before passing it to `--artifact-cdn`.
@@ -179,11 +180,26 @@ pub fn is_safe_cdn_host(host: &str) -> bool {
 }
 
 /// Parse a `Settings {"artifactCdn":[...]}` stderr line emitted by `POST /api/settings`.
-pub fn parse_settings_line(line: &str) -> Option<DesktopSettings> {
+pub fn parse_settings_line(line: &str, mut saved: DesktopSettings) -> Option<DesktopSettings> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Patch {
+        artifact_cdn: Option<Vec<String>>,
+        max_chats: Option<u8>,
+    }
     let raw = line.strip_prefix(SETTINGS_PREFIX)?;
-    let mut parsed: DesktopSettings = serde_json::from_str(raw).ok()?;
-    parsed.artifact_cdn.retain(|host| is_safe_cdn_host(host));
-    Some(parsed)
+    let patch: Patch = serde_json::from_str(raw).ok()?;
+    if let Some(mut hosts) = patch.artifact_cdn {
+        hosts.retain(|host| is_safe_cdn_host(host));
+        saved.artifact_cdn = hosts;
+    }
+    if let Some(limit) = patch.max_chats {
+        if !(1..=8).contains(&limit) {
+            return None;
+        }
+        saved.max_chats = Some(limit);
+    }
+    Some(saved)
 }
 
 pub fn load_settings(path: &Path) -> DesktopSettings {
@@ -384,7 +400,7 @@ mod tests {
         assert_eq!(parse_reveal_line("Other /tmp/x"), None);
 
         let settings = parse_settings_line(
-            r#"Settings {"artifactCdn":["https://cdn.jsdelivr.net","--bad","*","https://unpkg.com"]}"#,
+            r#"Settings {"artifactCdn":["https://cdn.jsdelivr.net","--bad","*","https://unpkg.com"]}"#, DesktopSettings::default(),
         )
         .expect("settings");
         assert_eq!(
@@ -394,7 +410,13 @@ mod tests {
                 "https://unpkg.com".to_string()
             ]
         );
-        assert_eq!(parse_settings_line("Settings not-json"), None);
+        let changed = parse_settings_line(r#"Settings {"maxChats":2}"#, settings.clone()).unwrap();
+        assert_eq!(changed.artifact_cdn, settings.artifact_cdn);
+        assert_eq!(changed.max_chats, Some(2));
+        assert_eq!(
+            parse_settings_line("Settings not-json", DesktopSettings::default()),
+            None
+        );
     }
 
     #[test]
@@ -406,6 +428,7 @@ mod tests {
         assert_eq!(load_settings(&file), DesktopSettings::default());
         let saved = DesktopSettings {
             artifact_cdn: vec!["https://cdn.jsdelivr.net".into()],
+            max_chats: Some(4),
         };
         save_settings(&file, &saved).expect("save");
         assert_eq!(load_settings(&file), saved);

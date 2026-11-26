@@ -173,7 +173,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     const composer = page.locator('.gc-composer textarea');
 
     // The count: one session that asks a question, one that asks for a tool.
-    await vi.waitFor(async () => expect(await needsYou.locator('.count').textContent()).toBe('2'));
+    await needsYou.locator('.count', { hasText: /^2$/ }).waitFor();
     expect(await needsYou.getAttribute('title')).toBe('Needs you: 2 across all projects');
 
     // The page takes the chat's place; the sidebar stays and marks it.
