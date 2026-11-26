@@ -189,7 +189,7 @@ describe('<AgentToolsCard>', () => {
     send: false,
     file: `/home/${name}.json`,
   });
-  const row = (name: string) => host.querySelector<HTMLElement>(`.agent-tools [data-agent="${name}"]`)!;
+  const row = (name: string) => host.querySelector<HTMLElement>(`.agent-tools [data-tools-agent="${name}"]`)!;
 
   it('adds, updates and removes the session tools on a click only', async () => {
     let listing = { durable: true, agents: [entry('claude', false), entry('codex', true, false)] };
@@ -227,7 +227,7 @@ describe('<AgentToolsCard>', () => {
     stubFetch({ '/api/agent-tools': () => ({ body: { durable: false, agents: [entry('claude', false)] } }) });
     render(<AgentToolsCard token="tok" agents={agents} />);
     await flush();
-    expect(host.querySelector('.agent-tools [data-agent]')).toBeNull();
+    expect(host.querySelector('.agent-tools [data-tools-agent]')).toBeNull();
     expect(host.textContent).toContain('npx genaicode install && genaicode mcp install');
   });
 

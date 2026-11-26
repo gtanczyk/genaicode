@@ -341,7 +341,7 @@ export function AgentToolsCard({ token, agents }: { token: string; agents: reado
             const state = !entry.installed ? 'Not added' : entry.current ? 'Added' : 'Added by another genaicode';
             const label = !entry.installed ? 'Add' : entry.current ? 'Remove' : 'Update';
             return (
-              <div key={entry.agent} className="set agent-line" data-agent={entry.agent}>
+              <div key={entry.agent} className="set agent-line" data-tools-agent={entry.agent}>
                 <StateGlyph state={entry.installed && entry.current ? 'ok' : 'idle'} decorative />
                 <span className="grow">
                   <b>{title(entry.agent)}</b>
