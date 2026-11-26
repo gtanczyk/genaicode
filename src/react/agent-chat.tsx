@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   type ComponentProps,
   useContext,
   useEffect,
@@ -295,11 +296,17 @@ export function AgentChat(props: AgentChatProps) {
   );
   const answerQuestion = useLatest(props.onAnswer);
   const openFile = useLatest(props.onOpenFile);
+  const onApproveLatest = useLatest(props.onApprove);
+  const onAutoApproveLatest = useLatest(props.onAutoApprove);
+  const onPackActionLatest = useLatest(props.onPackAction);
+  const onOpenTasksLatest = useLatest(props.onOpenTasks);
+  const onOpenArtifactLatest = useLatest(props.onOpenArtifact);
   // Nothing is sent while the host keeps the user from sending.
   const submitArtifact: SubmitArtifact | undefined =
     onArtifactSubmit === null || disabled
       ? undefined
       : (onArtifactSubmit ?? ((artifact, data) => onSend(artifactSubmission(artifact, data))));
+  const submitArtifactLatest = useLatest(submitArtifact);
   const rootClass = ['gc-chat', props.onOpenFile && 'gc-opens-files', props.className].filter(Boolean).join(' ');
   const { onOpenFile, onRevealFile } = props;
   const theme = props.theme && props.theme !== 'auto' ? props.theme : undefined;
@@ -481,21 +488,21 @@ export function AgentChat(props: AgentChatProps) {
       <RevealTurn.Provider key={`${conversation}:${turn.id}`} value={`${conversation}:${turn.id}`}>
         <Turn
           turn={turn}
-          now={now}
+          now={turn.result && turn.endedAt !== undefined ? turn.endedAt : now}
           cwd={state.cwd}
-          pending={turn.result ? [] : state.approvals}
-          onApprove={props.onApprove}
-          onAutoApprove={props.onAutoApprove}
-          onPackAction={props.disabled ? undefined : props.onPackAction}
-          onOpenTasks={props.onOpenTasks}
+          pending={turn.result ? NO_APPROVALS : state.approvals}
+          onApprove={onApproveLatest}
+          onAutoApprove={onAutoApproveLatest}
+          onPackAction={props.disabled ? undefined : onPackActionLatest}
+          onOpenTasks={onOpenTasksLatest}
           taskApprovalsElsewhere={!!props.missionStrip?.onOpenGroup && !!props.onOpenTasks}
           prompt={props.renderPrompt}
           toolName={props.formatToolName ?? toolLabel}
           artifactUrl={props.artifactUrl}
-          onOpenArtifact={props.onOpenArtifact}
+          onOpenArtifact={onOpenArtifactLatest}
           renderArtifact={props.renderArtifact}
-          renderFailure={props.renderFailure}
-          submitArtifact={submitArtifact}
+          renderFailure={turn.result && !turn.result.ok ? props.renderFailure : undefined}
+          submitArtifact={submitArtifactLatest}
           fold={props.foldSteps ?? false}
         />
       </RevealTurn.Provider>,
@@ -510,8 +517,22 @@ export function AgentChat(props: AgentChatProps) {
     }
   });
   flush(Number.MAX_SAFE_INTEGER);
-  // `items` is new on every render, so each render scrolls to the end while the user is there.
-  const { ref: scroller, onScroll, follow } = useFollowScroll(items, 80);
+  const footer = props.renderFooter?.();
+  const hasFooter = footer !== undefined && footer !== null && footer !== false;
+  // Scroll when transcript content changes, not on every composer keystroke or clock tick.
+  const lastTurn = state.turns.at(-1);
+  const lastEntry = lastTurn?.entries.at(-1);
+  const lastEntryTail =
+    lastEntry?.kind === 'text'
+      ? lastEntry.text.length
+      : lastEntry?.kind === 'tool'
+        ? `${lastEntry.done}:${lastEntry.output?.length ?? 0}`
+        : lastEntry?.kind === 'progress'
+          ? `${lastEntry.message}:${lastEntry.plan?.length ?? 0}`
+          : '';
+  const lastNotice = props.notices?.at(-1);
+  const scrollSignal = `${conversation}:${state.turns.length}:${lastTurn?.id ?? ''}:${lastTurn?.entries.length ?? 0}:${lastEntry?.kind ?? ''}:${lastEntryTail}:${lastTurn?.result?.status ?? ''}:${state.approvals.length}:${state.queued.length}:${props.notices?.length ?? 0}:${lastNotice?.id ?? ''}:${lastNotice?.relay?.status ?? ''}:${lastNotice?.relay?.reply?.length ?? 0}:${hasFooter}`;
+  const { ref: scroller, onScroll, follow } = useFollowScroll(scrollSignal, 80);
 
   const placeholder =
     props.placeholder ??
@@ -522,7 +543,6 @@ export function AgentChat(props: AgentChatProps) {
       : `Ask ${agentName} to change something…`);
   const usage = formatUsage(state.usage, state.costUsd);
   const limits = limitChips(state);
-  const footer = props.renderFooter?.();
 
   const attachButtons = attached.enabled ? (
     <>
@@ -894,7 +914,7 @@ function useNow(active: boolean): number {
   return now;
 }
 
-function Turn({
+function TurnView({
   turn,
   now,
   cwd,
@@ -1062,6 +1082,31 @@ function Turn({
     </section>
   );
 }
+
+const Turn = memo(
+  TurnView,
+  (prev, next) =>
+    // Only completed turns without live pack tasks are guaranteed immutable across caller renders.
+    prev.turn === next.turn &&
+    !!prev.turn.result &&
+    !prev.turn.pack &&
+    prev.now === next.now &&
+    prev.cwd === next.cwd &&
+    prev.pending === next.pending &&
+    prev.onApprove === next.onApprove &&
+    prev.onAutoApprove === next.onAutoApprove &&
+    prev.onPackAction === next.onPackAction &&
+    prev.onOpenTasks === next.onOpenTasks &&
+    prev.taskApprovalsElsewhere === next.taskApprovalsElsewhere &&
+    prev.prompt === next.prompt &&
+    prev.toolName === next.toolName &&
+    prev.artifactUrl === next.artifactUrl &&
+    prev.onOpenArtifact === next.onOpenArtifact &&
+    prev.renderArtifact === next.renderArtifact &&
+    prev.renderFailure === next.renderFailure &&
+    prev.submitArtifact === next.submitArtifact &&
+    prev.fold === next.fold,
+);
 
 /** The work in one closed line, then, oldest first, what the user has to see: the latest reply and status, plan, inputs, errors. */
 function Folded({

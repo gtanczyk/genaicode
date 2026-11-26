@@ -51,6 +51,7 @@ export class ChatHub {
   private closing = false;
   private dirty = new Set<string>();
   private checkpointTimer?: NodeJS.Timeout;
+  private checkpointDelay = Infinity;
   private writing: Promise<void> = Promise.resolve();
   private draining = false;
 
@@ -221,11 +222,18 @@ export class ChatHub {
   }
 
   // Coalesce streamed events and write only changed controllers. Shutdown takes its own immediate checkpoint.
-  private checkpoint(id?: string) {
+  private checkpoint(id?: string, delay = 250) {
     if (this.closing || !this.saveIndex) return;
     if (id) this.dirty.add(id);
-    this.checkpointTimer ??= setTimeout(() => {
+    if (this.checkpointTimer) {
+      if (delay >= this.checkpointDelay) return;
+      clearTimeout(this.checkpointTimer);
       this.checkpointTimer = undefined;
+    }
+    this.checkpointDelay = delay;
+    this.checkpointTimer = setTimeout(() => {
+      this.checkpointTimer = undefined;
+      this.checkpointDelay = Infinity;
       const ids = [...this.dirty];
       this.dirty.clear();
       this.writing = this.writing
@@ -241,7 +249,7 @@ export class ChatHub {
           await this.index();
         })
         .catch((error) => this.onSaveError?.(error));
-    }, 250).unref();
+    }, delay).unref();
   }
 
   private changed = () => {
@@ -254,22 +262,31 @@ export class ChatHub {
     return () => this.listeners.delete(listener);
   }
 
-  async load(id: string) {
+  async load(id: string, options?: { announce?: boolean }) {
     const chat = await this.create(id);
     this.created.set(id, Date.now());
     this.lastSeen.set(id, Date.now());
     this.chats.set(id, chat);
     this.dormant.delete(id);
-    let working = chat.controller.get().session.status === 'running';
+    const initialView = chat.controller.get();
+    let working = initialView.session.status === 'running';
+    let lastState = `${working}:${initialView.session.turns.length}:${initialView.session.approvals.length}:${initialView.session.sessionId ?? ''}:${initialView.session.cwd}`;
     chat.controller.subscribe((view) => {
-      if (working && view.session.status === 'idle' && !this.views.get(id)) this.unseen.add(id);
-      if (!this.closing && view.session.status === 'running') chat.interrupted = false;
-      this.checkpoint(id);
-      working = view.session.status === 'running';
+      const running = view.session.status === 'running';
+      if (working && !running && !this.views.get(id)) this.unseen.add(id);
+      if (!this.closing && running) chat.interrupted = false;
+      const nextState = `${running}:${view.session.turns.length}:${view.session.approvals.length}:${view.session.sessionId ?? ''}:${view.session.cwd}`;
+      // Mid-turn streaming deltas coalesce over 2 s; state transitions checkpoint promptly.
+      const streamingDelta = working && running && nextState === lastState;
+      lastState = nextState;
+      this.checkpoint(id, streamingDelta ? 2000 : 250);
+      working = running;
       this.changed();
     });
-    this.checkpoint(id);
-    this.changed();
+    if (options?.announce !== false) {
+      this.checkpoint(id);
+      this.changed();
+    }
     return chat;
   }
 
@@ -368,7 +385,7 @@ export class ChatHub {
           return (await current.controller.continueSession(target.id, { source: target.source })) ? from : undefined;
       }
       const id = randomUUID();
-      const chat = await this.load(id);
+      const chat = await this.load(id, { announce: target.type === 'home' });
       let opened = false;
       try {
         opened = target.type === 'home' || (await chat.controller.switchChat(target)) === 'done';
@@ -376,7 +393,13 @@ export class ChatHub {
           opened = false;
           return null;
         }
-        if (opened) return id;
+        if (opened) {
+          if (target.type !== 'home') {
+            this.checkpoint(id);
+            this.changed();
+          }
+          return id;
+        }
         current.controller.note(chat.controller.get().notices.at(-1)?.text ?? 'Could not open the chat.', 'error');
       } finally {
         // A failed lookup must not leave an empty row.

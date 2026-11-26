@@ -3592,6 +3592,57 @@ describe('web UI server', () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it('startProjectChat resolves known project directories without scanning session stores', async () => {
+    const base = join(process.cwd(), 'node_modules', '.genaicode-test');
+    mkdirSync(base, { recursive: true });
+    const root = realpathSync(mkdtempSync(join(base, 'project-fast-')));
+    try {
+      const homeDir = join(root, 'home');
+      const knownProject = join(root, 'known-proj');
+      const storeOnlyProject = join(root, 'store-only-proj');
+      const unknownDir = join(root, 'unknown-dir');
+      for (const dir of [homeDir, knownProject, storeOnlyProject, unknownDir]) mkdirSync(dir, { recursive: true });
+      const list = vi.fn(async () => [
+        {
+          id: 's1',
+          source: 'echo',
+          agent: 'echo',
+          where: 'local' as const,
+          cwd: storeOnlyProject,
+          updatedAt: Date.now(),
+        },
+      ]);
+      const chat = createChatController({
+        agents: [echoAgent()],
+        cwd: homeDir,
+        home: true,
+        env: { ...env, HOME: root, GENAICODE_HOME: join(root, 'state') },
+        knownProjectDirs: () => [knownProject],
+        sessionSources: [{ name: 'echo', where: 'local', list }],
+      });
+      try {
+        expect(await chat.startProjectChat(knownProject)).toBe(true);
+        expect(chat.get().session.cwd).toBe(realpathSync(knownProject));
+        expect(list).not.toHaveBeenCalled();
+
+        expect(await chat.startProjectChat(unknownDir)).toBe(false);
+        expect(list).toHaveBeenCalledTimes(1);
+
+        expect(await chat.startProjectChat(storeOnlyProject)).toBe(true);
+        expect(chat.get().session.cwd).toBe(realpathSync(storeOnlyProject));
+        expect(list).toHaveBeenCalledTimes(2);
+
+        // Once the chat is already in that folder, starting another there needs no store scan.
+        expect(await chat.startProjectChat(storeOnlyProject)).toBe(true);
+        expect(list).toHaveBeenCalledTimes(2);
+      } finally {
+        chat.close();
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 /** Streams that pass for a terminal, for the front ends' own Ink render. */
