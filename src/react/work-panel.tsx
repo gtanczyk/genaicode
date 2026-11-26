@@ -125,7 +125,13 @@ export interface WorkPanelProps {
    * Optional host-managed drill-in (e.g. a turn's steps panel) shown in place of the tab's content
    * when no `WorkViewing` file/artifact is open. Keeps `WorkViewing` backwards-compatible.
    */
-  customViewer?: { backLabel?: string; onBack(): void; render(controls: WorkViewerControls): ReactNode };
+  customViewer?: {
+    backLabel?: string;
+    onBack(): void;
+    /** Called instead of `onBack()` when the person clicks a panel tab to leave this viewer. */
+    onSelectTab?(tab: WorkTab): void;
+    render(controls: WorkViewerControls): ReactNode;
+  };
   /** `false` when `renderViewer` shows artifacts only: the files stay a plain list. Default true. */
   viewsFiles?: boolean;
   /** Where an artifact's content is served: without `renderViewer` its row links there. */
@@ -276,7 +282,13 @@ export function WorkPanel(props: WorkPanelProps) {
   const select = (next: WorkTab) => {
     if (next === tab && !hasViewer && !view.task) return;
     fromChanges.current = undefined;
-    if (customViewer) customViewer.onBack();
+    if (customViewer) {
+      if (customViewer.onSelectTab) {
+        customViewer.onSelectTab(next);
+        return;
+      }
+      customViewer.onBack();
+    }
     onView({ ...view, tab: next, task: undefined, viewing: undefined });
   };
   const tabs = useRef<HTMLDivElement>(null);

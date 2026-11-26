@@ -122,7 +122,7 @@ export interface WebUiOptions {
    * Available models discovered on demand from an installed agent CLI, at GET /api/models?agent=<name>.
    * `?refresh=1` bypasses the per-agent cache.
    */
-  models?: (agent: string, query?: { refresh?: boolean }) => Promise<DiscoveredModel[]>;
+  models?: (agent: string, query?: { refresh?: boolean; cwd?: string }) => Promise<DiscoveredModel[]>;
   /** Static files served at /assets/<name> without the token (the mascot and its bark). */
   assets?: ReadonlyMap<string, WebAsset>;
   /** Resolves the current chat session's raw file path on disk (for transcript metadata / Copy path). */
@@ -1120,12 +1120,16 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
+      if (hub && !chat) return gone();
       if (!options.models) return send(res, 404, 'application/json', '{"error":"no model catalog here"}');
       const agent = url.searchParams.get('agent')?.trim();
       if (!agent || agent.length > 100) return send(res, 400, 'application/json', '{"error":"missing agent"}');
       const refresh = url.searchParams.get('refresh') === '1';
-      const models = await options.models(agent, { refresh }).catch(() => []);
-      return send(res, 200, 'application/json', JSON.stringify({ agent, models }), { 'cache-control': 'no-store' });
+      const cwd = controller.session.get().cwd;
+      const models = await options.models(agent, { refresh, cwd }).catch(() => []);
+      return send(res, 200, 'application/json', JSON.stringify({ agent, cwd, models }), {
+        'cache-control': 'no-store',
+      });
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/agent-tools') {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined))

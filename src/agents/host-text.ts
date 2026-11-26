@@ -23,12 +23,17 @@ function trailingBriefingIndex(text: string): number {
     let start = pos;
     while (start > 0 && /\s/.test(text[start - 1]!)) start -= 1;
     const afterTag = text.slice(pos + OPEN.length);
+    // A title cut right after the opening tag by `oneLine()` ends with Unicode `…`.
+    if (afterTag === '…') return start;
     if (!afterTag || !/^\s/.test(afterTag)) continue;
     const after = afterTag.trimStart();
     if (!after) continue;
     const isFull = after.startsWith(PREAMBLE);
-    const trimmedCut = after.replace(/…$/, '');
-    const isTruncatedPreamble = !isFull && trimmedCut.length >= 5 && PREAMBLE.startsWith(trimmedCut);
+    const hasEllipsis = after.endsWith('…');
+    const trimmedCut = hasEllipsis ? after.slice(0, -1) : after;
+    // In explicitly truncated titles (`…`), even a short preamble prefix (e.g. `<genaicode-briefing> Ad…`)
+    // identifies the generated block; without `…`, require >= 5 preamble chars so ordinary tag mentions stay intact.
+    const isTruncatedPreamble = !isFull && (hasEllipsis || trimmedCut.length >= 5) && PREAMBLE.startsWith(trimmedCut);
     if (!isFull && !isTruncatedPreamble) continue;
     const close = after.indexOf(CLOSE);
     if (close < 0 || close === after.trimEnd().length - CLOSE.length) return start;

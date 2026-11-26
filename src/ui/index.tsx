@@ -1048,7 +1048,10 @@ function webLink(
           }
         : {}),
       ...(modelCatalog
-        ? { models: (agent, query) => modelCatalog.list(agent, { ...query, cwd: controller().get().session.cwd }) }
+        ? {
+            models: (agent, query) =>
+              modelCatalog.list(agent, { ...query, cwd: query?.cwd ?? controller().get().session.cwd }),
+          }
         : {}),
       release,
       settings,
