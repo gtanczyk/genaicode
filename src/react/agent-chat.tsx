@@ -43,6 +43,7 @@ import {
   toolLabel,
   toolPath,
   turnFooter,
+  visibleReply,
   type ToolDiff,
 } from './format.js';
 import { Markdown, readFileLinkPosition, type FilePosition } from './markdown.js';
@@ -1464,7 +1465,7 @@ function Entry({
     case 'text':
       return (
         <RevealedMarkdown
-          text={entry.text}
+          text={visibleReply(agent, entry.text, entry.streaming)}
           streaming={entry.streaming}
           imageUrl={mdConfig.imageUrl}
           remoteImages={mdConfig.remoteImages}

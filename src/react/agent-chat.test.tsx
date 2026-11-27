@@ -123,6 +123,20 @@ const click = (el: Element) => act(() => (el as HTMLElement).click());
 const button = (label: string) => $$('button').find((el) => el.textContent === label);
 
 describe('AgentChat', () => {
+  it('hides Codex memory metadata in a restored turn after switching agents', () => {
+    const citation =
+      '<oai-mem-citation>\n<citation_entries>MEMORY.md:35-36|note=[details]</citation_entries>\n<rollout_ids>id</rollout_ids>\n</oai-mem-citation>';
+    const state = fixture();
+    const turn = state.turns[0];
+    turn.agent = 'codex';
+    turn.prompt = citation;
+    turn.entries = [{ kind: 'text', text: 'Answer.\n' + citation, streaming: false }];
+    render({ state });
+    expect(text('.gc-md')).toContain('Answer.');
+    expect(container.textContent?.split('MEMORY.md:35-36')).toHaveLength(2);
+    expect(text('.gc-turn-footer')[0]).toContain('codex');
+  });
+
   it('puts pack approvals in one queue and scopes diff and discard to the selected worker', async () => {
     const state = fixture();
     const turn = state.turns[1];
