@@ -218,7 +218,10 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
       if (typeof line.message.model === 'string' && line.message.model !== '<synthetic>')
         info.model = line.message.model;
       const text = textOf(line.message.content, 'text')?.trim();
-      if (text) info.lastReply = ending(text);
+      if (text) {
+        info.lastReply = ending(text);
+        info.lastReplyAt = timeOf(line.timestamp);
+      }
       const content = line.message.content;
       const callsTool = Array.isArray(content) && content.some((block) => isRecord(block) && block.type === 'tool_use');
       agentLast = !callsTool && !!text;

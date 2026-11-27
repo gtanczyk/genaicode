@@ -112,13 +112,33 @@ it('lists as many items as the sidebar counts, each with its project, agent, ori
   expect(here.querySelector('.needs-meta b')?.textContent).toBe('Run a command');
   expect(Array.from(here.querySelectorAll('.tag'), (tag) => tag.textContent)).toEqual(['app', 'claude']);
   expect(here.querySelector('.tag')?.getAttribute('title')).toBe('/work/app');
-  expect(here.querySelector('.needs-origin')?.textContent).toBe('this chat “Ship the layout” · 2m ago');
+  expect(here.querySelector('.needs-origin')?.textContent).toBe('this chat “Ship the layout”');
   expect(here.querySelector('pre')?.textContent).toBe('rm -rf dist');
   const asked = card('Gate verdict retries');
   expect(asked.querySelector('.needs-text')?.textContent).toBe('“Retry on 502 too?”');
-  expect(asked.querySelector('time')?.textContent).toBe('40m ago');
+  expect(asked.querySelector('.need-time')?.textContent).toContain('Last activity');
+  expect(asked.querySelector('time')?.textContent).toContain('40m ago');
+  expect(here.querySelector('.need-time')?.textContent).toContain('First seen');
   // The tower's proposal has no time of its own, and none was seen.
   expect(card('Go on.').querySelector('time')).toBeNull();
+});
+
+it('hands off the exact native session from the queue', async () => {
+  const id = '01234567-89ab-cdef-0123-456789abcdef';
+  const show = (source: string, patch: Partial<SessionInfo> = {}) => {
+    render(props({ items: needsItems({ sessions: [{ ...gate, agent: source, source, id, ...patch }], now }) }));
+  };
+  show('claude');
+  expect(host.querySelector('a')?.getAttribute('href')).toBe('claude://resume?session=' + id);
+  show('codex');
+  expect(host.querySelector('a')?.getAttribute('href')).toBe('codex://threads/' + id);
+  show('codex', { id: 'new?prompt=hello' });
+  expect(host.querySelector('a')).toBeNull();
+  show('antigravity');
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  await click(button(host, 'Copy agy command'));
+  expect(writeText).toHaveBeenCalledWith('agy --conversation ' + id);
 });
 
 it('has the actions of each source, and sends each answer where it belongs', async () => {

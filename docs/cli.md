@@ -303,6 +303,15 @@ behind that part of the conversation.
 
 ![Antigravity transcript with its current plan step and collapsed tool activity](media/screenshots/session-activity.png)
 
+In **Needs you**, each card shows the local date and time. **Agent message** dates the recorded reply,
+**Requested** dates a recorded permission request, **Last activity** dates the session update, and
+**First seen** dates the first observation in this window.
+
+A local Codex thread offers **Open in Codex**. An idle local Claude Code session offers **Resume in Claude Desktop**.
+Install the corresponding desktop app on the machine that holds the session.
+For local Antigravity sessions, **Copy agy command** copies `agy --conversation <id>` to run in a terminal.
+Cloud sessions use the link recorded by the provider.
+
 The bottom of the sidebar shows each agent's worst window (`claude 62% · 5h`), and the line under
 the composer names an agent above 80% of its plan: what the session's runs
 report, and before that what `genaicode limits` last saw. **Settings › Usage** has every window of

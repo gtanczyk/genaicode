@@ -36,7 +36,8 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     title: 'Sourdough schedule',
     state: 'waiting',
     lastReply: preview,
-    updatedAt: Date.now() - 40 * MINUTE,
+    updatedAt: Date.now() - 5 * MINUTE,
+    lastReplyAt: Date.now() - 40 * MINUTE,
   };
   // The other waits on a tool, and its hook holds the question open for an answer from here.
   const deploy: SessionInfo = {
@@ -201,7 +202,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await asked.locator('.tag').allTextContents()).toEqual(['bakery', 'helper']);
     expect(await asked.locator('.tag').first().getAttribute('title')).toBe(bakery);
     expect(await asked.locator('.needs-text').textContent()).toBe('“' + preview + '”');
-    expect(await asked.locator('time').textContent()).toBe('40m ago');
+    expect(await asked.locator('time').textContent()).toContain('40m ago');
     const permission = queue.getByRole('article').filter({ hasText: 'Deploy the round table' });
     expect(await permission.locator('.needs-meta b').textContent()).toBe('Permission request');
     expect(await permission.locator('pre').textContent()).toBe('Bash\nnpm run deploy');
@@ -213,6 +214,10 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     const detail = page.getByRole('main', { name: 'Session transcript' });
     await detail.getByText('Read the recipe for bakery-1').waitFor();
     await detail.getByText('The recipe uses rye flour.').waitFor();
+    expect(await detail.locator('.thread-need time').getAttribute('datetime')).toBe(
+      await asked.locator('time').getAttribute('datetime'),
+    );
+    expect(await detail.locator('.thread-need').textContent()).toContain('Agent message');
     expect(await composer.isVisible()).toBe(false);
     expect(await detail.locator('textarea').count()).toBe(0);
     const questionTop = await detail

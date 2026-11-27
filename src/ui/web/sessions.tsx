@@ -11,6 +11,9 @@ import type { WebSessionListing } from './server.js';
 import { chatTitle, folderName, sessionKey } from '../sidebar.js';
 import { Icon } from './sidebar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
+import { NeedTime } from './needs-you.js';
+import type { NeedsItem } from '../needs-you.js';
+import { OpenAgentSession } from './open-agent-session.js';
 import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
 import {
@@ -106,6 +109,7 @@ export function Sessions({
   selected,
   readingPositions,
   openingQuestion,
+  need,
   onOpen,
   onArchived,
   onDelete,
@@ -128,6 +132,7 @@ export function Sessions({
   selected?: SessionInfo;
   readingPositions?: Map<string, number>;
   openingQuestion?: string;
+  need?: NeedsItem;
   onOpen(session: SessionInfo): void;
   onArchived?(): void;
   onDelete?(chat: SessionInfo): void;
@@ -234,6 +239,7 @@ export function Sessions({
               updatedAt: activity.updatedAt,
               ending: activity.ending,
               lastReply: activity.lastReply,
+              lastReplyAt: activity.lastReplyAt,
               waitingFor: activity.waitingFor,
               waitingTool: activity.waitingTool,
               waitingCommands: activity.waitingCommands,
@@ -703,6 +709,12 @@ export function Sessions({
       {detail && (
         <main className="sessions session-detail" aria-label="Session transcript">
           <div className="thread-column">
+            {need && (
+              <div className="thread-need">
+                <b>{need.action}</b>
+                <NeedTime item={need} now={now} />
+              </div>
+            )}
             <SessionTranscript
               key={transcriptUrl(detail)}
               session={detail}
@@ -714,11 +726,6 @@ export function Sessions({
             <footer className="thread-footer">
               {detail.where === 'local' && questionActions(detail)}
               {answerFailed && <p role="alert">{answerFailed}</p>}
-              {!replyTarget && detail.where === 'cloud' && detail.url && (
-                <a className="thread-open" href={detail.url} target="_blank" rel="noreferrer">
-                  Open {detail.agent} session ↗
-                </a>
-              )}
               {!replyTarget && detail.where === 'local' && !questionsOf(detail).length && listing && (
                 <span className="thread-availability">
                   {detail.waitingFor === 'approval'
@@ -765,6 +772,7 @@ export function Sessions({
                         : detail.repository}
                   </span>
                 )}
+                <OpenAgentSession session={detail} />
                 <TranscriptMenu
                   token={token}
                   endpoint={transcriptUrl(detail)}

@@ -119,7 +119,7 @@ export function attentionOf(session: SessionInfo, now = Date.now()): Attention |
   if (session.waitingFor === 'approval') return 'now';
   if (!session.ending) return undefined;
   const asks = session.ending === 'question' || session.ending === 'request' || session.ending === 'command';
-  return asks && now - session.updatedAt < ASKING_MS ? 'now' : 'stalled';
+  return asks && now - (session.lastReplyAt ?? session.updatedAt) < ASKING_MS ? 'now' : 'stalled';
 }
 
 /** Whether a session asks for you now: for approval, or with a question or command not long ago. */

@@ -150,7 +150,13 @@ export function isOpenChat(chat: Pick<SessionInfo, 'source' | 'id'>, open: { id?
  * a briefing or takeover recap genaicode added (`personText`) does not count.
  */
 export function chatTitle(session: SessionInfo): string {
-  const said = (text: string | undefined) => (text ? personTitle(text) : '');
+  // External indexes may have already flattened and truncated our appended upload list.
+  const said = (text: string | undefined) =>
+    text
+      ? personTitle(text)
+          .split(/(?:^|\s)Attached files \(read them from disk\):\s+-\s+(?=\/|[A-Za-z]:[\\/])/, 1)[0]!
+          .trim()
+      : '';
   const text = said(session.title) || said(session.firstPrompt) || said(session.lastPrompt) || session.id || 'New chat';
   return text.split('\n', 1)[0]!.trim() || 'New chat';
 }
