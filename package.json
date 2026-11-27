@@ -1,6 +1,6 @@
 {
   "name": "genaicode",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "description": "Run your coding agents together: Claude Code, Codex, Antigravity and six more, on the logins you already have. A desktop app, a CLI with terminal and browser chat, and a TypeScript API.",
   "author": "Grzegorz Tańczyk",
   "repository": {
