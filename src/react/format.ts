@@ -5,6 +5,35 @@ import type { TokenUsage } from '../core/types.js';
 import type { PackSteer, PackStep, PackStopCause, PackTask } from '../agents/pack.js';
 import type { PackTaskChecks } from '../agents/pack-checks.js';
 
+const MEMORY_CITATION = '<oai-mem-citation>';
+const CITATION_ENTRIES = '<citation_entries>';
+const END_MEMORY_CITATION = '</oai-mem-citation>';
+
+/** Hide the structured trailer Codex appends to a reply, including while it is arriving in chunks. */
+export function visibleReply(agent: string, text: string, streaming = false): string {
+  if (agent !== 'codex' && agent !== 'codexLive') return text;
+  let start = text.lastIndexOf(MEMORY_CITATION);
+  if (start === -1) {
+    if (!streaming) return text;
+    start = text.lastIndexOf('<');
+    if (start === -1 || !MEMORY_CITATION.startsWith(text.slice(start))) return text;
+  } else {
+    const body = text.slice(start + MEMORY_CITATION.length).trimStart();
+    if (!body.startsWith(CITATION_ENTRIES) && !(streaming && CITATION_ENTRIES.startsWith(body))) return text;
+    const end = body.indexOf(END_MEMORY_CITATION);
+    if (end < 0 ? !streaming : body.slice(end + END_MEMORY_CITATION.length).trim() !== '') return text;
+  }
+
+  const reply = text.slice(0, start);
+  // A literal example in a still-open Markdown fence can look exactly like a trailer during streaming.
+  let openFence = '';
+  for (const match of reply.matchAll(/^[ \t]*(`{3,}|~{3,})([^\r\n]*)/gm)) {
+    if (!openFence) openFence = match[1];
+    else if (match[1].startsWith(openFence) && !match[2].trim()) openFence = '';
+  }
+  return openFence ? text : reply.trimEnd();
+}
+
 /**
  * Plain words for what became of input sent while an agent worked ("Seen by claude"). Input
  * recorded before delivery was tracked reads "Sent while working".

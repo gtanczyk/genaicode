@@ -18,9 +18,29 @@ import {
   packWorkCount,
   packWorkLine,
   toolDiff,
+  visibleReply,
 } from './format.js';
 
 const shown = (input: unknown) => toolDiff(input)?.lines.map((line) => `${line.sign}${line.text}`);
+
+describe('visibleReply', () => {
+  const trailer =
+    '<oai-mem-citation>\n<citation_entries>MEMORY.md:5|note=[why]</citation_entries>\n</oai-mem-citation>';
+
+  it('hides the footer at every stream boundary and on completion', () => {
+    for (let length = 1; length <= trailer.length; length++) {
+      expect(visibleReply('codexLive', 'Reply.' + trailer.slice(0, length), true)).toBe('Reply.');
+    }
+    expect(visibleReply('codex', 'Reply.' + trailer + '\n')).toBe('Reply.');
+  });
+
+  it('preserves literal mentions, code samples, other agents and text following a block', () => {
+    for (const sample of ['Use <oai-mem-citation>', '`' + trailer + '`', '~~~xml\n' + trailer, trailer + '\nMore.']) {
+      expect(visibleReply('codex', sample)).toBe(sample);
+    }
+    expect(visibleReply('claude', trailer)).toBe(trailer);
+  });
+});
 
 describe('toolDiff', () => {
   it('reads one replacement, keeping the lines both ends share', () => {
