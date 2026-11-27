@@ -249,6 +249,7 @@ interface PageConfig {
   multiChat?: boolean;
   maxChats?: number;
   initialChat?: string;
+  projectOrder?: string[];
   cwd: string;
   /** False when the page names no project (`ui --no-project` or `ui --home`). */
   project?: boolean;
@@ -2341,6 +2342,18 @@ function App({ selected }: { selected?: string }) {
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
           onAllChats: hasSessions ? () => openSessions('own') : undefined,
           projects,
+          projectOrder: config?.projectOrder,
+          onProjectOrder: (order) => {
+            void chatFetch('/api/settings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+              body: JSON.stringify({ projectOrder: order }),
+            })
+              .then((res) => {
+                if (!res.ok) showToast('Could not save the folder order.', true);
+              })
+              .catch(() => showToast('Could not save the folder order.', true));
+          },
           live: loaded,
           limit: config?.maxChats,
           onArchive: hasSessions

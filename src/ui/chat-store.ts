@@ -87,6 +87,16 @@ export function chatStore(env: NodeJS.ProcessEnv, cwd: string, home: boolean) {
       await writeFile(join(deletedDir, fingerprint(row)), '', { mode: 0o600 });
       await removeConversationRecords(ids, env);
     },
+    async readProjectOrder(): Promise<string[]> {
+      try {
+        const keys: unknown = JSON.parse(await readFile(join(dir, 'project-order.json'), 'utf8'));
+        if (Array.isArray(keys) && keys.every((key) => typeof key === 'string')) return keys;
+      } catch {
+        // Until an order is saved, the sidebar follows recent activity.
+      }
+      return [];
+    },
+    saveProjectOrder: (keys: string[]) => write('project-order.json', keys),
     async read(id: string): Promise<SavedChat | undefined> {
       if (!valid(id)) return;
       try {

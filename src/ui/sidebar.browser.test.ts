@@ -9,8 +9,9 @@ import { personText } from '../agents/host-text.js';
 import type { SessionInfo } from '../agents/sessions/index.js';
 import type { AgentEvent, AgentResult, CodingAgent } from '../agents/types.js';
 import { main, type UiLaunch } from '../cli/main.js';
-import { chatStore } from './chat-store.js';
 import { runWeb } from './index.js';
+import { chatStore } from './chat-store.js';
+import { neutralHomeDir } from '../agents/sessions/workspace.js';
 import { TERMS_URL } from './web/sidebar.js';
 
 async function bundleClient() {
@@ -203,6 +204,20 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     expect(await topbar.locator('.crumb').getAttribute('title')).toBe(bakery);
     expect(await chats.getByRole('region', { name: "Other agents' sessions" }).count()).toBe(0);
 
+    // Home has an empty directory key. It moves like any other folder, with its chats.
+    const headings = chats.locator('details.proj > summary .grow');
+    const projectNames = () => headings.allTextContents();
+    const savedOrder = page.waitForResponse((res) => new URL(res.url()).pathname === '/api/settings');
+    await home.locator('summary').dragTo(project.locator('summary'));
+    const saved = await savedOrder;
+    expect(saved.ok()).toBe(true);
+    const keys = saved.request().postDataJSON().projectOrder as string[];
+    expect(keys.slice().sort()).toEqual(['', bakery]);
+    expect(await chatStore(env, neutralHomeDir(env), true).readProjectOrder()).toEqual(keys);
+    const customOrder = keys.map((key) => (key ? 'bakery' : 'Home folder'));
+    await vi.waitFor(async () => expect(await projectNames()).toEqual(customOrder));
+    expect(await second.getAttribute('aria-current')).toBe('page');
+
     // Selecting another chat opens it; the selection follows.
     await first.click();
     await vi.waitFor(async () => expect(await first.getAttribute('aria-current')).toBe('page'));
@@ -220,6 +235,7 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await page.getByRole('log').getByText(`Ran in ${bakery}`).waitFor();
     await project.getByRole('button', { name: /Order flour/ }).waitFor();
     expect(await project.locator('button.nav.chat').count()).toBe(2);
+    expect(await projectNames()).toEqual(customOrder);
 
     // Help holds what the header's links were; Escape closes the menu and nothing else.
     await side.getByRole('button', { name: 'Help', exact: true }).click();
@@ -261,6 +277,10 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     await vi.waitFor(async () => expect(await sideWidth(page)).toBe(356));
     await edge.press('Enter');
     expect(await sideWidth(page)).toBe(268);
+    expect(await projectNames()).toEqual(customOrder);
+    await home.locator('summary').press(customOrder[0] === 'Home folder' ? 'Alt+ArrowDown' : 'Alt+ArrowUp');
+    await vi.waitFor(async () => expect(await projectNames()).toEqual(customOrder.slice().reverse()));
+    expect(await home.locator('summary').evaluate((element) => document.activeElement === element)).toBe(true);
     await side.getByRole('button', { name: 'Collapse sidebar' }).click();
     await page.locator('.shell.side-collapsed').waitFor();
     await page.keyboard.press('ControlOrMeta+b');
