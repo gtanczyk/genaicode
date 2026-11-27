@@ -1544,6 +1544,17 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           const delivery = responded ? 'reached' : kind === 'unavailable' ? 'not-sent' : 'unknown';
           return send(res, 422, 'application/json', JSON.stringify({ error, kind, delivery }));
         }
+        if (result.sessionId && result.sessionId !== id) {
+          return send(
+            res,
+            422,
+            'application/json',
+            JSON.stringify({
+              error: 'The agent completed a turn under a different session ID.',
+              delivery: 'unknown',
+            }),
+          );
+        }
         return send(res, 200, 'application/json', JSON.stringify({ ok: true, text: result.text }));
       } catch (error) {
         if (error instanceof SessionSendError)

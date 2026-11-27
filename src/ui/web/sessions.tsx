@@ -14,7 +14,7 @@ import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { NeedTime } from './needs-you.js';
 import type { NeedsItem } from '../needs-you.js';
 import { OpenAgentSession } from './open-agent-session.js';
-import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
+import { ReplyStatus, SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
 import {
   ago,
@@ -167,8 +167,8 @@ export function Sessions({
 }) {
   const [days, setDays] = useState(initialDays ?? 7);
   const [listing, setListing] = useState<WebSessionListing>();
-  const { drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
-  const [receipt, setReceipt] = useState<{ session: SessionInfo; text: string }>();
+  const { attempts, drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
+  const receipt = [...attempts.values()].reverse().find((attempt) => attempt.from === 'sessions');
   const [failed, setFailed] = useState<string>();
   const [text, setText] = useState('');
   const [agent, setAgent] = useState('');
@@ -434,30 +434,42 @@ export function Sessions({
       </>
     );
   };
+  const attemptFor = (session: SessionInfo) =>
+    storesOf(session)
+      .map((row) => attempts.get(sessionKey(row)))
+      .filter((attempt) => attempt !== undefined)
+      .sort((a, b) => b.at - a.at)[0];
   const replyEditor = (session: SessionInfo) => {
     const sender = senderOf(session);
-    if (!sender) return null;
+    if (!sender || replyTo !== sessionKey(sender.session)) {
+      const attempt = attemptFor(session);
+      return attempt && attempt.phase !== 'completed' ? (
+        <ReplyStatus key={`status:${sessionKey(session)}`} attempt={attempt} />
+      ) : null;
+    }
     const key = sessionKey(sender.session);
-    return replyTo === key ? (
+    return (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
+        from="sessions"
         session={sender.session}
         token={token}
         sandboxes={sender.sandboxes}
         draft={drafts.get(key)}
         onDraft={(draft) => keepDraft(key, draft)}
         onClose={() => closeReply(key)}
-        onSent={(text) => {
+        onSent={() => {
           closeReply(key);
-          setReceipt({ session, text });
-          setRound((value) => value + 1);
           onReplied?.(session);
         }}
       />
-    ) : null;
+    );
   };
   const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
   const replyTarget = detail && senderOf(detail);
+  // The readable store can be an alias of the store used for sending. Match only this grouped session.
+  const attempt = detail && attemptFor(detail);
+  const editing = replyTarget && replyTo === sessionKey(replyTarget.session);
   const worktree =
     detail?.agent === 'antigravity' &&
     detail.cwd?.replace(/\\/g, '/').match(/\/\.gemini\/antigravity\/worktrees\/([^/]+)\/([^/]+)\/?$/);
@@ -564,7 +576,7 @@ export function Sessions({
         </span>
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
-      {receipt ? (
+      {receipt?.phase === 'completed' ? (
         <div className="session-receipt" role="status">
           <b>
             {receipt.session.agent} · {receipt.session.title ?? receipt.session.id}
@@ -726,25 +738,30 @@ export function Sessions({
             <footer className="thread-footer">
               {detail.where === 'local' && questionActions(detail)}
               {answerFailed && <p role="alert">{answerFailed}</p>}
-              {!replyTarget && detail.where === 'local' && !questionsOf(detail).length && listing && (
-                <span className="thread-availability">
-                  {detail.waitingFor === 'approval'
-                    ? 'Approval requested in the agent'
-                    : detail.turnInProgress
-                      ? 'Turn in progress'
-                      : detail.state === 'active'
-                        ? 'Session active · replies are paused here'
-                        : !detail.cwd
-                          ? 'No working directory recorded for this session'
-                          : !storesOf(detail).some((row) =>
-                                listing.senders?.some(
-                                  (sender) => sender.agent === row.agent && sender.source === row.source,
-                                ),
-                              )
-                            ? `No local ${detail.agent} sender available`
-                            : 'Waiting for a resumable session state'}
-                </span>
-              )}
+              {attempt && (!editing || attempt.phase === 'completed') && <ReplyStatus attempt={attempt} />}
+              {!replyTarget &&
+                attempt?.phase !== 'pending' &&
+                detail.where === 'local' &&
+                !questionsOf(detail).length &&
+                listing && (
+                  <span className="thread-availability">
+                    {detail.waitingFor === 'approval'
+                      ? 'Approval requested in the agent'
+                      : detail.turnInProgress
+                        ? 'Turn in progress'
+                        : detail.state === 'active'
+                          ? 'Recent session activity · the next reply is available when the session is idle'
+                          : !detail.cwd
+                            ? 'No working directory recorded for this session'
+                            : !storesOf(detail).some((row) =>
+                                  listing.senders?.some(
+                                    (sender) => sender.agent === row.agent && sender.source === row.source,
+                                  ),
+                                )
+                              ? `No local ${detail.agent} sender available`
+                              : 'Waiting for a resumable session state'}
+                  </span>
+                )}
               {replyTarget &&
                 (replyTo === sessionKey(replyTarget.session) ? (
                   replyEditor(detail)
@@ -789,12 +806,6 @@ export function Sessions({
                 />
               </div>
             </footer>
-            {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
-              <details className="thread-receipt">
-                <summary role="status">Reply delivered · turn completed</summary>
-                {receipt.text && <p>{receipt.text}</p>}
-              </details>
-            )}
             {archiveFailed && <p role="alert">{archiveFailed}</p>}
             {failed && <p role="alert">{failed}</p>}
           </div>

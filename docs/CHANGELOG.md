@@ -14,6 +14,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
+- **Follow a reply through completion when an external session becomes busy.** (#395)
+
 - **Keep the agent’s plan visible and tool logs folded in session transcripts.** (#393)
 
 - **Read Antigravity prompts, galleries and file edits in the session thread.** (#391)

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
 import type { SandboxPolicy } from '../../agents/types.js';
+import { sessionKey } from '../sidebar.js';
 import type { SessionInfo } from '../../agents/sessions/types.js';
 
 /**
@@ -15,7 +16,22 @@ export interface SessionReplyDraft {
 }
 const EMPTY_DRAFT: SessionReplyDraft = { prompt: '', sandbox: '' };
 
+type ReplyAttempt = {
+  session: SessionInfo;
+  from: 'queue' | 'sessions';
+  at: number;
+} & ({ phase: 'pending' } | { phase: 'completed' | 'failed'; text: string });
+
 function useReplyEditors() {
+  const [attempts, setAttempts] = useState<ReadonlyMap<string, ReplyAttempt>>(new Map());
+  const record = (attempt: ReplyAttempt) =>
+    setAttempts((previous) => {
+      const next = new Map(previous);
+      const key = sessionKey(attempt.session);
+      next.delete(key);
+      next.set(key, attempt);
+      return next;
+    });
   const [replyTo, setReplyTo] = useState<string>();
   const [drafts, setDrafts] = useState<ReadonlyMap<string, SessionReplyDraft>>(new Map());
   const keepDraft = (key: string, draft: SessionReplyDraft | undefined) =>
@@ -27,9 +43,15 @@ function useReplyEditors() {
     });
   const closeReply = (key: string) => {
     keepDraft(key, undefined);
+    setAttempts((previous) => {
+      if (previous.get(key)?.phase !== 'failed') return previous;
+      const next = new Map(previous);
+      next.delete(key);
+      return next;
+    });
     setReplyTo((current) => (current === key ? undefined : current));
   };
-  return { drafts, keepDraft, replyTo, setReplyTo, closeReply };
+  return { attempts, record, drafts, keepDraft, replyTo, setReplyTo, closeReply };
 }
 
 const ReplyEditors = createContext<ReturnType<typeof useReplyEditors> | null>(null);
@@ -46,10 +68,44 @@ export function useSessionReplyDrafts() {
   return editors;
 }
 
+export function ReplyStatus({ attempt }: { attempt: ReplyAttempt }) {
+  const { session } = attempt;
+  if (attempt.phase === 'failed')
+    return (
+      <p role="alert" className="errors">
+        {attempt.text}
+      </p>
+    );
+  if (attempt.phase === 'pending')
+    return (
+      <p role="status" className="thread-availability">
+        Waiting for {session.agent} to finish the turn started from Genaicode…
+      </p>
+    );
+  return (
+    <details className="thread-receipt">
+      <summary role="status">
+        Last reply · {session.agent} completed the turn from Genaicode ·{' '}
+        <time dateTime={new Date(attempt.at).toISOString()}>
+          {new Date(attempt.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+        </time>
+      </summary>
+      {attempt.text && <p>{attempt.text}</p>}
+      {session.agent === 'claude' && (
+        <p>
+          To load this turn in Claude Code, reopen the conversation with <code>claude --resume</code> in its project
+          directory.
+        </p>
+      )}
+    </details>
+  );
+}
+
 export function SessionReply({
   session,
   token,
   sandboxes,
+  from,
   onSent,
   onClose,
   draft,
@@ -58,12 +114,14 @@ export function SessionReply({
   session: SessionInfo;
   token: string;
   sandboxes: readonly SandboxPolicy[];
+  from: ReplyAttempt['from'];
   onSent(reply: string): void;
   onClose(): void;
   /** What is typed, kept by the caller so it outlives this editor. Default: kept here. */
   draft?: SessionReplyDraft;
   onDraft?(draft: SessionReplyDraft): void;
 }) {
+  const { record } = useSessionReplyDrafts();
   const [own, setOwn] = useState<SessionReplyDraft>(EMPTY_DRAFT);
   // Kept with the draft: an editor shown again while the reply is on its way takes no edits either.
   const { prompt, sandbox, sending = false, error } = draft ?? own;
@@ -74,6 +132,8 @@ export function SessionReply({
     event.preventDefault();
     if (sending || !prompt.trim()) return;
     keep({ prompt, sandbox, sending: true });
+    record({ session, from, at: Date.now(), phase: 'pending' });
+    let reply: string;
     let delivery = 'Delivery to this session is unconfirmed.';
     try {
       const target = [session.source, session.id].map(encodeURIComponent).join('/');
@@ -88,15 +148,26 @@ export function SessionReply({
         if (result.delivery === 'reached') delivery = 'The message reached this session.';
         throw new Error(result.error ?? `The server answered ${response.status}.`);
       }
-      // The caller drops a draft it keeps; one kept here stays, no longer sending.
-      if (!onDraft) setOwn({ prompt, sandbox });
-      onSent(result.text ?? '');
+      reply = result.text ?? '';
     } catch (cause) {
-      keep({ prompt, sandbox, error: `${cause instanceof Error ? cause.message : String(cause)} ${delivery}` });
+      const reason = `${cause instanceof Error ? cause.message : String(cause)} ${delivery}`;
+      record({ session, from, at: Date.now(), phase: 'failed', text: reason });
+      keep({ prompt, sandbox, error: reason });
+      return;
+    } finally {
+      window.dispatchEvent(new Event('genaicode-history-changed'));
     }
+    if (!onDraft) setOwn({ prompt, sandbox });
+    record({ session, from, at: Date.now(), phase: 'completed', text: reply });
+    onSent(reply);
   };
   return (
     <form className="session-reply" onSubmit={submit}>
+      <small>
+        {session.agent === 'claude'
+          ? 'Genaicode resumes this conversation in a separate Claude Code process. An already-open terminal may still show the previous turn.'
+          : `Genaicode resumes the saved ${session.agent} session for this turn.`}
+      </small>
       <textarea
         aria-label={`Message to ${session.agent}`}
         placeholder={`Message ${session.agent}…`}

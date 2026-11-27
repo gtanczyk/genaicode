@@ -157,6 +157,8 @@ describe('the Sessions view', () => {
       async sendPrompt(source, id, prompt, sandbox, _signal, onResponse) {
         calls.push([source, id, prompt, sandbox]);
         if (id === 'busy') throw new SessionSendError('busy', 'private diagnostic');
+        if (id === 'other-session')
+          return { ok: true, status: 'completed', sessionId: 'new-thread', exitCode: 0, signal: null };
         if (id === 'unexpected') throw new Error('private diagnostic');
         if (id === 'quota') {
           onResponse();
@@ -197,6 +199,9 @@ describe('the Sessions view', () => {
           })
         ).status,
       ).toBe(403);
+      const mismatch = await post('other-session', { prompt: 'go' });
+      expect(mismatch.status).toBe(422);
+      expect(await mismatch.json()).toMatchObject({ delivery: 'unknown' });
       const busy = await post('busy', { prompt: 'go' });
       expect(busy.status).toBe(409);
       expect(await busy.json()).toEqual({

@@ -126,7 +126,7 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
     await detail.locator('.thread-document summary').click();
     await detail.getByRole('button', { name: 'relative gallery' }).click();
     await detail.getByRole('img', { name: 'Camp overview' }).waitFor();
-    await detail.getByText('Session active · replies are paused here').waitFor();
+    await detail.getByText('Recent session activity · the next reply is available when the session is idle').waitFor();
   } finally {
     await browser.close();
     await ui.close();
