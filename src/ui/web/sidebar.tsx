@@ -1,5 +1,5 @@
 import type { ChatSummary } from '../hub.js';
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { SessionInfo } from '../../agents/sessions/group.js';
 import { useEscape } from '../../react/escape.js';
 import { BUG_REPORT_URL, SUPPORT_URL } from '../../support.js';
@@ -205,6 +205,8 @@ export interface SidebarProps {
   onAllChats?(): void;
   /** This app's chats by directory, the recent ones. */
   projects: readonly ChatProject[];
+  projectOrder?: readonly string[];
+  onProjectOrder?(order: string[]): void;
   /** `sessionKey` of the open chat's row. */
   selectedChat?: string;
   /** The open chat's state as it is now; other rows show what the stores say. */
@@ -254,6 +256,28 @@ export interface SidebarProps {
 export const Sidebar = memo(function Sidebar(props: SidebarProps) {
   const now = props.now ?? Date.now();
   const { needs, update } = props;
+  const [dragged, setDragged] = useState<string>();
+  const [over, setOver] = useState<string>();
+  const movedHeading = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    // Moving a focused details element in the DOM can return keyboard focus to the body.
+    if (document.activeElement === document.body) movedHeading.current?.focus();
+    movedHeading.current = null;
+  }, [props.projectOrder]);
+  const order = [...new Set([...(props.projectOrder ?? []), ...props.projects.map((project) => project.key)])];
+  const byKey = new Map(props.projects.map((project) => [project.key, project]));
+  const projects = order.flatMap((key) => byKey.get(key) ?? []);
+  const canReorder = !!props.projectOrder && !!props.onProjectOrder && projects.length > 1;
+  const move = (key: string, target: string) => {
+    if (key === target || !byKey.has(key) || !byKey.has(target)) return;
+    const next = order.filter((item) => item !== key);
+    next.splice(order.indexOf(target), 0, key);
+    props.onProjectOrder?.(next);
+  };
+  const endDrag = () => {
+    setDragged(undefined);
+    setOver(undefined);
+  };
   const worst = props.quota.find((row) => row.percent !== undefined);
   const quotaTitle = props.quota.map((row) => row.title).join('\n');
   const held = props.busyWith !== undefined ? `Opens when ${props.busyWith} finishes` : undefined;
@@ -334,11 +358,71 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             Chats by project
           </div>
         ) : null}
-        {props.projects.map((project) => (
-          <details className="proj" key={project.key} open>
-            <summary title={project.path ?? project.name}>
+        {projects.map((project, index) => (
+          <details
+            className="proj"
+            key={project.key}
+            open
+            data-drop={
+              dragged !== undefined && over === project.key && dragged !== over
+                ? order.indexOf(dragged) < order.indexOf(over)
+                  ? 'after'
+                  : 'before'
+                : undefined
+            }
+            onDragOver={(event) => {
+              if (dragged === undefined) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setOver(project.key);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(undefined);
+            }}
+            onDrop={(event) => {
+              if (dragged === undefined) return;
+              event.preventDefault();
+              move(dragged, project.key);
+              endDrag();
+            }}
+          >
+            <summary
+              title={project.path ?? project.name}
+              draggable={canReorder}
+              aria-keyshortcuts={canReorder ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+              onDragStart={(event) => {
+                if (!canReorder || (event.target as Element).closest('button')) {
+                  event.preventDefault();
+                  return;
+                }
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('application/x-genaicode-project', project.key);
+                setDragged(project.key);
+              }}
+              onDragEnd={endDrag}
+              onKeyDown={(event) => {
+                if (
+                  !canReorder ||
+                  event.target !== event.currentTarget ||
+                  !event.altKey ||
+                  (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')
+                )
+                  return;
+                event.preventDefault();
+                const neighbor = projects[index + (event.key === 'ArrowUp' ? -1 : 1)];
+                if (neighbor) {
+                  movedHeading.current = event.currentTarget;
+                  move(project.key, neighbor.key);
+                }
+              }}
+            >
               <Icon name="chev" className="chev" />
-              <span className="grow">{project.name}</span>
+              <span
+                className="grow"
+                title={canReorder ? `${project.path ?? project.name} · Drag or use Alt+↑/↓ to reorder` : undefined}
+              >
+                {project.name}
+              </span>
               {props.onNewChatIn && (props.canNewChatIn?.(project) ?? true) ? (
                 <button
                   type="button"

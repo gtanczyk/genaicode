@@ -1055,6 +1055,7 @@ function webLink(
         : {}),
       release,
       settings,
+      projectOrder: chatStore(options.env ?? process.env, options.cwd, !!options.home),
       assets: options.assets ?? loadAssets(new URL('./assets/', import.meta.url)),
       // The Sessions view: what every one of these agents has going on, on this machine.
       sessions: async ({ own, ...query }) => {

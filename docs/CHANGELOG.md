@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **Drag project folders into your preferred order in the sidebar.** (#387)
+
 ### Fixed
 
 - **Keep empty work tabs open from Steps, rescan old Antigravity caches, and order model lists.** (#385)

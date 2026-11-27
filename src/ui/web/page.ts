@@ -136,6 +136,9 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .group-h { padding: 14px 9px 4px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .proj { margin-bottom: 2px; }
 .proj > summary { list-style: none; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 2px 0 9px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.proj > summary[draggable=true] { cursor: grab; }
+.proj[data-drop=before] { box-shadow: 0 -2px var(--accent); }
+.proj[data-drop=after] { box-shadow: 0 2px var(--accent); }
 .proj > summary::-webkit-details-marker { display: none; }
 .proj > summary:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); }
 .proj > summary .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

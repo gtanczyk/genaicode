@@ -152,6 +152,10 @@ export interface WebUiOptions {
   release?: () => UiRelease;
   /** Live settings that the page can read and update (e.g. opt-in CDN hosts for HTML artifacts). */
   settings?: WebSettings;
+  projectOrder?: {
+    readProjectOrder(): Promise<string[]>;
+    saveProjectOrder(keys: string[]): Promise<void>;
+  };
 }
 
 export interface WebSettings {
@@ -578,6 +582,8 @@ function parseCommandBody(command: Record<string, unknown>): WebCommandBody | un
 /** Serve the chat in a browser: one page, a server-sent event stream of views, and a command endpoint. */
 export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const { controller, hub } = options;
+  let projectOrder = await options.projectOrder?.readProjectOrder();
+  let projectOrderRevision = 0;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
   // Separate secret for the reload-shell cookie only; cookies are shared across ports on the host,
@@ -686,6 +692,8 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       ...(options.hostApp?.saveTranscript ? { nativeSave: true } : {}),
       reveal: !!options.hostApp?.reveal,
       ...(options.hostApp?.chooseFolder ? { chooseFolder: true } : {}),
+      projectOrder,
+      projectOrderRevision,
       artifactCdn,
       canConfigureCdn: !!options.settings,
       ...(update ? { update } : {}),
@@ -1024,14 +1032,29 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (!tokenOk(req.headers['x-genaicode-token'] as string | undefined)) {
         return send(res, 403, 'application/json', '{"error":"bad token"}');
       }
-      if (!options.settings && !hub) return send(res, 404, 'application/json', '{"error":"settings unavailable"}');
+      if (!options.settings && !hub && !options.projectOrder)
+        return send(res, 404, 'application/json', '{"error":"settings unavailable"}');
       if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         return send(res, 415, 'application/json', '{"error":"expected JSON"}');
       }
       let hosts: string[] | undefined;
       let limit: number | undefined;
+      let order: string[] | undefined;
       try {
-        const body = JSON.parse(await readBody(req)) as { artifactCdn?: unknown; maxChats?: unknown };
+        const body = JSON.parse(await readBody(req)) as {
+          artifactCdn?: unknown;
+          maxChats?: unknown;
+          projectOrder?: unknown;
+        };
+        if (body?.projectOrder !== undefined) {
+          if (
+            !options.projectOrder ||
+            !Array.isArray(body.projectOrder) ||
+            !body.projectOrder.every((key: unknown) => typeof key === 'string')
+          )
+            throw new Error('Invalid folder order.');
+          order = [...new Set<string>(body.projectOrder)];
+        }
         if (body?.maxChats !== undefined) {
           if (
             !hub ||
@@ -1058,16 +1081,31 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           JSON.stringify({ error: error instanceof Error ? error.message : 'invalid settings' }),
         );
       }
-      if ((!hosts || !options.settings) && limit === undefined)
+      if ((!hosts || !options.settings) && limit === undefined && !order)
         return send(res, 400, 'application/json', '{"error":"bad settings"}');
+      if (order && options.projectOrder) {
+        await options.projectOrder.saveProjectOrder(order);
+        projectOrder = order;
+        projectOrderRevision++;
+      }
       if (hosts) options.settings?.setArtifactCdn(hosts);
       if (limit !== undefined) hub?.setLimit(limit);
-      options.hostApp?.saveSettings?.({
-        ...(hosts || options.settings ? { artifactCdn: hosts ?? options.settings?.artifactCdn() } : {}),
-        ...(hub ? { maxChats: hub.limit } : {}),
-      });
+      if (hosts || limit !== undefined)
+        options.hostApp?.saveSettings?.({
+          ...(hosts || options.settings ? { artifactCdn: hosts ?? options.settings?.artifactCdn() } : {}),
+          ...(hub ? { maxChats: hub.limit } : {}),
+        });
       broadcastConfig();
-      return send(res, 200, 'application/json', JSON.stringify({ ok: true, artifactCdn: hosts }));
+      return send(
+        res,
+        200,
+        'application/json',
+        JSON.stringify({
+          ok: true,
+          artifactCdn: hosts,
+          projectOrderRevision: order ? projectOrderRevision : undefined,
+        }),
+      );
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];

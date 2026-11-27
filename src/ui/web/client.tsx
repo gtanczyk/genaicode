@@ -249,6 +249,8 @@ interface PageConfig {
   multiChat?: boolean;
   maxChats?: number;
   initialChat?: string;
+  projectOrder?: string[];
+  projectOrderRevision?: number;
   cwd: string;
   /** False when the page names no project (`ui --no-project` or `ui --home`). */
   project?: boolean;
@@ -1043,6 +1045,33 @@ function App({ selected }: { selected?: string }) {
   };
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
   const { view, config, release, connected, rejected, loaded } = useView(selected, (text) => showToast(text));
+  // Each move sees the previous move immediately. Send writes in input order and keep the
+  // local order visible until the config stream has caught up with the last successful save.
+  const [pendingOrder, setPendingOrder] = useState<{ keys: string[]; revision?: number }>();
+  const orderWrites = useRef(Promise.resolve());
+  const caughtUp = pendingOrder?.revision !== undefined && (config?.projectOrderRevision ?? 0) >= pendingOrder.revision;
+  useEffect(() => {
+    if (caughtUp) setPendingOrder(undefined);
+  }, [caughtUp]);
+  const projectOrder = pendingOrder && !caughtUp ? pendingOrder.keys : config?.projectOrder;
+  const saveProjectOrder = (keys: string[]) => {
+    setPendingOrder({ keys });
+    orderWrites.current = orderWrites.current.then(async () => {
+      try {
+        const res = await chatFetch('/api/settings', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-genaicode-token': token },
+          body: JSON.stringify({ projectOrder: keys }),
+        });
+        if (!res.ok) throw new Error();
+        const { projectOrderRevision } = (await res.json()) as { projectOrderRevision: number };
+        setPendingOrder((current) => (current?.keys === keys ? { keys, revision: projectOrderRevision } : current));
+      } catch {
+        setPendingOrder((current) => (current?.keys === keys ? undefined : current));
+        showToast('Could not save the folder order.', true);
+      }
+    });
+  };
   const [deleting, setDeleting] = useState<{ row: SessionInfo; chat?: string }>();
   const deleteDialog = useRef<HTMLDialogElement>(null);
   const askDelete = (row: SessionInfo) => {
@@ -2341,6 +2370,8 @@ function App({ selected }: { selected?: string }) {
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
           onAllChats: hasSessions ? () => openSessions('own') : undefined,
           projects,
+          projectOrder,
+          onProjectOrder: saveProjectOrder,
           live: loaded,
           limit: config?.maxChats,
           onArchive: hasSessions
