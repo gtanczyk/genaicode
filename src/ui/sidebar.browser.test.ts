@@ -182,6 +182,17 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
       .waitFor();
     await first.waitFor();
 
+    const foreignRow = other.getByRole('button', { name: /Sourdough schedule/ });
+    await foreignRow.click();
+    await page
+      .getByRole('main', { name: 'Session transcript' })
+      .getByText('Sourdough schedule', { exact: true })
+      .waitFor();
+    expect(await topbar.locator('h1').textContent()).toBe('Sourdough schedule');
+    expect(await foreignRow.getAttribute('aria-current')).toBe('page');
+    await other.getByRole('button', { name: /Show all .*sessions/ }).click();
+    await page.getByRole('main', { name: 'Session transcript' }).waitFor({ state: 'detached' });
+
     // Taking a session over makes its folder a project of the list, with a "new chat here" button.
     await side.getByRole('button', { name: 'All sessions', exact: true }).click();
     expect(await side.getByRole('button', { name: 'All sessions', exact: true }).getAttribute('aria-current')).toBe(

@@ -223,6 +223,7 @@ describe('session sources', () => {
           ],
         },
       },
+      { type: 'ai-title', aiTitle: 'Ink & Fury' },
       user('<wake reason="mention"><project id="chan_01AbC" type="project">Cut the trailer</project></wake>', {
         turnOrigin: 'human',
         entrypoint: 'claude-desktop',

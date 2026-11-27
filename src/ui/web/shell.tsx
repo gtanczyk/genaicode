@@ -62,8 +62,6 @@ export interface ShellProps {
     sessions: readonly SessionInfo[];
     /** The directory of chats started without a folder ("Home folder"). */
     home?: string;
-    /** Goes to a session of another agent. */
-    onOpenSession(session: SessionInfo): void;
     /** The sections of the Settings page, each a command that opens it there. */
     settings?: ReadonlyArray<{ label: string; onSelect(): void }>;
   };
@@ -295,6 +293,7 @@ export function Shell(props: ShellProps) {
   const onNewChat = useCallback(() => latest.current.side.onNewChat(), []);
   const onNeedsYou = useCallback(() => latest.current.side.onNeedsYou(), []);
   const onOpenChat = useCallback<SidebarProps['onOpenChat']>((chat) => latest.current.side.onOpenChat(chat), []);
+  const onOpenSession = useCallback((session: SessionInfo) => latest.current.side.onOpenSession(session), []);
   const hasAllSessions = !!side.onAllSessions;
   const hasAllChats = !!side.onAllChats;
   const hasStop = !!side.onStop;
@@ -337,6 +336,7 @@ export function Shell(props: ShellProps) {
         onNewChat={onNewChat}
         onNeedsYou={onNeedsYou}
         onOpenChat={onOpenChat}
+        onOpenSession={onOpenSession}
         onAllSessions={onAllSessions}
         onAllChats={onAllChats}
         onStop={onStop}
@@ -422,7 +422,7 @@ export function Shell(props: ShellProps) {
           now={props.side.now}
           open={side.selectedChat ? { key: side.selectedChat, glyph: side.selectedGlyph } : undefined}
           onOpenChat={(chat) => latest.current.side.onOpenChat(chat)}
-          onOpenSession={(session) => latest.current.search?.onOpenSession(session)}
+          onOpenSession={onOpenSession}
           onClose={() => closeSearch()}
         />
       ) : null}

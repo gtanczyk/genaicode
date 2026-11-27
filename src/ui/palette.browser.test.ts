@@ -263,7 +263,7 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     await palette.waitFor({ state: 'detached' });
     expect(await focused(page)).toBe('Search');
 
-    // Another agent's session is found by its last prompt and shown among all sessions.
+    // Another agent's session is found by its last prompt and opens directly in the transcript viewer.
     await page.keyboard.press(SEARCH_KEY);
     await page.keyboard.type('levain');
     await vi.waitFor(async () =>
@@ -271,8 +271,8 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     );
     await page.keyboard.press('Enter');
     await palette.waitFor({ state: 'detached' });
-    await vi.waitFor(async () => expect(await title.textContent()).toBe('All sessions'));
-    await page.locator('.session-row', { hasText: 'Sourdough schedule' }).waitFor();
+    await page.getByRole('main', { name: 'Session transcript' }).waitFor();
+    expect(await title.textContent()).toBe('Sourdough schedule');
     expect(commands.filter((one) => one.type === 'continue')).toHaveLength(1);
 
     // A command: Escape first closes the palette only, the page stays; then New chat by name.
@@ -281,7 +281,7 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     await vi.waitFor(async () => expect(await selected.textContent()).toBe('New chat'));
     await page.keyboard.press('Escape');
     await palette.waitFor({ state: 'detached' });
-    expect(await title.textContent()).toBe('All sessions');
+    expect(await title.textContent()).toBe('Sourdough schedule');
     await page.keyboard.press(SEARCH_KEY);
     await page.keyboard.type('new ch');
     await page.keyboard.press('Enter');
