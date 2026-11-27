@@ -8,7 +8,8 @@ import {
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
-import { sessionKey } from '../sidebar.js';
+import { folderName, sessionKey } from '../sidebar.js';
+import { Icon } from './sidebar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
@@ -337,7 +338,7 @@ export function Sessions({
   };
 
   const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
-  const actions = (session: SessionInfo, close?: () => void) => {
+  const actions = (session: SessionInfo, close?: () => void, includeReply = true) => {
     const sender = senderOf(session);
     const action = (label: string, run: () => void, title?: string) => (
       <button
@@ -354,7 +355,8 @@ export function Sessions({
     );
     return (
       <>
-        {sender &&
+        {includeReply &&
+          sender &&
           replyTo !== sessionKey(sender.session) &&
           action('Reply', () => setReplyTo(sessionKey(sender.session)), `Send to this session in ${session.agent}`)}
         {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) &&
@@ -405,6 +407,7 @@ export function Sessions({
     ) : null;
   };
   const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
+  const replyTarget = detail && senderOf(detail);
   const list = (
     <main hidden={!!detail} className="sessions">
       <div className="tools">
@@ -666,19 +669,53 @@ export function Sessions({
     <>
       {detail && (
         <main className="sessions session-detail" aria-label="Session transcript">
-          <p className="session-origin">
-            {[detail.agent, detail.source !== detail.agent && detail.source, detail.cwd ?? detail.repository]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          <div className="session-actions">{actions(detail)}</div>
-          {replyEditor(detail)}
-          {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
-            <p role="status">{receipt.text || 'Turn completed.'}</p>
-          )}
-          {archiveFailed && <p role="alert">{archiveFailed}</p>}
-          {failed && <p role="alert">{failed}</p>}
-          <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
+          <div className="thread-column">
+            <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
+            <footer className="thread-footer">
+              {replyTarget &&
+                (replyTo === sessionKey(replyTarget.session) ? (
+                  replyEditor(detail)
+                ) : (
+                  <button
+                    className="thread-reply"
+                    type="button"
+                    onClick={() => setReplyTo(sessionKey(replyTarget.session))}
+                  >
+                    Reply to {detail.agent}… <span aria-hidden="true">↵</span>
+                  </button>
+                ))}
+              <div className="thread-context">
+                {(detail.cwd || detail.repository) && (
+                  <span
+                    className="session-origin"
+                    title={[detail.agent, detail.source, detail.cwd ?? detail.repository].join(' · ')}
+                  >
+                    <Icon name="folder" />
+                    {detail.cwd ? folderName(detail.cwd) : detail.repository}
+                  </span>
+                )}
+                <TranscriptMenu
+                  token={token}
+                  endpoint={transcriptUrl(detail)}
+                  sessionId={detail.id}
+                  sessionPath={detail.path}
+                  storedSession={{ source: detail.source, id: detail.id }}
+                  nativeSave={nativeSave}
+                  label="⋯"
+                  ariaLabel="Session actions"
+                  title="Session actions"
+                  buttonClassName="thread-more"
+                  onStatus={onStatus}
+                  extra={(close) => actions(detail, close, false)}
+                />
+              </div>
+            </footer>
+            {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
+              <p role="status">{receipt.text || 'Turn completed.'}</p>
+            )}
+            {archiveFailed && <p role="alert">{archiveFailed}</p>}
+            {failed && <p role="alert">{failed}</p>}
+          </div>
         </main>
       )}
       {list}

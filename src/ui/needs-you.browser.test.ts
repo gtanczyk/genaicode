@@ -205,12 +205,12 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByText('The recipe uses rye flour.').waitFor();
     expect(await composer.isVisible()).toBe(false);
     expect(await detail.locator('textarea').count()).toBe(0);
-    expect(await detail.getByRole('button').allTextContents()).toEqual([
-      'Reply',
-      'Continue here',
-      'Copy resume command',
-      'Archive',
-    ]);
+    const sessionMenu = detail.getByRole('button', { name: 'Session actions' });
+    await sessionMenu.click();
+    await detail.getByRole('menuitem', { name: 'Continue here' }).waitFor();
+    await detail.getByRole('menuitem', { name: 'Copy resume command' }).waitFor();
+    await detail.getByRole('menuitem', { name: 'Archive', exact: true }).waitFor();
+    await sessionMenu.click();
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Save this draft');
     await detail.getByLabel('Sandbox').selectOption('read-only');
