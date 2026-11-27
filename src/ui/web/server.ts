@@ -583,6 +583,7 @@ function parseCommandBody(command: Record<string, unknown>): WebCommandBody | un
 export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
   const { controller, hub } = options;
   let projectOrder = await options.projectOrder?.readProjectOrder();
+  let projectOrderRevision = 0;
   const host = options.host ?? '127.0.0.1';
   const token = options.token ?? randomBytes(32).toString('hex');
   // Separate secret for the reload-shell cookie only; cookies are shared across ports on the host,
@@ -692,6 +693,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       reveal: !!options.hostApp?.reveal,
       ...(options.hostApp?.chooseFolder ? { chooseFolder: true } : {}),
       projectOrder,
+      projectOrderRevision,
       artifactCdn,
       canConfigureCdn: !!options.settings,
       ...(update ? { update } : {}),
@@ -1084,6 +1086,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       if (order && options.projectOrder) {
         await options.projectOrder.saveProjectOrder(order);
         projectOrder = order;
+        projectOrderRevision++;
       }
       if (hosts) options.settings?.setArtifactCdn(hosts);
       if (limit !== undefined) hub?.setLimit(limit);
@@ -1093,7 +1096,16 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           ...(hub ? { maxChats: hub.limit } : {}),
         });
       broadcastConfig();
-      return send(res, 200, 'application/json', JSON.stringify({ ok: true, artifactCdn: hosts }));
+      return send(
+        res,
+        200,
+        'application/json',
+        JSON.stringify({
+          ok: true,
+          artifactCdn: hosts,
+          projectOrderRevision: order ? projectOrderRevision : undefined,
+        }),
+      );
     }
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const header = req.headers['x-genaicode-token'];

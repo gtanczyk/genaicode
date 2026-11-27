@@ -368,6 +368,35 @@ it('lists chats by project, selects the open one, and folds to a rail that is re
     const castle = chats.locator('details.proj', { hasText: 'knights' });
     await castle.getByRole('button', { name: /Round table|Polish the armour/ }).waitFor();
 
+    // Two keyboard moves while the first save is held must accumulate and persist in order.
+    const beforeMoves = await projectNames();
+    const heading = chats.locator('details.proj > summary').first();
+    await heading.focus();
+    let releaseSave!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const requests: string[][] = [];
+    await page.route('**/api/settings*', async (route) => {
+      requests.push(route.request().postDataJSON().projectOrder);
+      await gate;
+      await route.fallback();
+    });
+    await page.keyboard.press('Alt+ArrowDown');
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    await page.keyboard.press('Alt+ArrowDown');
+    const expected = [...beforeMoves.slice(1), beforeMoves[0]!];
+    try {
+      expect(await projectNames()).toEqual(expected);
+    } finally {
+      releaseSave();
+    }
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    const disk = chatStore(env, neutralHomeDir(env), true);
+    await vi.waitFor(async () => expect(await disk.readProjectOrder()).toEqual(requests[1]));
+    expect(await projectNames()).toEqual(expected);
+    await page.unroute('**/api/settings*');
+
     // Every request for another chat is held until the test lets it through (or refuses it).
     type Asked = {
       type: string;
