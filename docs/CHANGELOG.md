@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- **Read Antigravity prompts, galleries and file edits in the session thread.** (#391)
+
 ## 3.7.0 — 2026-11-27
 
 ### Added

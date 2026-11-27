@@ -412,6 +412,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-message .gc-md > :last-child { margin-bottom: 0; }
 .thread-message .gc-md pre, .thread-note pre, .thread-activity pre { overflow-x: auto; }
 .thread-message.user { margin-left: auto; width: fit-content; max-width: min(86%, 600px); }
+.thread-message.user .gc-md p { white-space: pre-wrap; }
 .thread-message.user .thread-byline { justify-content: flex-end; color: var(--muted); }
 .thread-message.user .gc-md { padding: 10px 16px; border-radius: 16px 16px 4px 16px; background: var(--gc-color-sunken, var(--panel)); border: 1px solid var(--line); }
 .thread-message.agent { padding-right: 5%; }
