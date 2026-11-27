@@ -441,12 +441,14 @@ export function Sessions({
       .sort((a, b) => b.at - a.at)[0];
   const replyEditor = (session: SessionInfo) => {
     const sender = senderOf(session);
-    if (!sender) {
+    if (!sender || replyTo !== sessionKey(sender.session)) {
       const attempt = attemptFor(session);
-      return attempt && attempt.phase !== 'completed' ? <ReplyStatus attempt={attempt} /> : null;
+      return attempt && attempt.phase !== 'completed' ? (
+        <ReplyStatus key={`status:${sessionKey(session)}`} attempt={attempt} />
+      ) : null;
     }
     const key = sessionKey(sender.session);
-    return replyTo === key ? (
+    return (
       <SessionReply
         key={`reply:${session.source}:${session.id}`}
         from="sessions"
@@ -461,7 +463,7 @@ export function Sessions({
           onReplied?.(session);
         }}
       />
-    ) : null;
+    );
   };
   const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
   const replyTarget = detail && senderOf(detail);
