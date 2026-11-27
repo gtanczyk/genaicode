@@ -125,12 +125,22 @@ export function githubCloudSessions(options: GitHubCloudOptions = {}): SessionSo
           const repository = item.repository_url?.split('/repos/')[1];
           const merged = Boolean(item.pull_request?.merged_at);
           const open = item.state === 'open';
-          const says = `${open ? (item.draft ? 'Draft' : 'Open') : merged ? 'Merged' : 'Closed'}: ${repository ?? ''}#${item.number ?? '?'} ${item.title ?? ''}`;
+          const state = open ? (item.draft ? 'Draft' : 'Open') : merged ? 'Merged' : 'Closed';
+          const ref: NonNullable<SessionInfo['pullRequests']>[number] | undefined =
+            repository &&
+            /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(repository) &&
+            item.number &&
+            Number.isSafeInteger(item.number) &&
+            item.number > 0
+              ? { repository, number: item.number, title: item.title ?? '', state }
+              : undefined;
+          const says = `${state}: ${repository ?? ''}#${item.number ?? '?'} ${item.title ?? ''}`;
           const key = `${session.agent}:${session.id}`;
           const known = found.get(key);
           if (known) {
             // Newest first from GitHub: the first pull request seen names the session.
             known.pulls.push(says);
+            if (ref && (known.pullRequests?.length ?? 0) < 5) (known.pullRequests ??= []).push(ref);
             if (open) known.state = 'waiting';
             const started = item.created_at ? Date.parse(item.created_at) : NaN;
             if (Number.isFinite(started) && started < (known.startedAt ?? Infinity)) known.startedAt = started;
@@ -150,6 +160,7 @@ export function githubCloudSessions(options: GitHubCloudOptions = {}): SessionSo
             ...(session.project ? { project: { id: session.project } } : {}),
             // An open pull request is work that waits: for review, for checks, for a merge.
             ...(open ? { state: 'waiting' as const } : {}),
+            ...(ref ? { pullRequests: [ref] } : {}),
             pulls: [says],
           });
         }
@@ -274,6 +285,7 @@ export function joinedCloudSessions(pulls: SessionSource, tasks: SessionSource):
             const says = [task.lastReply, pull.lastReply].filter(Boolean).join('; ');
             return {
               ...task,
+              ...(pull.pullRequests ? { pullRequests: pull.pullRequests } : {}),
               updatedAt: Math.max(task.updatedAt, pull.updatedAt),
               ...(pull.repository ? { repository: pull.repository } : {}),
               ...(pull.startedAt !== undefined ? { startedAt: pull.startedAt } : {}),

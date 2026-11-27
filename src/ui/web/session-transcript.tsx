@@ -97,6 +97,15 @@ export function SessionTranscript({
       >
         {error && <p role="alert">Could not refresh this session: {error}</p>}
         {conversation.notice && <Markdown text={conversation.notice} />}
+        {conversation.status && <p>{conversation.status}</p>}
+        {conversation.pullRequests?.map((pr) => (
+          <p key={pr.repository + '#' + pr.number}>
+            <a href={`https://github.com/${pr.repository}/pull/${pr.number}`} target="_blank" rel="noreferrer">
+              {pr.repository}#{pr.number}
+            </a>{' '}
+            · {pr.state} · {pr.title}
+          </p>
+        ))}
         {conversation.turns.map((turn, index) => {
           const stamp = turn.startedAt > 0 ? new Date(turn.startedAt) : undefined;
           const previous = conversation.turns[index - 1];

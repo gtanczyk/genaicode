@@ -35,7 +35,18 @@ export function sessionStores(rows: readonly SessionInfo[]): SessionInfo[][] {
 /** The most recent pending approval or other immediate request across stores, if any. */
 export function askingStore(stores: readonly SessionInfo[], now = Date.now()): SessionInfo | undefined {
   const asking = stores.filter((row) => attentionOf(row, now) === 'now').sort((a, b) => b.updatedAt - a.updatedAt);
-  return asking.find((row) => row.waitingFor === 'approval') ?? asking[0];
+  const approval = asking.find((row) => row.waitingFor === 'approval');
+  if (approval) return approval;
+  // A newer message in the same thread can settle an indexed question. A newer timestamp alone cannot.
+  return asking.find(
+    (question) =>
+      !stores.some(
+        (row) =>
+          row.updatedAt > question.updatedAt &&
+          (row.turnInProgress ||
+            (row.lastReply && row.lastReply !== question.lastReply && attentionOf(row, now) !== 'now')),
+      ),
+  );
 }
 
 /** The store that can deliver a reply in the session's own agent. */

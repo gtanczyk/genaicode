@@ -417,6 +417,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-message.agent { padding-right: 5%; }
 .thread-activity, .thread-note { margin: 10px 0; font-size: 13px; }
 .thread-activity summary { color: var(--muted); cursor: pointer; }
+.thread-receipt { max-height: 20vh; overflow: auto; font-size: 13px; }
 .thread-new { align-self: center; cursor: pointer; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 5px 12px; }
 .thread-open, .thread-availability { font-size: 13px; }
 .thread-availability { color: var(--muted); }

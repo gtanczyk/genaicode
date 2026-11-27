@@ -4,6 +4,7 @@ import { SessionSendError } from '../agents/sessions/send.js';
 import { createChatController } from './controller.js';
 import {
   ago,
+  askingStore,
   canContinueHere,
   filterSessions,
   groupByTopic,
@@ -41,6 +42,20 @@ describe('the Sessions view', () => {
     expect(ids(filterSessions(sessions, { state: 'unfinished' }))).toEqual(['s3']);
     expect(ids(filterSessions(sessions, { text: 'export', state: 'active' }))).toEqual(['s2']);
     expect(ids(filterSessions(sessions, { text: 'nothing' }))).toEqual([]);
+  });
+
+  it('clears an indexed question when the same thread reports a newer answer', () => {
+    const question = session({
+      source: 'index',
+      state: 'waiting',
+      ending: 'question',
+      lastReply: 'Merge?',
+      updatedAt: 10,
+    });
+    expect(askingStore([question, session({ updatedAt: 20 })], 30)).toBe(question);
+    expect(
+      askingStore([question, session({ updatedAt: 20, lastReply: 'Merged. Round ten started.' })], 30),
+    ).toBeUndefined();
   });
 
   it('keeps different projects and agents separate when their stores reuse an id', () => {

@@ -305,7 +305,26 @@ interface ConversationPart {
 
 export function storedConversation(input: StoredSessionTranscriptInput) {
   const latestArtifacts = latestArtifactVersions(input.turns);
-  if (!input.readable || !input.turns.length) return { notice: storedConversationMarkdown(input), turns: [] };
+  if (!input.readable || !input.turns.length) {
+    // Cloud indexes summarize task/PR activity; their lastReply field is not a transcript message.
+    if (
+      !input.readable &&
+      input.session.where === 'cloud' &&
+      ['github', 'codex-cloud'].includes(input.session.source)
+    ) {
+      return {
+        notice: 'The cloud source provides session metadata only.',
+        turns: [],
+        pullRequests: input.session.pullRequests,
+        status: !input.session.pullRequests?.length
+          ? input.session.lastReply
+          : input.session.source === 'codex-cloud'
+            ? input.session.lastReply?.split('; ')[0]
+            : undefined,
+      };
+    }
+    return { notice: storedConversationMarkdown(input), turns: [] };
+  }
   return {
     notice: input.truncated ? (input.truncatedReason ?? 'Only the latest turns are available.') : undefined,
     turns: input.turns.map((turn) => ({

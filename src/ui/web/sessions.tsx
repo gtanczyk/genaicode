@@ -339,8 +339,17 @@ export function Sessions({
         setRound((value) => value + 1);
       });
   };
-  const questionsOf = (session: SessionInfo) =>
-    (listing?.asks ?? []).filter((ask) => ask.agent === session.agent && ask.session === session.id);
+  const questionsOf = (session: SessionInfo) => {
+    if (!listing?.asks?.length) return [];
+    if (session.where !== 'local') return [];
+    const matches = index.rows.filter(
+      (row) => row.where === 'local' && row.agent === session.agent && row.id === session.id,
+    );
+    if (matches.length !== 1 || matches[0]?.cwd !== session.cwd) return [];
+    return (listing?.asks ?? []).filter(
+      (ask) => ask.agent === session.agent && ask.session === session.id && (!ask.cwd || ask.cwd === session.cwd),
+    );
+  };
 
   const questionActions = (session: SessionInfo) =>
     questionsOf(session).map((ask) => (
@@ -371,7 +380,8 @@ export function Sessions({
     }, show);
   };
 
-  const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
+  const senderOf = (session: SessionInfo) =>
+    questionsOf(session).length ? undefined : sessionReplyTarget(session, storesOf(session), listing?.senders);
   const actions = (session: SessionInfo, close?: () => void, includeReply = true) => {
     const sender = senderOf(session);
     const action = (label: string, run: () => void, title?: string) => (
@@ -754,7 +764,10 @@ export function Sessions({
               </div>
             </footer>
             {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
-              <p role="status">{receipt.text || 'Turn completed.'}</p>
+              <details className="thread-receipt">
+                <summary role="status">Reply delivered · turn completed</summary>
+                {receipt.text && <p>{receipt.text}</p>}
+              </details>
             )}
             {archiveFailed && <p role="alert">{archiveFailed}</p>}
             {failed && <p role="alert">{failed}</p>}
