@@ -144,16 +144,13 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   let looked = 0;
   let thread: string | undefined;
   const project = (line: Record<string, unknown>) => {
-    if (info.project?.name) return;
     let text: string | undefined;
     if (line.type === 'attachment' && isRecord(line.attachment) && line.attachment.type === 'prompt_snapshot') {
       // The snapshot of the session's instructions is where the project is named.
       const prompt = line.attachment.systemPrompt;
       text = Array.isArray(prompt) ? prompt.filter((part) => typeof part === 'string').join('\n') : undefined;
       if (typeof prompt === 'string') text = prompt;
-      const topic = text && PROJECT_NAMED.test(text) ? PROJECT_TOPIC.exec(text)?.[1] : undefined;
-      if (topic) thread = oneLine(topic, 120);
-    } else if (line.type === 'user' && looked < PROJECT_LINES) {
+    } else if (line.type === 'user' && !info.project?.name && looked < PROJECT_LINES) {
       text = textOf(messageOf(line), 'text');
       if (text) looked += 1;
     }
@@ -161,7 +158,12 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
     const named = PROJECT_NAMED.exec(text);
     const id = named?.[2] ?? PROJECT_ID.exec(text)?.[1];
     if (!id || (info.project && info.project.id !== id)) return;
-    info.project = { id, ...(named ? { name: oneLine(named[1]!, 80) } : {}) };
+    if (named && line.type === 'attachment') {
+      const topic = PROJECT_TOPIC.exec(text)?.[1];
+      if (topic) thread = oneLine(topic, 120);
+    }
+    if (named) info.project = { id, name: oneLine(named[1]!, 80) };
+    else info.project ??= { id };
   };
   for (const line of head) {
     if (!isRecord(line)) continue;
@@ -188,6 +190,7 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   let agentLast = false;
   for (const line of tail) {
     if (!isRecord(line)) continue;
+    if (head !== tail && line.type === 'attachment') project(line);
     // The directory it started in names the project; later lines follow the agent's `cd`.
     if (typeof line.cwd === 'string' && !info.cwd) info.cwd = line.cwd;
     if (typeof line.gitBranch === 'string' && line.gitBranch && line.gitBranch !== 'HEAD') info.branch = line.gitBranch;
@@ -224,8 +227,8 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
   if (!conversed) return null;
   if (aiTitle && briefed && info.firstPrompt) delete info.title;
   // A session nobody typed into (a scheduled task, a relayed one) is known by what it was sent.
-  // A session relayed from a claude.ai thread is called what the thread is, unless it has a title of its own.
-  if (info.project) info.title ??= thread;
+  // The topic names the thread within a project. Keep a distinct title the user gave the session.
+  if (thread && (!info.title || aiTitle || info.title === info.project?.name)) info.title = thread;
   info.firstPrompt ??= firstWrapped;
   info.lastPrompt ??= lastWrapped ?? info.firstPrompt;
   // Nobody typed into it: every prompt Claude Code noted a sender for came from a task, or, where it

@@ -1899,10 +1899,11 @@ function App({ selected }: { selected?: string }) {
     // Back from a page, the next key goes to the message field.
     focusComposer();
   };
-  const openSessions = (which: 'all' | 'needs' | 'own') => {
+  const openSessions = (which: 'all' | 'needs' | 'own', selected?: SessionInfo) => {
     setTopic(undefined);
     setListed(which);
-    setPanel('sessions');
+    setOpenedSession(selected);
+    navigate('sessions');
   };
   // Needs you is one page, whatever the sources are: with nothing to list it says so.
   const openNeedsYou = () => setPanel('needs');
@@ -2124,8 +2125,10 @@ function App({ selected }: { selected?: string }) {
   return (
     <>
       <Shell
-        title={openedSession?.title ?? openedSession?.id ?? pageTitle ?? convTitle ?? 'New chat'}
-        subtitle={!pageTitle && convTopic && convTopic !== convTitle ? convTopic : undefined}
+        title={openedSession ? chatTitle(openedSession) : (pageTitle ?? convTitle ?? 'New chat')}
+        subtitle={
+          openedSession?.project?.name ?? (!pageTitle && convTopic && convTopic !== convTitle ? convTopic : undefined)
+        }
         project={
           !pageTitle && activeCwd && (hasProject || (isHome && conversation && conversation.origin !== 'home'))
             ? { name: folderName(activeCwd), path: activeCwd }
@@ -2342,8 +2345,6 @@ function App({ selected }: { selected?: string }) {
           chats: ownChats,
           sessions: searchSessions,
           home: isHome ? cwd : undefined,
-          // As its row in the sidebar: another agent's session is shown among all sessions.
-          onOpenSession: () => openSessions('all'),
           // The sections the Settings page has here, each opened in its place.
           settings: settingsSections({
             agents: hasAgentsApi || undefined,
@@ -2367,6 +2368,8 @@ function App({ selected }: { selected?: string }) {
           busyWith: running && !config?.multiChat ? runningName : undefined,
           needs: sidebarNeeds,
           onNeedsYou: openNeedsYou,
+          onOpenSession: (row) => openSessions('all', row),
+          selectedSession: openedSession && sessionKey(openedSession),
           onAllSessions: hasSessions ? () => openSessions('all') : undefined,
           onAllChats: hasSessions ? () => openSessions('own') : undefined,
           projects,

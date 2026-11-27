@@ -198,6 +198,8 @@ export interface SidebarProps {
   onNeedsYou(): void;
   /** Absent when the page has no session index (`/api/sessions`). */
   onAllSessions?(): void;
+  onOpenSession(session: SessionInfo): void;
+  selectedSession?: string;
   /**
    * Every chat of this app: the list here ends after 30 days and leaves out the archived, so this is
    * the way to the rest. Absent when the page has no session index.
@@ -344,7 +346,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             className="nav"
             title="Sessions of every agent on this machine"
             aria-label="All sessions"
-            aria-current={props.page === 'sessions' ? 'page' : undefined}
+            aria-current={props.page === 'sessions' && !props.selectedSession ? 'page' : undefined}
             onClick={props.onAllSessions}
           >
             <Icon name="layers" />
@@ -557,8 +559,9 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 type="button"
                 key={sessionKey(session)}
                 className="nav chat"
-                title={`${session.agent}${session.cwd ? ` · ${session.cwd}` : ''}`}
-                onClick={props.onAllSessions}
+                title={[session.agent, session.project?.name, session.cwd].filter(Boolean).join(' · ')}
+                aria-current={props.selectedSession === sessionKey(session) ? 'page' : undefined}
+                onClick={() => props.onOpenSession(session)}
               >
                 <StateGlyph state={sessionGlyph(session, now)} />
                 <span className="grow">{chatTitle(session)}</span>

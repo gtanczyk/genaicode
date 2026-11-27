@@ -47,7 +47,6 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
     search: {
       chats,
       sessions: [chat('x', { agent: 'codex', source: 'codex', title: 'Other work', cwd: '/work/bakery' })],
-      onOpenSession: vi.fn(),
       settings: [{ label: 'Agents', onSelect: vi.fn() }],
     },
     ...patch,
@@ -56,6 +55,7 @@ function props(patch: Partial<ShellProps> = {}, side: Partial<ShellProps['side']
       onNewChat: vi.fn(),
       needs: needsYou({ approvals: 1, tower: [{ id: 'draft-1' }, { id: 'draft-2' }], now }),
       onNeedsYou: vi.fn(),
+      onOpenSession: vi.fn(),
       onAllSessions: vi.fn(),
       projects: chatProjects(chats),
       selectedChat: sessionKey(chats[0]!),
@@ -247,6 +247,9 @@ describe('<Shell>', () => {
     expect(other.getAttribute('aria-label')).toBe("Other agents' sessions");
     expect(other.querySelector('.tag')?.textContent).toBe('codex');
     expect(other.textContent).toContain('Other work');
+    click(other.querySelector('button')!);
+    expect(value.side.onOpenSession).toHaveBeenCalledWith(value.side.others!.shown[0]);
+    expect(value.side.onAllSessions).not.toHaveBeenCalled();
     click(button('Show all 7 sessions'));
     expect(value.side.onAllSessions).toHaveBeenCalledTimes(1);
   });
@@ -655,7 +658,7 @@ describe('Search (⌘K)', () => {
     expect(palette()).toBeNull();
     expect(value.side.onOpenChat).toHaveBeenCalledTimes(1);
     expect(value.side.onOpenChat).toHaveBeenCalledWith(chats[2]);
-    expect(value.search!.onOpenSession).not.toHaveBeenCalled();
+    expect(value.side.onOpenSession).not.toHaveBeenCalled();
   });
 
   it('keeps the selected row selected when the list is refreshed under it', () => {
@@ -767,7 +770,7 @@ describe('Search (⌘K)', () => {
     press('k', mod());
     type('codex');
     key('Enter');
-    expect(value.search!.onOpenSession).toHaveBeenCalledWith(value.search!.sessions[0]);
+    expect(value.side.onOpenSession).toHaveBeenCalledWith(value.search!.sessions[0]);
     expect(value.side.onOpenChat).not.toHaveBeenCalled();
     press('k', mod());
     click(rows()[1]!);
