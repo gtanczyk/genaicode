@@ -29,6 +29,8 @@ export interface MarkdownProps {
   remoteImages?: 'click' | 'load';
   /** Resolve relative file links (`./...`, `../...`) against this directory. */
   fileBase?: string;
+  /** Recognize bare relative Markdown document links when a host supplies their directory. */
+  relativeDocuments?: boolean;
   /** Only render file links as clickable buttons when they resolve inside one of these project roots. */
   fileRoot?: string | readonly string[];
 }
@@ -56,6 +58,15 @@ const INLINE = new RegExp(
     String.raw`${linkLabel.source}(?<file>${localTarget})\)`,
     /https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"]/.source,
   ].join('|'),
+  'g',
+);
+
+// Outside a session document viewer, keep the existing inline grammar.
+const RELATIVE_DOCUMENT = new RegExp(
+  INLINE.source +
+    '|' +
+    linkLabel.source +
+    String.raw`(?<relativeDoc><[^<>:\r\n]{1,2000}\.[mM][dD]>|[^\s():<>]{1,2000}\.[mM][dD])\)`,
   'g',
 );
 
@@ -217,6 +228,7 @@ interface InlineOptions {
   remoteImages?: 'click' | 'load';
   fileBase?: string;
   fileRoot?: string | readonly string[];
+  relativeDocuments?: boolean;
 }
 
 /** Trim trailing `/` or `\` linearly (no regex backtracking). */
@@ -278,6 +290,14 @@ function fileButton(
   options: InlineOptions,
   extra?: { className?: string; title?: string },
 ): ReactNode {
+  // Session document references are URI destinations. file:// paths are decoded by parseFileTarget.
+  if (options.relativeDocuments && !FILE_URI_PREFIX.test(target)) {
+    try {
+      target = decodeURIComponent(target);
+    } catch {
+      return <span key={key}>{label}</span>;
+    }
+  }
   const { path: rawPath, position } = parseFileTarget(target);
   if (!rawPath) {
     return (
@@ -317,7 +337,7 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
   const out: ReactNode[] = [];
   let last = 0;
   let key = 0;
-  for (const match of text.matchAll(INLINE)) {
+  for (const match of text.matchAll(options.relativeDocuments && options.fileBase ? RELATIVE_DOCUMENT : INLINE)) {
     const [token] = match;
     const at = match.index ?? 0;
     if (at > last) out.push(text.slice(last, at));
@@ -368,12 +388,12 @@ function inline(text: string, options: InlineOptions, links = true): ReactNode[]
     } else if (match.groups?.url) {
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
       out.push(links ? link(unwrapDestination(match.groups.url), label, key++) : <span key={key++}>{label}</span>);
-    } else if (match.groups?.file) {
+    } else if (match.groups?.file || match.groups?.relativeDoc) {
       // A link to a file on disk, as agents write them: the label, path, and optional line position.
       const label = inline(token.slice(1, token.indexOf(']')), options, false);
       out.push(
         links ? (
-          fileButton(unwrapDestination(match.groups.file), label, key++, options)
+          fileButton(unwrapDestination(match.groups.file ?? match.groups.relativeDoc!), label, key++, options)
         ) : (
           <span key={key++}>{label}</span>
         ),
@@ -468,8 +488,9 @@ export const Markdown = memo(function Markdown({
   remoteImages,
   fileBase,
   fileRoot,
+  relativeDocuments,
 }: MarkdownProps) {
-  const options: InlineOptions = { imageUrl, remoteImages, fileBase, fileRoot };
+  const options: InlineOptions = { imageUrl, remoteImages, fileBase, fileRoot, relativeDocuments };
   return (
     <div className={['gc-md', streaming ? 'gc-caret' : '', className ?? ''].filter(Boolean).join(' ')}>
       {blocks(text.trimEnd().split('\n'), options)}

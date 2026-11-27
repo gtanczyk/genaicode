@@ -179,7 +179,10 @@ export function SessionTranscript({
                               event.currentTarget.parentElement!.querySelectorAll<HTMLDetailsElement>(
                                 'details[data-file]',
                               ),
-                            ).find((one) => one.dataset.file === button.dataset.gcFile);
+                            ).find(
+                              (one) =>
+                                one.dataset.file?.replace(/\\/g, '/') === button.dataset.gcFile?.replace(/\\/g, '/'),
+                            );
                           if (card) {
                             card.open = true;
                             card.querySelector('summary')?.focus();
@@ -188,10 +191,11 @@ export function SessionTranscript({
                       >
                         <Markdown
                           text={part.text}
+                          relativeDocuments={session.source === 'antigravity'}
                           fileRoot={session.source === 'antigravity' ? (docs?.map((doc) => doc.path) ?? []) : undefined}
                           fileBase={
                             session.path && session.source === 'antigravity'
-                              ? session.path.split('/.system_generated/')[0]
+                              ? session.path.split(/[\\/]\.system_generated[\\/]/)[0]
                               : undefined
                           }
                         />

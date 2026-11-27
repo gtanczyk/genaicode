@@ -14,7 +14,7 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
   const home = mkdtempSync(join(process.cwd(), 'node_modules', '.gallery-'));
   const dir = join(home, '.gemini', 'antigravity', 'brain', 'test-session');
   mkdirSync(dir, { recursive: true });
-  const gallery = join(dir, 'gallery.md');
+  const gallery = join(dir, 'camp gallery.md');
   writeFileSync(gallery, '# Camp gallery\n\n![Camp overview](./camp.png)');
   writeFileSync(
     join(dir, 'camp.png'),
@@ -42,7 +42,7 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
     },
     {
       type: 'PLANNER_RESPONSE',
-      content: `The tests passed. Open [gallery.md](${pathToFileURL(gallery)}) or [missing.md](./missing.md).`,
+      content: `The tests passed. Open [gallery.md](${pathToFileURL(gallery)}) or [relative gallery](camp%20gallery.md) or [missing.md](./missing.md).`,
     },
   ]);
   const bundle = await build({
@@ -79,6 +79,9 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
         await detail.getByRole('img', { name: 'Camp overview' }).evaluate((el: HTMLImageElement) => el.naturalWidth),
       ).toBe(1),
     );
+    await detail.locator('.thread-document summary').click();
+    await detail.getByRole('button', { name: 'relative gallery' }).click();
+    await detail.getByRole('img', { name: 'Camp overview' }).waitFor();
     await detail.getByText('Session active · replies are paused here').waitFor();
   } finally {
     await browser.close();
