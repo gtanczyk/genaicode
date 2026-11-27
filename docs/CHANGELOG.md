@@ -8,12 +8,12 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+## 3.7.0 — 2026-11-27
+
 ### Added
 
 - **Read external agent sessions as conversations and reply to the selected local session.** (#390)
-
   - Open at the latest message or pending question, keep your reading position, and inspect tool results, file changes and attachments in context.
-
 - **Drag project folders into your preferred order in the sidebar.** (#387)
 
 ### Fixed
