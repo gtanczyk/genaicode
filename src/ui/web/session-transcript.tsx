@@ -32,16 +32,18 @@ export function SessionTranscript({
   const follow = useRef(true);
   const previous = useRef<typeof conversation>(undefined);
   const [unread, setUnread] = useState(false);
-  const openingQuestion = useRef(question);
+  const openingQuestion = useRef(question?.replace(/^…/, '').replace(/\s+/g, ' ').trim());
   useLayoutEffect(() => {
     const pane = scroll.current;
     if (!pane || !conversation) return;
     const prev = previous.current;
     if (!prev) {
       const anchor = Array.from(pane.querySelectorAll<HTMLElement>('[data-opening-question]')).at(-1);
-      pane.scrollTop = anchor
-        ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top
-        : (positions?.get(url) ?? pane.scrollHeight);
+      pane.scrollTop =
+        positions?.get(url) ??
+        (anchor
+          ? pane.scrollTop + anchor.getBoundingClientRect().top - pane.getBoundingClientRect().top
+          : pane.scrollHeight);
       follow.current = pane.scrollHeight - pane.clientHeight - pane.scrollTop < 32;
     } else if (follow.current) {
       pane.scrollTop = pane.scrollHeight;
@@ -135,7 +137,7 @@ export function SessionTranscript({
                     data-opening-question={
                       part.role === 'agent' &&
                       openingQuestion.current &&
-                      part.text.includes(openingQuestion.current.trim())
+                      part.text.replace(/\s+/g, ' ').trim().endsWith(openingQuestion.current)
                         ? true
                         : undefined
                     }

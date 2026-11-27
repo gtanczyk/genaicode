@@ -25,6 +25,8 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
   const stop = new AbortController();
 
   // Two sessions another program started. One ended its message with a question.
+  const questionText = 'The starter is ready. '.repeat(12) + '\n\nShould I bake today or wait until Friday?';
+  const preview = '…' + questionText.replace(/\s+/g, ' ').slice(-199);
   const question: SessionInfo = {
     source: 'helper',
     agent: 'helper',
@@ -33,7 +35,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     cwd: bakery,
     title: 'Sourdough schedule',
     state: 'waiting',
-    lastReply: 'The starter is ready.\n\nShould I bake today or wait until Friday?',
+    lastReply: preview,
     updatedAt: Date.now() - 40 * MINUTE,
   };
   // The other waits on a tool, and its hook holds the question open for an answer from here.
@@ -71,7 +73,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
           startedAt: 0,
           agent: 'helper',
           prompt: `Update ${n}`,
-          entries: [{ kind: 'text' as const, streaming: false, text: n === 3 ? question.lastReply! : `Receipt ${n}` }],
+          entries: [{ kind: 'text' as const, streaming: false, text: n === 3 ? questionText : `Receipt ${n}` }],
         })),
       ],
     },
@@ -198,7 +200,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await asked.locator('.needs-meta b').textContent()).toBe('Answer a question');
     expect(await asked.locator('.tag').allTextContents()).toEqual(['bakery', 'helper']);
     expect(await asked.locator('.tag').first().getAttribute('title')).toBe(bakery);
-    expect(await asked.locator('.needs-text').textContent()).toBe('“Should I bake today or wait until Friday?”');
+    expect(await asked.locator('.needs-text').textContent()).toBe('“' + preview + '”');
     expect(await asked.locator('time').textContent()).toBe('40m ago');
     const permission = queue.getByRole('article').filter({ hasText: 'Deploy the round table' });
     expect(await permission.locator('.needs-meta b').textContent()).toBe('Permission request');
@@ -226,12 +228,20 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Save this draft');
     await detail.getByLabel('Sandbox').selectOption('read-only');
+    await detail.locator('.thread-messages').evaluate((el) => {
+      el.scrollTop = 160;
+    });
+    await page.waitForFunction(() => document.querySelector('.thread-messages')?.scrollTop === 160);
+
     await topbar.getByRole('button', { name: 'Needs you' }).click();
     expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
 
     expect(await asked.getByRole('textbox').inputValue()).toBe('Save this draft');
     await asked.getByRole('button', { name: 'Open session' }).click();
     await detail.getByRole('textbox').waitFor();
+    await vi.waitFor(async () =>
+      expect(await detail.locator('.thread-messages').evaluate((el) => el.scrollTop)).toBe(160),
+    );
     expect(await detail.getByRole('textbox').inputValue()).toBe('Save this draft');
     expect(await detail.getByLabel('Sandbox').inputValue()).toBe('read-only');
     await detail.getByRole('button', { name: 'Cancel' }).click();
