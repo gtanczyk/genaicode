@@ -115,7 +115,7 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
     expect(await summary.innerText()).toContain('Rendering camp lighting and camera angles · 9m 40s · 1 failed');
     await summary.click();
     await work.locator('details details').first().waitFor();
-    expect(await work.getByText('read_file', { exact: true }).count()).toBe(21);
+    expect(await work.locator('details details > summary').filter({hasText:/^read_file$/}).count()).toBe(21);
     await summary.click();
     await detail.getByRole('button', { name: 'gallery.md' }).click();
     await vi.waitFor(async () =>

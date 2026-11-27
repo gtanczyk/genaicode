@@ -426,6 +426,10 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-plan li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 14px; color: var(--muted); }
 .thread-plan li[aria-current] { color: var(--text); font-weight: 600; }
 .thread-plan li > span[role="img"] { width: 1em; flex: none; }
+.thread-work > details > summary { display: block; width: fit-content; max-width: 100%; padding: 3px 2px; list-style: none; }
+.thread-work > details > summary::-webkit-details-marker { display: none; }
+.thread-work > details > summary::after { content: '›'; display: inline-block; margin-left: .5em; }
+.thread-work > details[open] > summary::after { transform: rotate(90deg); }
 .thread-work details details { margin: 4px 0 4px 16px; }
 .thread-activity summary small { font-size: inherit; }
 .thread-activity summary { color: var(--muted); cursor: pointer; }
