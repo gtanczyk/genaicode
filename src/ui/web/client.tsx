@@ -1130,6 +1130,7 @@ function App({ selected }: { selected?: string }) {
   const [theme, setTheme] = useTheme();
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
   const [panel, navigate] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
+  const readingPositions = useRef(new Map<string, number>());
   const [openedSession, setOpenedSession] = useState<SessionInfo>();
   const setPanel = (page: typeof panel) => {
     setOpenedSession(undefined);
@@ -2438,6 +2439,8 @@ function App({ selected }: { selected?: string }) {
             onArchived={chats.refresh}
             onDelete={config?.multiChat ? askDelete : undefined}
             selected={openedSession}
+            readingPositions={readingPositions.current}
+            openingQuestion={panel === 'needs' ? openedSession?.lastReply : undefined}
             onOpen={setOpenedSession}
             key={listed}
             token={token}

@@ -130,6 +130,8 @@ export interface SessionSource {
 }
 
 export interface SessionReadOptions {
+  /** Include bounded, inline raster previews when the store contains the original bytes. */
+  imagePreviews?: boolean;
   /** At most this many turns, the latest ones. Default 100. */
   maxTurns?: number;
   /** Tool output longer than this is cut. Default 4000 characters. */

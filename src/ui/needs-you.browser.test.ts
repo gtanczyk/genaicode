@@ -48,6 +48,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     updatedAt: Date.now() - 5 * MINUTE,
   };
   const theirs = [question, deploy];
+  let extraTurns = 20;
   const ran: Array<{ prompt: string; cwd?: string; resume?: string }> = [];
   const helper: CodingAgent = {
     name: 'helper',
@@ -65,6 +66,13 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
           prompt: 'Read the recipe for ' + session.id,
           entries: [{ kind: 'text', streaming: false, text: 'The recipe uses rye flour.' }],
         },
+        ...Array.from({ length: extraTurns }, (_, n) => ({
+          id: n + 2,
+          startedAt: 0,
+          agent: 'helper',
+          prompt: `Update ${n}`,
+          entries: [{ kind: 'text' as const, streaming: false, text: n === 3 ? question.lastReply! : `Receipt ${n}` }],
+        })),
       ],
     },
     run(task) {
@@ -205,6 +213,10 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByText('The recipe uses rye flour.').waitFor();
     expect(await composer.isVisible()).toBe(false);
     expect(await detail.locator('textarea').count()).toBe(0);
+    const questionTop = await detail
+      .locator('[data-opening-question]')
+      .evaluate((el) => el.getBoundingClientRect().top - el.closest('.thread-messages')!.getBoundingClientRect().top);
+    expect(Math.abs(questionTop)).toBeLessThan(2);
     const sessionMenu = detail.getByRole('button', { name: 'Session actions' });
     await sessionMenu.click();
     await detail.getByRole('menuitem', { name: 'Continue here' }).waitFor();
@@ -234,6 +246,20 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await row.getByRole('button').allTextContents()).toEqual(['Open', '⋯']);
     await row.getByRole('button', { name: 'Open', exact: true }).click();
     await detail.getByText('Read the recipe for bakery-1').waitFor();
+    const history = detail.locator('.thread-messages');
+    await history.evaluate((el) => {
+      el.scrollTop = 280;
+    });
+    await vi.waitFor(async () => expect(await history.evaluate((el) => el.scrollTop)).toBe(280));
+    await topbar.getByRole('button', { name: 'All sessions' }).click();
+    await row.getByRole('button', { name: 'Open', exact: true }).click();
+    await vi.waitFor(async () => expect(await history.evaluate((el) => el.scrollTop)).toBe(280));
+    extraTurns++;
+    await page.evaluate(() => window.dispatchEvent(new Event('genaicode-history-changed')));
+    await detail.getByRole('button', { name: 'New messages' }).waitFor();
+    expect(await history.evaluate((el) => el.scrollTop)).toBe(280);
+    await detail.getByRole('button', { name: 'New messages' }).click();
+    expect(await history.evaluate((el) => el.scrollTop)).toBeGreaterThan(280);
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Bake now?');
     await detail.getByLabel('Sandbox').selectOption('read-only');

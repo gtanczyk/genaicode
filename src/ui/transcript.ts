@@ -298,6 +298,8 @@ interface TurnContext {
 interface ConversationPart {
   role: 'user' | 'agent' | 'activity' | 'note';
   heading?: string;
+  summary?: string;
+  attachments?: SessionTurn['attachments'];
   text: string;
 }
 
@@ -310,7 +312,7 @@ export function storedConversation(input: StoredSessionTranscriptInput) {
       id: turn.id,
       speaker: turn.pack?.lead ?? turn.agent,
       startedAt: turn.startedAt,
-      parts: conversationParts(turn, { cwd: input.session.cwd, latestArtifacts }),
+      parts: conversationParts(turn, { cwd: input.session.cwd, latestArtifacts }, true),
     })),
   };
 }
@@ -332,7 +334,7 @@ function renderTurn(out: string[], turn: SessionTurn, context: TurnContext) {
   }
 }
 
-function conversationParts(turn: SessionTurn, context: TurnContext): ConversationPart[] {
+function conversationParts(turn: SessionTurn, context: TurnContext, forDisplay = false): ConversationPart[] {
   const parts: ConversationPart[] = [];
   const speaker = turn.pack?.lead ?? turn.agent;
   const out: string[] = [];
@@ -342,9 +344,10 @@ function conversationParts(turn: SessionTurn, context: TurnContext): Conversatio
     parts.push({ role: 'note', text: `_Handoff: ${turn.handoff.turns} earlier turns${from}${file}_` });
   }
 
-  out.push(turn.prompt.trim() || '_(empty prompt)_', '');
+  if (turn.prompt.trim() || !forDisplay || !turn.attachments?.length)
+    out.push(turn.prompt.trim() || '_(empty prompt)_', '');
 
-  if (turn.attachments?.length) {
+  if (!forDisplay && turn.attachments?.length) {
     out.push(
       'Attachments:',
       ...turn.attachments.map(
@@ -354,7 +357,23 @@ function conversationParts(turn: SessionTurn, context: TurnContext): Conversatio
     );
   }
 
-  parts.push({ role: 'user', heading: 'User', text: out.join('\n').trimEnd() });
+  const attachments = (forDisplay ? turn.attachments : undefined)?.map(({ name, size, mediaType, url }) => ({
+    name,
+    size,
+    mediaType,
+    // Only raster bytes already in this transcript may load automatically.
+    ...(url &&
+    ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mediaType) &&
+    url.startsWith('data:' + mediaType + ';base64,')
+      ? { url }
+      : {}),
+  }));
+  parts.push({
+    role: 'user',
+    heading: 'User',
+    text: out.join('\n').trimEnd(),
+    ...(attachments?.length ? { attachments } : {}),
+  });
   out.length = 0;
   for (const entry of turn.entries) {
     if (entry.kind === 'text' || entry.kind === 'input') {
@@ -364,7 +383,15 @@ function conversationParts(turn: SessionTurn, context: TurnContext): Conversatio
     } else {
       renderEntry(out, entry, speaker, context);
       const text = out.join('\n').trimEnd();
-      if (text) parts.push({ role: entry.kind === 'tool' || entry.kind === 'files' ? 'activity' : 'note', text });
+      if (text) {
+        const summary =
+          entry.kind === 'tool'
+            ? `${entry.name} · ${entry.isError ? 'failed' : entry.output !== undefined ? 'result' : 'call'}`
+            : entry.kind === 'files'
+              ? `Changed files (${entry.paths.length})`
+              : undefined;
+        parts.push(summary ? { role: 'activity', summary, text } : { role: 'note', text });
+      }
       out.length = 0;
     }
   }

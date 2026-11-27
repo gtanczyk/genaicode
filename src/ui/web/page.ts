@@ -395,9 +395,9 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .project > summary .topic-new:hover { border-color: var(--accent); color: var(--text); }
 .session-row .label small.topic-tag { color: var(--accent); }
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
-.sessions.session-detail { padding: 0 clamp(12px, 4vw, 52px) 20px; }
-.thread-column { max-width: 760px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
-.thread-messages { flex: 1; padding: 22px 0 32px; overflow-wrap: anywhere; }
+.sessions.session-detail { min-height: 0; overflow: hidden; padding: 0 clamp(12px, 4vw, 52px) 20px; }
+.thread-column { max-width: 760px; margin: 0 auto; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.thread-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 0 32px; overflow-wrap: anywhere; }
 .thread-date { display: flex; align-items: center; gap: 14px; margin: 6px 0 24px; font-size: 12px; color: var(--muted); }
 .thread-date::before, .thread-date::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
 .thread-turn + .thread-turn { margin-top: 24px; }
@@ -417,7 +417,10 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-message.agent { padding-right: 5%; }
 .thread-activity, .thread-note { margin: 10px 0; font-size: 13px; }
 .thread-activity summary { color: var(--muted); cursor: pointer; }
-.thread-footer { margin-top: auto; padding-top: 12px; }
+.thread-new { align-self: center; cursor: pointer; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 5px 12px; }
+.thread-open, .thread-availability { font-size: 13px; }
+.thread-availability { color: var(--muted); }
+.thread-footer { flex-shrink: 0; margin-top: auto; padding-top: 12px; }
 .thread-context { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 2px 0; }
 .thread-context .tm-wrap { margin-left: auto; }
 .session-origin { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -427,6 +430,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-more { border: 0; background: transparent; border-radius: 6px; color: var(--muted); padding: 2px 8px; cursor: pointer; }
 .thread-more:hover { color: var(--text); background: var(--panel); }
 .thread-footer .session-reply { padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; }
+.thread-footer .question-row { max-height: 18vh; overflow-y: auto; }
 .thread-footer .session-reply textarea { background: transparent; }
 .sessions .open-session { color: var(--accent); }
 .needs-page[hidden], .sessions[hidden] { display: none; }

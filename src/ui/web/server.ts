@@ -132,6 +132,7 @@ export interface WebUiOptions {
   sessionTranscript?: (
     source: string,
     id: string,
+    imagePreviews?: boolean,
   ) => Promise<
     | {
         session: SessionInfo;
@@ -1374,7 +1375,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           }
         | undefined;
       try {
-        found = await options.sessionTranscript(source, id);
+        found = await options.sessionTranscript(source, id, format === 'conversation' || undefined);
       } catch {
         return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
       }
