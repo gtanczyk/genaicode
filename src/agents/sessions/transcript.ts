@@ -89,12 +89,13 @@ export function transcriptBuilder(agent: string, options: SessionReadOptions = {
     if (current) current.endedAt = clock;
   };
   return {
-    prompt(text: string, at?: number) {
+    prompt(text: string, at?: number, attachments?: SessionTurn['attachments']) {
       if (at !== undefined) clock = at;
       // A briefing genaicode added to the prompt is not what the person said.
       const said = personText(text);
       const prompt = said && said !== text.trim() ? said : text;
       current = { id: turns.length + 1, agent, prompt, entries: [], startedAt: clock, endedAt: clock };
+      if (attachments?.length) current.attachments = attachments;
       turns.push(current);
     },
     text(text: string, at?: number) {

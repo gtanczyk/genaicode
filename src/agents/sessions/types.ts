@@ -24,6 +24,13 @@ export interface SessionInfo {
   cwd?: string;
   repository?: string;
   branch?: string;
+  /** Pull requests that explicitly link this cloud thread, with their last observed GitHub state. */
+  pullRequests?: Array<{
+    repository: string;
+    number: number;
+    title: string;
+    state: 'Draft' | 'Open' | 'Merged' | 'Closed';
+  }>;
   /** The agent's or the user's name for it, when there is one. */
   title?: string;
   /** The first and the latest thing the user asked. */
@@ -130,6 +137,8 @@ export interface SessionSource {
 }
 
 export interface SessionReadOptions {
+  /** Include bounded, inline raster previews when the store contains the original bytes. */
+  imagePreviews?: boolean;
   /** At most this many turns, the latest ones. Default 100. */
   maxTurns?: number;
   /** Tool output longer than this is cut. Default 4000 characters. */

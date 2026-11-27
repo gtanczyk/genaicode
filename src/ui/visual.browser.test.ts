@@ -1094,9 +1094,21 @@ describe('the Needs you page looks as its baseline', { timeout: 30_000 }, () => 
       const page = await newPage(browser, theme, { width: 1280, height: 800 });
       try {
         await page.route('**/api/sessions?*', (route) => route.fulfill({ json: listing }));
-        await page.route('**/transcript?format=view', (route) =>
+        await page.route('**/transcript?format=conversation', (route) =>
           route.fulfill({
-            body: '## Turn 1 · helper\n\n### User\n\nCheck the retry policy.\n\n### helper\n\nRetry the gate verdict on 502 too, or only on timeouts?',
+            json: {
+              turns: [
+                {
+                  id: 1,
+                  speaker: 'helper',
+                  startedAt: 0,
+                  parts: [
+                    { role: 'user', text: 'Check the retry policy.' },
+                    { role: 'agent', text: 'Retry the gate verdict on 502 too, or only on timeouts?' },
+                  ],
+                },
+              ],
+            },
           }),
         );
         await page.goto(url!);

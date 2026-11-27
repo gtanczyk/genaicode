@@ -289,11 +289,54 @@ export function storedConversationMarkdown(input: StoredSessionTranscriptInput):
   return `${out.join('\n').trimEnd()}\n`;
 }
 
-function renderTurn(
-  out: string[],
-  turn: SessionTurn,
-  context: { cwd?: string; latestArtifacts: Map<string, number>; readArtifact?: ReadArtifact },
-) {
+interface TurnContext {
+  cwd?: string;
+  latestArtifacts: Map<string, number>;
+  readArtifact?: ReadArtifact;
+}
+
+interface ConversationPart {
+  role: 'user' | 'agent' | 'activity' | 'note';
+  heading?: string;
+  summary?: string;
+  attachments?: SessionTurn['attachments'];
+  text: string;
+}
+
+export function storedConversation(input: StoredSessionTranscriptInput) {
+  const latestArtifacts = latestArtifactVersions(input.turns);
+  if (!input.readable || !input.turns.length) {
+    // Cloud indexes summarize task/PR activity; their lastReply field is not a transcript message.
+    if (
+      !input.readable &&
+      input.session.where === 'cloud' &&
+      ['github', 'codex-cloud'].includes(input.session.source)
+    ) {
+      return {
+        notice: 'The cloud source provides session metadata only.',
+        turns: [],
+        pullRequests: input.session.pullRequests,
+        status: !input.session.pullRequests?.length
+          ? input.session.lastReply
+          : input.session.source === 'codex-cloud'
+            ? input.session.lastReply?.split('; ')[0]
+            : undefined,
+      };
+    }
+    return { notice: storedConversationMarkdown(input), turns: [] };
+  }
+  return {
+    notice: input.truncated ? (input.truncatedReason ?? 'Only the latest turns are available.') : undefined,
+    turns: input.turns.map((turn) => ({
+      id: turn.id,
+      speaker: turn.pack?.lead ?? turn.agent,
+      startedAt: turn.startedAt,
+      parts: conversationParts(turn, { cwd: input.session.cwd, latestArtifacts }, true),
+    })),
+  };
+}
+
+function renderTurn(out: string[], turn: SessionTurn, context: TurnContext) {
   const speaker = turn.pack?.lead ?? turn.agent;
   const headerParts = [`Turn ${turn.id}`, speaker];
   if (turn.startedAt > 0) {
@@ -304,17 +347,26 @@ function renderTurn(
   }
   out.push(`## ${headerParts.join(' · ')}`, '');
 
+  for (const part of conversationParts(turn, context)) {
+    if (part.heading) out.push('### ' + part.heading, '');
+    out.push(part.text, '');
+  }
+}
+
+function conversationParts(turn: SessionTurn, context: TurnContext, forDisplay = false): ConversationPart[] {
+  const parts: ConversationPart[] = [];
+  const speaker = turn.pack?.lead ?? turn.agent;
+  const out: string[] = [];
   if (turn.handoff) {
     const from = turn.handoff.agents.length ? ` from ${turn.handoff.agents.join(', ')}` : '';
     const file = turn.handoff.file ? ` (\`${turn.handoff.file}\`)` : '';
-    out.push(`_Handoff: ${turn.handoff.turns} earlier turns${from}${file}_`, '');
+    parts.push({ role: 'note', text: `_Handoff: ${turn.handoff.turns} earlier turns${from}${file}_` });
   }
 
-  out.push('### User', '');
-  if (turn.prompt.trim()) out.push(turn.prompt.trim(), '');
-  else out.push('_(empty prompt)_', '');
+  if (turn.prompt.trim() || !forDisplay || !turn.attachments?.length)
+    out.push(turn.prompt.trim() || '_(empty prompt)_', '');
 
-  if (turn.attachments?.length) {
+  if (!forDisplay && turn.attachments?.length) {
     out.push(
       'Attachments:',
       ...turn.attachments.map(
@@ -324,8 +376,43 @@ function renderTurn(
     );
   }
 
+  const attachments = (forDisplay ? turn.attachments : undefined)?.map(({ name, size, mediaType, url }) => ({
+    name,
+    size,
+    mediaType,
+    // Only raster bytes already in this transcript may load automatically.
+    ...(url &&
+    ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(mediaType) &&
+    url.startsWith('data:' + mediaType + ';base64,')
+      ? { url }
+      : {}),
+  }));
+  parts.push({
+    role: 'user',
+    heading: 'User',
+    text: out.join('\n').trimEnd(),
+    ...(attachments?.length ? { attachments } : {}),
+  });
+  out.length = 0;
   for (const entry of turn.entries) {
-    renderEntry(out, entry, speaker, context);
+    if (entry.kind === 'text' || entry.kind === 'input') {
+      const agent = entry.kind === 'text';
+      const text = (agent ? visibleReply(speaker, entry.text, entry.streaming) : entry.text).trim();
+      if (text) parts.push({ role: agent ? 'agent' : 'user', heading: agent ? speaker : 'User (during turn)', text });
+    } else {
+      renderEntry(out, entry, speaker, context);
+      const text = out.join('\n').trimEnd();
+      if (text) {
+        const summary =
+          entry.kind === 'tool'
+            ? `${entry.name} · ${entry.isError ? 'failed' : entry.output !== undefined ? 'result' : 'call'}`
+            : entry.kind === 'files'
+              ? `Changed files (${entry.paths.length})`
+              : undefined;
+        parts.push(summary ? { role: 'activity', summary, text } : { role: 'note', text });
+      }
+      out.length = 0;
+    }
   }
 
   const final = visibleReply(speaker, turn.result?.text ?? '').trim();
@@ -335,7 +422,7 @@ function renderTurn(
       (entry) => entry.kind === 'text' && visibleReply(speaker, entry.text, entry.streaming).trim() === final,
     )
   ) {
-    out.push(`### ${speaker}`, '', final, '');
+    parts.push({ role: 'agent', heading: speaker, text: final });
   }
 
   if (turn.pack?.tasks.length) {
@@ -392,27 +479,21 @@ function renderTurn(
   } else if (turnUsage) {
     out.push(`_Turn usage: ${turnUsage}_`, '');
   }
+  if (out.length) parts.push({ role: 'note', text: out.join('\n').trimEnd() });
+  return parts;
 }
 
 function renderEntry(
   out: string[],
-  entry: SessionEntry,
+  entry: Exclude<SessionEntry, { kind: 'input' | 'text' }>,
   speaker: string,
-  context: { cwd?: string; latestArtifacts: Map<string, number>; readArtifact?: ReadArtifact },
+  context: TurnContext,
 ) {
   switch (entry.kind) {
     case 'progress':
       out.push(`### ${speaker} (progress)`, '', entry.message, '');
       for (const item of entry.plan ?? []) out.push(`- ${item.step} (${item.status.replace('_', ' ')})`);
       if (entry.plan?.length) out.push('');
-      return;
-    case 'text': {
-      const reply = visibleReply(speaker, entry.text, entry.streaming).trim();
-      if (reply) out.push(`### ${speaker}`, '', reply, '');
-      return;
-    }
-    case 'input':
-      if (entry.text.trim()) out.push('### User (during turn)', '', entry.text.trim(), '');
       return;
     case 'tool': {
       const arg = toolArgument(entry.input, context.cwd);

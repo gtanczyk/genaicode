@@ -7,6 +7,7 @@ import {
   formatChatTranscriptMarkdown,
   formatStoredSessionMarkdown,
   storedSessionTranscriptJson,
+  storedConversation,
   transcriptFilename,
 } from './transcript.js';
 
@@ -391,4 +392,26 @@ describe('transcript export', () => {
       truncatedReason: reason,
     });
   });
+});
+
+it('shows embedded Claude images in their own turn and keeps URLs from other sources as metadata', async () => {
+  const { claudeTranscript } = await import('../agents/sessions/claude.js');
+  const lines = [
+    {
+      type: 'user',
+      message: { content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aGVsbG8=' } }] },
+    },
+  ];
+  const turns = claudeTranscript(lines, { imagePreviews: true });
+  const session: SessionInfo = { source: 'claude', agent: 'claude', id: 't', where: 'local', updatedAt: 0 };
+  expect(claudeTranscript(lines)[0]?.attachments?.[0]?.url).toBeUndefined();
+  turns[0]!.attachments!.push({
+    name: 'private',
+    size: 100,
+    mediaType: 'image/png',
+    url: 'https://example.com/private',
+  });
+  const part = storedConversation({ session, turns, readable: true }).turns[0]?.parts[0];
+  expect(part?.text).toBe('');
+  expect(part?.attachments?.map((a) => a.url)).toEqual(['data:image/png;base64,aGVsbG8=', undefined]);
 });

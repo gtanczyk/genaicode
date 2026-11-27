@@ -28,6 +28,7 @@ import {
   chatTranscriptJson,
   formatChatTranscriptMarkdown,
   formatStoredSessionMarkdown,
+  storedConversation,
   storedConversationMarkdown,
   storedSessionTranscriptJson,
   transcriptFilename,
@@ -131,6 +132,7 @@ export interface WebUiOptions {
   sessionTranscript?: (
     source: string,
     id: string,
+    imagePreviews?: boolean,
   ) => Promise<
     | {
         session: SessionInfo;
@@ -1353,7 +1355,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
       }
       if (!options.sessionTranscript) return send(res, 404, 'application/json', '{"error":"no sessions here"}');
       const format = url.searchParams.get('format') ?? 'md';
-      if (format !== 'md' && format !== 'json' && format !== 'meta' && format !== 'view') {
+      if (format !== 'md' && format !== 'json' && format !== 'meta' && format !== 'view' && format !== 'conversation') {
         return send(res, 400, 'application/json', '{"error":"bad format"}');
       }
       let source: string, id: string;
@@ -1373,11 +1375,13 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
           }
         | undefined;
       try {
-        found = await options.sessionTranscript(source, id);
+        found = await options.sessionTranscript(source, id, format === 'conversation' || undefined);
       } catch {
         return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
       }
       if (!found) return send(res, 404, 'application/json', '{"error":"session not found"}');
+      if (format === 'conversation')
+        return send(res, 200, 'application/json; charset=utf-8', JSON.stringify(storedConversation(found)));
       if (format === 'view') return send(res, 200, 'text/markdown; charset=utf-8', storedConversationMarkdown(found));
       const now = new Date();
       const exportedAt = now.toISOString();

@@ -246,14 +246,32 @@ export async function readClaudeSession(file: SessionFile, now = Date.now()): Pr
 /** The turns in the lines of a Claude Code transcript. Subagent lines and Claude Code's own notes are left out. */
 export function claudeTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
   const builder = transcriptBuilder('claude', options);
+  let previewBudget = options.imagePreviews ? 4 * 1024 * 1024 : 0;
   for (const line of lines) {
     if (!isRecord(line) || line.isSidechain === true || line.type === 'last-prompt') continue;
     const at = timeOf(line.timestamp);
     // The summary Claude Code writes when it compacts is its own text, not something the user asked.
     const prompt = line.isCompactSummary === true ? {} : promptOf(line);
     const asked = prompt.typed ?? prompt.wrapped;
-    if (asked) {
-      builder.prompt(asked, at);
+    const blocks = isRecord(line.message) && Array.isArray(line.message.content) ? line.message.content : [];
+    const images =
+      line.type === 'user' && !line.isMeta && !line.isCompactSummary
+        ? blocks.filter((block) => isRecord(block) && block.type === 'image')
+        : [];
+    if (asked || images.length) {
+      const attachments = images.map((block, i) => {
+        const src = isRecord(block.source) ? block.source : {};
+        const mediaType = typeof src.media_type === 'string' ? src.media_type : '';
+        const data = src.type === 'base64' && typeof src.data === 'string' ? src.data : '';
+        const size = Buffer.byteLength(data, 'base64');
+        const name = typeof block.name === 'string' && block.name ? block.name : `Image ${i + 1}`;
+        if (size > 0 && size <= previewBudget && /^(image\/(png|jpeg|gif|webp))$/.test(mediaType)) {
+          previewBudget -= size;
+          return { name, mediaType, size, url: `data:${mediaType};base64,${data}` };
+        }
+        return { name, mediaType, size };
+      });
+      builder.prompt(asked ?? '', at, attachments);
       continue;
     }
     if (!isRecord(line.message)) continue;

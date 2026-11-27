@@ -1180,7 +1180,7 @@ function webLink(
         const found = await findSession(sources, sessionId, query).catch(() => undefined);
         return found?.session.path;
       },
-      sessionTranscript: async (sourceName, id) => {
+      sessionTranscript: async (sourceName, id, imagePreviews) => {
         const sources = options.sessionSources ?? agentSessionSources(agents);
         const store = sources.find((candidate) => candidate.name === sourceName);
         if (!store) return undefined;
@@ -1194,6 +1194,7 @@ function webLink(
         let turns = await store.read!(found.session, {
           maxTurns: maxTurns + 1,
           maxToolOutput: 8_000,
+          ...(imagePreviews ? { imagePreviews } : {}),
           onTruncated: (reason) => reasons.add(reason),
         });
         if (turns.length > maxTurns) {

@@ -25,6 +25,8 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
   const stop = new AbortController();
 
   // Two sessions another program started. One ended its message with a question.
+  const questionText = 'The starter is ready. '.repeat(12) + '\n\nShould I bake today or wait until Friday?';
+  const preview = '…' + questionText.replace(/\s+/g, ' ').slice(-199);
   const question: SessionInfo = {
     source: 'helper',
     agent: 'helper',
@@ -33,7 +35,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     cwd: bakery,
     title: 'Sourdough schedule',
     state: 'waiting',
-    lastReply: 'The starter is ready.\n\nShould I bake today or wait until Friday?',
+    lastReply: preview,
     updatedAt: Date.now() - 40 * MINUTE,
   };
   // The other waits on a tool, and its hook holds the question open for an answer from here.
@@ -48,6 +50,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     updatedAt: Date.now() - 5 * MINUTE,
   };
   const theirs = [question, deploy];
+  let extraTurns = 20;
   const ran: Array<{ prompt: string; cwd?: string; resume?: string }> = [];
   const helper: CodingAgent = {
     name: 'helper',
@@ -65,6 +68,13 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
           prompt: 'Read the recipe for ' + session.id,
           entries: [{ kind: 'text', streaming: false, text: 'The recipe uses rye flour.' }],
         },
+        ...Array.from({ length: extraTurns }, (_, n) => ({
+          id: n + 2,
+          startedAt: 0,
+          agent: 'helper',
+          prompt: `Update ${n}`,
+          entries: [{ kind: 'text' as const, streaming: false, text: n === 3 ? questionText : `Receipt ${n}` }],
+        })),
       ],
     },
     run(task) {
@@ -190,7 +200,7 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await asked.locator('.needs-meta b').textContent()).toBe('Answer a question');
     expect(await asked.locator('.tag').allTextContents()).toEqual(['bakery', 'helper']);
     expect(await asked.locator('.tag').first().getAttribute('title')).toBe(bakery);
-    expect(await asked.locator('.needs-text').textContent()).toBe('“Should I bake today or wait until Friday?”');
+    expect(await asked.locator('.needs-text').textContent()).toBe('“' + preview + '”');
     expect(await asked.locator('time').textContent()).toBe('40m ago');
     const permission = queue.getByRole('article').filter({ hasText: 'Deploy the round table' });
     expect(await permission.locator('.needs-meta b').textContent()).toBe('Permission request');
@@ -205,21 +215,33 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     await detail.getByText('The recipe uses rye flour.').waitFor();
     expect(await composer.isVisible()).toBe(false);
     expect(await detail.locator('textarea').count()).toBe(0);
-    expect(await detail.getByRole('button').allTextContents()).toEqual([
-      'Reply',
-      'Continue here',
-      'Copy resume command',
-      'Archive',
-    ]);
+    const questionTop = await detail
+      .locator('[data-opening-question]')
+      .evaluate((el) => el.getBoundingClientRect().top - el.closest('.thread-messages')!.getBoundingClientRect().top);
+    expect(Math.abs(questionTop)).toBeLessThan(2);
+    const sessionMenu = detail.getByRole('button', { name: 'Session actions' });
+    await sessionMenu.click();
+    await detail.getByRole('menuitem', { name: 'Continue here' }).waitFor();
+    await detail.getByRole('menuitem', { name: 'Copy resume command' }).waitFor();
+    await detail.getByRole('menuitem', { name: 'Archive', exact: true }).waitFor();
+    await sessionMenu.click();
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Save this draft');
     await detail.getByLabel('Sandbox').selectOption('read-only');
+    await detail.locator('.thread-messages').evaluate((el) => {
+      el.scrollTop = 160;
+    });
+    await page.waitForFunction(() => document.querySelector('.thread-messages')?.scrollTop === 160);
+
     await topbar.getByRole('button', { name: 'Needs you' }).click();
     expect(await queue.getByRole('button', { name: 'Questions 1' }).getAttribute('aria-pressed')).toBe('true');
 
     expect(await asked.getByRole('textbox').inputValue()).toBe('Save this draft');
     await asked.getByRole('button', { name: 'Open session' }).click();
     await detail.getByRole('textbox').waitFor();
+    await vi.waitFor(async () =>
+      expect(await detail.locator('.thread-messages').evaluate((el) => el.scrollTop)).toBe(160),
+    );
     expect(await detail.getByRole('textbox').inputValue()).toBe('Save this draft');
     expect(await detail.getByLabel('Sandbox').inputValue()).toBe('read-only');
     await detail.getByRole('button', { name: 'Cancel' }).click();
@@ -234,6 +256,20 @@ it('opens Needs you from the sidebar, answers in place until nothing waits, and 
     expect(await row.getByRole('button').allTextContents()).toEqual(['Open', '⋯']);
     await row.getByRole('button', { name: 'Open', exact: true }).click();
     await detail.getByText('Read the recipe for bakery-1').waitFor();
+    const history = detail.locator('.thread-messages');
+    await history.evaluate((el) => {
+      el.scrollTop = 280;
+    });
+    await vi.waitFor(async () => expect(await history.evaluate((el) => el.scrollTop)).toBe(280));
+    await topbar.getByRole('button', { name: 'All sessions' }).click();
+    await row.getByRole('button', { name: 'Open', exact: true }).click();
+    await vi.waitFor(async () => expect(await history.evaluate((el) => el.scrollTop)).toBe(280));
+    extraTurns++;
+    await page.evaluate(() => window.dispatchEvent(new Event('genaicode-history-changed')));
+    await detail.getByRole('button', { name: 'New messages' }).waitFor();
+    expect(await history.evaluate((el) => el.scrollTop)).toBe(280);
+    await detail.getByRole('button', { name: 'New messages' }).click();
+    expect(await history.evaluate((el) => el.scrollTop)).toBeGreaterThan(280);
     await detail.getByRole('button', { name: 'Reply' }).click();
     await detail.getByRole('textbox').fill('Bake now?');
     await detail.getByLabel('Sandbox').selectOption('read-only');

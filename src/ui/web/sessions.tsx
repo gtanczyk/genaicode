@@ -8,7 +8,8 @@ import {
 } from '../../agents/sessions/group.js';
 import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
-import { sessionKey } from '../sidebar.js';
+import { chatTitle, folderName, sessionKey } from '../sidebar.js';
+import { Icon } from './sidebar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { TranscriptMenu } from './transcript-menu.js';
@@ -103,6 +104,8 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 export function Sessions({
   token,
   selected,
+  readingPositions,
+  openingQuestion,
   onOpen,
   onArchived,
   onDelete,
@@ -123,6 +126,8 @@ export function Sessions({
 }: {
   token: string;
   selected?: SessionInfo;
+  readingPositions?: Map<string, number>;
+  openingQuestion?: string;
   onOpen(session: SessionInfo): void;
   onArchived?(): void;
   onDelete?(chat: SessionInfo): void;
@@ -171,6 +176,19 @@ export function Sessions({
     window.addEventListener('genaicode-history-changed', refresh);
     return () => window.removeEventListener('genaicode-history-changed', refresh);
   }, []);
+  const hasSelected = !!selected;
+  useEffect(() => {
+    if (!hasSelected) return;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') setRound((value) => value + 1);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [hasSelected]);
   // By topic once there are topics, unless the user chose otherwise.
   const [chosen, setChosen] = useState<'topic' | 'project'>();
 
@@ -321,9 +339,35 @@ export function Sessions({
         setRound((value) => value + 1);
       });
   };
-  const questionsOf = (session: SessionInfo) =>
-    (listing?.asks ?? []).filter((ask) => ask.agent === session.agent && ask.session === session.id);
+  const questionsOf = (session: SessionInfo) => {
+    if (!listing?.asks?.length) return [];
+    if (session.where !== 'local') return [];
+    const matches = index.rows.filter(
+      (row) => row.where === 'local' && row.agent === session.agent && row.id === session.id,
+    );
+    if (matches.length !== 1 || matches[0]?.cwd !== session.cwd) return [];
+    return (listing?.asks ?? []).filter(
+      (ask) => ask.agent === session.agent && ask.session === session.id && (!ask.cwd || ask.cwd === session.cwd),
+    );
+  };
 
+  const questionActions = (session: SessionInfo) =>
+    questionsOf(session).map((ask) => (
+      <div key={`ask:${ask.id}`} className="question-row">
+        <span className="what" title={ask.preview}>
+          <b>{ask.tool ?? 'A tool'}</b>
+          {ask.preview ? <code>{ask.preview}</code> : null}
+        </span>
+        <span className="act">
+          <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
+            Approve
+          </button>
+          <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
+            Deny
+          </button>
+        </span>
+      </div>
+    ));
   const copy = (session: SessionInfo) => {
     const command = resumeCommand(session);
     if (!command) return;
@@ -336,8 +380,9 @@ export function Sessions({
     }, show);
   };
 
-  const senderOf = (session: SessionInfo) => sessionReplyTarget(session, storesOf(session), listing?.senders);
-  const actions = (session: SessionInfo, close?: () => void) => {
+  const senderOf = (session: SessionInfo) =>
+    questionsOf(session).length ? undefined : sessionReplyTarget(session, storesOf(session), listing?.senders);
+  const actions = (session: SessionInfo, close?: () => void, includeReply = true) => {
     const sender = senderOf(session);
     const action = (label: string, run: () => void, title?: string) => (
       <button
@@ -354,7 +399,8 @@ export function Sessions({
     );
     return (
       <>
-        {sender &&
+        {includeReply &&
+          sender &&
           replyTo !== sessionKey(sender.session) &&
           action('Reply', () => setReplyTo(sessionKey(sender.session)), `Send to this session in ${session.agent}`)}
         {canContinueHere(session, cwd, listing?.readable ?? [], { anyCwd: home }) &&
@@ -405,6 +451,7 @@ export function Sessions({
     ) : null;
   };
   const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
+  const replyTarget = detail && senderOf(detail);
   const list = (
     <main hidden={!!detail} className="sessions">
       <div className="tools">
@@ -618,22 +665,7 @@ export function Sessions({
                     </span>
                   </div>
                 )),
-                ...questionsOf(session).map((ask) => (
-                  <div key={`ask:${ask.id}`} className="question-row">
-                    <span className="what" title={ask.preview}>
-                      <b>{ask.tool ?? 'A tool'}</b>
-                      {ask.preview ? <code>{ask.preview}</code> : null}
-                    </span>
-                    <span className="act">
-                      <button className="allow" disabled={answering === ask.id} onClick={() => answer(ask, 'allow')}>
-                        Approve
-                      </button>
-                      <button disabled={answering === ask.id} onClick={() => answer(ask, 'deny')}>
-                        Deny
-                      </button>
-                    </span>
-                  </div>
-                )),
+                ...questionActions(session),
               ];
             })}
             {whole && !folded.length ? null : (
@@ -666,19 +698,80 @@ export function Sessions({
     <>
       {detail && (
         <main className="sessions session-detail" aria-label="Session transcript">
-          <p className="session-origin">
-            {[detail.agent, detail.source !== detail.agent && detail.source, detail.cwd ?? detail.repository]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-          <div className="session-actions">{actions(detail)}</div>
-          {replyEditor(detail)}
-          {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
-            <p role="status">{receipt.text || 'Turn completed.'}</p>
-          )}
-          {archiveFailed && <p role="alert">{archiveFailed}</p>}
-          {failed && <p role="alert">{failed}</p>}
-          <SessionTranscript key={transcriptUrl(detail)} session={detail} token={token} revision={round} />
+          <div className="thread-column">
+            <SessionTranscript
+              key={transcriptUrl(detail)}
+              session={detail}
+              token={token}
+              revision={round}
+              positions={readingPositions}
+              question={openingQuestion}
+            />
+            <footer className="thread-footer">
+              {detail.where === 'local' && questionActions(detail)}
+              {answerFailed && <p role="alert">{answerFailed}</p>}
+              {!replyTarget && detail.where === 'cloud' && detail.url && (
+                <a className="thread-open" href={detail.url} target="_blank" rel="noreferrer">
+                  Open {detail.agent} session ↗
+                </a>
+              )}
+              {!replyTarget && detail.where === 'local' && !questionsOf(detail).length && listing && (
+                <span className="thread-availability">
+                  {detail.waitingFor === 'approval'
+                    ? 'Approval requested in the agent'
+                    : detail.turnInProgress
+                      ? 'Turn in progress'
+                      : 'Read-only here'}
+                </span>
+              )}
+              {replyTarget &&
+                (replyTo === sessionKey(replyTarget.session) ? (
+                  replyEditor(detail)
+                ) : (
+                  <button
+                    className="thread-reply"
+                    type="button"
+                    onClick={() => setReplyTo(sessionKey(replyTarget.session))}
+                  >
+                    Reply to “{chatTitle(detail)}” in local {replyTarget.session.agent}…{' '}
+                    <span aria-hidden="true">↵</span>
+                  </button>
+                ))}
+              <div className="thread-context">
+                {(detail.cwd || detail.repository) && (
+                  <span
+                    className="session-origin"
+                    title={[detail.agent, detail.source, detail.cwd ?? detail.repository].join(' · ')}
+                  >
+                    <Icon name="folder" />
+                    {detail.cwd ? folderName(detail.cwd) : detail.repository}
+                  </span>
+                )}
+                <TranscriptMenu
+                  token={token}
+                  endpoint={transcriptUrl(detail)}
+                  sessionId={detail.id}
+                  sessionPath={detail.path}
+                  storedSession={{ source: detail.source, id: detail.id }}
+                  nativeSave={nativeSave}
+                  label="⋯"
+                  ariaLabel="Session actions"
+                  title="Session actions"
+                  buttonClassName="thread-more"
+                  onStatus={onStatus}
+                  extra={(close) => actions(detail, close, false)}
+                />
+              </div>
+            </footer>
+            {receipt?.session.id === detail.id && receipt.session.source === detail.source && (
+              <details className="thread-receipt">
+                <summary role="status">Reply delivered · turn completed</summary>
+                {receipt.text && <p>{receipt.text}</p>}
+              </details>
+            )}
+            {archiveFailed && <p role="alert">{archiveFailed}</p>}
+            {failed && <p role="alert">{failed}</p>}
+          </div>
         </main>
       )}
       {list}

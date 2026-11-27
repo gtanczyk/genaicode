@@ -395,10 +395,44 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .project > summary .topic-new:hover { border-color: var(--accent); color: var(--text); }
 .session-row .label small.topic-tag { color: var(--accent); }
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
-.session-origin { margin: 0 0 12px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
-.session-detail > .gc-md { max-width: 85ch; overflow-wrap: anywhere; }
-.session-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block-end: 16px; }
-.session-actions button, .session-actions a { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: var(--panel); color: var(--text); cursor: pointer; }
+.sessions.session-detail { min-height: 0; overflow: hidden; padding: 0 clamp(12px, 4vw, 52px) 20px; }
+.thread-column { max-width: 760px; margin: 0 auto; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.thread-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 0 32px; overflow-wrap: anywhere; }
+.thread-date { display: flex; align-items: center; gap: 14px; margin: 6px 0 24px; font-size: 12px; color: var(--muted); }
+.thread-date::before, .thread-date::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.thread-turn + .thread-turn { margin-top: 24px; }
+.thread-message { margin-block: 16px; max-width: 100%; }
+.thread-byline { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+.thread-byline strong { font-weight: 600; }
+.thread-byline time { color: var(--muted); font-size: 11px; }
+.thread-message.agent .thread-byline { text-transform: capitalize; }
+.thread-message.agent .thread-byline svg { width: 16px; height: 16px; color: var(--muted); }
+.thread-message .gc-md { font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+.thread-message .gc-md > :first-child { margin-top: 0; }
+.thread-message .gc-md > :last-child { margin-bottom: 0; }
+.thread-message .gc-md pre, .thread-note pre, .thread-activity pre { overflow-x: auto; }
+.thread-message.user { margin-left: auto; width: fit-content; max-width: min(86%, 600px); }
+.thread-message.user .thread-byline { justify-content: flex-end; color: var(--muted); }
+.thread-message.user .gc-md { padding: 10px 16px; border-radius: 16px 16px 4px 16px; background: var(--gc-color-sunken, var(--panel)); border: 1px solid var(--line); }
+.thread-message.agent { padding-right: 5%; }
+.thread-activity, .thread-note { margin: 10px 0; font-size: 13px; }
+.thread-activity summary { color: var(--muted); cursor: pointer; }
+.thread-receipt { max-height: 20vh; overflow: auto; font-size: 13px; }
+.thread-new { align-self: center; cursor: pointer; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 5px 12px; }
+.thread-open, .thread-availability { font-size: 13px; }
+.thread-availability { color: var(--muted); }
+.thread-footer { flex-shrink: 0; margin-top: auto; padding-top: 12px; }
+.thread-context { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 2px 0; }
+.thread-context .tm-wrap { margin-left: auto; }
+.session-origin { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.session-origin svg { flex: none; width: 15px; height: 15px; }
+.thread-reply { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; color: var(--muted); text-align: left; cursor: text; }
+.thread-reply span { font-size: 17px; }
+.thread-more { border: 0; background: transparent; border-radius: 6px; color: var(--muted); padding: 2px 8px; cursor: pointer; }
+.thread-more:hover { color: var(--text); background: var(--panel); }
+.thread-footer .session-reply { padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; }
+.thread-footer .question-row { max-height: 18vh; overflow-y: auto; }
+.thread-footer .session-reply textarea { background: transparent; }
 .sessions .open-session { color: var(--accent); }
 .needs-page[hidden], .sessions[hidden] { display: none; }
 .sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }

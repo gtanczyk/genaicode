@@ -73,6 +73,10 @@ describe('githubCloudSessions', () => {
         url: thread,
         project: { id: 'chan_01Abc' },
         state: 'waiting',
+        pullRequests: [
+          { repository: 'acme/app', number: 4, title: 'Change 4', state: 'Open' },
+          { repository: 'acme/app', number: 2, title: 'Change 2', state: 'Merged' },
+        ],
         lastReply: 'Open: acme/app#4 Change 4; Merged: acme/app#2 Change 2',
       },
       {
@@ -85,6 +89,7 @@ describe('githubCloudSessions', () => {
         repository: 'acme/app',
         title: 'Change 3',
         url: 'https://claude.ai/code/session_01Solo',
+        pullRequests: [{ repository: 'acme/app', number: 3, title: 'Change 3', state: 'Merged' }],
         lastReply: 'Merged: acme/app#3 Change 3',
       },
     ]);
