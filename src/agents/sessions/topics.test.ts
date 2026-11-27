@@ -192,6 +192,9 @@ describe('topics', () => {
     expect(attentionOf(waiting({ ending: 'offer' }), now)).toBe('stalled');
     expect(attentionOf(waiting({ ending: 'unreported' }), now)).toBe('stalled');
     expect(isStalled(waiting({ ending: 'question', updatedAt: now - ASKING_MS - 1 }), now)).toBe(true);
+    expect(attentionOf(waiting({ ending: 'question', lastReplyAt: now - ASKING_MS - 1, updatedAt: now }), now)).toBe(
+      'stalled',
+    );
     expect(attentionOf(waiting({}), now)).toBeUndefined();
     expect(attentionOf(waiting({ ending: 'offer', archived: true }), now)).toBeUndefined();
     expect(attentionOf(waiting({ waitingFor: 'approval', ending: 'offer', updatedAt: 0 }), now)).toBe('now');

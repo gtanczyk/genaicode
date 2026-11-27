@@ -38,6 +38,8 @@ export interface SessionInfo {
   lastPrompt?: string;
   /** The end of the agent's latest message. */
   lastReply?: string;
+  /** Time of that message when the transcript records it, epoch milliseconds. */
+  lastReplyAt?: number;
   startedAt?: number;
   /** Last activity, epoch milliseconds. */
   updatedAt: number;

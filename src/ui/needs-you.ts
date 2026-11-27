@@ -63,6 +63,7 @@ export interface NeedsItem {
   verbatim: boolean;
   /** Since when it waits, epoch milliseconds. Absent: the source does not say. */
   since?: number;
+  timeLabel?: 'Requested' | 'Agent message' | 'Last activity' | 'First seen';
   /** The answers that can be given in place. */
   choices: NeedsChoice[];
   /** The session a reply can be sent to in place, and the sandboxes its agent offers. */
@@ -276,6 +277,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
         : towerText(request.summary ?? request.kind, true),
       verbatim: !asked,
       since: input.seen?.get(key),
+      timeLabel: 'First seen',
       // A question has choices of its own: they are in the chat.
       choices: asked
         ? []
@@ -310,6 +312,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       text: towerText(item.text, true),
       verbatim: true,
       since: ask?.at ?? (item.kind === 'native' ? session?.updatedAt : undefined) ?? input.seen?.get(key),
+      timeLabel: ask ? 'Requested' : item.kind === 'native' && session ? 'Last activity' : 'First seen',
       choices: towerChoices(item).map((choice, index) => ({
         label: choice.label,
         ...(index === 0 ? { primary: true } : {}),
@@ -348,7 +351,8 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
           )
         : lastWords(session.lastReply) || chatTitle(session),
       verbatim: approval,
-      since: ask?.at ?? session.updatedAt,
+      since: ask?.at ?? (!approval ? session.lastReplyAt : undefined) ?? session.updatedAt,
+      timeLabel: ask ? 'Requested' : !approval && session.lastReplyAt !== undefined ? 'Agent message' : 'Last activity',
       choices: ask
         ? [
             { label: 'Approve', primary: true, decision: { via: 'ask', id: ask.id, behavior: 'allow' } },

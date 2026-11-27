@@ -12,6 +12,7 @@ import {
 import { sessionKey } from '../sidebar.js';
 import { towerText } from '../tower-format.js';
 import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
+import { OpenAgentSession } from './open-agent-session.js';
 import { StateGlyph } from './sidebar.js';
 
 /**
@@ -142,7 +143,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
         )}
         {items.length && !shown.length && !incomplete ? <p className="needs-none">Nothing waits here.</p> : null}
         {shown.map((item) => {
-          const age = waited(item.since, now);
+          const sourceSession = item.open && item.open.to !== 'chat' ? item.open.session : undefined;
           const key = item.reply && sessionKey(item.reply.session);
           const replying = key !== undefined && replyTo === key;
           return (
@@ -156,20 +157,8 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                   </span>
                 ) : null}
                 <span className="tag">{item.agent}</span>
-                <span className="needs-origin">
-                  {item.origin}
-                  {age ? (
-                    <>
-                      {' · '}
-                      <time
-                        dateTime={new Date(item.since!).toISOString()}
-                        title={new Date(item.since!).toLocaleString()}
-                      >
-                        {age}
-                      </time>
-                    </>
-                  ) : null}
-                </span>
+                <NeedTime item={item} now={now} />
+                <span className="needs-origin">{item.origin}</span>
               </div>
               {item.verbatim ? <pre>{item.text}</pre> : <div className="needs-text">“{item.text}”</div>}
               {item.question && (
@@ -212,6 +201,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                       : OPEN_LABEL[item.open.to]}
                   </button>
                 ) : null}
+                {sourceSession && <OpenAgentSession session={sourceSession} />}
               </div>
               {replying ? (
                 <SessionReply
@@ -233,5 +223,20 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
         })}
       </div>
     </main>
+  );
+}
+
+export function NeedTime({ item, now }: { item: Pick<NeedsItem, 'since' | 'timeLabel'>; now: number }) {
+  const { since, timeLabel } = item;
+  if (since === undefined || !Number.isFinite(new Date(since).getTime()) || since <= 0)
+    return <span className="need-time">Time unavailable</span>;
+  const date = new Date(since);
+  return (
+    <span className="need-time">
+      {timeLabel}{' '}
+      <time dateTime={date.toISOString()} title={date.toLocaleString()}>
+        {date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} · {waited(since, now)}
+      </time>
+    </span>
   );
 }

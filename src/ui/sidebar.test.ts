@@ -117,6 +117,14 @@ describe('glyphs', () => {
 it('titles a row with the title, else a prompt, on one line', () => {
   expect(chatTitle(chat('a', { title: 'First\nsecond' }))).toBe('First');
   expect(chatTitle(chat('a', { title: undefined, firstPrompt: 'Add CSV export' }))).toBe('Add CSV export');
+  expect(
+    chatTitle(
+      chat('a', {
+        firstPrompt: 'Which driver? Attached files (read them from disk): - /project/.genaicode/uploads/123.png',
+        title: undefined,
+      }),
+    ),
+  ).toBe('Which driver?');
   expect(chatTitle(chat('', { title: undefined }))).toBe('New chat');
 });
 

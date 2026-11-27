@@ -226,7 +226,10 @@ function fromLines(file: SessionFile, now: number, { head, tail }: { head: unkno
       }
       if (reply) {
         conversed = true;
-        if (!first) info.lastReply = ending(reply);
+        if (!first) {
+          info.lastReply = ending(reply);
+          info.lastReplyAt = timeOf(line.timestamp);
+        }
         agentLast = true;
       }
     }
@@ -394,7 +397,10 @@ async function fromRollout(info: SessionInfo): Promise<void> {
     }
     if (!read) return;
     if (read.lastPrompt) info.lastPrompt = read.lastPrompt;
-    if (read.lastReply) info.lastReply = read.lastReply;
+    if (read.lastReply) {
+      info.lastReply = read.lastReply;
+      info.lastReplyAt = read.lastReplyAt;
+    }
     if (read.usage) info.usage = read.usage;
     if (read.mode) info.mode = read.mode;
     if (read.automated) info.automated = true;

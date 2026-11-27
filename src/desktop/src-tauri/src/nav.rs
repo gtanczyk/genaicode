@@ -44,10 +44,17 @@ fn carries_token(url: &Url) -> bool {
         .any(|(key, _)| key.eq_ignore_ascii_case("token"))
 }
 
+// These two native routes contain only a store UUID. Reject other routes, parameters and fragments.
+fn session_uuid(id: &str) -> bool {
+    id.len() == 36 && id.bytes().enumerate().all(|(i, c)| match i {
+        8 | 13 | 18 | 23 => c == b'-',
+        _ => c.is_ascii_hexdigit(),
+    })
+}
+
 /// Filter URLs that may reach the OS default handler (`on_new_window` and external navigations).
 ///
-/// Only `http:`, `https:` and `mailto:` ever reach the OS; `file:`, `javascript:`, `data:` and
-/// custom schemes are dropped. Loopback URLs carrying a `token` query parameter are also refused
+/// Only web, mail and exact native session links reach the OS. Loopback URLs carrying a `token` query parameter are also refused
 /// so the session token never leaves the app; `/artifacts/<id>` and `/files/<id>` carry none.
 pub fn external_url(url: &Url) -> Option<String> {
     match url.scheme() {
@@ -56,6 +63,12 @@ pub fn external_url(url: &Url) -> Option<String> {
                 return None;
             }
             Some(url.as_str().to_string())
+        }
+        "codex" | "claude" => {
+            let raw = url.as_str();
+            let id = raw.strip_prefix("codex://threads/")
+                .or_else(|| raw.strip_prefix("claude://resume?session="))?;
+            session_uuid(id).then(|| raw.to_string())
         }
         "mailto" => Some(url.as_str().to_string()),
         _ => None,
@@ -231,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn allows_only_http_https_and_mailto_externally() {
+    fn allows_web_mail_and_exact_session_routes_externally() {
         assert_eq!(
             external_url(&url("https://example.com/docs?a=1")),
             Some("https://example.com/docs?a=1".into())
@@ -263,7 +276,16 @@ mod tests {
             None
         );
 
-        // Dangerous and non-web schemes are always dropped.
+        let id = "01234567-89ab-cdef-0123-456789abcdef";
+        for prefix in ["codex://threads/", "claude://resume?session="] {
+            let link = format!("{prefix}{id}");
+            assert_eq!(external_url(&url(&link)), Some(link.clone()));
+            for suffix in ["?prompt=hello", "&cwd=elsewhere", "#x", "/file"] {
+                assert_eq!(external_url(&url(&format!("{link}{suffix}"))), None);
+            }
+        }
+
+        // All other non-web schemes are dropped.
         for blocked in [
             "file:///etc/passwd",
             "javascript:alert(1)",
@@ -274,6 +296,8 @@ mod tests {
             "tel:+1234567890",
             "tauri://localhost/index.html",
             "vscode://file/etc/passwd",
+            "claude://code/new",
+            "codex://threads/new",
         ] {
             assert_eq!(external_url(&url(blocked)), None, "must deny {blocked}");
         }

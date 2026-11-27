@@ -469,7 +469,9 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .needs-card { display: flex; flex-direction: column; gap: 8px; padding: 13px 16px; font-size: 14px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow-wrap: anywhere; }
 .needs-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .needs-meta b { font-weight: 600; }
-.needs-origin { color: var(--muted); font-size: 13px; min-width: 0; }
+.need-time { color: var(--muted); font-size: 13px; }
+.thread-need { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+.needs-origin { flex-basis: 100%; color: var(--muted); font-size: 13px; min-width: 0; }
 .needs-card pre { margin: 0; padding: 9px 11px; border-radius: 6px; background: var(--gc-color-sunken); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32vh; overflow: auto; }
 .needs-text { white-space: pre-wrap; max-height: 32vh; overflow: auto; }
 .needs-note { color: var(--muted); font-size: 12px; }

@@ -1131,6 +1131,7 @@ function App({ selected }: { selected?: string }) {
   // The Sessions and Settings pages take the chat's place; the chat keeps running behind them.
   const [panel, navigate] = useState<'chat' | 'sessions' | 'needs' | 'settings'>('chat');
   const readingPositions = useRef(new Map<string, number>());
+  const [openedNeedKey, setOpenedNeedKey] = useState<string>();
   const [openedSession, setOpenedSession] = useState<SessionInfo>();
   const setPanel = (page: typeof panel) => {
     setOpenedSession(undefined);
@@ -2440,6 +2441,17 @@ function App({ selected }: { selected?: string }) {
             onDelete={config?.multiChat ? askDelete : undefined}
             selected={openedSession}
             readingPositions={readingPositions.current}
+            need={
+              panel === 'needs' && openedSession
+                ? queue.find(
+                    (item) =>
+                      item.key === openedNeedKey &&
+                      item.open?.to === 'sessions' &&
+                      item.open.session &&
+                      sessionKey(item.open.session) === sessionKey(openedSession),
+                  )
+                : undefined
+            }
             openingQuestion={panel === 'needs' ? openedSession?.lastReply : undefined}
             onOpen={setOpenedSession}
             key={listed}
@@ -2475,8 +2487,10 @@ function App({ selected }: { selected?: string }) {
             onOpen={(item) => {
               if (item.open?.to === 'chat') backToChat();
               else if (item.open?.to === 'own') continueChat(item.open.session);
-              else if (item.open?.session) setOpenedSession(item.open.session);
-              else if (item.open) openSessions('needs');
+              else if (item.open?.session) {
+                setOpenedNeedKey(item.key);
+                setOpenedSession(item.open.session);
+              } else if (item.open) openSessions('needs');
             }}
             sessionsPage={hasSessions}
             onReplied={chats.replied}
