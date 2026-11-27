@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **See when a Needs you item was recorded and open its source session.** (#394)
+
 ### Fixed
 
 - **Keep the agent’s plan visible and tool logs folded in session transcripts.** (#393)

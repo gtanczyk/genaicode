@@ -53,7 +53,7 @@ file(
     user([{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]),
     assistant([{ type: 'text', text: 'Done: export works.' }]),
     user('Now document it'),
-    assistant([{ type: 'text', text: 'Documented in README.' }]),
+    { ...assistant([{ type: 'text', text: 'Documented in README.' }]), timestamp: '2026-11-01T10:03:00Z' },
     { type: 'ai-title', aiTitle: 'CSV export' },
     { type: 'cost-state', totalCostUSD: 1.25 },
   ),
@@ -91,7 +91,11 @@ file(
     },
     { type: 'turn_context', payload: { cwd: '/work/app', model: 'gpt-5.5-codex' } },
     { type: 'event_msg', payload: { type: 'user_message', message: 'Review the CSV export' } },
-    { type: 'event_msg', payload: { type: 'agent_message', message: 'Two issues found.' } },
+    {
+      type: 'event_msg',
+      timestamp: '2026-11-02T09:15:00Z',
+      payload: { type: 'agent_message', message: 'Two issues found.' },
+    },
     {
       type: 'event_msg',
       payload: {
@@ -446,6 +450,7 @@ describe('session sources', () => {
       firstPrompt: 'Add CSV export with tests',
       lastPrompt: 'Now document it',
       lastReply: 'Documented in README.',
+      lastReplyAt: Date.parse('2026-11-01T10:03:00Z'),
       model: 'claude-sonnet-5',
       costUsd: 1.25,
       state: 'waiting',
@@ -465,6 +470,7 @@ describe('session sources', () => {
       branch: 'main',
       firstPrompt: 'Review the CSV export',
       lastReply: 'Two issues found.',
+      lastReplyAt: Date.parse('2026-11-02T09:15:00Z'),
       model: 'gpt-5.5-codex',
       usage: { inputTokens: 900, outputTokens: 100, totalTokens: 1000 },
       state: 'waiting',
