@@ -57,7 +57,13 @@ export function SessionTranscript({
         last?.startedAt !== old?.startedAt ||
         last?.id !== old?.id ||
         last?.parts.length !== old?.parts.length ||
-        last?.parts.at(-1)?.text !== old?.parts.at(-1)?.text
+        last?.parts.at(-1)?.text !== old?.parts.at(-1)?.text ||
+        last?.parts.some(
+          (part, i) =>
+            part.steps &&
+            (part.steps.length !== old?.parts[i]?.steps?.length ||
+              part.steps.at(-1)?.text !== old?.parts[i]?.steps?.at(-1)?.text),
+        )
       )
         setUnread(true);
     }
@@ -123,18 +129,7 @@ export function SessionTranscript({
                 const docs = conversation.documents?.filter((doc) =>
                   doc.mentions.some((m) => m.turn === turn.id && m.part === i),
                 );
-                if (part.steps)
-                  return (
-                    <details className="thread-activity" key={i}>
-                      <summary>{part.summary}</summary>
-                      {part.steps.map((step, n) => (
-                        <details key={n}>
-                          <summary>{step.summary}</summary>
-                          <Markdown text={step.text} />
-                        </details>
-                      ))}
-                    </details>
-                  );
+                if (part.steps) return <TurnWork key={i} part={part} />;
                 if (part.role === 'activity')
                   return (
                     <details className="thread-activity" key={i}>
@@ -245,5 +240,39 @@ function DocumentCard({ doc }: { doc: ThreadDocument }) {
         </>
       )}
     </details>
+  );
+}
+
+function TurnWork({ part }: { part: ReturnType<typeof storedConversation>['turns'][number]['parts'][number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="thread-work">
+      {part.plan?.length ? (
+        <ol aria-label="Plan" className="thread-plan">
+          {part.plan.map(({ step, status }, i) => (
+            <li key={i} data-status={status} aria-current={status === 'in_progress' ? 'step' : undefined}>
+              <span role="img" aria-label={status.replace('_', ' ')}>
+                {status === 'completed' ? '✓' : status === 'in_progress' ? '◉' : '○'}
+              </span>
+              {step}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      <details className="thread-activity" onToggle={(e) => setOpen(e.currentTarget.open)}>
+        <summary>
+          {part.summary}
+          {part.duration && <small title="Time recorded for this turn"> · {part.duration}</small>}
+          {!!part.failures && <small> · {part.failures} failed</small>}
+        </summary>
+        {open &&
+          part.steps?.map((step, n) => (
+            <details key={n}>
+              <summary>{step.summary}</summary>
+              <Markdown text={step.text} />
+            </details>
+          ))}
+      </details>
+    </div>
   );
 }

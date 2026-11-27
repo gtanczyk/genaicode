@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import type { ProgressReport } from '../progress.js';
 import type { SessionEntry, SessionTurn } from '../session.js';
 import type { SessionReadOptions } from './types.js';
 import { personText } from '../host-text.js';
@@ -102,6 +103,9 @@ export function transcriptBuilder(agent: string, options: SessionReadOptions = {
       if (!current || !text.trim()) return;
       current.entries.push({ kind: 'text', text, streaming: false });
       tick(at);
+    },
+    progress({ message, plan }: ProgressReport) {
+      current?.entries.push({ kind: 'progress', message, ...(plan ? { plan } : {}) });
     },
     files(paths: string[]) {
       if (paths.length) current?.entries.push({ kind: 'files', paths });

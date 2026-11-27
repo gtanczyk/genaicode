@@ -19,6 +19,8 @@ import { number, queryDatabase, tableColumns, text, type Row } from './sqlite.js
 import type { SessionTurn } from '../session.js';
 import { transcriptBuilder, transcriptLines } from './transcript.js';
 import type { SessionInfo, SessionReadOptions, SessionSource } from './types.js';
+import { antigravityPlanProgress } from '../drivers/antigravity-plan.js';
+import type { ProgressReport } from '../progress.js';
 import { antigravityUsage } from './window.js';
 
 export interface StoreOptions {
@@ -293,7 +295,7 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
  */
 export function antigravityTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
   const builder = transcriptBuilder('antigravity', options);
-  let waiting: Array<{ id: string; edited?: string }> = [];
+  let waiting: Array<{ id: string; edited?: string; progress?: ProgressReport }> = [];
   const changed = new Set<string>();
   let next = 0;
   for (const line of lines) {
@@ -316,14 +318,25 @@ export function antigravityTranscript(lines: readonly unknown[], options: Sessio
           ['write_to_file', 'replace_file_content', 'multi_replace_file_content'].includes(call.name) && isRecord(args)
             ? text(args.TargetFile)
             : undefined;
-        waiting.push({ id, edited });
+        let progress: ProgressReport | undefined;
+        if (isRecord(args)) {
+          if (call.name === 'update_steps') progress = antigravityPlanProgress(args.steps);
+          if (call.name === 'update_focus') {
+            const message = text(args.focus) ?? text(args.description) ?? text(args.title);
+            if (message?.trim()) progress = { message: message.trim().slice(0, 1000) };
+          }
+        }
+        waiting.push({ id, edited, progress });
         builder.tool(id, call.name, call.args, at);
       }
     } else if (line.type === 'GENERIC' && (line.status === 'DONE' || line.status === 'ERROR')) {
       const call = waiting.shift();
       if (call) {
         builder.toolResult(call.id, content ?? text(line.error), line.status === 'ERROR', at);
-        if (call.edited && line.status === 'DONE' && !line.error) changed.add(call.edited);
+        if (line.status === 'DONE' && !line.error) {
+          if (call.edited) changed.add(call.edited);
+          if (call.progress) builder.progress(call.progress);
+        }
       }
     }
   }

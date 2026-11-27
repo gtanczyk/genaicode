@@ -421,6 +421,17 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-message button.gc-file-link { color: var(--accent); cursor: pointer; }
 .thread-document summary { cursor: pointer; font-weight: 600; }
 .thread-document img, .thread-document video { display: block; max-width: 100%; max-height: 46vh; margin-block: 8px; }
+.thread-work { margin: 14px 0; }
+.thread-plan { list-style: none; margin: 0 0 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.thread-plan li { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 14px; color: var(--muted); }
+.thread-plan li[aria-current] { color: var(--text); font-weight: 600; }
+.thread-plan li > span[role="img"] { width: 1em; flex: none; }
+.thread-work > details > summary { display: block; width: fit-content; max-width: 100%; padding: 3px 2px; list-style: none; }
+.thread-work > details > summary::-webkit-details-marker { display: none; }
+.thread-work > details > summary::after { content: '›'; display: inline-block; margin-left: .5em; }
+.thread-work > details[open] > summary::after { transform: rotate(90deg); }
+.thread-work details details { margin: 4px 0 4px 16px; }
+.thread-activity summary small { font-size: inherit; }
 .thread-activity summary { color: var(--muted); cursor: pointer; }
 .thread-receipt { max-height: 20vh; overflow: auto; font-size: 13px; }
 .thread-new { align-self: center; cursor: pointer; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 5px 12px; }

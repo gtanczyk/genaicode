@@ -1,6 +1,7 @@
 import { describeFailover } from '../agents/failover.js';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
+import type { ProgressStep } from '../agents/progress.js';
 import type { Artifact } from '../agents/types.js';
 import {
   formatBytes,
@@ -300,6 +301,9 @@ interface ConversationPart {
   heading?: string;
   summary?: string;
   steps?: Array<{ summary?: string; text: string }>;
+  plan?: ProgressStep[];
+  duration?: string;
+  failures?: number;
   attachments?: SessionTurn['attachments'];
   text: string;
 }
@@ -395,7 +399,33 @@ function conversationParts(turn: SessionTurn, context: TurnContext, forDisplay =
     ...(attachments?.length ? { attachments } : {}),
   });
   out.length = 0;
+  // Keep one disclosure per prompt, even when the agent posts a message between two tool calls.
+  let work: ConversationPart | undefined;
+  const uninterrupted = !turn.entries.some((entry) => entry.kind === 'input');
   for (const entry of turn.entries) {
+    if (forDisplay && (entry.kind === 'tool' || entry.kind === 'progress')) {
+      if (!work) {
+        const elapsed =
+          uninterrupted && turn.startedAt > 0 && turn.endedAt && turn.endedAt > turn.startedAt
+            ? formatDuration(turn.endedAt - turn.startedAt)
+            : undefined;
+        work = { role: 'activity', summary: 'Activity', text: '', steps: [], duration: elapsed };
+        parts.push(work);
+      }
+      renderEntry(out, entry, speaker, context);
+      work.steps!.push({
+        summary: entry.kind === 'tool' ? entry.name + (entry.isError ? ' · failed' : '') : 'Progress update',
+        text: out.join('\n').trimEnd(),
+      });
+      out.length = 0;
+      if (entry.kind === 'tool' && entry.isError) work.failures = (work.failures ?? 0) + 1;
+      if (entry.kind === 'progress') {
+        if (entry.plan !== undefined) work.plan = entry.plan;
+        work.summary = entry.message || 'Activity';
+      }
+      continue;
+    }
+    if (entry.kind === 'input') work = undefined;
     if (entry.kind === 'text' || entry.kind === 'input') {
       const agent = entry.kind === 'text';
       const text = (agent ? visibleReply(speaker, entry.text, entry.streaming) : entry.text).trim();
@@ -481,30 +511,7 @@ function conversationParts(turn: SessionTurn, context: TurnContext, forDisplay =
     out.push(`_Turn usage: ${turnUsage}_`, '');
   }
   if (out.length) parts.push({ role: 'note', text: out.join('\n').trimEnd() });
-  if (!forDisplay) return parts;
-  const grouped: ConversationPart[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const first = parts[i]!;
-    if (first.role !== 'activity' || !first.summary || first.summary.startsWith('Changed files')) {
-      grouped.push(first);
-      continue;
-    }
-    const steps = [first];
-    while (parts[i + 1]?.role === 'activity' && !parts[i + 1]?.summary?.startsWith('Changed files'))
-      steps.push(parts[++i]!);
-    const failures = steps.filter((step) => step.summary?.endsWith(' · failed')).length;
-    grouped.push(
-      steps.length === 1
-        ? first
-        : {
-            role: 'activity',
-            summary: `${steps.length} tool calls${failures ? ` · ${failures} failed` : ''}`,
-            text: '',
-            steps,
-          },
-    );
-  }
-  return grouped;
+  return parts;
 }
 
 function renderEntry(

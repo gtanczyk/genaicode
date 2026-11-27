@@ -37,11 +37,44 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
   const turns = antigravityTranscript([
     {
       type: 'USER_INPUT',
+      created_at: '2026-01-05T10:00:00Z',
       content:
         '<USER_REQUEST>Show the camp.\nInclude the gallery.</USER_REQUEST>\n<ADDITIONAL_METADATA>Local time</ADDITIONAL_METADATA>',
     },
     {
       type: 'PLANNER_RESPONSE',
+      tool_calls: [
+        {
+          name: 'update_steps',
+          args: {
+            steps: [
+              { title: 'Inspect the camp', status: 'done' },
+              { title: 'Render the gallery', status: 'in_progress' },
+              { title: 'Check the final images', status: 'pending' },
+            ],
+          },
+        },
+      ],
+    },
+    { type: 'GENERIC', status: 'DONE' },
+    {
+      type: 'PLANNER_RESPONSE',
+      content: 'The scene is ready.',
+      tool_calls: Array.from({ length: 21 }, () => ({ name: 'read_file', args: { Path: 'camp.ts' } })),
+    },
+    ...Array.from({ length: 21 }, () => ({ type: 'GENERIC', status: 'DONE', content: 'file contents' })),
+    {
+      type: 'PLANNER_RESPONSE',
+      tool_calls: [
+        { name: 'update_focus', args: { focus: 'Rendering camp lighting and camera angles' } },
+        { name: 'update_steps', args: { steps: [] } },
+      ],
+    },
+    { type: 'GENERIC', status: 'DONE' },
+    { type: 'GENERIC', status: 'ERROR', error: 'Update rejected' },
+    {
+      type: 'PLANNER_RESPONSE',
+      created_at: '2026-01-05T10:09:40Z',
       content: `The tests passed. Open [gallery.md](${pathToFileURL(gallery)}) or [relative gallery](camp%20gallery.md) or [missing.md](./missing.md).`,
     },
   ]);
@@ -73,6 +106,17 @@ it('opens a linked Antigravity gallery from a stored conversation and loads its 
     await detail.getByText('Show the camp. Include the gallery.').waitFor();
     expect(await detail.innerText()).not.toContain('ADDITIONAL_METADATA');
     expect(await detail.getByRole('button', { name: 'missing.md' }).count()).toBe(0);
+    const plan = detail.getByRole('list', { name: 'Plan' });
+    await plan.locator('[aria-current="step"]').getByText('Render the gallery').waitFor();
+    const work = detail.locator('.thread-work');
+    expect(await work.count()).toBe(1);
+    expect(await work.innerText()).not.toContain('read_file');
+    const summary = work.locator('summary').first();
+    expect(await summary.innerText()).toContain('Rendering camp lighting and camera angles · 9m 40s · 1 failed');
+    await summary.click();
+    await work.locator('details details').first().waitFor();
+    expect(await work.locator('details details > summary').filter({hasText:/^read_file$/}).count()).toBe(21);
+    await summary.click();
     await detail.getByRole('button', { name: 'gallery.md' }).click();
     await vi.waitFor(async () =>
       expect(

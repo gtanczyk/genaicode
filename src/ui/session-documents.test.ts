@@ -52,7 +52,11 @@ it('shows the person’s message, successful edits and the gallery of this Antig
     expect(turns[0]!.prompt).toBe('First line.\nSecond line.');
     expect(turns[0]!.entries.at(-1)).toEqual({ kind: 'files', paths: ['/work/a.ts'] });
     const conversation = storedConversation({ session, turns, readable: true });
-    expect(conversation.turns[0]!.parts[1]?.summary).toBe('2 tool calls · 1 failed');
+    expect(conversation.turns[0]!.parts[1]).toMatchObject({
+      summary: 'Activity',
+      failures: 1,
+      steps: [{ summary: 'write_to_file' }, { summary: 'replace_file_content · failed' }],
+    });
     const store = sessionDocuments({ HOME: home });
     const [doc] = store.read(session, conversation.turns);
     expect(doc?.title).toBe('Battle gallery');

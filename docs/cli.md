@@ -297,6 +297,12 @@ links to its page. Once [`genaicode topics refresh`](#your-work-as-topics-topics
 your sessions, the view groups them by topic instead (those that ask for you first), and
 **By directory** brings the projects back.
 
+Open a session to read its conversation. When the agent records a plan, the transcript shows
+its steps and highlights the current one. Expand the activity line to inspect the tool calls
+behind that part of the conversation.
+
+![Antigravity transcript with its current plan step and collapsed tool activity](media/screenshots/session-activity.png)
+
 The bottom of the sidebar shows each agent's worst window (`claude 62% · 5h`), and the line under
 the composer names an agent above 80% of its plan: what the session's runs
 report, and before that what `genaicode limits` last saw. **Settings › Usage** has every window of

@@ -5,7 +5,7 @@ import { liveAgent, type LiveSession } from '../live-agent.js';
 import { exclusiveOption, resolvePermissions, type PermissionFlags } from '../permissions.js';
 import { isHttpServer } from '../prepare.js';
 import { RpcError } from '../rpc.js';
-import type { ProgressStep } from '../progress.js';
+import { antigravityPlanProgress } from './antigravity-plan.js';
 import type { AgentEvent, AgentPermissions, AgentTask, ApprovalRequest, CodingAgent, McpServer } from '../types.js';
 import { isObject, numberField, stringField, type JsonObject } from './json.js';
 import { isTrustedMcpTool, mcpToolServer, trustedMcpServers } from './trusted-tool.js';
@@ -258,29 +258,6 @@ function antigravityServer(name: string, servers: readonly string[]): string | u
 export function antigravityToolName(name: string, servers: readonly string[]): string {
   const server = antigravityServer(name, servers);
   return server ? `mcp__${server}__${name.slice(server.length + 5)}` : name;
-}
-
-/** Parse ACP `plan` entries or Antigravity `update_steps` items into a progress event. */
-function antigravityPlanProgress(items: unknown): Extract<AgentEvent, { type: 'progress' }> | undefined {
-  if (!Array.isArray(items)) return undefined;
-  if (items.length === 0) return { type: 'progress', message: 'Plan cleared', plan: [] };
-  const all: ProgressStep[] = [];
-  for (const item of items) {
-    if (!isObject(item)) continue;
-    const step = (stringField(item, 'title') ?? stringField(item, 'content') ?? stringField(item, 'step'))?.trim();
-    if (!step) continue;
-    const raw = (stringField(item, 'status') ?? '').toLowerCase();
-    const status: ProgressStep['status'] =
-      raw === 'done' || raw === 'completed' ? 'completed' : raw === 'in_progress' ? 'in_progress' : 'pending';
-    all.push({ step: step.slice(0, 200), status });
-  }
-  if (!all.length) return undefined;
-  // Compute status from the full snapshot before capping the displayed checklist to 12 items.
-  const active = all.find((item) => item.status === 'in_progress');
-  const message =
-    active?.step ??
-    (all.every((item) => item.status === 'completed') ? 'Completed all steps' : (all[0]?.step ?? 'Updated plan'));
-  return { type: 'progress', message, plan: all.slice(0, 12) };
 }
 
 /** Events for one ACP `session/update` (exported for tests). */
