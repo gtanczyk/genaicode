@@ -111,6 +111,7 @@ export interface WebUiOptions {
    * as text in the page. Without it paths stay plain.
    */
   files?: ProjectFiles;
+  sessionDocuments?: ReturnType<typeof import('../session-documents.js').sessionDocuments>;
   /**
    * Local status of each supported agent (installed, version, sign-in, hints), at GET /api/agents.
    * Never calls a model. `?refresh=1` bypasses the short cache; `?env=1` also refreshes the host shell env.
@@ -841,7 +842,7 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
     if (req.method === 'GET' && url.pathname.startsWith('/files/')) {
       // No token: capability URL minted by /api/file or /api/file/images, single-path and short-lived.
       const id = url.pathname.slice('/files/'.length);
-      let found = files?.fromCapability(id);
+      let found = files?.fromCapability(id) ?? options.sessionDocuments?.fromCapability(id);
       if (!found && hub) {
         for (const entry of hub.chats.values()) {
           found = entry.files.fromCapability(id);
@@ -1380,8 +1381,11 @@ export async function startWebUi(options: WebUiOptions): Promise<WebUi> {
         return send(res, 500, 'application/json', '{"error":"Could not read the session transcript."}');
       }
       if (!found) return send(res, 404, 'application/json', '{"error":"session not found"}');
-      if (format === 'conversation')
-        return send(res, 200, 'application/json; charset=utf-8', JSON.stringify(storedConversation(found)));
+      if (format === 'conversation') {
+        const conversation = storedConversation(found);
+        const documents = options.sessionDocuments?.read(found.session, conversation.turns);
+        return send(res, 200, 'application/json; charset=utf-8', JSON.stringify({ ...conversation, documents }));
+      }
       if (format === 'view') return send(res, 200, 'text/markdown; charset=utf-8', storedConversationMarkdown(found));
       const now = new Date();
       const exportedAt = now.toISOString();

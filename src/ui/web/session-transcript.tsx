@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { TurnAttachments } from '../../react/attachments.js';
 import { Markdown } from '../../react/markdown.js';
 import type { SessionInfo } from '../../agents/sessions/types.js';
+import type { ThreadDocument } from '../session-documents.js';
 import type { storedConversation } from '../transcript.js';
 import { Icon } from './sidebar.js';
 
@@ -25,7 +26,9 @@ export function SessionTranscript({
   positions?: Map<string, number>;
   question?: string;
 }) {
-  const [conversation, setConversation] = useState<ReturnType<typeof storedConversation>>();
+  const [conversation, setConversation] = useState<
+    ReturnType<typeof storedConversation> & { documents?: ThreadDocument[] }
+  >();
   const [error, setError] = useState<string>();
   const url = transcriptUrl(session);
   const scroll = useRef<HTMLDivElement>(null);
@@ -117,6 +120,21 @@ export function SessionTranscript({
             <section className="thread-turn" key={turn.id} aria-label={`Turn ${turn.id}`}>
               {showDate && <div className="thread-date">{date.format(stamp)}</div>}
               {turn.parts.map((part, i) => {
+                const docs = conversation.documents?.filter((doc) =>
+                  doc.mentions.some((m) => m.turn === turn.id && m.part === i),
+                );
+                if (part.steps)
+                  return (
+                    <details className="thread-activity" key={i}>
+                      <summary>{part.summary}</summary>
+                      {part.steps.map((step, n) => (
+                        <details key={n}>
+                          <summary>{step.summary}</summary>
+                          <Markdown text={step.text} />
+                        </details>
+                      ))}
+                    </details>
+                  );
                 if (part.role === 'activity')
                   return (
                     <details className="thread-activity" key={i}>
@@ -151,7 +169,35 @@ export function SessionTranscript({
                         </time>
                       )}
                     </div>
-                    {part.text && <Markdown text={part.text} />}
+                    {part.text && (
+                      <div
+                        onClick={(event) => {
+                          const button = (event.target as HTMLElement).closest<HTMLElement>('[data-gc-file]');
+                          const card =
+                            button &&
+                            Array.from(
+                              event.currentTarget.parentElement!.querySelectorAll<HTMLDetailsElement>(
+                                'details[data-file]',
+                              ),
+                            ).find((one) => one.dataset.file === button.dataset.gcFile);
+                          if (card) {
+                            card.open = true;
+                            card.querySelector('summary')?.focus();
+                          }
+                        }}
+                      >
+                        <Markdown
+                          text={part.text}
+                          fileRoot={session.source === 'antigravity' ? (docs?.map((doc) => doc.path) ?? []) : undefined}
+                          fileBase={
+                            session.path && session.source === 'antigravity'
+                              ? session.path.split('/.system_generated/')[0]
+                              : undefined
+                          }
+                        />
+                      </div>
+                    )}
+                    {docs?.map((doc) => <DocumentCard key={doc.path} doc={doc} />)}
                     {part.attachments && <TurnAttachments items={part.attachments} />}
                   </div>
                 );
@@ -173,5 +219,27 @@ export function SessionTranscript({
         </button>
       )}
     </>
+  );
+}
+
+function DocumentCard({ doc }: { doc: ThreadDocument }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="thread-document" data-file={doc.path} onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary>{doc.title}</summary>
+      {open && (
+        <>
+          <Markdown text={doc.text} fileRoot={[]} />
+          {doc.truncated && <small>Showing the start of this document.</small>}
+          {doc.media.map((item) =>
+            item.video ? (
+              <video key={item.url} controls preload="none" src={item.url} aria-label={item.label} />
+            ) : (
+              <img key={item.url} loading="lazy" src={item.url} alt={item.label} />
+            ),
+          )}
+        </>
+      )}
+    </details>
   );
 }

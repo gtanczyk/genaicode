@@ -46,6 +46,7 @@ import {
 } from '../agents/sessions/index.js';
 import { recordedConversation } from '../agents/sessions/workspace.js';
 import { createUploads } from './uploads.js';
+import { sessionDocuments } from './session-documents.js';
 import { createProjectFiles } from './files.js';
 import { pullRequestLookup, type PullRequestLookup } from './pull-requests.js';
 import { formatTruncationReason } from './transcript.js';
@@ -1032,6 +1033,7 @@ function webLink(
       },
       uploads: createUploads(() => controller().get().session.cwd),
       files: createProjectFiles(roots),
+      sessionDocuments: sessionDocuments(options.env ?? process.env),
       host: options.host,
       port: options.port,
       token: options.token,

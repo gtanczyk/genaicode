@@ -299,6 +299,7 @@ interface ConversationPart {
   role: 'user' | 'agent' | 'activity' | 'note';
   heading?: string;
   summary?: string;
+  steps?: Array<{ summary?: string; text: string }>;
   attachments?: SessionTurn['attachments'];
   text: string;
 }
@@ -480,7 +481,30 @@ function conversationParts(turn: SessionTurn, context: TurnContext, forDisplay =
     out.push(`_Turn usage: ${turnUsage}_`, '');
   }
   if (out.length) parts.push({ role: 'note', text: out.join('\n').trimEnd() });
-  return parts;
+  if (!forDisplay) return parts;
+  const grouped: ConversationPart[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const first = parts[i]!;
+    if (first.role !== 'activity' || !first.summary || first.summary.startsWith('Changed files')) {
+      grouped.push(first);
+      continue;
+    }
+    const steps = [first];
+    while (parts[i + 1]?.role === 'activity' && !parts[i + 1]?.summary?.startsWith('Changed files'))
+      steps.push(parts[++i]!);
+    const failures = steps.filter((step) => step.summary?.endsWith(' · failed')).length;
+    grouped.push(
+      steps.length === 1
+        ? first
+        : {
+            role: 'activity',
+            summary: `${steps.length} tool calls${failures ? ` · ${failures} failed` : ''}`,
+            text: '',
+            steps,
+          },
+    );
+  }
+  return grouped;
 }
 
 function renderEntry(

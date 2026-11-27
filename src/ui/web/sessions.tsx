@@ -721,7 +721,17 @@ export function Sessions({
                     ? 'Approval requested in the agent'
                     : detail.turnInProgress
                       ? 'Turn in progress'
-                      : 'Read-only here'}
+                      : detail.state === 'active'
+                        ? 'Session active · replies are paused here'
+                        : !detail.cwd
+                          ? 'No working directory recorded for this session'
+                          : !storesOf(detail).some((row) =>
+                                listing.senders?.some(
+                                  (sender) => sender.agent === row.agent && sender.source === row.source,
+                                ),
+                              )
+                            ? `No local ${detail.agent} sender available`
+                            : 'Waiting for a resumable session state'}
                 </span>
               )}
               {replyTarget &&
