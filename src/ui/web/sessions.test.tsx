@@ -195,3 +195,60 @@ it('refreshes the archive after a later batch fails', async () => {
     window.removeEventListener('genaicode-history-changed', refresh);
   }
 });
+
+it.each([true, false])(
+  'keeps the outcome of a pending send visible when the session becomes active (success %s)',
+  async (success) => {
+    let state: SessionInfo['state'] = 'waiting';
+    let finish!: (response: Response) => void;
+    const sends: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/send')) {
+        sends.push(String(init?.body));
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      }
+      if (url.includes('/transcript')) return Response.json({ turns: [] });
+      return Response.json({ ...listing, sessions: [{ ...asking, state }] });
+    });
+    const show = async (selected: SessionInfo) =>
+      act(async () =>
+        root.render(<Sessions token="t" cwd="/work" selected={selected} onOpen={vi.fn()} onContinue={vi.fn()} />),
+      );
+    await show(asking);
+    const detail = () => host.querySelector('.session-detail')!;
+    await act(async () => detail().querySelector<HTMLButtonElement>('.thread-reply')!.click());
+    const field = detail().querySelector('textarea')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'Bake today.');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      field.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    state = 'active';
+    await act(async () => {
+      window.dispatchEvent(new Event('genaicode-history-changed'));
+    });
+    expect(detail().querySelector('form')).toBeNull();
+    expect(detail().textContent).toContain('Waiting for helper to finish');
+    await act(async () =>
+      finish(
+        Response.json(
+          success ? { ok: true, text: 'Baking today.' } : { error: 'Lost connection.', delivery: 'unknown' },
+          { status: success ? 200 : 422 },
+        ),
+      ),
+    );
+    expect(detail().textContent).toContain(
+      success ? 'helper completed the turn from Genaicode' : 'Delivery to this session is unconfirmed.',
+    );
+    expect(detail().querySelector('.thread-reply')).toBeNull();
+    expect(sends).toHaveLength(1);
+    await show({ ...asking, id: 'a-different-conversation' });
+    expect(detail().querySelector('.thread-receipt, [role="alert"]')).toBeNull();
+    await show(asking);
+    expect(detail().textContent).toContain(success ? 'Baking today.' : 'Lost connection.');
+  },
+);

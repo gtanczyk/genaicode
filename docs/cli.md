@@ -307,6 +307,11 @@ In **Needs you**, each card shows the local date and time. **Agent message** dat
 **Requested** dates a recorded permission request, **Last activity** dates the session update, and
 **First seen** dates the first observation in this window.
 
+Reply sends a turn through the session’s local agent. With Claude Code, Genaicode starts a separate
+process using the saved session ID. An already-open Claude terminal may still show the previous
+turn. Reopening the saved session loads its updated history. While a send is pending, Genaicode
+tracks its outcome even if the session becomes busy and the reply editor closes.
+
 A local Codex thread offers **Open in Codex**. An idle local Claude Code session offers **Resume in Claude Desktop**.
 Install the corresponding desktop app on the machine that holds the session.
 For local Antigravity sessions, **Copy agy command** copies `agy --conversation <id>` to run in a terminal.

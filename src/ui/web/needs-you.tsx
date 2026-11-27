@@ -11,7 +11,7 @@ import {
 } from '../needs-you.js';
 import { sessionKey } from '../sidebar.js';
 import { towerText } from '../tower-format.js';
-import { SessionReply, useSessionReplyDrafts } from './session-reply.js';
+import { ReplyStatus, SessionReply, useSessionReplyDrafts } from './session-reply.js';
 import { OpenAgentSession } from './open-agent-session.js';
 import { StateGlyph } from './sidebar.js';
 
@@ -65,7 +65,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
   const [filter, setFilter] = useState<NeedsFilter>('all');
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState<string>();
-  const { drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
+  const { attempts, drafts, keepDraft, replyTo, setReplyTo, closeReply } = useSessionReplyDrafts();
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
@@ -120,6 +120,19 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
           {feedback && towerStatus ? ' · ' : null}
           {towerStatus ? <span data-from="tower">{towerStatus}</span> : null}
         </p>
+        {[...attempts.entries()]
+          .filter(
+            ([key, attempt]) =>
+              attempt.from === 'queue' &&
+              attempt.phase !== 'completed' &&
+              !shown.some((item) => item.reply && sessionKey(item.reply.session) === key && replyTo === key),
+          )
+          .map(([key, attempt]) => (
+            <div key={key} className="session-receipt">
+              <b>{attempt.session.title ?? attempt.session.id}</b>
+              <ReplyStatus attempt={attempt} />
+            </div>
+          ))}
         {items.length ? (
           <div className="needs-filters" role="group" aria-label="Filter">
             {needsFilters(items, props.chatTitle).map((chip) => (
@@ -205,6 +218,7 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
               </div>
               {replying ? (
                 <SessionReply
+                  from="queue"
                   session={item.reply!.session}
                   token={props.token}
                   sandboxes={item.reply!.sandboxes}
