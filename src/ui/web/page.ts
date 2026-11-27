@@ -397,7 +397,7 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .sessions { flex: 1; overflow: auto; padding: 16px 20px 40px; position: relative; z-index: 1; }
 .sessions.session-detail { min-height: 0; overflow: hidden; padding: 0 clamp(12px, 4vw, 52px) 20px; }
 .thread-column { max-width: 760px; margin: 0 auto; height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.thread-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 0 32px; overflow-wrap: anywhere; }
+.thread-messages { --_mono: var(--mono); --_code-bg: var(--gc-color-sunken); --_accent: var(--accent); --_border: var(--line); --_muted: var(--muted); --_radius: 8px; flex: 1; min-height: 0; overflow-y: auto; padding: 22px 0 32px; overflow-wrap: anywhere; }
 .thread-date { display: flex; align-items: center; gap: 14px; margin: 6px 0 24px; font-size: 12px; color: var(--muted); }
 .thread-date::before, .thread-date::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
 .thread-turn + .thread-turn { margin-top: 24px; }
@@ -412,10 +412,15 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-message .gc-md > :last-child { margin-bottom: 0; }
 .thread-message .gc-md pre, .thread-note pre, .thread-activity pre { overflow-x: auto; }
 .thread-message.user { margin-left: auto; width: fit-content; max-width: min(86%, 600px); }
+.thread-message.user .gc-md p { white-space: pre-wrap; }
 .thread-message.user .thread-byline { justify-content: flex-end; color: var(--muted); }
 .thread-message.user .gc-md { padding: 10px 16px; border-radius: 16px 16px 4px 16px; background: var(--gc-color-sunken, var(--panel)); border: 1px solid var(--line); }
 .thread-message.agent { padding-right: 5%; }
 .thread-activity, .thread-note { margin: 10px 0; font-size: 13px; }
+.thread-document { margin-block: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.thread-message button.gc-file-link { color: var(--accent); cursor: pointer; }
+.thread-document summary { cursor: pointer; font-weight: 600; }
+.thread-document img, .thread-document video { display: block; max-width: 100%; max-height: 46vh; margin-block: 8px; }
 .thread-activity summary { color: var(--muted); cursor: pointer; }
 .thread-receipt { max-height: 20vh; overflow: auto; font-size: 13px; }
 .thread-new { align-self: center; cursor: pointer; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; padding: 5px 12px; }

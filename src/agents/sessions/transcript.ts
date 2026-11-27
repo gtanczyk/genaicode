@@ -103,6 +103,9 @@ export function transcriptBuilder(agent: string, options: SessionReadOptions = {
       current.entries.push({ kind: 'text', text, streaming: false });
       tick(at);
     },
+    files(paths: string[]) {
+      if (paths.length) current?.entries.push({ kind: 'files', paths });
+    },
     tool(id: string | undefined, name: string, input: unknown, at?: number) {
       if (!current) return;
       const entry: ToolEntry = { kind: 'tool', ...(id ? { id } : {}), name, input, done: false };

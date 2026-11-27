@@ -452,6 +452,10 @@ export function Sessions({
   };
   const detail = selected && (index.byStore.get(sessionKey(selected))?.display ?? selected);
   const replyTarget = detail && senderOf(detail);
+  const worktree =
+    detail?.agent === 'antigravity' &&
+    detail.cwd?.replace(/\\/g, '/').match(/\/\.gemini\/antigravity\/worktrees\/([^/]+)\/([^/]+)\/?$/);
+
   const list = (
     <main hidden={!!detail} className="sessions">
       <div className="tools">
@@ -721,7 +725,17 @@ export function Sessions({
                     ? 'Approval requested in the agent'
                     : detail.turnInProgress
                       ? 'Turn in progress'
-                      : 'Read-only here'}
+                      : detail.state === 'active'
+                        ? 'Session active · replies are paused here'
+                        : !detail.cwd
+                          ? 'No working directory recorded for this session'
+                          : !storesOf(detail).some((row) =>
+                                listing.senders?.some(
+                                  (sender) => sender.agent === row.agent && sender.source === row.source,
+                                ),
+                              )
+                            ? `No local ${detail.agent} sender available`
+                            : 'Waiting for a resumable session state'}
                 </span>
               )}
               {replyTarget &&
@@ -744,7 +758,11 @@ export function Sessions({
                     title={[detail.agent, detail.source, detail.cwd ?? detail.repository].join(' · ')}
                   >
                     <Icon name="folder" />
-                    {detail.cwd ? folderName(detail.cwd) : detail.repository}
+                    {worktree
+                      ? worktree[1] + ' / ' + worktree[2]
+                      : detail.cwd
+                        ? folderName(detail.cwd)
+                        : detail.repository}
                   </span>
                 )}
                 <TranscriptMenu

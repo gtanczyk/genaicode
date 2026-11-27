@@ -183,6 +183,17 @@ function firstFileUri(value: unknown): string | undefined {
   }
 }
 
+/** The desktop host wraps a person's message and appends its own context to the same log entry. */
+function antigravityPrompt(content: string): string {
+  const raw = content.trim();
+  if (!raw.startsWith('<USER_REQUEST>')) return content;
+  const close = raw.lastIndexOf('</USER_REQUEST>');
+  if (close < 0) return content;
+  const tail = raw.slice(close + '</USER_REQUEST>'.length).trim();
+  if (tail && !(tail.startsWith('<ADDITIONAL_METADATA>') && tail.endsWith('</ADDITIONAL_METADATA>'))) return content;
+  return raw.slice('<USER_REQUEST>'.length, close).trim();
+}
+
 /**
  * Antigravity: `conversation_summaries.db` in `~/.gemini/antigravity` (shared with the desktop app)
  * and `~/.gemini/antigravity-cli`. Top-level conversations only.
@@ -234,7 +245,7 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
               // Started from the command line by a program, outside any project: a test or an agent's errand.
               // A CLI run in a project stays: it can be somebody's chat in an app built on genaicode.
               automated: headless && (!cwd || isAgentWorktree(cwd)) ? true : undefined,
-              title: title(row.title) ?? title(row.preview),
+              title: title(row.title) ?? title(antigravityPrompt(text(row.preview) ?? '')),
               updatedAt,
               state: status.endsWith('_RUNNING') ? 'active' : status.endsWith('_IDLE') ? 'waiting' : undefined,
               path: transcriptPath(dir, id),
@@ -282,29 +293,41 @@ export function antigravitySessions(options: StoreOptions = {}): SessionSource {
  */
 export function antigravityTranscript(lines: readonly unknown[], options: SessionReadOptions = {}): SessionTurn[] {
   const builder = transcriptBuilder('antigravity', options);
-  let waiting: string[] = [];
+  let waiting: Array<{ id: string; edited?: string }> = [];
+  const changed = new Set<string>();
   let next = 0;
   for (const line of lines) {
     if (!isRecord(line)) continue;
     const at = timeOf(line.created_at);
     const content = text(line.content);
     if (line.type === 'USER_INPUT') {
+      builder.files([...changed]);
+      changed.clear();
       waiting = [];
-      if (content) builder.prompt(content, at);
+      if (content) builder.prompt(antigravityPrompt(content), at);
     } else if (line.type === 'PLANNER_RESPONSE') {
       waiting = [];
       if (content) builder.text(content, at);
       for (const call of Array.isArray(line.tool_calls) ? line.tool_calls : []) {
         if (!isRecord(call) || typeof call.name !== 'string') continue;
         const id = `step-${next++}`;
-        waiting.push(id);
+        const args = jsonOr(call.args);
+        const edited =
+          ['write_to_file', 'replace_file_content', 'multi_replace_file_content'].includes(call.name) && isRecord(args)
+            ? text(args.TargetFile)
+            : undefined;
+        waiting.push({ id, edited });
         builder.tool(id, call.name, call.args, at);
       }
     } else if (line.type === 'GENERIC' && (line.status === 'DONE' || line.status === 'ERROR')) {
-      const id = waiting.shift();
-      if (id) builder.toolResult(id, content ?? text(line.error), line.status === 'ERROR', at);
+      const call = waiting.shift();
+      if (call) {
+        builder.toolResult(call.id, content ?? text(line.error), line.status === 'ERROR', at);
+        if (call.edited && line.status === 'DONE' && !line.error) changed.add(call.edited);
+      }
     }
   }
+  builder.files([...changed]);
   return builder.turns();
 }
 
