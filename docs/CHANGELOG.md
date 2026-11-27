@@ -10,7 +10,7 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
-- **Drag project folders into your preferred order in the sidebar.** (#0)
+- **Drag project folders into your preferred order in the sidebar.** (#387)
 
 ### Fixed
 
