@@ -296,7 +296,7 @@ it('⌘K opens Search over the page: a typed title opens its chat, Escape puts t
     await palette.waitFor({ state: 'detached' });
 
     // The session index may answer before the list of this app's chats: until that list is there,
-    // no session is taken for another agent's (an app chat would open All sessions).
+    // no session is taken for another agent's.
     {
       const slow = await browser.newContext({ viewport: { width: 1280, height: 800 } });
       const late = await slow.newPage();

@@ -14,6 +14,7 @@ import {
 import type { Notice } from '../controller.js';
 import { plainSessionText } from '../controller.js';
 import {
+  visibleReply,
   inputDeliveryText,
   packMetrics,
   packTaskElapsed,
@@ -97,7 +98,7 @@ export function showsOutput(entry: Extract<SessionEntry, { kind: 'tool' }>): boo
 }
 
 /** Rough row count of an entry, to keep the live area inside the terminal. */
-export function entryHeight(entry: SessionEntry, width: number, outputLines: number): number {
+export function entryHeight(entry: SessionEntry, width: number, outputLines: number, agent = ''): number {
   const rows = (text: string) =>
     text.split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / Math.max(20, width))), 0);
   switch (entry.kind) {
@@ -106,7 +107,7 @@ export function entryHeight(entry: SessionEntry, width: number, outputLines: num
         rows(entry.message) + (entry.plan ?? []).reduce((sum, item) => sum + rows(`${item.step} · ${item.status}`), 0)
       );
     case 'text':
-      return rows(entry.text);
+      return rows(visibleReply(agent, entry.text, entry.streaming));
     case 'tool':
       return 1 + (showsOutput(entry) ? Math.min(outputLines + 1, rows(entry.output ?? '')) : 0);
     case 'approval':
@@ -149,7 +150,7 @@ export function EntryView({
         <Box>
           <Text color="white">● </Text>
           <Box flexDirection="column" flexGrow={1}>
-            <Markdown text={entry.text} />
+            <Markdown text={visibleReply(agent ?? '', entry.text, entry.streaming)} />
           </Box>
         </Box>
       );
@@ -252,12 +253,13 @@ export function TurnView({
   approvals?: ApprovalRequest[];
   selectedTask?: string;
 }) {
+  const speaker = turn.pack?.lead ?? turn.agent;
   let entries = turn.entries;
   if (maxRows !== undefined) {
     let used = 0;
     let from = turn.entries.length;
     while (from > 0) {
-      const height = entryHeight(turn.entries[from - 1], width - 4, live ? 2 : 4);
+      const height = entryHeight(turn.entries[from - 1], width - 4, live ? 2 : 4, speaker);
       if (used + height > maxRows && from < turn.entries.length) break;
       used += height;
       from -= 1;
@@ -281,7 +283,7 @@ export function TurnView({
         {entries.map((entry, i) => (
           // Tool steps stack tightly; prose gets a blank line around it.
           <Box key={i + hidden} marginTop={i > 0 && (entry.kind === 'text' || entries[i - 1].kind === 'text') ? 1 : 0}>
-            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} agent={turn.pack?.lead ?? turn.agent} />
+            <EntryView entry={entry} outputLines={live ? 2 : 4} cwd={cwd} agent={speaker} />
           </Box>
         ))}
       </Box>

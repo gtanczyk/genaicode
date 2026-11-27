@@ -2,7 +2,14 @@ import { describeFailover } from '../agents/failover.js';
 import type { SessionEntry, SessionState, SessionTurn } from '../agents/session.js';
 import type { SessionInfo } from '../agents/sessions/types.js';
 import type { Artifact } from '../agents/types.js';
-import { formatBytes, formatDuration, formatUsage, packTaskTitle, toolArgument } from '../react/format.js';
+import {
+  formatBytes,
+  formatDuration,
+  formatUsage,
+  packTaskTitle,
+  toolArgument,
+  visibleReply,
+} from '../react/format.js';
 import type { ChatView, Notice } from './controller.js';
 
 /** The content of an artifact's latest version (`ArtifactStore.read`). */
@@ -270,7 +277,8 @@ export function storedConversationMarkdown(input: StoredSessionTranscriptInput):
     if (session.lastPrompt && session.lastPrompt !== session.firstPrompt) {
       out.push('### Last prompt', '', session.lastPrompt.trim(), '');
     }
-    if (session.lastReply) out.push('### Last reply', '', session.lastReply.trim(), '');
+    const lastReply = visibleReply(session.agent, session.lastReply ?? '').trim();
+    if (lastReply) out.push('### Last reply', '', lastReply, '');
   } else if (!turns.length) {
     out.push('_No turns found in this session._', '');
   } else {
@@ -320,8 +328,13 @@ function renderTurn(
     renderEntry(out, entry, speaker, context);
   }
 
-  const final = turn.result?.text?.trim();
-  if (final && !turn.entries.some((entry) => entry.kind === 'text' && entry.text.trim() === final)) {
+  const final = visibleReply(speaker, turn.result?.text ?? '').trim();
+  if (
+    final &&
+    !turn.entries.some(
+      (entry) => entry.kind === 'text' && visibleReply(speaker, entry.text, entry.streaming).trim() === final,
+    )
+  ) {
     out.push(`### ${speaker}`, '', final, '');
   }
 
@@ -393,9 +406,11 @@ function renderEntry(
       for (const item of entry.plan ?? []) out.push(`- ${item.step} (${item.status.replace('_', ' ')})`);
       if (entry.plan?.length) out.push('');
       return;
-    case 'text':
-      if (entry.text.trim()) out.push(`### ${speaker}`, '', entry.text.trim(), '');
+    case 'text': {
+      const reply = visibleReply(speaker, entry.text, entry.streaming).trim();
+      if (reply) out.push(`### ${speaker}`, '', reply, '');
       return;
+    }
     case 'input':
       if (entry.text.trim()) out.push('### User (during turn)', '', entry.text.trim(), '');
       return;

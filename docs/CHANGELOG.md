@@ -14,8 +14,9 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Fixed
 
-- **Open the selected agent session from the sidebar and Search.** (#388)
+- **Open the selected agent session from the sidebar and Search.** (#389)
   - Claude project threads show their topic as the title and the project name beside it in the transcript.
+- **Hide Codex memory citation metadata at the end of chat replies.** (#388)
 - **Keep empty work tabs open from Steps, rescan old Antigravity caches, and order model lists.** (#385)
   - Switching from Steps to a tab with zero items keeps the work panel open instead of closing it, and out-of-order `/api/models` responses no longer overwrite newer lists.
   - Antigravity usage caches are versioned so upgrades rescan oversized (`> 1 MiB`) records from byte zero, with exact JSON escape and duplicate-key handling.
