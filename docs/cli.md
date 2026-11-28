@@ -219,6 +219,11 @@ them); the agents' files stay as they are (see
 updates: counts per store, never content, exit code 1 when one looks broken (see
 [sessions doctor](agents.md#when-an-agent-changes-its-store-sessions-doctor)).
 
+In **All sessions**, **Activity radar** maps each agent to its threads. Select a thread to see its
+activity or open its transcript. **Thread links** shows other filtered threads that share a recorded
+pull request, Claude project, topic, repository or local directory. If the open chat has recorded
+delegations for the selected native session, its worker tasks appear in the detail panel.
+
 With `ui --sessions`, and once `genaicode topics refresh` has sorted your sessions, the empty
 chat page starts with your topics: those that wait for you, those agents work on now, and how
 much of each agent's plan is used. Under each plan it says which topics that agent's work of the

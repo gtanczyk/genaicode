@@ -10,6 +10,8 @@ import type { PendingAsk } from '../../agents/sessions/answer.js';
 import type { WebSessionListing } from './server.js';
 import { chatTitle, folderName, sessionKey } from '../sidebar.js';
 import { Icon } from './sidebar.js';
+import type { SessionState } from '../../agents/session.js';
+import { ActivityRadar } from './activity-radar.js';
 import { SessionTranscript, transcriptUrl } from './session-transcript.js';
 import { NeedTime } from './needs-you.js';
 import type { NeedsItem } from '../needs-you.js';
@@ -106,6 +108,9 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
   token,
+  radar = false,
+  live,
+  liveSource,
   selected,
   readingPositions,
   openingQuestion,
@@ -129,6 +134,9 @@ export function Sessions({
   onReplied,
 }: {
   token: string;
+  radar?: boolean;
+  live?: SessionState;
+  liveSource?: string;
   selected?: SessionInfo;
   readingPositions?: Map<string, number>;
   openingQuestion?: string;
@@ -183,7 +191,7 @@ export function Sessions({
   }, []);
   const hasSelected = !!selected;
   useEffect(() => {
-    if (!hasSelected) return;
+    if (!hasSelected && !radar) return;
     const refresh = () => {
       if (document.visibilityState === 'visible') setRound((value) => value + 1);
     };
@@ -193,7 +201,7 @@ export function Sessions({
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [hasSelected]);
+  }, [hasSelected, radar]);
   // By topic once there are topics, unless the user chose otherwise.
   const [chosen, setChosen] = useState<'topic' | 'project'>();
 
@@ -517,7 +525,7 @@ export function Sessions({
           <option value="unfinished">◌ Unfinished</option>
           <option value="archived">Archived</option>
         </select>
-        {sorted && !own ? (
+        {sorted && !own && !radar ? (
           <select
             aria-label="Group by"
             value={by}
@@ -570,9 +578,11 @@ export function Sessions({
           Refresh
         </button>
         <span className="count">
-          {listing
-            ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
-            : 'Reading…'}
+          {listing && radar
+            ? `${shown.length} of ${all.length} sessions`
+            : listing
+              ? `${shown.length} of ${all.length} sessions · ${projects.length} ${by === 'topic' ? 'topics' : 'projects'}`
+              : 'Reading…'}
         </span>
       </div>
       {failed ? <div className="errors">Could not read the sessions: {failed}</div> : null}
@@ -591,7 +601,17 @@ export function Sessions({
           {error.source}: {error.message}
         </div>
       ))}
-      {projects.map((project) => {
+      {radar ? (
+        <ActivityRadar
+          sessions={shown}
+          topics={index.topicsBySession}
+          topicNames={topicNames}
+          live={live}
+          liveSource={liveSource}
+          onOpen={onOpen}
+        />
+      ) : null}
+      {(radar ? [] : projects).map((project) => {
         // Stalled sessions fold under their topic unless asked for: they block nobody.
         const unfold = inbox || open.has(`stalled:${project.key}`);
         const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');

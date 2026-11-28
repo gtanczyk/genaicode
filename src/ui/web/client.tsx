@@ -1139,6 +1139,7 @@ function App({ selected }: { selected?: string }) {
   };
   const [section, setSection] = useState<SettingsSection>('general');
   const [focusAgent, setFocusAgent] = useState<string>();
+  const [radar, setRadar] = useState(false);
   const showSessions = panel === 'sessions';
   const showAgents = panel === 'settings' && section === 'agents';
   // What the Sessions view lists: every agent's sessions, those with the ones that ask now on top
@@ -2286,7 +2287,11 @@ function App({ selected }: { selected?: string }) {
         }
         usage={!pageTitle && usage ? usage : undefined}
         actions={
-          view && session && panel === 'chat' ? (
+          showSessions && !openedSession ? (
+            <button className="btn sm" aria-pressed={radar} onClick={() => setRadar(!radar)}>
+              Activity radar
+            </button>
+          ) : view && session && panel === 'chat' ? (
             <>
               {session.sessionId || session.turns.length ? (
                 <TranscriptMenu
@@ -2436,6 +2441,9 @@ function App({ selected }: { selected?: string }) {
       >
         {showSessions || openedSession ? (
           <Sessions
+            radar={radar}
+            live={session}
+            liveSource={openStore}
             onArchived={chats.refresh}
             onDelete={config?.multiChat ? askDelete : undefined}
             selected={openedSession}

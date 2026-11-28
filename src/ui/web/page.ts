@@ -464,6 +464,44 @@ blockquote.unsent { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywh
 .thread-footer .session-reply { padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 13px; }
 .thread-footer .question-row { max-height: 18vh; overflow-y: auto; }
 .thread-footer .session-reply textarea { background: transparent; }
+.activity-radar { container-type: inline-size; margin: 18px 0; }
+.radar-head, .radar-agents, .radar-page, .radar-meta { display: flex; align-items: center; gap: 8px; }
+.radar-head { justify-content: space-between; flex-wrap: wrap; }
+.radar-head h2 { font-size: 23px; letter-spacing: -.035em; margin: 0; }
+.radar-head span, .radar-agents small, .radar-page, .radar-meta, .radar-detail small, .radar-place { color: var(--muted); font-size: 12px; }
+.radar-agents { margin: 12px 0 16px; flex-wrap: wrap; }
+.radar-grid { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(245px,1fr); gap: 12px; align-items: start; }
+.radar-map-card, .radar-detail { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.radar-mode { display:flex; gap:4px; padding:10px 12px 0; }
+.radar-map { position: relative; height: clamp(340px,39cqw,480px); background: radial-gradient(ellipse at center,color-mix(in srgb,var(--accent) 8%,var(--panel)),var(--panel) 72%); }
+.radar-map svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: var(--line); }
+.radar-map ellipse,.radar-map line { vector-effect: non-scaling-stroke; stroke-width: 1; }
+.radar-map line { stroke: var(--faint); stroke-dasharray: 3 4; }
+.radar-map line.selected { stroke: var(--accent); stroke-width: 2; stroke-dasharray: none; }
+.radar-hub, .radar-node { position: absolute; transform: translate(-50%,-50%); text-align: center; }
+.radar-hub { left:50%; top:50%; background: var(--text); color: var(--panel); padding: 6px 12px; border-radius: 20px; max-width:30%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font: 600 13px var(--mono); }
+.radar-node { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; width: 29%; max-width: 152px; min-height: 47px; padding: 5px 6px; cursor: pointer; color: var(--text); line-height: 1.3; }
+.radar-node[aria-pressed=true] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 16%,transparent); }
+.radar-node b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size:12px; }
+.radar-node small { font-size: 11px; color: var(--muted); }
+.radar-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--faint); flex-shrink:0; }
+.radar-node .radar-dot { position:absolute; top:-4px; left:calc(50% - 4px); outline:2px solid var(--panel); }
+.radar-dot[data-state=Running], .radar-dot[data-state=Active] { background:var(--ok); }
+.radar-dot[data-state=Approval], .radar-dot[data-state="Needs you"] { background:var(--gc-color-warn); }
+.radar-page { border-top:1px solid var(--line); padding:8px 12px; flex-wrap:wrap; }
+.radar-page span:first-child { margin-right:auto; }
+.radar-detail { padding:16px; overflow-wrap:anywhere; }
+.radar-detail h3 { margin:8px 0 4px; line-height:1.3; font-size:19px; letter-spacing:-.025em; }
+.radar-place { margin:4px 0 12px; }
+.radar-detail section { border-top:1px solid var(--line); margin-top:16px; padding-top:12px; }
+.radar-detail h4 { margin:0 0 6px; font-size:13px; }
+.radar-detail h4 small { margin-left:4px; }
+.radar-edge { display:block; width:100%; text-align:left; border:0; border-radius:6px; background:transparent; padding:7px 3px; color:var(--text); }
+button.radar-edge { cursor:pointer; }
+button.radar-edge:hover, .radar-node:hover { background:var(--gc-color-sunken); }
+.radar-edge b,.radar-edge small { display:block; }
+.radar-edge b { font-size:13px; }
+@container (max-width: 670px) { .radar-grid { grid-template-columns: minmax(0,1fr); } }
 .sessions .open-session { color: var(--accent); }
 .needs-page[hidden], .sessions[hidden] { display: none; }
 .sessions .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
