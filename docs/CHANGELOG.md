@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Fixed
+
+- **Read full plan windows and connection status in the branded sidebar footer.** (#396)
+
 ## 3.8.0 — 2026-11-27
 
 ### Added

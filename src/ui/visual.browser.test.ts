@@ -744,7 +744,9 @@ describe('the genaicode ui page looks as its baseline', { timeout: 30_000 }, () 
           .evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth)),
       ).toBe(true);
       await foot.getByRole('button', { name: 'Help', exact: true }).click();
-      await foot.getByRole('menu', { name: 'Help' }).waitFor();
+      const help = foot.getByRole('menu', { name: 'Help' });
+      await help.waitFor();
+      expect((await help.boundingBox())!.x).toBeGreaterThanOrEqual(0);
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Collapse sidebar' }).click();
       await foot.locator('.ring').waitFor();

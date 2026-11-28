@@ -171,7 +171,8 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .quota-name { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
 .quota-window { font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
 .quota-value { text-align: right; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.meter { grid-column: 1 / -1; height: 3px; border-radius: 3px; background: var(--gc-color-line-strong); overflow: hidden; }
+.meter { height: 4px; border-radius: 2px; background: var(--gc-color-line-strong); overflow: hidden; }
+.quota-row .meter { grid-column: 1 / -1; height: 3px; border-radius: 3px; }
 .meter i { display: block; height: 100%; background: var(--gc-color-ok); border-radius: inherit; }
 .quota-row[data-level='warning'] .meter i { background: var(--gc-color-warn); }
 .quota-row[data-level='exceeded'] .meter i { background: var(--gc-color-err); }
@@ -229,8 +230,8 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .side-collapsed .update span { display: none; }
 .side-collapsed .quota { padding: 2px 0; justify-items: center; border: 0; background: transparent; }
 .side-collapsed .quota .ring { display: grid; }
-.foot-row .menu.up { left: auto; right: 0; }
-.side-collapsed .foot-row .menu.up { left: 0; right: auto; }
+.foot-row .menu.up { left: auto; right: 0; min-width: 0; width: min(220px, calc(var(--side-cur) - 20px)); }
+.side-collapsed .foot-row .menu.up { left: 0; right: auto; width: 220px; }
 .topbar { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 12px 0 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; position: relative; z-index: 30; }
 /* Rail: the Mac's window buttons overhang the 56px rail, so the bar starts 88px from the window's edge. */
 .mac-app .side-collapsed .topbar { padding-left: 32px; }
