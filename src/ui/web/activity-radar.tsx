@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { attentionOf, type SessionInfo } from '../../agents/sessions/group.js';
 import type { SessionState } from '../../agents/session.js';
 import { chatTitle, folderName, sessionKey } from '../sidebar.js';
@@ -13,7 +13,7 @@ function activity(row: SessionInfo) {
   if (attention === 'now') return 'Needs you';
   if (row.turnInProgress) return 'Running';
   if (attention === 'stalled') return 'Stalled';
-  return { active: 'Active', waiting: 'Waiting', unfinished: 'Unfinished' }[row.state!] ?? 'Unknown';
+  return row.state ? { active: 'Active', waiting: 'Waiting', unfinished: 'Unfinished' }[row.state] : 'Unknown';
 }
 
 function connection(
@@ -56,24 +56,33 @@ export function ActivityRadar({
   const [linkPage, setLinkPage] = useState(0);
   const [selected, select] = useState<string>();
   const [moreFor, setMoreFor] = useState<string>();
-  const rows = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt || sessionKey(a).localeCompare(sessionKey(b)));
-  const focus = rows.find((s) => sessionKey(s) === selected) ?? rows[0];
+  const rows = useMemo(
+    () => [...sessions].sort((a, b) => b.updatedAt - a.updatedAt || sessionKey(a).localeCompare(sessionKey(b))),
+    [sessions],
+  );
+  const agents = useMemo(() => {
+    const groups = new Map<string, SessionInfo[]>();
+    for (const row of rows) {
+      const group = groups.get(row.agent);
+      if (group) group.push(row);
+      else groups.set(row.agent, [row]);
+    }
+    return groups;
+  }, [rows]);
+  const focus = rows.find((row) => sessionKey(row) === selected) ?? rows[0];
+  const related = useMemo(() => {
+    if (!focus) return [];
+    return rows
+      .flatMap((row) => {
+        if (row === focus) return [];
+        const why = connection(focus, row, topics, topicNames);
+        return why ? [{ row, ...why }] : [];
+      })
+      .sort((a, b) => a.rank - b.rank);
+  }, [rows, focus, topics, topicNames]);
   if (!focus) return null;
   const key = sessionKey(focus);
-  const agents = new Map<string, SessionInfo[]>();
-  for (const row of rows) {
-    const group = agents.get(row.agent);
-    if (group) group.push(row);
-    else agents.set(row.agent, [row]);
-  }
   const group = agents.get(focus.agent)!;
-  const related = rows
-    .flatMap((row) => {
-      if (sessionKey(row) === key) return [];
-      const why = connection(focus, row, topics, topicNames);
-      return why ? [{ row, ...why }] : [];
-    })
-    .sort((a, b) => a.rank - b.rank);
   const mapped = links ? related : group.map((row) => ({ row, label: focus.agent }));
   const page = links
     ? Math.min(linkPage, Math.max(0, Math.ceil(mapped.length / PAGE_SIZE) - 1))

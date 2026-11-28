@@ -108,6 +108,7 @@ const asksOf = (group: Partial<SessionTopic>): string =>
 /** Every agent's sessions on this machine, by project: what is running, what waits, what stopped half way. */
 export function Sessions({
   token,
+  radar = false,
   live,
   liveSource,
   selected,
@@ -133,6 +134,7 @@ export function Sessions({
   onReplied,
 }: {
   token: string;
+  radar?: boolean;
   live?: SessionState;
   liveSource?: string;
   selected?: SessionInfo;
@@ -187,7 +189,6 @@ export function Sessions({
     window.addEventListener('genaicode-history-changed', refresh);
     return () => window.removeEventListener('genaicode-history-changed', refresh);
   }, []);
-  const [radar, setRadar] = useState(false);
   const hasSelected = !!selected;
   useEffect(() => {
     if (!hasSelected && !radar) return;
@@ -573,9 +574,6 @@ export function Sessions({
             Archive {stale.length} stale
           </button>
         ) : null}
-        <button className="chip" aria-pressed={radar} onClick={() => setRadar(!radar)}>
-          Activity radar
-        </button>
         <button className="chip" onClick={() => setRound(round + 1)}>
           Refresh
         </button>
@@ -612,128 +610,125 @@ export function Sessions({
           liveSource={liveSource}
           onOpen={onOpen}
         />
-      ) : (
-        projects.map((project) => {
-          // Stalled sessions fold under their topic unless asked for: they block nobody.
-          const unfold = inbox || open.has(`stalled:${project.key}`);
-          const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
-          const listed = folded.length
-            ? project.sessions.filter((session) => !folded.includes(session))
-            : project.sessions;
-          const whole = open.has(project.key) || listed.length <= FOLD;
-          const rows = whole ? listed : listed.slice(0, FOLD);
-          const topicId =
-            by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
-              ? project.key.slice('topic:'.length)
-              : undefined;
-          return (
-            <details key={project.key} className="project" open>
-              <summary>
-                <b>{project.name}</b>
-                <span className="path">
-                  {own && home
-                    ? ''
-                    : by === 'topic'
-                      ? asksOf(project)
-                      : project.key.startsWith('cloud:')
-                        ? 'cloud'
-                        : project.key}
-                </span>
-                <span className="counts">
-                  {Object.entries(project.agents)
-                    .map(([name, count]) => `${name} ${count}`)
-                    .join(' · ')}
-                </span>
-                {topicId && onNewTopicChat ? (
+      ) : null}
+      {(radar ? [] : projects).map((project) => {
+        // Stalled sessions fold under their topic unless asked for: they block nobody.
+        const unfold = inbox || open.has(`stalled:${project.key}`);
+        const folded = unfold ? [] : project.sessions.filter((session) => attentionOf(session, now) === 'stalled');
+        const listed = folded.length
+          ? project.sessions.filter((session) => !folded.includes(session))
+          : project.sessions;
+        const whole = open.has(project.key) || listed.length <= FOLD;
+        const rows = whole ? listed : listed.slice(0, FOLD);
+        const topicId =
+          by === 'topic' && project.key.startsWith('topic:') && project.key !== UNSORTED_TOPIC
+            ? project.key.slice('topic:'.length)
+            : undefined;
+        return (
+          <details key={project.key} className="project" open>
+            <summary>
+              <b>{project.name}</b>
+              <span className="path">
+                {own && home
+                  ? ''
+                  : by === 'topic'
+                    ? asksOf(project)
+                    : project.key.startsWith('cloud:')
+                      ? 'cloud'
+                      : project.key}
+              </span>
+              <span className="counts">
+                {Object.entries(project.agents)
+                  .map(([name, count]) => `${name} ${count}`)
+                  .join(' · ')}
+              </span>
+              {topicId && onNewTopicChat ? (
+                <button
+                  type="button"
+                  className="topic-new"
+                  aria-label={`New chat in ${project.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onNewTopicChat(topicId);
+                  }}
+                >
+                  New chat
+                </button>
+              ) : null}
+            </summary>
+            {rows.map((session) => {
+              const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
+              return [
+                <div key={`${session.source}:${session.id}`} className="session-row">
+                  <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
+                    {MARK[shownState(session)] ?? '·'}
+                  </span>
+                  <span className="agent">{session.agent}</span>
+                  <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
+                    {ago(now - session.updatedAt)}
+                  </span>
+                  <span className="label" title={session.lastPrompt ?? session.title}>
+                    {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
+                    {!own && session.source !== session.agent && <small title="Session source">{session.source}</small>}
+                    {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
+                    {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
+                    {session.branch ? <small>{session.branch}</small> : null}
+                  </span>
+                  <span className="act">
+                    {own ? (
+                      actions(session)
+                    ) : (
+                      <button className="open-session" onClick={() => onOpen(session)}>
+                        Open
+                      </button>
+                    )}
+                    <TranscriptMenu
+                      extra={own ? undefined : (close) => actions(session, close)}
+                      token={token}
+                      endpoint={transcriptUrl(session)}
+                      sessionId={session.id}
+                      sessionPath={session.path}
+                      storedSession={{ source: session.source, id: session.id }}
+                      nativeSave={nativeSave}
+                      label="⋯"
+                      ariaLabel={`Session actions for ${session.title ?? session.id}`}
+                      title="Session actions"
+                      onStatus={onStatus}
+                    />
+                  </span>
+                </div>,
+                !selected && replyEditor(session),
+                ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
+                  <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
+                    <span className="what">
+                      <b>{tool}</b>
+                      <code>{command}</code>
+                    </span>
+                  </div>
+                )),
+                ...questionActions(session),
+              ];
+            })}
+            {whole && !folded.length ? null : (
+              <div className="more">
+                {whole ? null : (
+                  <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
+                )}
+                {folded.length ? (
                   <button
-                    type="button"
-                    className="topic-new"
-                    aria-label={`New chat in ${project.name}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onNewTopicChat(topicId);
-                    }}
+                    title="Left on an offer, a report that could not be sent, or an old question"
+                    // Every row, so the five-row fold does not hide what was asked for.
+                    onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
                   >
-                    New chat
+                    Show {folded.length} stalled
                   </button>
                 ) : null}
-              </summary>
-              {rows.map((session) => {
-                const rowTopic = by !== 'topic' ? topicNameOf(session) : undefined;
-                return [
-                  <div key={`${session.source}:${session.id}`} className="session-row">
-                    <span className="mark" data-state={shownState(session)} title={stateTitle(session)}>
-                      {MARK[shownState(session)] ?? '·'}
-                    </span>
-                    <span className="agent">{session.agent}</span>
-                    <span className="age" title={new Date(session.updatedAt).toLocaleString()}>
-                      {ago(now - session.updatedAt)}
-                    </span>
-                    <span className="label" title={session.lastPrompt ?? session.title}>
-                      {session.title ?? session.lastPrompt ?? session.lastReply ?? '(no prompt)'}
-                      {!own && session.source !== session.agent && (
-                        <small title="Session source">{session.source}</small>
-                      )}
-                      {rowTopic ? <small className="topic-tag">{rowTopic}</small> : null}
-                      {session.waitingFor === 'approval' ? <small className="asks">{stateTitle(session)}</small> : null}
-                      {session.branch ? <small>{session.branch}</small> : null}
-                    </span>
-                    <span className="act">
-                      {own ? (
-                        actions(session)
-                      ) : (
-                        <button className="open-session" onClick={() => onOpen(session)}>
-                          Open
-                        </button>
-                      )}
-                      <TranscriptMenu
-                        extra={own ? undefined : (close) => actions(session, close)}
-                        token={token}
-                        endpoint={transcriptUrl(session)}
-                        sessionId={session.id}
-                        sessionPath={session.path}
-                        storedSession={{ source: session.source, id: session.id }}
-                        nativeSave={nativeSave}
-                        label="⋯"
-                        ariaLabel={`Session actions for ${session.title ?? session.id}`}
-                        title="Session actions"
-                        onStatus={onStatus}
-                      />
-                    </span>
-                  </div>,
-                  !selected && replyEditor(session),
-                  ...(session.waitingCommands ?? []).map(({ tool, command }, i) => (
-                    <div key={`command:${session.source}:${session.id}:${i}`} className="question-row command-preview">
-                      <span className="what">
-                        <b>{tool}</b>
-                        <code>{command}</code>
-                      </span>
-                    </div>
-                  )),
-                  ...questionActions(session),
-                ];
-              })}
-              {whole && !folded.length ? null : (
-                <div className="more">
-                  {whole ? null : (
-                    <button onClick={() => setOpen(new Set([...open, project.key]))}>Show all {listed.length}</button>
-                  )}
-                  {folded.length ? (
-                    <button
-                      title="Left on an offer, a report that could not be sent, or an old question"
-                      // Every row, so the five-row fold does not hide what was asked for.
-                      onClick={() => setOpen(new Set([...open, project.key, `stalled:${project.key}`]))}
-                    >
-                      Show {folded.length} stalled
-                    </button>
-                  ) : null}
-                </div>
-              )}
-            </details>
-          );
-        })
-      )}
+              </div>
+            )}
+          </details>
+        );
+      })}
       {listing && !shown.length ? (
         <div className="count">
           {own && !all.length ? 'No conversations in this app in that time.' : 'No sessions match.'}

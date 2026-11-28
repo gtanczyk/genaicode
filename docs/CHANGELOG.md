@@ -10,6 +10,8 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ### Added
 
+- **Explore agent activity and connected threads from All sessions.** (#399)
+
 - **Check agent quotas over MCP and approve a substitute worker in Needs you.** (#398)
 
 ### Fixed
