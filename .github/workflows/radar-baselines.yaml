@@ -1,0 +1,39 @@
+name: Render activity radar baselines
+on:
+  push:
+    branches: [test/activity-radar-baselines]
+permissions:
+  contents: write
+jobs:
+  capture:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux
+          - os: macos-latest
+            platform: darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - if: runner.os == 'Linux'
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list /etc/apt/sources.list.d/microsoft-prod.sources
+          npx playwright install --with-deps chromium
+      - if: runner.os == 'macOS'
+        run: npx playwright install chromium
+      - run: GENAICODE_UPDATE_SCREENSHOTS=1 npm run test:browser -- visual -t 'activity radar map and thread details'
+      - name: Save rendered page baselines
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/__screenshots__/${{ matrix.platform }}/activity-radar-*.png
+          git commit -m "Capture activity radar on ${{ matrix.platform }}"
+          git push origin HEAD:refs/heads/test/activity-radar-${{ matrix.platform }}
