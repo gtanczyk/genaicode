@@ -138,6 +138,51 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 }
 
 describe('pack', () => {
+  it.each([
+    ['claude', 'Switch to codex', ['codex']],
+    ['codex', 'Wait for claude', []],
+    ['claude', 'cancel', []],
+  ] as const)('gates delegation to %s until the operator chooses %s', async (agent, choice, expected) => {
+    const ran: string[] = [];
+    const lead = fake(
+      'lead',
+      async (task) => {
+        await tool(task, 'delegate', { agent, prompt: 'Review the patch', mode: 'shared' });
+        await tool(task, 'wait');
+      },
+      { mcp: true },
+    );
+    const team = pack({
+      lead,
+      members: ['claude', 'codex'].map((name) =>
+        fake(name, async () => {
+          ran.push(name);
+        }),
+      ),
+      readLimits: async () => [
+        { agent: 'claude', window: '5h', status: 'exceeded', at: Date.now(), resetsAt: Date.now() + 3600_000 },
+        { agent: 'codex', window: '7d', status: 'ok', usedPercent: 25, at: Date.now() },
+      ],
+    });
+    const session = createAgentSession({ agent: team, cwd: root, autoApprove: () => 'approve' });
+    try {
+      session.send(agent === 'codex' ? '@claude review the patch' : 'Ask Claude to review the patch');
+      await vi.waitFor(() => expect(session.get().approvals).toHaveLength(1));
+      const request = session.get().approvals[0]!;
+      expect(request).toMatchObject({ kind: 'question', detail: { from: 'claude', to: 'codex', cwd: root } });
+      expect(request.summary).toContain('5h quota');
+      expect(ran).toEqual([]);
+      if (choice === 'cancel') session.stop();
+      else expect(session.answer(request.id, { worker: [choice] })).toBe(true);
+      await session.idle();
+      expect(ran).toEqual(expected);
+      expect(session.get().approvals).toHaveLength(0);
+    } finally {
+      session.close();
+      await team.close();
+    }
+  });
+
   it('clears a recovered model’s refusal and preserves other models and measured windows', async () => {
     let finishOlder!: () => void;
     const older = new Promise<void>((resolve) => {

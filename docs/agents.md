@@ -586,7 +586,7 @@ The session index provides five read-only MCP tools (and, in a chat, `sessions_s
 
 | tool                | what it returns                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------- |
-| `agent_limits` | recorded plan windows across agents, as in `genaicode limits --json` |
+| `agent_limits`      | recorded plan windows across agents, as in `genaicode limits --json`                          |
 | `sessions_projects` | projects worked in lately, with counts per agent and per state                                |
 | `sessions_list`     | sessions, newest first; filters `project`, `agent`, `state`, `text`, `days`, `limit`          |
 | `sessions_waiting`  | approvals and replies with open questions, filtered by `project`, `agent`, `days` and `limit` |

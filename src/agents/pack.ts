@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { PackPool } from './pack-pool.js';
 import { checkedForMerge, isPassingVerdict, replyVerdict } from './pack-verdict.js';
 import { trackReply } from './reply.js';
@@ -37,7 +37,8 @@ import {
   type PackVerification,
 } from './pack-checks.js';
 import { addUsage, remainingBudget, tokenCount } from './usage.js';
-import { withBriefing } from './host-text.js';
+import { decideApproval, reportReply } from './live-agent.js';
+import { personText, withBriefing } from './host-text.js';
 import { redactSecrets } from './redact.js';
 import type {
   AgentEvent,
@@ -468,7 +469,8 @@ function taskBrief(mcpServers: readonly string[] = []): string[] {
   return [
     '- Before choosing a worker, call `agents` with the target cwd, model, effort and MCP servers. If it reports',
     '  fresh exhaustion, tell the person the observed window, reset time when known, and any compatible alternative.',
-    '  When the person names an agent, ask before substituting another. A warning or unknown quota is no reason to switch.',
+    '  Always pass the requested worker to delegate. The pack asks the person before starting a quota substitute.',
+    '  If the person chooses to wait, leave that task unassigned. A warning or unknown quota is no reason to switch.',
     "- When the person names a model or effort for the work, pass it as `model` / `effort`; the agent's CLI decides",
     '  which model names it knows. Give each task a short `title` for its card.',
     mcpServers.length
@@ -1108,6 +1110,16 @@ export function pack(options: PackOptions): Pack {
       }
       // Tasks started or continued during this lead turn: stopped and drained when this turn ends.
       const turnSubs = new Set<Sub>();
+      // Only an explicit leading @worker can pin a worker from the person's text. An agent's
+      // name in prose, a path or a host briefing may just be the subject of the task.
+      const mention = /^@([\w-]+)(?=$|[\s,:])/u.exec(personText(task.prompt))?.[1]?.toLowerCase();
+      const pinned =
+        members.find(({ name }) => mention === name.toLowerCase()) ??
+        members.find(
+          ({ name }) => mention === limitsAgent(name).toLowerCase() || (name === 'antigravity' && mention === 'agy'),
+        );
+      // A declined proposal remains declined on retries for that assignment in this turn.
+      const heldAssignments = new Map<string, string>();
       // Usage of each worker run started or continued during this turn.
       const turnRuns: Array<{ usage?: TokenUsage; costUsd?: number }> = [];
       // Delegations in this turn still setting up: counted toward `maxTasksPerTurn` immediately.
@@ -1216,6 +1228,71 @@ export function pack(options: PackOptions): Pack {
           options.poolChat,
         );
 
+      const selectWorker = async (
+        agent: CodingAgent,
+        prompt: string,
+        base: string,
+        roster: readonly CodingAgent[],
+        extra: TaskOptions,
+        signal: AbortSignal,
+      ): Promise<{ worker: CodingAgent; hint?: QuotaHint }> => {
+        const eligible = effectiveMode === 'plan' ? roster.filter((member) => member.capabilities.plan) : roster;
+        const snapshot = await describeMembers(eligible, task.env, {
+          model: extra.model,
+          effort: extra.effort,
+          mcp: !!extra.mcpServers?.length,
+        });
+        signal.throwIfAborted();
+        const selected = snapshot.find((member) => member.name === agent.name)!;
+        const assignment = JSON.stringify([base, prompt]);
+        const held = heldAssignments.get(assignment);
+        if (held) throw new Error(`The operator chose to wait for ${held}. Leave this task unassigned.`);
+        const original = pinned ? snapshot.find((member) => member.name === pinned.name) : selected;
+        if (!original) throw new Error(`Requested worker ${pinned!.name} is unavailable for this delegation.`);
+        const hint = original.quotaHint;
+
+        if (original !== selected && hint?.alternative !== selected.name) {
+          throw new Error(`Delegate to the requested worker ${original.name} to check its quota options.`);
+        }
+        if (hint?.alternative && (task.onQuestion || original !== selected)) {
+          const alternate = eligible.find((member) => member.name === hint.alternative)!;
+          const choice = `Switch to ${alternate.name}`;
+          const reset =
+            hint.resetsAt === undefined
+              ? ''
+              : ` Resets ${new Date(hint.resetsAt).toLocaleString(undefined, { timeZoneName: 'short' })}.`;
+          const summary = `${original.name} has exhausted its ${hint.window} quota.${reset} Send “${extra.title ?? shortTitle(prompt)}” to ${alternate.name}?`;
+          const request: ApprovalRequest = {
+            id: `pack-switch-${randomUUID()}`,
+            kind: 'question',
+            scope: 'once',
+            summary,
+            detail: { from: original.name, to: alternate.name, prompt, cwd: base, quota: hint },
+            questions: [
+              {
+                id: 'worker',
+                header: 'Worker quota',
+                question: summary,
+                options: [{ label: choice }, { label: `Wait for ${original.name}` }],
+              },
+            ],
+          };
+          const outcome = await reportReply(
+            (event) => events.push(event),
+            request,
+            signal,
+            () => decideApproval(task, request, signal),
+          );
+          signal.throwIfAborted();
+          if (outcome.answers?.worker?.[0] !== choice) {
+            heldAssignments.set(assignment, original.name);
+            throw new Error(`Worker substitution was not approved. Leave this task with ${original.name} for later.`);
+          }
+          return { worker: alternate };
+        }
+        return { worker: agent, hint };
+      };
+
       const delegate = async (args: Record<string, unknown>, context?: McpCallContext): Promise<string> => {
         const prompt = typeof args.prompt === 'string' ? args.prompt.trim() : '';
         if (!prompt) throw new Error('`prompt` is required.');
@@ -1254,10 +1331,12 @@ export function pack(options: PackOptions): Pack {
         };
         const reserve = async () => {
           const signal = callSignal(context);
+          const extra = await taskOptions(agent, args);
+          const { worker, hint } = await selectWorker(agent, prompt, base, roster, extra, signal);
           const release = await acquireWorker(signal, context);
           try {
             signal.throwIfAborted();
-            return await start(agent, prompt, args, base, roster, releaseTurnSlot, signal, release);
+            return await start(worker, prompt, args.mode, extra, hint, base, roster, releaseTurnSlot, signal, release);
           } catch (error) {
             release?.();
             throw error;
@@ -1444,24 +1523,15 @@ export function pack(options: PackOptions): Pack {
       const start = async (
         agent: CodingAgent,
         prompt: string,
-        args: Record<string, unknown>,
+        wanted: unknown,
+        extra: TaskOptions,
+        quotaHint: QuotaHint | undefined,
         base: string,
         roster: readonly CodingAgent[],
         releaseTurnSlot: () => void,
         signal: AbortSignal,
         release?: () => void,
       ): Promise<string> => {
-        const wanted = args.mode;
-        const extra = await taskOptions(agent, args);
-        const advice = async () =>
-          (
-            await describeMembers(roster, task.env, {
-              model: extra.model,
-              effort: extra.effort,
-              mcp: !!extra.mcpServers?.length,
-            })
-          ).find((member) => member.name === agent.name)?.quotaHint;
-        const quotaHint = await advice();
         if (ended.signal.aborted) throw new Error('The run has ended.');
         const repo = await repoRoot(base);
         const mode = wanted === 'shared' ? 'shared' : wanted === undefined || wanted === 'worktree' ? 'worktree' : null;
@@ -2033,7 +2103,11 @@ export function pack(options: PackOptions): Pack {
           inputSchema: {
             type: 'object',
             properties: {
-              agent: { type: 'string', description: 'Agent name, from `agents`.' },
+              agent: {
+                type: 'string',
+                description:
+                  'The originally requested worker, from `agents`. Genaicode asks before assigning a quota substitute.',
+              },
               title: {
                 type: 'string',
                 description: 'A short name for the task card, a few words (e.g. "Visual uplift of the game").',

@@ -231,7 +231,7 @@ In `npx genaicode chat --sessions`, ask "Which sessions need my attention?" The
 the project, open approval questions and the latest reply. `npx genaicode sessions mcp` serves
 the same read-only tools over stdio, and `npx genaicode mcp install` registers that server with
 every installed agent (Claude Code, Codex, Gemini CLI, Copilot, Cursor), so you can ask from any of them. The agent can read what the other sessions said and what
-their open questions ask. Ask it to pass something to another session ("tell Codex in
+their open questions ask. The read-only `agent_limits` tool returns the recorded agent plan windows and their observation and reset times. Ask it to pass something to another session ("tell Codex in
 knights that...") and it sends it with `sessions_send`; you allow the first message to each
 session in the chat. A session that is working gets it as its next turn, once the current one
 ends. See [session tools](agents.md#asking-an-agent-about-the-sessions-sessions-mcp).
@@ -362,7 +362,10 @@ The pack’s `agents` tool takes the target directory, model, effort and MCP ser
 or a fully used window observed within the last 15 minutes can suggest another installed worker.
 The task card records the observation and the reset time when available. An alternative needs
 recent quota remaining and the requested capabilities. For a named model the pack needs to have
-seen the worker report that model. The operator decides whether to substitute a named agent.
+seen the worker report that model. When delegating to an exhausted worker with a compatible alternative, the chat asks which worker to use in **Needs you**.
+Start the prompt with `@claude` (or another worker name) to pin the requested worker for delegations in that turn.
+Choosing **Switch** starts that task on the substitute. Choosing **Wait** leaves it unassigned. The question
+also waits for an answer when Auto-approve is on. An explicitly configured `/fallback` still applies to the main chat.
 A 90% reading alone leaves the choice as it was.
 
 In the browser and the desktop app the tasks are in the **work panel** on the right (the **Work**
