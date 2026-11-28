@@ -276,6 +276,8 @@ export interface QuotaRow {
   /** 0-100, absent when the agent reported no limits. */
   percent?: number;
   level: 'ok' | 'warning' | 'exceeded';
+  /** The plan window, or time until reset for an exhausted window. */
+  windowLabel?: string;
   /** `62% · 5h`, `out · 6h`, `no limits`. */
   text: string;
   title: string;
@@ -321,6 +323,7 @@ export function quotaRows(
       agent,
       percent,
       level: worst.status,
+      windowLabel: out ? reset && `resets in ${reset}` : worst.window,
       text: out ? `out${reset ? ` · ${reset}` : ''}` : `${percent}% · ${worst.window}`,
       title: out
         ? `${agent}: the ${name}${worst.window} limit is used up${reset ? `, resets in ${reset}` : ''}.`
