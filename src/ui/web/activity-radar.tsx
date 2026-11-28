@@ -97,8 +97,9 @@ export function ActivityRadar({
       ? (live?.turns ?? []).flatMap((turn) => {
           const id =
             turn.result?.sessionId ?? (!turn.result && turn === live?.turns.at(-1) ? live.sessionId : undefined);
-          if (focus.id !== id || turn.agent !== focus.agent || !turn.pack) return [];
-          return turn.pack.tasks.map((task) => ({ turn: turn.id, task, lead: turn.pack!.lead }));
+          const pack = turn.pack;
+          if (focus.id !== id || !pack || (turn.agent !== focus.agent && pack.lead !== focus.agent)) return [];
+          return pack.tasks.map((task) => ({ turn: turn.id, task, lead: pack.lead }));
         })
       : [];
   const pick = (row: SessionInfo) => {

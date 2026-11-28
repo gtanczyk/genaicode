@@ -84,6 +84,50 @@ it('tells the window when a reply went to a session, so its other lists stop off
   expect(onReplied).toHaveBeenCalledWith(reader);
 });
 
+it('matches a pack delegation by its native lead, store and thread id', async () => {
+  vi.stubGlobal('fetch', async () => new Response(JSON.stringify(listing)));
+  const live: NonNullable<ComponentProps<typeof SessionsView>['live']> = {
+    agent: 'pack',
+    cwd: '/work/bakery',
+    sessionId: asking.id,
+    status: 'running',
+    canSteer: false,
+    queued: [],
+    notes: [],
+    approvals: [],
+    usage: {},
+    turns: [
+      {
+        id: 1,
+        agent: 'pack',
+        prompt: 'Review the recipe',
+        entries: [],
+        startedAt: Date.now(),
+        pack: {
+          lead: 'helper',
+          maxParallel: 1,
+          interactive: true,
+          tasks: [
+            {
+              id: 't1',
+              agent: 'codex',
+              prompt: 'Check the recipe',
+              cwd: '/work/bakery',
+              mode: 'shared',
+              status: 'running',
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const props = { token: 't', cwd: '/work/bakery', radar: true, live, onOpen: vi.fn(), onContinue: vi.fn() };
+  await act(async () => root.render(<Sessions {...props} liveSource={asking.source} />));
+  expect(host.querySelector('.radar-detail')?.textContent).toContain('helper → codex');
+  await act(async () => root.render(<Sessions {...props} liveSource="other-store" />));
+  expect(host.querySelector('.radar-detail')?.textContent).not.toContain('Delegated tasks');
+});
+
 it('opens the readable store once per session and shows the sources of distinct rows', async () => {
   const alias = { ...asking, source: 'index', cwd: undefined };
   const other = { ...asking, source: 'second', id: 'another-id' };

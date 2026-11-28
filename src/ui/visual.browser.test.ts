@@ -1128,6 +1128,24 @@ describe('the Needs you page looks as its baseline', { timeout: 30_000 }, () => 
     ],
   };
 
+  it.each(THEMES)('activity radar map and thread details in %s mode', async (theme) => {
+    const page = await newPage(browser, theme, { width: 1280, height: 800 });
+    try {
+      await page.route('**/api/sessions?*', (route) => route.fulfill({ json: listing }));
+      await page.goto(url!);
+      await page.getByRole('button', { name: 'All sessions', exact: true }).click();
+      await page.getByRole('button', { name: 'Activity radar', exact: true }).click();
+      const radar = page.getByRole('region', { name: 'Activity radar' });
+      await radar.getByRole('button', { name: 'Thread links', exact: true }).click();
+      await radar.getByRole('group', { name: 'Connected threads' }).getByRole('button').first().waitFor();
+      await page.mouse.move(0, 0);
+      await settle(page);
+      await expectScreenshot(radar, `activity-radar-${theme}`);
+    } finally {
+      await page.context().close();
+    }
+  });
+
   it('the session list and open transcript, light and dark', async () => {
     for (const theme of THEMES) {
       const page = await newPage(browser, theme, { width: 1280, height: 800 });
