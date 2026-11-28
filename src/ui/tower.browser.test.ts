@@ -596,11 +596,17 @@ it('saves a team from the desktop home, uses it on delegation and on a fresh pro
     await home.getByRole('main', { name: 'Settings' }).waitFor({ state: 'detached' });
     await home.getByLabel('Message', { exact: true }).fill('Use worker in the catalog project.');
     await home.getByLabel('Message', { exact: true }).press('Enter');
-    // The turn's tasks are one line in the chat; the task's detail, with the quota hint, is in the work panel.
+    const sidebar = home.getByRole('complementary', { name: 'Sidebar' });
+    await sidebar.getByRole('button', { name: /^Needs you/ }).click();
+    const inbox = home.getByRole('main', { name: 'Needs you' });
+    const switchWorker = inbox.getByRole('button', { name: 'Switch to backup' });
+    await switchWorker.waitFor();
+    expect(ran).toEqual([]);
+    await switchWorker.click();
+    await vi.waitFor(() => expect(ran).toEqual(['backup']));
+    await home.keyboard.press('Escape');
     await home.locator('.gc-workline').click();
     await home.getByRole('complementary', { name: 'Work panel' }).locator('.gc-work-row').click();
-    await home.getByText(/worker reported an exhausted 5h limit.*Suggested alternative: backup/).waitFor();
-    expect(ran).toEqual(['worker']);
     expect(rosters).toEqual([['worker', 'backup']]);
     await home
       .getByRole('complementary', { name: 'Sidebar' })

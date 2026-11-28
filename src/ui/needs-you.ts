@@ -27,7 +27,7 @@ export type NeedsFilter = 'all' | NeedsSource | 'approvals' | 'questions';
 export type NeedsDecision =
   /** An approval of the open chat (`approve` command). */
   | { via: 'chat'; id: string; decision: ApprovalDecision; owner?: string; turn?: number }
-  | { via: 'answer'; id: string; owner: string; turn?: number; answers: QuestionAnswers }
+  | { via: 'answer'; id: string; owner?: string; turn?: number; answers: QuestionAnswers }
   /** An item the tower holds (`tower` command). */
   | { via: 'tower'; id: string; decision: TowerDecision }
   /** A question a hook holds open, where no tower answers it (`POST /api/asks/<id>`). */
@@ -42,7 +42,7 @@ export interface NeedsChoice {
 
 /** One thing that waits for the person. */
 export interface NeedsItem {
-  question?: { request: ApprovalRequest; owner: string; turn?: number };
+  question?: { request: ApprovalRequest; owner?: string; turn?: number };
   key: string;
   source: NeedsSource;
   /** Something to allow or refuse, or something to answer in words. */
@@ -278,7 +278,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
       verbatim: !asked,
       since: input.seen?.get(key),
       timeLabel: 'First seen',
-      // A question has choices of its own: they are in the chat.
+      // QuestionCard sends the selected answers to the turn that asked.
       choices: asked
         ? []
         : [
@@ -290,7 +290,7 @@ export function needsItems(input: NeedsInput): NeedsItem[] {
             { label: 'Deny', decision: decide('deny') },
           ],
       open: { to: 'chat' },
-      ...(asked ? { note: 'Its choices are in the chat.' } : {}),
+      ...(asked && request.questions?.length ? { question: { request, owner: chat!.owner, turn: chat!.turnId } } : {}),
     };
   });
 
