@@ -2031,7 +2031,7 @@ function App({ selected }: { selected?: string }) {
   });
   for (const row of loaded) {
     if (row.chat === pageChat() || !row.approvals.length) continue;
-    const items = needsItems({ chat: { ...row, cwd: row.cwd ?? '', turnId: row.turn }, sessions: [] });
+    const items = needsItems({ chat: { ...row, owner: row.chat, cwd: row.cwd ?? '', turnId: row.turn }, sessions: [] });
     for (const [i, item] of items.entries()) {
       const request = row.approvals[i]!;
       queue.push({
@@ -2041,7 +2041,6 @@ function App({ selected }: { selected?: string }) {
         origin: row.title ?? row.agent,
         open: { to: 'own', session: row },
         note: undefined,
-        ...(request.kind === 'question' ? { question: { request, owner: row.chat, turn: row.turn } } : {}),
         choices: item.choices.map((choice) => ({
           ...choice,
           decision: { ...choice.decision, owner: row.chat, turn: row.turn },

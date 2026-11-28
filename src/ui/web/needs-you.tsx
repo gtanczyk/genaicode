@@ -173,7 +173,8 @@ export function NeedsYouPage(props: NeedsYouPageProps) {
                 <NeedTime item={item} now={now} />
                 <span className="needs-origin">{item.origin}</span>
               </div>
-              {item.verbatim ? <pre>{item.text}</pre> : <div className="needs-text">“{item.text}”</div>}
+              {!item.question &&
+                (item.verbatim ? <pre>{item.text}</pre> : <div className="needs-text">“{item.text}”</div>)}
               {item.question && (
                 <QuestionCard
                   agent={item.agent}

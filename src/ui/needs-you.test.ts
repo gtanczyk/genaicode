@@ -245,9 +245,14 @@ describe('needsItems', () => {
       { via: 'chat', id: 'req-1', decision: 'deny' },
     ]);
     expect(item('chat:req-1').open).toEqual({ to: 'chat' });
-    // A question with choices is answered in the chat.
+    // A question carries its own answer form, routed to the turn that asked.
     expect(labels('chat:req-2')).toEqual([]);
-    expect(item('chat:req-2')).toMatchObject({ kind: 'question', text: 'Which branch?', open: { to: 'chat' } });
+    expect(item('chat:req-2')).toMatchObject({
+      kind: 'question',
+      text: 'Which branch?',
+      question: { request: { id: 'req-2' } },
+      open: { to: 'chat' },
+    });
     // A hook's question, through the tower.
     expect(item('tower:hook:abc').choices.map((choice) => choice.decision)).toEqual([
       { via: 'tower', id: 'hook:abc', decision: 'approve' },

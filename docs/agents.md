@@ -581,11 +581,12 @@ app-server protocol (`codex app-server generate-ts`) no longer has a field that 
 
 ### Asking an agent about the sessions: `sessions mcp`
 
-The session index provides four read-only MCP tools (and, in a chat, `sessions_send`, below). In `genaicode chat --sessions`, ask
+The session index provides five read-only MCP tools (and, in a chat, `sessions_send`, below). In `genaicode chat --sessions`, ask
 "Which sessions need my attention?" to see which project needs a decision or a reply.
 
 | tool                | what it returns                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------------- |
+| `agent_limits`      | recorded plan windows across agents, as in `genaicode limits --json`                          |
 | `sessions_projects` | projects worked in lately, with counts per agent and per state                                |
 | `sessions_list`     | sessions, newest first; filters `project`, `agent`, `state`, `text`, `days`, `limit`          |
 | `sessions_waiting`  | approvals and replies with open questions, filtered by `project`, `agent`, `days` and `limit` |

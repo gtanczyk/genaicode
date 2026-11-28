@@ -8,6 +8,10 @@ fails. Merging to master refreshes the `release` PR; merging that publishes to n
 
 ## Unreleased
 
+### Added
+
+- **Check agent quotas over MCP and approve a substitute worker in Needs you.** (#398)
+
 ### Fixed
 
 - **Read full plan windows and connection status in the branded sidebar footer.** (#396)
