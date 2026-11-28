@@ -2436,6 +2436,8 @@ function App({ selected }: { selected?: string }) {
       >
         {showSessions || openedSession ? (
           <Sessions
+            live={session}
+            liveSource={openStore}
             onArchived={chats.refresh}
             onDelete={config?.multiChat ? askDelete : undefined}
             selected={openedSession}
