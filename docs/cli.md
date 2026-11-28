@@ -317,7 +317,12 @@ Install the corresponding desktop app on the machine that holds the session.
 For local Antigravity sessions, **Copy agy command** copies `agy --conversation <id>` to run in a terminal.
 Cloud sessions use the link recorded by the provider.
 
-The bottom of the sidebar shows each agent's worst window (`claude 62% · 5h`), and the line under
+The sidebar footer shows the most-used plan window for each agent and opens **Settings › Usage**.
+The Genaicode wolf sits beside the connection status, version, Settings and Help.
+
+![Sidebar footer with plan windows and connection status](media/screenshots/sidebar-footer.png)
+
+The line under
 the composer names an agent above 80% of its plan: what the session's runs
 report, and before that what `genaicode limits` last saw. **Settings › Usage** has every window of
 every agent and, with a session index, where each agent's work went in the last 7 days by topic. With a plan limit known, the price of

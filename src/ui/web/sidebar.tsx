@@ -281,6 +281,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
     setOver(undefined);
   };
   const worst = props.quota.find((row) => row.percent !== undefined);
+  const connection = [props.connected ? 'Connected' : 'Disconnected', props.version].filter(Boolean).join(' · ');
   const quotaTitle = props.quota.map((row) => row.title).join('\n');
   const held = props.busyWith !== undefined ? `Opens when ${props.busyWith} finishes` : undefined;
   return (
@@ -605,6 +606,7 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             type="button"
             className="quota"
             aria-label="Plan limits"
+            aria-description={quotaTitle}
             title={`Plan limits, the worst window of each agent.\n${quotaTitle}`}
             onClick={props.onQuota}
             disabled={!props.onQuota}
@@ -618,18 +620,39 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             </span>
             {props.quota.map((row) => (
               <span className="quota-row" key={row.agent} data-level={row.level}>
-                <span>{row.agent}</span>
-                <span className="meter">
-                  <i style={{ width: `${row.percent ?? 0}%` }} />
-                </span>
-                <span>{row.text}</span>
+                <span className="quota-name">{row.agent}</span>
+                <span className="quota-window">{row.windowLabel}</span>
+                <strong className="quota-value">
+                  {row.percent === undefined ? row.text : row.level === 'exceeded' ? 'out' : `${row.percent}%`}
+                </strong>
+                {row.percent !== undefined && (
+                  <span className="meter" aria-hidden="true">
+                    <i style={{ width: `${row.percent}%` }} />
+                  </span>
+                )}
               </span>
             ))}
           </button>
         ) : null}
         <div className="foot-row">
+          <div
+            className={`foot-brand${props.connected ? '' : ' off'}`}
+            role="img"
+            aria-label={`genaicode · ${connection}`}
+            title={`genaicode · ${connection}`}
+          >
+            <span className="foot-mark">
+              <img src="/assets/wolf-64.png" alt="genaicode" />
+            </span>
+            <span className="foot-signature">
+              <strong aria-hidden="true">genaicode</strong>
+              <span className="conn">
+                <i aria-hidden="true" />
+                {connection}
+              </span>
+            </span>
+          </div>
           {props.onSettings ? (
-            // Half of the row, as the Help menu beside it.
             <span className="foot-item" data-tauri-drag-region="false">
               <button
                 type="button"
@@ -640,7 +663,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
                 onClick={props.onSettings}
               >
                 <Icon name="gear" />
-                <span className="label grow">Settings</span>
               </button>
             </span>
           ) : null}
@@ -652,7 +674,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
             button={
               <>
                 <Icon name="help" />
-                <span className="label grow">Help</span>
                 {props.whatsNewUnread ? <span className="badge-dot" title={`New in ${props.version ?? ''}`} /> : null}
               </>
             }
@@ -699,16 +720,6 @@ export const Sidebar = memo(function Sidebar(props: SidebarProps) {
               </>
             )}
           </MenuButton>
-        </div>
-        <div
-          className={`conn${props.connected ? '' : ' off'}`}
-          title={props.connected ? 'Connected to the genaicode server' : 'Disconnected from the genaicode server'}
-        >
-          <StateGlyph state={props.connected ? 'ok' : 'err'} decorative />
-          <span>
-            {props.connected ? 'Connected' : 'Disconnected'}
-            {props.version ? ` · ${props.version}` : ''}
-          </span>
         </div>
       </div>
     </aside>

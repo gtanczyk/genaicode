@@ -719,6 +719,45 @@ describe('the genaicode ui page looks as its baseline', { timeout: 30_000 }, () 
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
+  it('fits plan windows and footer controls at the minimum sidebar width', async () => {
+    const page = await newPage(browser, 'dark', { width: 1100, height: 800 });
+    try {
+      await page.addInitScript(() => localStorage.setItem('genaicode-sidebar-width', '216'));
+      await page.route('**/api/limits', (route) =>
+        route.fulfill({
+          json: {
+            limits: [
+              { agent: 'claude', window: '7d-overage', status: 'warning', usedPercent: 83 },
+              { agent: 'antigravity', window: '7d', status: 'ok', usedPercent: 56 },
+              { agent: 'codex', window: '7d', status: 'ok', usedPercent: 48 },
+            ],
+          },
+        }),
+      );
+      await page.goto(url!);
+      const foot = page.locator('.side-foot');
+      await foot.getByText('7d-overage').waitFor();
+      expect(await page.locator('.side').evaluate((el) => el.getBoundingClientRect().width)).toBe(216);
+      expect(
+        await foot
+          .locator('.quota, .quota-row, .quota-window, .foot-row')
+          .evaluateAll((els) => els.every((el) => el.scrollWidth <= el.clientWidth)),
+      ).toBe(true);
+      await foot.getByRole('button', { name: 'Help', exact: true }).click();
+      const help = foot.getByRole('menu', { name: 'Help' });
+      await help.waitFor();
+      expect((await help.boundingBox())!.x).toBeGreaterThanOrEqual(0);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await foot.locator('.ring').waitFor();
+      expect(await foot.locator('.foot-mark img').isVisible()).toBe(true);
+      await foot.getByRole('button', { name: 'Plan limits' }).click();
+      await page.getByRole('main', { name: 'Settings' }).waitFor();
+    } finally {
+      await page.context().close();
+    }
+  });
+
   it.each(THEMES)('aligns the macOS sidebar icon with the window controls in %s mode', async (theme) => {
     const page = await newPage(browser, theme, { width: 1100, height: 800 });
     try {

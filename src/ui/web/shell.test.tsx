@@ -271,7 +271,7 @@ describe('<Shell>', () => {
     expect(button('Search').getAttribute('aria-disabled')).toBeNull();
     expect(button('Search').getAttribute('title')).toBe('Search chats and sessions (⌘K)');
 
-    expect(host.querySelector('.quota-row')?.textContent).toBe('claude91% · 5h');
+    expect(host.querySelector('.quota-row')?.textContent).toBe('claude5h91%');
     expect(host.querySelector('.quota-row')?.getAttribute('data-level')).toBe('warning');
     expect(host.querySelector('.quota .ring')?.textContent).toBe('91');
     // The ring opens Settings › Usage only where there is one; else it only shows the limits.
@@ -289,7 +289,7 @@ describe('<Shell>', () => {
 
     render(props({}, { connected: false, update: { version: '3.4.0', ready: false } }));
     expect(host.querySelector('.conn')?.textContent).toBe('Disconnected · 3.3.0');
-    expect(host.querySelector('.conn')?.classList.contains('off')).toBe(true);
+    expect(host.querySelector('.foot-brand')?.classList.contains('off')).toBe(true);
     expect((button('Downloading update…') as HTMLButtonElement).disabled).toBe(true);
     expect(button('Help').querySelector('.badge-dot')).toBeNull();
   });
