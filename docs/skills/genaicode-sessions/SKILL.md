@@ -19,6 +19,9 @@ git: work shows in the agents' conversations before it shows in the repository.
 | what was said, what did it decide, where did it stop | `sessions_read` with the id from a listing |
 | find the session about some subject                  | `sessions_list` with `text`                |
 
+Use `agent_limits` for the latest local plan windows across agents. Check the observation and reset times.
+An absent reading means the available quota is unknown.
+
 Where `memory_list` and `memory_read` are offered, they name and return what each agent was told
 or wrote down about a project (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Cursor rules, Claude Code's
 own notes). Use them when the user asks what an agent knows about a project, or before you take

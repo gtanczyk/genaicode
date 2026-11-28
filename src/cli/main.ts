@@ -304,7 +304,7 @@ Sessions options:
   the agents that can be asked (Codex's app server) and compares; that starts the agent's own
   process, which keeps its state and logs in its home.
 
-  "sessions mcp" (-a) serves sessions_projects, sessions_list, sessions_read and sessions_waiting
+  "sessions mcp" (-a) serves sessions_projects, sessions_list, sessions_read, sessions_waiting and agent_limits
   on stdio. Any agent can use them to find open sessions and see which ones need your attention:
   "genaicode mcp install" registers it with every installed agent (Claude Code, Codex, Gemini,
   Copilot, Cursor) under the name "genaicode"; -a picks one, "mcp uninstall" takes it out. To
@@ -1255,7 +1255,7 @@ async function manageMcp(
   }
   if (command.action === 'install' && !failed) {
     cli.stdout.write(
-      'New sessions of these agents get sessions_projects, sessions_list, sessions_read and sessions_waiting.\n' +
+      'New sessions of these agents get sessions_projects, sessions_list, sessions_read, sessions_waiting and agent_limits.\n' +
         'They read what your other agents\' sessions said. "genaicode mcp uninstall" takes them out again.\n',
     );
   }

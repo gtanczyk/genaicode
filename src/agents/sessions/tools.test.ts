@@ -7,6 +7,7 @@ import { outputText, type McpTool } from '../mcp-tools.js';
 import type { SessionTurn } from '../session.js';
 import { asksDir } from './answer.js';
 import { archiveSessions } from './archive.js';
+import { recordLimits } from './limits.js';
 import { liveRecord, recordHook } from './live.js';
 import { serveMcpStdio, sessionTools } from './tools.js';
 import type { SessionInfo, SessionSource } from './types.js';
@@ -86,6 +87,15 @@ async function call(tool: McpTool, args: Record<string, unknown> = {}): Promise<
 }
 
 describe('sessionTools', () => {
+  it('agent_limits returns the same timestamped plan windows as the CLI, including unknown capacity', async () => {
+    const home = env();
+    const limits = tools([], home).agent_limits!;
+    expect(JSON.parse(await call(limits))).toEqual({ limits: [] });
+    const active = { window: '5h', status: 'warning' as const, usedPercent: 83, resetsAt: NOW + HOUR };
+    recordLimits('claude', [active, { window: '7d', status: 'exceeded', resetsAt: NOW }], home, NOW - HOUR);
+    expect(JSON.parse(await call(limits))).toEqual({ limits: [{ ...active, agent: 'claude', at: NOW - HOUR }] });
+  });
+
   it('sessions_projects counts sessions per project, agent and state', async () => {
     const text = await call(tools().sessions_projects!);
     expect(text).toContain('2 projects, last 14 days:');
@@ -242,6 +252,7 @@ describe('serveMcpStdio', () => {
         { name: 'sessions_list' },
         { name: 'sessions_read' },
         { name: 'sessions_waiting', _meta: { 'anthropic/alwaysLoad': true } },
+        { name: 'agent_limits' },
       ],
     });
     expect(JSON.stringify(byId(3).result)).toContain('bbbbbbbb-2222  approval (Bash)');
